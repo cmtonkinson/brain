@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 
+from config import settings
 # SQLAlchemy base
 Base = declarative_base()
 
@@ -90,5 +91,6 @@ class ConversationMessage(BaseModel):
     def to_markdown(self) -> str:
         """Format message as markdown for Obsidian."""
         time_str = self.timestamp.strftime("%H:%M")
-        role_display = "User" if self.role == "user" else "Brain"
+        user_display = settings.user or "User"
+        role_display = user_display if self.role == "user" else "Brain"
         return f"## {time_str} - {role_display}\n\n{self.content}\n"
