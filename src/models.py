@@ -71,8 +71,24 @@ class TaskResponse(BaseModel):
 
 
 class SignalMessage(BaseModel):
-    """Incoming Signal message."""
-    
+    """Incoming Signal message from Signal API."""
+
     sender: str
     message: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    source_device: int = 1
+    expires_in_seconds: int = 0
+
+
+class ConversationMessage(BaseModel):
+    """In-memory representation of a conversation message."""
+
+    role: str  # "user" or "assistant"
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    def to_markdown(self) -> str:
+        """Format message as markdown for Obsidian."""
+        time_str = self.timestamp.strftime("%H:%M")
+        role_display = "User" if self.role == "user" else "Brain"
+        return f"## {time_str} - {role_display}\n\n{self.content}\n"

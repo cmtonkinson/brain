@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     litellm_base_url: str | None = None  # For custom endpoints
     litellm_timeout: int = 600  # Timeout in seconds
 
+    # Signal Configuration
+    signal_phone_number: str | None = None  # Agent's registered phone number
+    allowed_senders: list[str] = []  # Empty = allow all, or whitelist phone numbers
+
+    # Conversation Storage
+    conversation_folder: str = "Brain/Conversations"  # Obsidian path for conversations
+
     @model_validator(mode="after")
     def populate_database_url(self) -> "Settings":
         if self.database_url:
