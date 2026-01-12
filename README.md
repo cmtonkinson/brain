@@ -138,18 +138,35 @@ This starts:
 - signal-cli-rest-api (Signal messaging) on port 8080
 - brain-agent (your AI assistant)
 
-### 5. Link Signal device
+### 5. Register Signal account
 ```bash
-# Get QR code for linking
-curl -X GET http://localhost:8080/v1/qrcodelink?device_name=brain
+# Register a new Signal account with your Google Voice number
+# Replace +1XXXXXXXXXX with your Google Voice number
+curl -X POST "http://localhost:8080/v1/register/+1XXXXXXXXXX"
 
-# Scan the QR code with Signal app on your iPhone:
-# Signal Settings → Linked Devices → Link New Device
+# If Signal requires a captcha, solve it at:
+# https://signalcaptchas.org/registration/generate.html
+# Then pass the full signalcaptcha://... token as JSON:
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"captcha":"signalcaptcha://signal-hcaptcha..."}' \
+  "http://localhost:8080/v1/register/+1XXXXXXXXXX"
+
+# Signal will send an SMS verification code to your Google Voice number
+# Once you receive the code, verify:
+curl -X POST "http://localhost:8080/v1/register/+1XXXXXXXXXX/verify/XXXXXX"
+# Replace XXXXXX with the 6-digit code from the SMS
+
+# If SMS doesn't arrive, request voice verification instead:
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"captcha":"signalcaptcha://signal-hcaptcha...","voice":true}' \
+  "http://localhost:8080/v1/register/+1XXXXXXXXXX"
 ```
 
 ### 6. Index your Obsidian vault
 ```bash
-poetry run python src/indexer.py
+docker-compose exec agent poetry run python src/indexer.py
 ```
 
 ### 7. Test the agent
@@ -187,7 +204,7 @@ Open http://localhost:6333/dashboard
 
 ### Re-index Obsidian vault
 ```bash
-poetry run python src/indexer.py --full-reindex
+docker-compose exec agent poetry run python src/indexer.py --full-reindex
 ```
 
 ## Project Structure
@@ -228,7 +245,7 @@ ANTHROPIC_API_KEY=sk-ant-...           # Claude API key
 
 # Obsidian
 OBSIDIAN_API_KEY=your-api-key-here     # From Local REST API plugin
-OBSIDIAN_VAULT_PATH=/Users/you/Documents/Vault  # Absolute path
+OBSIDIAN_VAULT_PATH=/Users/you/Documents/Vault  # Absolute path; mounted into container at same path
 OBSIDIAN_URL=http://host.docker.internal:27123
 
 # Database
@@ -241,6 +258,9 @@ OLLAMA_URL=http://host.docker.internal:11434
 QDRANT_URL=http://qdrant:6333
 REDIS_URL=redis://redis:6379
 DATABASE_URL=postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
+
+# Optional
+LITELLM_BASE_URL=
 
 # User context
 USER=your-username
@@ -335,7 +355,3 @@ This is a personal project, but feel free to fork and adapt for your own use.
 ## License
 
 MIT (or choose your own)
-
----
-
-**Note**: This README assumes Phase 1 implementation. Update as you progress through phases.

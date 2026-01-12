@@ -1,6 +1,7 @@
 """Configuration management for Brain assistant."""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import model_validator
 
 
 class Settings(BaseSettings):
@@ -13,7 +14,7 @@ class Settings(BaseSettings):
     )
 
     # LLM Configuration
-    anthropic_api_key: str
+    anthropic_api_key: str | None = None
     
     # Obsidian Configuration
     obsidian_api_key: str
@@ -21,8 +22,8 @@ class Settings(BaseSettings):
     obsidian_vault_path: str
     
     # Database Configuration
-    database_url: str
-    postgres_password: str
+    database_url: str | None = None
+    postgres_password: str | None = None
     
     # Service URLs
     qdrant_url: str = "http://qdrant:6333"
@@ -37,6 +38,17 @@ class Settings(BaseSettings):
     litellm_model: str = "claude-sonnet-4-20250514"  # Default model
     litellm_base_url: str | None = None  # For custom endpoints
     litellm_timeout: int = 600  # Timeout in seconds
+
+    @model_validator(mode="after")
+    def populate_database_url(self) -> "Settings":
+        if self.database_url:
+            return self
+        if not self.postgres_password:
+            return self
+        self.database_url = (
+            f"postgresql://brain:{self.postgres_password}@postgres:5432/brain"
+        )
+        return self
 
 # Global settings instance
 settings = Settings()

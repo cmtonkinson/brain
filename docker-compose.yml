@@ -70,7 +70,8 @@ services:
       - REDIS_URL=redis://redis:6379
       - SIGNAL_API_URL=http://signal-api:8080
       - DATABASE_URL=postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
+      - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
     volumes:
       - ./logs:/app/logs
-      - ${OBSIDIAN_VAULT_PATH}:/obsidian:ro  # Read-only access to vault
+      - ${OBSIDIAN_VAULT_PATH}:${OBSIDIAN_VAULT_PATH}:ro  # Read-only access to vault
     restart: unless-stopped

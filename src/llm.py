@@ -10,6 +10,12 @@ class LLMClient:
     
     def __init__(self, model: Optional[str] = None):
         self.model = model or settings.litellm_model
+
+    def _litellm_kwargs(self) -> Dict[str, Any]:
+        extra: Dict[str, Any] = {}
+        if settings.litellm_base_url:
+            extra["api_base"] = settings.litellm_base_url
+        return extra
     
     async def complete(
         self,
@@ -35,6 +41,7 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             timeout=settings.litellm_timeout,
+            **self._litellm_kwargs(),
             **kwargs
         )
         return response.choices[0].message.content
@@ -63,6 +70,7 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             timeout=settings.litellm_timeout,
+            **self._litellm_kwargs(),
             **kwargs
         )
         return response.choices[0].message.content
