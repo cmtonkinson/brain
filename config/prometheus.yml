@@ -64,3 +64,9 @@ scrape_configs:
     static_configs:
       - targets: ['grafana:3000']
     metrics_path: /metrics
+
+  # cAdvisor container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    metrics_path: /metrics

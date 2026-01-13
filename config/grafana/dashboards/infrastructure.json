@@ -334,55 +334,60 @@
     {
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
       "id": 102,
-      "title": "Scrape & Runtime",
+      "title": "Services",
       "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "Down", "color": "red" },
+                "1": { "text": "Up", "color": "green" }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
       "id": 10,
       "options": {
-        "legend": { "displayMode": "list", "placement": "right", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "none" }
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name"
       },
       "pluginVersion": "10.3.3",
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "scrape_duration_seconds{job=~\"prometheus|otel-collector|postgres|redis|qdrant|loki|grafana\"}",
-          "legendFormat": "{{job}}",
+          "expr": "max by (container_label_com_docker_compose_service) ((time() - container_last_seen{image!=\"\"}) < 60) or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"qdrant\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"redis\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"postgres\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"signal-api\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"agent\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"otel-collector\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"prometheus\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"loki\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"promtail\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"grafana\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"cadvisor\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"postgres-exporter\", \"\", \"\") or label_replace(vector(0), \"container_label_com_docker_compose_service\", \"redis-exporter\", \"\", \"\")",
+          "legendFormat": "{{container_label_com_docker_compose_service}}",
           "refId": "A"
         }
       ],
-      "title": "Scrape Duration",
-      "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
-      "id": 11,
-      "options": {
-        "legend": { "displayMode": "list", "placement": "right", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "none" }
-      },
-      "pluginVersion": "10.3.3",
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "scrape_samples_post_metric_relabeling{job=~\"prometheus|otel-collector|postgres|redis|qdrant|loki|grafana\"}",
-          "legendFormat": "{{job}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Scrape Samples",
-      "type": "timeseries"
+      "title": "Service Up",
+      "type": "stat"
     },
     {
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
       "id": 103,
-      "title": "Process Resources",
+      "title": "Container Resources",
       "type": "row"
     },
     {
@@ -398,17 +403,17 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "process_resident_memory_bytes{job=~\"prometheus|otel-collector|loki|grafana|qdrant\"}",
-          "legendFormat": "{{job}}",
+          "expr": "sum by (container_label_com_docker_compose_service, container_label_com_docker_compose_container_number) (container_memory_usage_bytes{image!=\"\"})",
+          "legendFormat": "{{container_label_com_docker_compose_service}}-{{container_label_com_docker_compose_container_number}}",
           "refId": "A"
         }
       ],
-      "title": "Process Memory (RSS)",
+      "title": "Container Memory",
       "type": "timeseries"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "cores" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
       "id": 13,
       "options": {
@@ -419,12 +424,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(process_cpu_seconds_total{job=~\"prometheus|otel-collector|loki|grafana|qdrant\"}[5m])",
-          "legendFormat": "{{job}}",
+          "expr": "sum by (container_label_com_docker_compose_service, container_label_com_docker_compose_container_number) (rate(container_cpu_usage_seconds_total{image!=\"\"}[5m]))",
+          "legendFormat": "{{container_label_com_docker_compose_service}}-{{container_label_com_docker_compose_container_number}}",
           "refId": "A"
         }
       ],
-      "title": "Process CPU (rate)",
+      "title": "Container CPU (rate)",
       "type": "timeseries"
     }
   ],
