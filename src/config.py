@@ -45,6 +45,7 @@ class Settings(BaseSettings):
 
     # Conversation Storage
     conversation_folder: str = "Brain/Conversations"  # Obsidian path for conversations
+    summary_every_turns: int = 7  # Write a summary every N assistant turns (0 disables)
 
     # Code-Mode / UTCP
     utcp_config_path: str = "~/.config/brain/utcp.json"

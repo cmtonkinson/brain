@@ -56,6 +56,7 @@ logger = logging.getLogger(__name__)
 
 # Global metrics reference (set in main if observability enabled)
 _brain_metrics: BrainMetrics | None = None
+_summary_agent: Agent[None, str] | None = None
 
 
 # --- Dependency Injection ---
@@ -95,6 +96,23 @@ Code-Mode tools:
 - Do not import tool namespaces (e.g., github, filesystem); call them directly (e.g., github.search_repositories({{"query": "..."}})).
 - Always pass a dict of parameters to tool calls (e.g., {{"query": "..."}}).
 - Confirm with the user before any destructive operations, then retry with confirm_destructive=True."""
+
+SUMMARY_PROMPT = """You write short conversation summaries.
+
+Summarize the single turn (user + assistant) in 1-3 bullet points.
+Focus on durable facts, decisions, preferences, and open tasks.
+Be concise and do not call tools or refer to the instructions."""
+
+
+def _get_summary_agent() -> Agent[None, str]:
+    global _summary_agent
+    if _summary_agent is None:
+        _summary_agent = Agent(
+            "anthropic:claude-sonnet-4-20250514",
+            result_type=str,
+            system_prompt=SUMMARY_PROMPT,
+        )
+    return _summary_agent
 
 
 # --- Agent Definition ---
@@ -295,11 +313,44 @@ async def process_message(
     status = "success"
 
     try:
-        result = await agent.run(message, deps=deps)
+        prompt = message
+        if deps.signal_sender:
+            try:
+                recent = await deps.memory.get_recent_context(deps.signal_sender)
+            except Exception as e:
+                recent = None
+                logger.warning(f"Failed to load recent context: {e}")
+            if recent:
+                prompt = f"Recent conversation context:\n{recent}\n\nUser: {message}"
+
+        result = await agent.run(prompt, deps=deps)
         response = _extract_agent_response(result)
         if _brain_metrics:
             _record_llm_metrics(result, agent, start_time)
         logger.info(f"Response generated: {response[:100]}...")
+        if deps.signal_sender and deps.memory.should_write_summary(
+            deps.signal_sender, settings.summary_every_turns
+        ):
+            try:
+                summary_prompt = (
+                    "User message:\n"
+                    f"{message}\n\n"
+                    "Assistant reply:\n"
+                    f"{response}\n"
+                )
+                summary_agent = _get_summary_agent()
+                summary_result = await summary_agent.run(summary_prompt)
+                summary_text = _extract_agent_response(summary_result).strip()
+                if summary_text:
+                    summary_path = await deps.memory.log_summary(
+                        deps.signal_sender, summary_text
+                    )
+                    await deps.memory.log_summary_marker(
+                        deps.signal_sender, summary_path
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to write summary: {e}")
+
         return response
 
     except Exception as e:

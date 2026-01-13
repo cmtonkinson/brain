@@ -31,6 +31,39 @@ def get_conversation_path(date: datetime, sender: str) -> str:
     return f"{folder}/{year}/{month}/signal-{date_str}-{sender_hash}.md"
 
 
+def get_summary_path(date: datetime, sender: str) -> str:
+    """Generate the Obsidian path for a summary note."""
+    sender_hash = hashlib.sha256(sender.encode()).hexdigest()[:4]
+    date_str = date.strftime("%Y-%m-%d")
+    time_str = date.strftime("%H%M%S")
+    year = date.strftime("%Y")
+    month = date.strftime("%m")
+
+    folder = settings.conversation_folder
+    return f"{folder}/Summaries/{year}/{month}/signal-summary-{date_str}-{time_str}-{sender_hash}.md"
+
+
+def create_summary_frontmatter(
+    sender: str, timestamp: datetime, conversation_path: str
+) -> str:
+    """Create YAML frontmatter for a summary note."""
+    return f"""---
+type: conversation_summary
+channel: signal
+created: {timestamp.isoformat()}
+conversation: {conversation_path}
+participants:
+  - {sender}
+tags:
+  - conversation
+  - summary
+---
+
+# Summary: {timestamp.strftime("%Y-%m-%d %H:%M")}
+
+"""
+
+
 def create_conversation_frontmatter(sender: str, timestamp: datetime) -> str:
     """Create YAML frontmatter for a new conversation note.
 
@@ -63,6 +96,7 @@ class ConversationMemory:
     def __init__(self, obsidian_client: ObsidianClient):
         self.obsidian = obsidian_client
         self._conversation_paths: dict[str, str] = {}  # sender -> current path
+        self._summary_turn_counts: dict[str, int] = {}  # sender -> turns since last summary
 
     async def get_or_create_conversation(
         self, sender: str, timestamp: datetime | None = None
@@ -155,3 +189,39 @@ class ConversationMemory:
             return content
         except FileNotFoundError:
             return None
+
+    async def log_summary(
+        self,
+        sender: str,
+        summary: str,
+        timestamp: datetime | None = None,
+    ) -> str:
+        """Create a new summary note and return its path."""
+        timestamp = timestamp or datetime.now()
+        conversation_path = await self.get_or_create_conversation(sender, timestamp)
+        path = get_summary_path(timestamp, sender)
+        frontmatter = create_summary_frontmatter(sender, timestamp, conversation_path)
+        content = f"{frontmatter}{summary.strip()}\n"
+        await self.obsidian.create_note(path, content)
+        logger.info(f"Created summary note: {path}")
+        return path
+
+    async def log_summary_marker(
+        self,
+        sender: str,
+        summary_path: str,
+        timestamp: datetime | None = None,
+    ) -> None:
+        """Append a one-line summary marker to the conversation log."""
+        timestamp = timestamp or datetime.now()
+        conversation_path = await self.get_or_create_conversation(sender, timestamp)
+        marker = f"\n> Summary saved: [[{summary_path}]]\n"
+        await self.obsidian.append_to_note(conversation_path, marker)
+
+    def should_write_summary(self, sender: str, interval: int) -> bool:
+        """Return True when the sender hits the summary interval."""
+        if interval <= 0:
+            return False
+        count = self._summary_turn_counts.get(sender, 0) + 1
+        self._summary_turn_counts[sender] = count
+        return count % interval == 0
