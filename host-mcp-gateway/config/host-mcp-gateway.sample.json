@@ -1,0 +1,21 @@
+{
+  "bind_host": "127.0.0.1",
+  "bind_port": 7411,
+  "auth_token": "CHANGE_ME",
+  "allowed_clients": [
+    "127.0.0.1/32",
+    "::1/128"
+  ],
+  "servers": [
+    {
+      "server_id": "eventkit",
+      "command": "/usr/local/bin/mcp-eventkit",
+      "args": [],
+      "working_dir": "",
+      "env": {},
+      "autostart": true,
+      "restart_policy": "on-failure",
+      "startup_timeout_ms": 30000
+    }
+  ]
+}

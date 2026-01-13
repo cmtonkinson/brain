@@ -48,6 +48,20 @@
           }
         }
       }
+    },
+    {
+      "name": "eventkit",
+      "call_template_type": "mcp",
+      "config": {
+        "mcpServers": {
+          "eventkit": {
+            "url": "http://host.docker.internal:7411/rpc",
+            "headers": {
+              "Authorization": "Bearer REPLACE_ME"
+            }
+          }
+        }
+      }
     }
   ]
 }
