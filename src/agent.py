@@ -91,6 +91,8 @@ You are communicating via Signal messenger, so keep responses appropriately size
 Code-Mode tools:
 - Use code_mode_search_tools to discover external tools when needed.
 - Use code_mode_call_tool_chain to execute Python tool chains against MCP servers.
+- Do not import tool namespaces (e.g., github, filesystem); call them directly (e.g., github.search_repositories({{"query": "..."}})).
+- Always pass a dict of parameters to tool calls (e.g., {{"query": "..."}}).
 - Confirm with the user before any destructive operations, then retry with confirm_destructive=True."""
 
 

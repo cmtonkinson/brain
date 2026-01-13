@@ -38,10 +38,9 @@
       "config": {
         "mcpServers": {
           "github": {
-            "command": "npx",
+            "command": "/usr/local/bin/github-mcp-server",
             "args": [
-              "-y",
-              "@modelcontextprotocol/server-github"
+              "stdio"
             ],
             "env": {
               "GITHUB_PERSONAL_ACCESS_TOKEN": "set-me"
