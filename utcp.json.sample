@@ -55,7 +55,7 @@
       "config": {
         "mcpServers": {
           "eventkit": {
-            "url": "http://host.docker.internal:7411/rpc",
+            "url": "http://host.docker.internal:7411/eventkit/rpc",
             "headers": {
               "Authorization": "Bearer REPLACE_ME"
             }

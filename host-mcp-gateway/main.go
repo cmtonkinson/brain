@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -145,6 +146,7 @@ type ManagedServer struct {
 	stdout       *bufio.Reader
 	decoder      *json.Decoder
 	stderr       io.ReadCloser
+	sessionID    string
 	requests     chan serverRequest
 	workerOnce   sync.Once
 	metrics      *GatewayMetrics
@@ -340,7 +342,8 @@ func (g *Gateway) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", g.handleHealth)
 	mux.HandleFunc("/servers", g.handleServers)
-	mux.HandleFunc("/rpc", g.handleRPC)
+	mux.HandleFunc("/rpc", g.handleRPCWrapper)
+	mux.HandleFunc("/", g.handleRPCDirect)
 	return g.withMiddleware(mux)
 }
 
@@ -425,7 +428,7 @@ func (g *Gateway) handleServers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (g *Gateway) handleRPC(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) handleRPCWrapper(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	start := time.Now()
 
@@ -453,6 +456,18 @@ func (g *Gateway) handleRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if isNotification(req.Payload) {
+		if err := server.Send(spanCtx, req.Payload); err != nil {
+			g.metrics.requests.Add(spanCtx, 1, metric.WithAttributes(attribute.String("server_id", req.ServerID), attribute.String("status", "error")))
+			g.logger.Log(spanCtx, "error", "gateway_request_failed", map[string]any{"server_id": req.ServerID, "error": err.Error(), "request_id": requestID})
+			writeError(w, http.StatusBadGateway, GatewayError{ErrorCode: "server_error", Message: err.Error(), ServerID: req.ServerID, RequestID: requestID})
+			return
+		}
+		g.metrics.requests.Add(spanCtx, 1, metric.WithAttributes(attribute.String("server_id", req.ServerID), attribute.String("status", "accepted")))
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+
 	responsePayload, err := server.Call(spanCtx, req.Payload, requestID)
 	statusLabel := "success"
 	if err != nil {
@@ -471,10 +486,136 @@ func (g *Gateway) handleRPC(w http.ResponseWriter, r *http.Request) {
 	g.writeJSON(spanCtx, w, http.StatusOK, GatewayResponse{ServerID: req.ServerID, Payload: responsePayload})
 }
 
+func (g *Gateway) handleRPCDirect(w http.ResponseWriter, r *http.Request) {
+	if !strings.HasSuffix(r.URL.Path, "/rpc") {
+		writeError(w, http.StatusNotFound, GatewayError{ErrorCode: "not_found", Message: "unknown endpoint"})
+		return
+	}
+
+	serverID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/"), "/rpc")
+	if serverID == "" {
+		writeError(w, http.StatusNotFound, GatewayError{ErrorCode: "server_not_found", Message: "missing server_id"})
+		return
+	}
+
+	ctx := r.Context()
+	start := time.Now()
+
+	if r.Method == http.MethodGet {
+		g.handleRPCStream(ctx, w, r, serverID)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		g.metrics.requests.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "invalid")))
+		writeError(w, http.StatusBadRequest, GatewayError{ErrorCode: "invalid_request", Message: "invalid body"})
+		return
+	}
+
+	requestID := extractRequestID(body)
+	spanCtx, span := g.tracer.Start(ctx, "mcp_gateway.request",
+		trace.WithAttributes(
+			attribute.String("server_id", serverID),
+			attribute.String("request_id", requestID),
+		),
+	)
+	defer span.End()
+
+	server, ok := g.servers[serverID]
+	if !ok {
+		g.metrics.requests.Add(spanCtx, 1, metric.WithAttributes(attribute.String("status", "not_found")))
+		g.logger.Log(spanCtx, "warn", "gateway_server_not_found", map[string]any{"server_id": serverID})
+		writeError(w, http.StatusNotFound, GatewayError{ErrorCode: "server_not_found", Message: "unknown server_id", ServerID: serverID, RequestID: requestID})
+		return
+	}
+
+	if isNotification(body) {
+		if err := server.Send(spanCtx, body); err != nil {
+			g.metrics.requests.Add(spanCtx, 1, metric.WithAttributes(attribute.String("server_id", serverID), attribute.String("status", "error")))
+			g.logger.Log(spanCtx, "error", "gateway_request_failed", map[string]any{"server_id": serverID, "error": err.Error(), "request_id": requestID})
+			writeError(w, http.StatusBadGateway, GatewayError{ErrorCode: "server_error", Message: err.Error(), ServerID: serverID, RequestID: requestID})
+			return
+		}
+		g.metrics.requests.Add(spanCtx, 1, metric.WithAttributes(attribute.String("server_id", serverID), attribute.String("status", "accepted")))
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+
+	responsePayload, err := server.Call(spanCtx, body, requestID)
+	statusLabel := "success"
+	if err != nil {
+		statusLabel = "error"
+	}
+	g.metrics.requests.Add(spanCtx, 1, metric.WithAttributes(attribute.String("server_id", serverID), attribute.String("status", statusLabel)))
+	g.metrics.latency.Record(spanCtx, time.Since(start).Milliseconds(), metric.WithAttributes(attribute.String("server_id", serverID)))
+
+	if err != nil {
+		g.logger.Log(spanCtx, "error", "gateway_request_failed", map[string]any{"server_id": serverID, "error": err.Error(), "request_id": requestID})
+		writeError(w, http.StatusBadGateway, GatewayError{ErrorCode: "server_error", Message: err.Error(), ServerID: serverID, RequestID: requestID})
+		return
+	}
+
+	g.logger.Log(spanCtx, "info", "gateway_request_ok", map[string]any{"server_id": serverID, "request_id": requestID})
+	g.writeRawJSON(spanCtx, w, http.StatusOK, responsePayload, server)
+}
+
+func (g *Gateway) handleRPCStream(ctx context.Context, w http.ResponseWriter, r *http.Request, serverID string) {
+	server, ok := g.servers[serverID]
+	if !ok {
+		writeError(w, http.StatusNotFound, GatewayError{ErrorCode: "server_not_found", Message: "unknown server_id", ServerID: serverID})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	if sessionID := server.ensureSessionID(); sessionID != "" {
+		w.Header().Set("MCP-Session-Id", sessionID)
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, GatewayError{ErrorCode: "streaming_not_supported", Message: "response does not support streaming"})
+		return
+	}
+
+	// Initial comment to establish stream
+	_, _ = w.Write([]byte(": ok\n\n"))
+	flusher.Flush()
+
+	ticker := time.NewTicker(25 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_, _ = w.Write([]byte(": keep-alive\n\n"))
+			flusher.Flush()
+		}
+	}
+}
+
 func (g *Gateway) writeJSON(ctx context.Context, w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		g.logger.Log(ctx, "error", "gateway_write_failed", map[string]any{"error": err.Error()})
+	}
+}
+
+func (g *Gateway) writeRawJSON(ctx context.Context, w http.ResponseWriter, status int, payload json.RawMessage, server *ManagedServer) {
+	w.Header().Set("Content-Type", "application/json")
+	if server != nil && isInitializeRequest(payload) {
+		sessionID := server.ensureSessionID()
+		if sessionID != "" {
+			w.Header().Set("MCP-Session-Id", sessionID)
+		}
+	}
+	w.WriteHeader(status)
+	if _, err := w.Write(payload); err != nil {
 		g.logger.Log(ctx, "error", "gateway_write_failed", map[string]any{"error": err.Error()})
 	}
 }
@@ -568,6 +709,7 @@ func (s *ManagedServer) Status() map[string]any {
 		"restart_count":     s.restartCount,
 		"last_exit_code":    s.lastExitCode,
 		"last_exit_at":      formatTime(s.lastExitAt),
+		"session_id":        s.sessionID,
 		"autostart":         s.cfg.Autostart,
 		"restart_policy":    s.cfg.RestartPolicy,
 		"command":           s.cfg.Command,
@@ -597,6 +739,30 @@ func (s *ManagedServer) Call(ctx context.Context, payload []byte, requestID stri
 	}
 }
 
+func (s *ManagedServer) Send(ctx context.Context, payload []byte) error {
+	if err := s.ensureRunning(ctx); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	stdin := s.stdin
+	s.mu.Unlock()
+
+	if stdin == nil {
+		return fmt.Errorf("server %s is not ready", s.cfg.ServerID)
+	}
+
+	line := append([]byte{}, payload...)
+	if len(line) == 0 {
+		return errors.New("empty payload")
+	}
+	if line[len(line)-1] != '\n' {
+		line = append(line, '\n')
+	}
+
+	return writeAll(stdin, line)
+}
+
 func (s *ManagedServer) ensureRunning(ctx context.Context) error {
 	s.mu.Lock()
 	status := s.status
@@ -611,6 +777,15 @@ func (s *ManagedServer) ensureRunning(ctx context.Context) error {
 	}
 
 	return s.Start(ctx)
+}
+
+func (s *ManagedServer) ensureSessionID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sessionID == "" {
+		s.sessionID = randomSessionID()
+	}
+	return s.sessionID
 }
 
 func (s *ManagedServer) worker(ctx context.Context) {
@@ -845,4 +1020,32 @@ func formatTime(value time.Time) string {
 		return ""
 	}
 	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func isNotification(payload []byte) bool {
+	method, hasID := parseMethodAndID(payload)
+	return method != "" && !hasID
+}
+
+func isInitializeRequest(payload []byte) bool {
+	method, _ := parseMethodAndID(payload)
+	return method == "initialize"
+}
+
+func parseMethodAndID(payload []byte) (string, bool) {
+	var data map[string]any
+	if err := json.Unmarshal(payload, &data); err != nil {
+		return "", false
+	}
+	method, _ := data["method"].(string)
+	_, hasID := data["id"]
+	return method, hasID
+}
+
+func randomSessionID() string {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%x", bytes[:])
 }

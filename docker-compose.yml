@@ -76,6 +76,8 @@ services:
       - ${OBSIDIAN_VAULT_PATH}:${OBSIDIAN_VAULT_PATH}:ro  # Read-only access to vault
       - ${HOME}/.config/brain:/config:ro
       - ${HOME}:${HOME}
+    environment:
+      TZ: America/New_York
     restart: unless-stopped
     networks:
       - brain-network
