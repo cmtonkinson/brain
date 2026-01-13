@@ -8,6 +8,8 @@ services:
     volumes:
       - ./data/qdrant:/qdrant/storage
     restart: unless-stopped
+    networks:
+      - brain-network
 
   redis:
     image: redis:7-alpine
@@ -18,6 +20,8 @@ services:
       - ./data/redis:/data
     restart: unless-stopped
     command: redis-server --appendonly yes
+    networks:
+      - brain-network
 
   postgres:
     image: postgres:16-alpine
@@ -36,6 +40,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - brain-network
 
   signal-api:
     image: bbernhard/signal-cli-rest-api:latest
@@ -47,10 +53,14 @@ services:
     environment:
       - MODE=native
     restart: unless-stopped
+    networks:
+      - brain-network
 
   agent:
     build: .
     container_name: brain-agent
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,23 +70,15 @@ services:
         condition: service_started
       signal-api:
         condition: service_started
-    environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - OBSIDIAN_API_KEY=${OBSIDIAN_API_KEY}
-      - OBSIDIAN_URL=http://host.docker.internal:27123
-      - OBSIDIAN_VAULT_PATH=${OBSIDIAN_VAULT_PATH}
-      - OLLAMA_URL=http://host.docker.internal:11434
-      - QDRANT_URL=http://qdrant:6333
-      - REDIS_URL=redis://redis:6379
-      - SIGNAL_API_URL=http://signal-api:8080
-      - SIGNAL_PHONE_NUMBER=${SIGNAL_PHONE_NUMBER}
-      - DATABASE_URL=postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
-      - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
-      - UTCP_CONFIG_PATH=/config/utcp.json
-      - CODE_MODE_TIMEOUT=${CODE_MODE_TIMEOUT:-30}
     volumes:
       - ./logs:/app/logs
       - ${OBSIDIAN_VAULT_PATH}:${OBSIDIAN_VAULT_PATH}:ro  # Read-only access to vault
-      - ${HOME}/.config/brain/utcp.json:/config/utcp.json:ro
+      - ${HOME}/.config/brain:/config:ro
       - ${HOME}:${HOME}
     restart: unless-stopped
+    networks:
+      - brain-network
+
+networks:
+  brain-network:
+    driver: bridge

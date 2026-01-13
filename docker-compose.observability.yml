@@ -1,0 +1,175 @@
+# Observability Stack - Extend with: docker compose -f docker-compose.yml -f docker-compose.observability.yml up
+# See docs/observability.md for full documentation
+
+services:
+  # ============================================
+  # OpenTelemetry Collector - Central Hub
+  # ============================================
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    container_name: brain-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Prometheus metrics (self)
+      - "8889:8889"   # Prometheus exporter (for collected metrics)
+    healthcheck:
+      test: ["CMD", "/otelcol-contrib", "validate", "--config=file:/etc/otel-collector-config.yaml"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - brain-network
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  # ============================================
+  # Prometheus - Metrics Storage
+  # ============================================
+  prometheus:
+    image: prom/prometheus:v2.50.1
+    container_name: brain-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-remote-write-receiver'
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus-rules.yml:/etc/prometheus/rules.yml:ro
+      - ./data/prometheus:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - brain-network
+
+  # ============================================
+  # Loki - Log Aggregation
+  # ============================================
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: brain-loki
+    command: -config.file=/etc/loki/loki-config.yaml
+    volumes:
+      - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - ./data/loki:/loki
+    ports:
+      - "3100:3100"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - brain-network
+
+  # ============================================
+  # Promtail - Log Shipper
+  # ============================================
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: brain-promtail
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    volumes:
+      - ./config/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./logs:/var/log/brain:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - brain-network
+
+  # ============================================
+  # Grafana - Visualization
+  # ============================================
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: brain-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-brain}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./data/grafana:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - brain-network
+
+  # ============================================
+  # Exporters - Service Metrics
+  # ============================================
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: brain-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - brain-network
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.58.0
+    container_name: brain-redis-exporter
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    ports:
+      - "9121:9121"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - brain-network
+
+  # ============================================
+  # Override agent to include OTEL endpoint
+  # ============================================
+  agent:
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_SERVICE_NAME=brain-agent
+    depends_on:
+      otel-collector:
+        condition: service_healthy
+
+networks:
+  brain-network:
+    driver: bridge

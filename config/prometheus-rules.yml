@@ -1,0 +1,223 @@
+# Prometheus Alerting Rules for Brain
+
+groups:
+  # ============================================
+  # Critical Alerts - Service Health
+  # ============================================
+  - name: brain-critical
+    interval: 30s
+    rules:
+      - alert: AgentDown
+        expr: up{job="otel-collector"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Brain agent telemetry not being received"
+          description: "OTel collector is not receiving metrics from the agent for more than 1 minute."
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database is not responding."
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache is not responding."
+
+      - alert: QdrantDown
+        expr: up{job="qdrant"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Qdrant is down"
+          description: "Qdrant vector database is not responding."
+
+  # ============================================
+  # LLM Cost Alerts
+  # ============================================
+  - name: llm-cost-alerts
+    interval: 1m
+    rules:
+      - alert: HighLLMSpendDaily
+        expr: sum(increase(brain_llm_cost_total[24h])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM spend exceeded $10 in 24h"
+          description: "Current 24h spend: ${{ $value | printf \"%.2f\" }}"
+
+      - alert: HighLLMSpendHourly
+        expr: sum(increase(brain_llm_cost_total[1h])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM spend exceeded $2 in 1h"
+          description: "Current hourly spend: ${{ $value | printf \"%.2f\" }}"
+
+      - alert: LLMCostSpike
+        expr: |
+          sum(rate(brain_llm_cost_total[5m]))
+          > sum(rate(brain_llm_cost_total[1h])) * 3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM cost spiking (3x normal rate)"
+          description: "LLM costs are significantly higher than the hourly average."
+
+  # ============================================
+  # Performance Alerts
+  # ============================================
+  - name: brain-performance
+    interval: 30s
+    rules:
+      - alert: HighMessageLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(brain_messages_processing_duration_bucket[5m])
+          ) > 30000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 message processing latency above 30s"
+          description: "Message processing is taking longer than expected."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(brain_messages_processed_total{status="error"}[5m]))
+          / sum(rate(brain_messages_processed_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Message error rate above 10%"
+          description: "More than 10% of messages are failing to process."
+
+      - alert: LLMHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(brain_llm_latency_bucket[5m])
+          ) > 60000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM API P95 latency above 60s"
+          description: "LLM API responses are slower than expected."
+
+      - alert: LLMHighErrorRate
+        expr: |
+          sum(rate(brain_llm_requests_total{status="error"}[5m]))
+          / sum(rate(brain_llm_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM API error rate above 5%"
+          description: "LLM API is returning errors at an elevated rate."
+
+  # ============================================
+  # Integration Alerts
+  # ============================================
+  - name: brain-integrations
+    interval: 30s
+    rules:
+      - alert: SignalPollErrors
+        expr: |
+          sum(rate(brain_signal_poll_errors_total[5m]))
+          / sum(rate(brain_signal_polls_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Signal API poll error rate above 10%"
+          description: "Signal message polling is experiencing errors."
+
+      - alert: ObsidianAPIErrors
+        expr: rate(brain_obsidian_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Obsidian API errors detected"
+          description: "Obsidian REST API is returning errors."
+
+      - alert: ObsidianHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(brain_obsidian_latency_bucket[5m])
+          ) > 5000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Obsidian API P95 latency above 5s"
+          description: "Obsidian API responses are slower than expected."
+
+  # ============================================
+  # Resource Alerts
+  # ============================================
+  - name: brain-resources
+    interval: 30s
+    rules:
+      - alert: PostgresConnectionsHigh
+        expr: |
+          pg_stat_activity_count{state="active"}
+          / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connections above 80%"
+          description: "Database connection pool is nearly exhausted."
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage above 80%"
+          description: "Redis is running low on memory."
+
+  # ============================================
+  # MCP Host Alerts (Future)
+  # ============================================
+  - name: brain-mcp
+    interval: 30s
+    rules:
+      - alert: MCPConnectionDrop
+        expr: |
+          delta(brain_mcp_connections[5m]) < 0
+          and brain_mcp_connections == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "All MCP connections dropped"
+          description: "MCP Host has lost all client connections."
+
+      - alert: MCPHighErrorRate
+        expr: |
+          sum(rate(brain_mcp_messages_total{status="error"}[5m]))
+          / sum(rate(brain_mcp_messages_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MCP protocol error rate above 10%"
+          description: "MCP message handling is experiencing errors."

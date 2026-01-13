@@ -13,7 +13,8 @@ class ObsidianClient:
     """Client for Obsidian Local REST API."""
     
     def __init__(self):
-        self.base_url = settings.obsidian_url
+        # Normalize to avoid accidental double slashes in request URLs.
+        self.base_url = settings.obsidian_url.rstrip("/")
         self.headers = {
             "Authorization": f"Bearer {settings.obsidian_api_key}",
             "Content-Type": "application/json"
@@ -39,6 +40,12 @@ class ObsidianClient:
                 )
                 response.raise_for_status()
                 results = response.json()
+                if isinstance(results, dict):
+                    for key in ("results", "files", "items"):
+                        value = results.get(key)
+                        if isinstance(value, list):
+                            results = value
+                            break
                 return results[:limit] if isinstance(results, list) else results
         except httpx.HTTPStatusError as e:
             logger.error(f"Obsidian search failed: {e}")

@@ -1,9 +1,12 @@
 """Main agent daemon for Brain assistant."""
 
+from __future__ import annotations
+
 import argparse
 import asyncio
 import logging
-import sys
+import os
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -18,10 +21,27 @@ from services.signal import SignalClient
 from tools.obsidian import ObsidianClient
 from tools.memory import ConversationMemory
 
-# Configure logging
+# Observability imports (conditional to allow running without OTEL)
+try:
+    from observability import (
+        setup_observability,
+        setup_json_logging,
+        get_metrics,
+        get_tracer,
+        traced,
+        BrainMetrics,
+    )
+    from observability_litellm import setup_litellm_observability
+
+    OBSERVABILITY_AVAILABLE = True
+except ImportError:
+    OBSERVABILITY_AVAILABLE = False
+
+# Configure logging - use JSON if observability available, otherwise basic
 log_dir = Path("/app/logs") if Path("/app/logs").exists() else Path("logs")
 log_dir.mkdir(exist_ok=True)
 
+# Basic logging setup (may be replaced by JSON logging if observability is enabled)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -32,6 +52,9 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# Global metrics reference (set in main if observability enabled)
+_brain_metrics: BrainMetrics | None = None
 
 
 # --- Dependency Injection ---
@@ -109,12 +132,31 @@ def create_agent() -> Agent[AgentDeps, str]:
             # Format results for the LLM
             formatted = []
             for i, result in enumerate(results, 1):
-                filename = result.get("filename", "Unknown")
-                # Handle different response formats from the API
-                matches = result.get("matches", [])
+                if isinstance(result, dict):
+                    filename = (
+                        result.get("filename")
+                        or result.get("path")
+                        or result.get("file")
+                        or "Unknown"
+                    )
+                    matches = result.get("matches", [])
+                else:
+                    filename = str(result)
+                    matches = []
+
                 snippet = ""
-                if matches and isinstance(matches, list):
-                    snippet = matches[0].get("match", "")[:200] if matches else ""
+                if isinstance(matches, list) and matches:
+                    first = matches[0]
+                    if isinstance(first, dict):
+                        snippet_value = (
+                            first.get("match")
+                            or first.get("context")
+                            or first.get("snippet")
+                            or ""
+                        )
+                    else:
+                        snippet_value = first
+                    snippet = str(snippet_value)[:200]
 
                 formatted.append(f"{i}. **{filename}**")
                 if snippet:
@@ -246,16 +288,66 @@ async def process_message(
         The agent's response text
     """
     logger.info(f"Processing message: {message[:100]}...")
+    start_time = time.perf_counter()
+    status = "success"
 
     try:
         result = await agent.run(message, deps=deps)
-        response = result.output
+        response = _extract_agent_response(result)
+        if _brain_metrics:
+            _record_llm_metrics(result, agent, start_time)
         logger.info(f"Response generated: {response[:100]}...")
         return response
 
     except Exception as e:
         logger.error(f"Error processing message: {e}")
+        status = "error"
         return f"I encountered an error: {e}"
+
+    finally:
+        # Record metrics if available
+        if _brain_metrics:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            channel = "signal" if deps.signal_sender else "test"
+            _brain_metrics.messages_processed.add(1, {"channel": channel, "status": status})
+            _brain_metrics.message_processing_duration.record(duration_ms, {"channel": channel})
+
+
+def _extract_agent_response(result: object) -> str:
+    """Normalize agent result across pydantic-ai versions."""
+    for attr in ("output", "data", "result"):
+        if hasattr(result, attr):
+            value = getattr(result, attr)
+            if isinstance(value, str):
+                return value
+            return str(value)
+    return str(result)
+
+
+def _record_llm_metrics(result: object, agent: Agent[AgentDeps, str], start_time: float) -> None:
+    """Record LLM usage metrics when available."""
+    usage = None
+    if hasattr(result, "usage"):
+        usage_attr = getattr(result, "usage")
+        usage = usage_attr() if callable(usage_attr) else usage_attr
+    if usage is None:
+        return
+
+    model = getattr(agent, "model", None)
+    model_label = getattr(model, "model_name", None) or str(model or "unknown")
+    base_attrs = {"model": model_label}
+
+    if getattr(usage, "request_tokens", None) is not None:
+        _brain_metrics.llm_tokens_input.add(usage.request_tokens, base_attrs)
+    if getattr(usage, "response_tokens", None) is not None:
+        _brain_metrics.llm_tokens_output.add(usage.response_tokens, base_attrs)
+
+    requests = getattr(usage, "requests", 0) or 1
+    _brain_metrics.llm_requests.add(requests, {"model": model_label, "status": "success"})
+    _brain_metrics.llm_cost.add(0.0, base_attrs)
+
+    latency_ms = (time.perf_counter() - start_time) * 1000
+    _brain_metrics.llm_latency.record(latency_ms, base_attrs)
 
 
 async def handle_signal_message(
@@ -280,6 +372,10 @@ async def handle_signal_message(
     sender = signal_msg.sender
     message = signal_msg.message
 
+    # Record message received metric
+    if _brain_metrics:
+        _brain_metrics.messages_received.add(1, {"channel": "signal"})
+
     # Check allowed senders if configured
     if settings.allowed_senders and sender not in settings.allowed_senders:
         logger.warning(f"Ignoring message from unauthorized sender: {sender}")
@@ -287,35 +383,63 @@ async def handle_signal_message(
 
     logger.info(f"Handling message from {sender}: {message[:50]}...")
 
-    # Log incoming message to conversation
-    await memory.log_message(sender, "user", message, signal_msg.timestamp)
+    # Create tracing span if available
+    tracer = None
+    if OBSERVABILITY_AVAILABLE:
+        try:
+            tracer = get_tracer()
+        except RuntimeError:
+            tracer = None
+    span_context = tracer.start_as_current_span(
+        "signal.handle_message",
+        attributes={
+            "signal.sender": sender,
+            "signal.message_length": len(message),
+        },
+    ) if tracer else None
 
-    # Create dependencies with sender context
-    deps = AgentDeps(
-        user=settings.user,
-        obsidian=obsidian,
-        memory=memory,
-        code_mode=code_mode,
-        signal_sender=sender,
-    )
+    try:
+        if span_context:
+            span_context.__enter__()
 
-    # Process message
-    response = await process_message(agent, message, deps)
+        # Log incoming message to conversation
+        await memory.log_message(sender, "user", message, signal_msg.timestamp)
 
-    # Log response to conversation
-    await memory.log_message(sender, "assistant", response)
-
-    # Send reply via Signal
-    await signal_client.send_message(phone_number, sender, response)
-
-    # Log action to database
-    async with get_session() as session:
-        await log_action(
-            session,
-            action_type="signal_conversation",
-            description=f"Conversation with {sender}",
-            result=f"User: {message[:100]}... | Brain: {response[:100]}...",
+        # Create dependencies with sender context
+        deps = AgentDeps(
+            user=settings.user,
+            obsidian=obsidian,
+            memory=memory,
+            code_mode=code_mode,
+            signal_sender=sender,
         )
+
+        # Process message
+        response = await process_message(agent, message, deps)
+
+        # Log response to conversation
+        await memory.log_message(sender, "assistant", response)
+
+        # Send reply via Signal
+        send_start = time.perf_counter()
+        await signal_client.send_message(phone_number, sender, response)
+
+        if _brain_metrics:
+            send_duration = (time.perf_counter() - send_start) * 1000
+            _brain_metrics.signal_messages_sent.add(1, {"status": "success"})
+            _brain_metrics.signal_latency.record(send_duration, {"operation": "send"})
+
+        # Log action to database
+        async with get_session() as session:
+            await log_action(
+                session,
+                action_type="signal_conversation",
+                description=f"Conversation with {sender}",
+                result=f"User: {message[:100]}... | Brain: {response[:100]}...",
+            )
+    finally:
+        if span_context:
+            span_context.__exit__(None, None, None)
 
 
 # --- Main Loop ---
@@ -351,8 +475,15 @@ async def run_signal_loop(
     logger.info(f"Starting Signal polling for {phone_number}")
 
     while True:
+        poll_start = time.perf_counter()
         try:
             messages = await signal_client.poll_messages(phone_number)
+
+            # Record poll metrics
+            if _brain_metrics:
+                poll_duration = (time.perf_counter() - poll_start) * 1000
+                _brain_metrics.signal_polls.add(1, {"status": "success"})
+                _brain_metrics.signal_latency.record(poll_duration, {"operation": "poll"})
 
             for msg in messages:
                 await handle_signal_message(
@@ -361,6 +492,8 @@ async def run_signal_loop(
 
         except Exception as e:
             logger.error(f"Error in Signal loop: {e}")
+            if _brain_metrics:
+                _brain_metrics.signal_poll_errors.add(1, {"error_type": type(e).__name__})
 
         await asyncio.sleep(poll_interval)
 
@@ -394,6 +527,8 @@ async def run_test_mode(
 
 async def main() -> None:
     """Main entry point."""
+    global _brain_metrics
+
     parser = argparse.ArgumentParser(description="Brain AI Assistant")
     parser.add_argument(
         "--test",
@@ -406,7 +541,34 @@ async def main() -> None:
         default=2.0,
         help="Signal polling interval in seconds",
     )
+    parser.add_argument(
+        "--no-otel",
+        action="store_true",
+        help="Disable OpenTelemetry observability",
+    )
     args = parser.parse_args()
+
+    # Initialize observability if available and not disabled
+    otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if OBSERVABILITY_AVAILABLE and not args.no_otel and otel_endpoint:
+        logger.info(f"Initializing observability: endpoint={otel_endpoint}")
+        try:
+            _, _, _brain_metrics = setup_observability(
+                service_name="brain-agent",
+                service_version="1.0.0",
+                otlp_endpoint=otel_endpoint,
+            )
+            setup_json_logging(logging.INFO)
+            setup_litellm_observability(_brain_metrics)
+            logger.info("Observability initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to initialize observability: {e}")
+    elif not OBSERVABILITY_AVAILABLE:
+        logger.info("Observability modules not available (install opentelemetry packages)")
+    elif args.no_otel:
+        logger.info("Observability disabled via --no-otel flag")
+    else:
+        logger.info("Observability disabled (OTEL_EXPORTER_OTLP_ENDPOINT not set)")
 
     logger.info("Brain assistant starting...")
     logger.info(f"User: {settings.user}")
