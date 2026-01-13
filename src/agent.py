@@ -18,6 +18,7 @@ from config import settings
 from models import SignalMessage
 from services.code_mode import CodeModeManager, create_code_mode_manager
 from services.database import init_db, get_session, log_action
+from access_control import is_sender_allowed
 from services.signal import SignalClient
 from prompts import render_prompt
 from tools.obsidian import ObsidianClient
@@ -459,8 +460,7 @@ async def handle_signal_message(
     if _brain_metrics:
         _brain_metrics.messages_received.add(1, {"channel": "signal"})
 
-    # Check allowed senders if configured
-    if settings.allowed_senders and sender not in settings.allowed_senders:
+    if not is_sender_allowed("signal", sender):
         logger.warning(f"Ignoring message from unauthorized sender: {sender}")
         return
 

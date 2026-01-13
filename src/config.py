@@ -1,7 +1,7 @@
 """Configuration management for Brain assistant."""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 
 class Settings(BaseSettings):
@@ -41,7 +41,10 @@ class Settings(BaseSettings):
 
     # Signal Configuration
     signal_phone_number: str | None = None  # Agent's registered phone number
-    allowed_senders: list[str] = []  # Empty = allow all, or whitelist phone numbers
+    allowed_senders: list[str] = []  # Legacy allowlist for Signal; empty = deny all
+    allowed_senders_by_channel: dict[str, list[str]] = Field(
+        default_factory=dict
+    )  # Prefer per-channel allowlists; empty/missing = deny all
 
     # Conversation Storage
     conversation_folder: str = "Brain/Conversations"  # Obsidian path for conversations
@@ -61,6 +64,16 @@ class Settings(BaseSettings):
             f"postgresql://brain:{self.postgres_password}@postgres:5432/brain"
         )
         return self
+
+    @model_validator(mode="after")
+    def validate_sender_allowlist(self) -> "Settings":
+        if self.allowed_senders_by_channel:
+            return self
+        if self.allowed_senders:
+            return self
+        raise ValueError(
+            "ALLOWED_SENDERS or ALLOWED_SENDERS_BY_CHANNEL must be configured."
+        )
 
 # Global settings instance
 settings = Settings()
