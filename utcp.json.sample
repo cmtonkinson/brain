@@ -1,0 +1,54 @@
+{
+  "manual_call_templates": [
+    {
+      "name": "filesystem",
+      "call_template_type": "mcp",
+      "config": {
+        "mcpServers": {
+          "filesystem": {
+            "command": "npx",
+            "args": [
+              "-y",
+              "@modelcontextprotocol/server-filesystem",
+              "/Users/yourname"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "git",
+      "call_template_type": "mcp",
+      "config": {
+        "mcpServers": {
+          "git": {
+            "command": "npx",
+            "args": [
+              "-y",
+              "@modelcontextprotocol/server-git",
+              "/Users/yourname/repo/brain"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "github",
+      "call_template_type": "mcp",
+      "config": {
+        "mcpServers": {
+          "github": {
+            "command": "npx",
+            "args": [
+              "-y",
+              "@modelcontextprotocol/server-github"
+            ],
+            "env": {
+              "GITHUB_PERSONAL_ACCESS_TOKEN": "set-me"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

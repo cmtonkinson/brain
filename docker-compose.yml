@@ -72,7 +72,11 @@ services:
       - SIGNAL_PHONE_NUMBER=${SIGNAL_PHONE_NUMBER}
       - DATABASE_URL=postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
       - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
+      - UTCP_CONFIG_PATH=/config/utcp.json
+      - CODE_MODE_TIMEOUT=${CODE_MODE_TIMEOUT:-30}
     volumes:
       - ./logs:/app/logs
       - ${OBSIDIAN_VAULT_PATH}:${OBSIDIAN_VAULT_PATH}:ro  # Read-only access to vault
+      - ${HOME}/.config/brain/utcp.json:/config/utcp.json:ro
+      - ${HOME}:${HOME}
     restart: unless-stopped

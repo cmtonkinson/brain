@@ -12,6 +12,7 @@ from pydantic_ai import Agent, RunContext
 
 from config import settings
 from models import SignalMessage
+from services.code_mode import CodeModeManager, create_code_mode_manager
 from services.database import init_db, get_session, log_action
 from services.signal import SignalClient
 from tools.obsidian import ObsidianClient
@@ -43,6 +44,7 @@ class AgentDeps:
     user: str
     obsidian: ObsidianClient
     memory: ConversationMemory
+    code_mode: CodeModeManager
     signal_sender: str | None = None  # Phone number of current message sender
 
 
@@ -61,7 +63,12 @@ Guidelines:
 - If you don't find information in the knowledge base, say so clearly
 - Format responses for readability (use markdown when helpful)
 
-You are communicating via Signal messenger, so keep responses appropriately sized for mobile reading."""
+You are communicating via Signal messenger, so keep responses appropriately sized for mobile reading.
+
+Code-Mode tools:
+- Use code_mode_search_tools to discover external tools when needed.
+- Use code_mode_call_tool_chain to execute Python tool chains against MCP servers.
+- Confirm with the user before any destructive operations, then retry with confirm_destructive=True."""
 
 
 # --- Agent Definition ---
@@ -194,6 +201,29 @@ def create_agent() -> Agent[AgentDeps, str]:
             logger.error(f"append_to_note failed: {e}")
             return f"Error appending to note: {e}"
 
+    @agent.tool
+    async def code_mode_search_tools(
+        ctx: RunContext[AgentDeps], query: str
+    ) -> str:
+        """Search Code-Mode/UTCP tools for relevant external capabilities."""
+        logger.info(f"Tool: code_mode_search_tools(query={query!r})")
+        return await ctx.deps.code_mode.search_tools(query)
+
+    @agent.tool
+    async def code_mode_call_tool_chain(
+        ctx: RunContext[AgentDeps],
+        code: str,
+        confirm_destructive: bool = False,
+        timeout: int | None = None,
+    ) -> str:
+        """Execute a Code-Mode Python tool chain against MCP servers."""
+        logger.info("Tool: code_mode_call_tool_chain")
+        return await ctx.deps.code_mode.call_tool_chain(
+            code,
+            confirm_destructive=confirm_destructive,
+            timeout=timeout,
+        )
+
     return agent
 
 
@@ -233,6 +263,7 @@ async def handle_signal_message(
     signal_msg: SignalMessage,
     obsidian: ObsidianClient,
     memory: ConversationMemory,
+    code_mode: CodeModeManager,
     signal_client: SignalClient,
     phone_number: str,
 ) -> None:
@@ -264,6 +295,7 @@ async def handle_signal_message(
         user=settings.user,
         obsidian=obsidian,
         memory=memory,
+        code_mode=code_mode,
         signal_sender=sender,
     )
 
@@ -293,6 +325,7 @@ async def run_signal_loop(
     agent: Agent[AgentDeps, str],
     obsidian: ObsidianClient,
     memory: ConversationMemory,
+    code_mode: CodeModeManager,
     poll_interval: float = 2.0,
 ) -> None:
     """Main loop for polling Signal messages.
@@ -323,7 +356,7 @@ async def run_signal_loop(
 
             for msg in messages:
                 await handle_signal_message(
-                    agent, msg, obsidian, memory, signal_client, phone_number
+                    agent, msg, obsidian, memory, code_mode, signal_client, phone_number
                 )
 
         except Exception as e:
@@ -332,7 +365,11 @@ async def run_signal_loop(
         await asyncio.sleep(poll_interval)
 
 
-async def run_test_mode(agent: Agent[AgentDeps, str], message: str) -> None:
+async def run_test_mode(
+    agent: Agent[AgentDeps, str],
+    message: str,
+    code_mode: CodeModeManager,
+) -> None:
     """Run a single message in test mode.
 
     Args:
@@ -346,6 +383,7 @@ async def run_test_mode(agent: Agent[AgentDeps, str], message: str) -> None:
         user=settings.user,
         obsidian=obsidian,
         memory=memory,
+        code_mode=code_mode,
         signal_sender="test",
     )
 
@@ -381,13 +419,18 @@ async def main() -> None:
     except Exception as e:
         logger.warning(f"Database init failed (may not be available): {e}")
 
+    code_mode = await create_code_mode_manager(
+        settings.utcp_config_path,
+        settings.code_mode_timeout,
+    )
+
     # Create agent
     agent = create_agent()
     logger.info("Agent initialized")
 
     # Test mode
     if args.test:
-        await run_test_mode(agent, args.test)
+        await run_test_mode(agent, args.test, code_mode)
         return
 
     # Signal mode
@@ -397,7 +440,11 @@ async def main() -> None:
     logger.info("Starting Signal message loop...")
     try:
         await run_signal_loop(
-            agent, obsidian, memory, poll_interval=args.poll_interval
+            agent,
+            obsidian,
+            memory,
+            code_mode,
+            poll_interval=args.poll_interval,
         )
     except KeyboardInterrupt:
         logger.info("Shutting down...")
