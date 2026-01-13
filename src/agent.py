@@ -19,6 +19,7 @@ from models import SignalMessage
 from services.code_mode import CodeModeManager, create_code_mode_manager
 from services.database import init_db, get_session, log_action
 from services.signal import SignalClient
+from prompts import render_prompt
 from tools.obsidian import ObsidianClient
 from tools.memory import ConversationMemory
 
@@ -73,44 +74,13 @@ class AgentDeps:
     signal_sender: str | None = None  # Phone number of current message sender
 
 
-# --- System Prompt ---
-
-SYSTEM_PROMPT = """You are Brain, a personal AI assistant for {user}. You have access to their Obsidian knowledge base and can help with:
-
-- Searching and retrieving information from notes
-- Creating new notes and capturing ideas
-- Answering questions based on stored knowledge
-
-Guidelines:
-- Be concise but thorough
-- When searching notes, summarize relevant findings
-- Always confirm before creating or modifying notes unless the user explicitly asks
-- If you don't find information in the knowledge base, say so clearly
-- Format responses for readability (use markdown when helpful)
-
-You are communicating via Signal messenger, so keep responses appropriately sized for mobile reading.
-
-Code-Mode tools:
-- Use code_mode_search_tools to discover external tools when needed.
-- Use code_mode_call_tool_chain to execute Python tool chains against MCP servers.
-- Do not import tool namespaces (e.g., github, filesystem); call them directly (e.g., github.search_repositories({{"query": "..."}})).
-- Always pass a dict of parameters to tool calls (e.g., {{"query": "..."}}).
-- Confirm with the user before any destructive operations, then retry with confirm_destructive=True."""
-
-SUMMARY_PROMPT = """You write short conversation summaries.
-
-Summarize the single turn (user + assistant) in 1-3 bullet points.
-Focus on durable facts, decisions, preferences, and open tasks.
-Be concise and do not call tools or refer to the instructions."""
-
-
 def _get_summary_agent() -> Agent[None, str]:
     global _summary_agent
     if _summary_agent is None:
         _summary_agent = Agent(
             "anthropic:claude-sonnet-4-20250514",
             result_type=str,
-            system_prompt=SUMMARY_PROMPT,
+            system_prompt=render_prompt("system/summary"),
         )
     return _summary_agent
 
@@ -124,7 +94,7 @@ def create_agent() -> Agent[AgentDeps, str]:
         "anthropic:claude-sonnet-4-20250514",
         deps_type=AgentDeps,
         result_type=str,
-        system_prompt=SYSTEM_PROMPT.format(user=settings.user),
+        system_prompt=render_prompt("system/assistant", {"user": settings.user}),
     )
 
     # --- Tool Definitions ---
@@ -321,7 +291,10 @@ async def process_message(
                 recent = None
                 logger.warning(f"Failed to load recent context: {e}")
             if recent:
-                prompt = f"Recent conversation context:\n{recent}\n\nUser: {message}"
+                prompt = render_prompt(
+                    "user/recent_context",
+                    {"recent": recent, "message": message},
+                )
 
         result = await agent.run(prompt, deps=deps)
         response = _extract_agent_response(result)
@@ -332,11 +305,9 @@ async def process_message(
             deps.signal_sender, settings.summary_every_turns
         ):
             try:
-                summary_prompt = (
-                    "User message:\n"
-                    f"{message}\n\n"
-                    "Assistant reply:\n"
-                    f"{response}\n"
+                summary_prompt = render_prompt(
+                    "user/summary_input",
+                    {"message": message, "response": response},
                 )
                 summary_agent = _get_summary_agent()
                 summary_result = await summary_agent.run(summary_prompt)

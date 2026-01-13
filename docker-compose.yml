@@ -72,6 +72,7 @@ services:
         condition: service_started
     volumes:
       - ./logs:/app/logs
+      - ./prompts:/app/prompts:ro
       - ${OBSIDIAN_VAULT_PATH}:${OBSIDIAN_VAULT_PATH}:ro  # Read-only access to vault
       - ${HOME}/.config/brain:/config:ro
       - ${HOME}:${HOME}

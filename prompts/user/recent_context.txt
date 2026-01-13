@@ -1,0 +1,4 @@
+Recent conversation context:
+{recent}
+
+User: {message}
