@@ -72,6 +72,12 @@ nano .env  # or use your preferred editor
 - `POSTGRES_PASSWORD` - choose any secure password
 - `USER` - your macOS username
 
+**Optional values in .env:**
+- `OLLAMA_EMBED_MODEL` - defaults to `mxbai-embed-large`
+- `INDEXER_INTERVAL_SECONDS` - defaults to `0` (disabled)
+- `INDEXER_CHUNK_TOKENS` - defaults to `1000`
+- `INDEXER_COLLECTION` - defaults to `obsidian`
+
 ### 4. Install Python Dependencies (2 minutes)
 
 ```bash
@@ -126,6 +132,7 @@ poetry run python src/indexer.py
 # Check Qdrant dashboard
 open http://localhost:6333/dashboard
 ```
+If you want automatic indexing, set `INDEXER_INTERVAL_SECONDS` in `.env` and restart the agent.
 
 ### 8. Test It! (1 minute)
 

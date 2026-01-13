@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 
 from config import settings
@@ -48,6 +48,33 @@ class Conversation(Base):
     started_at = Column(DateTime, default=datetime.utcnow)
     last_message_at = Column(DateTime, default=datetime.utcnow)
     message_count = Column(Integer, default=0)
+
+
+class IndexedNote(Base):
+    """Indexed note metadata for Qdrant embedding sync."""
+
+    __tablename__ = "indexed_notes"
+
+    id = Column(Integer, primary_key=True)
+    path = Column(String(1000), nullable=False)
+    collection = Column(String(200), nullable=False)
+    content_hash = Column(String(64), nullable=False)
+    modified_at = Column(DateTime, nullable=True)
+    chunk_count = Column(Integer, nullable=False, default=0)
+    last_indexed_at = Column(DateTime, default=datetime.utcnow)
+
+
+class IndexedChunk(Base):
+    """Indexed chunk metadata for a note."""
+
+    __tablename__ = "indexed_chunks"
+
+    id = Column(Integer, primary_key=True)
+    note_id = Column(Integer, ForeignKey("indexed_notes.id"), nullable=False)
+    chunk_index = Column(Integer, nullable=False)
+    qdrant_id = Column(String(64), nullable=False)
+    chunk_chars = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 # Pydantic models for API/validation

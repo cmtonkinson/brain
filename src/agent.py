@@ -23,6 +23,7 @@ from services.signal import SignalClient
 from prompts import render_prompt
 from tools.obsidian import ObsidianClient
 from tools.memory import ConversationMemory
+from indexer import index_vault as run_indexer
 
 # Observability imports (conditional to allow running without OTEL)
 try:
@@ -59,6 +60,7 @@ logger = logging.getLogger(__name__)
 # Global metrics reference (set in main if observability enabled)
 _brain_metrics: BrainMetrics | None = None
 _summary_agent: Agent[None, str] | None = None
+_indexer_lock = asyncio.Lock()
 
 
 # --- Dependency Injection ---
@@ -99,6 +101,18 @@ def create_agent() -> Agent[AgentDeps, str]:
     )
 
     # --- Tool Definitions ---
+
+    @agent.tool
+    async def index_vault(
+        ctx: RunContext[AgentDeps], full_reindex: bool = False
+    ) -> str:
+        """Trigger a vault indexing run into Qdrant.
+
+        Use this when the user asks to refresh embeddings, reindex the vault,
+        or repair missing vectors.
+        """
+        logger.info(f"Tool: index_vault(full_reindex={full_reindex})")
+        return await run_indexer_task(full_reindex=full_reindex)
 
     @agent.tool
     async def search_notes(
@@ -337,6 +351,32 @@ async def process_message(
             channel = "signal" if deps.signal_sender else "test"
             _brain_metrics.messages_processed.add(1, {"channel": channel, "status": status})
             _brain_metrics.message_processing_duration.record(duration_ms, {"channel": channel})
+
+
+async def run_indexer_task(full_reindex: bool = False) -> str:
+    async with _indexer_lock:
+        try:
+            logger.info("Starting indexer run (full_reindex=%s)", full_reindex)
+            await asyncio.to_thread(
+                run_indexer,
+                vault_path=settings.obsidian_vault_path,
+                collection=settings.indexer_collection,
+                embed_model=settings.ollama_embed_model,
+                max_tokens=settings.indexer_chunk_tokens,
+                full_reindex=full_reindex,
+                run_migrations=False,
+            )
+            logger.info("Indexer run completed")
+            return "Indexing complete."
+        except Exception as exc:
+            logger.warning(f"Indexer run failed: {exc}")
+            return f"Indexing failed: {exc}"
+
+
+async def indexer_loop(interval_seconds: int) -> None:
+    while True:
+        await run_indexer_task(full_reindex=False)
+        await asyncio.sleep(interval_seconds)
 
 
 def _extract_agent_response(result: object) -> str:
@@ -683,6 +723,13 @@ async def main() -> None:
     # Signal mode
     obsidian = ObsidianClient()
     memory = ConversationMemory(obsidian)
+
+    if settings.indexer_interval_seconds > 0:
+        logger.info(
+            "Starting scheduled indexing every %s seconds",
+            settings.indexer_interval_seconds,
+        )
+        asyncio.create_task(indexer_loop(settings.indexer_interval_seconds))
 
     logger.info("Starting Signal message loop...")
     try:

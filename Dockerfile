@@ -79,6 +79,8 @@ PY
 
 # Copy application code
 COPY src/ ./src/
+COPY alembic.ini ./alembic.ini
+COPY alembic/ ./alembic/
 
 # Create logs directory
 RUN mkdir -p /app/logs

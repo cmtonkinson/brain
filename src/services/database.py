@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import AsyncGenerator
 from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import text, create_engine
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from alembic import command
 from alembic.config import Config
@@ -36,12 +37,32 @@ async_session_factory = async_sessionmaker(
     expire_on_commit=False,
 )
 
+_sync_engine = None
+_sync_session_factory: sessionmaker | None = None
+
 
 def _get_sync_db_url() -> str:
     url = _db_url or "postgresql+asyncpg://brain:brain@localhost:5432/brain"
     if url.startswith("postgresql+asyncpg://"):
         return url.replace("postgresql+asyncpg://", "postgresql://", 1)
     return url
+
+
+def get_sync_engine():
+    global _sync_engine
+    if _sync_engine is None:
+        _sync_engine = create_engine(
+            _get_sync_db_url(),
+            pool_pre_ping=True,
+        )
+    return _sync_engine
+
+
+def get_sync_session() -> Session:
+    global _sync_session_factory
+    if _sync_session_factory is None:
+        _sync_session_factory = sessionmaker(bind=get_sync_engine())
+    return _sync_session_factory()
 
 
 def _run_migrations() -> None:
@@ -55,6 +76,11 @@ async def init_db() -> None:
     """Initialize database tables."""
     await asyncio.to_thread(_run_migrations)
     logger.info("Database migrations applied")
+
+
+def run_migrations_sync() -> None:
+    """Run database migrations synchronously."""
+    _run_migrations()
 
 
 @asynccontextmanager

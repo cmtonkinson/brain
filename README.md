@@ -168,6 +168,7 @@ curl -X POST \
 ```bash
 docker-compose exec agent poetry run python src/indexer.py
 ```
+Optional: set `INDEXER_INTERVAL_SECONDS` to schedule automatic indexing; the agent tool `index_vault` can also be invoked to trigger a manual reindex.
 
 ### 7. Test the agent
 ```bash
@@ -253,11 +254,17 @@ POSTGRES_PASSWORD=secure-password-here
 
 # Ollama (local embeddings)
 OLLAMA_URL=http://host.docker.internal:11434
+OLLAMA_EMBED_MODEL=mxbai-embed-large
 
 # Internal (set by docker-compose)
 QDRANT_URL=http://qdrant:6333
 REDIS_URL=redis://redis:6379
 DATABASE_URL=postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
+
+# Indexer Configuration
+INDEXER_INTERVAL_SECONDS=0
+INDEXER_CHUNK_TOKENS=1000
+INDEXER_COLLECTION=obsidian
 
 # Optional
 LITELLM_BASE_URL=

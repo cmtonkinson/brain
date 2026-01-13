@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379"
     ollama_url: str = "http://host.docker.internal:11434"
     signal_api_url: str = "http://signal-api:8080"
+    ollama_embed_model: str = "mxbai-embed-large"
     
     # User Context
     user: str = "user"
@@ -53,6 +54,11 @@ class Settings(BaseSettings):
     # Code-Mode / UTCP
     utcp_config_path: str = "~/.config/brain/utcp.json"
     code_mode_timeout: int = 30
+
+    # Indexer Configuration
+    indexer_interval_seconds: int = 0  # 0 disables scheduled indexing
+    indexer_chunk_tokens: int = 1000
+    indexer_collection: str = "obsidian"
 
     @model_validator(mode="after")
     def populate_database_url(self) -> "Settings":
