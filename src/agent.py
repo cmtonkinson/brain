@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -326,6 +327,64 @@ def _extract_agent_response(result: object) -> str:
     return str(result)
 
 
+def _render_signal_message(markdown: str) -> str:
+    """Convert Markdown to Signal-friendly formatting without mutating stored logs."""
+    if not markdown:
+        return markdown
+
+    def _render_inline(text: str) -> str:
+        # Images: ![alt](url) -> "alt (url)" or "url"
+        text = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", r"\1 (\2)", text)
+        # Links: [text](url) -> "text (url)" to preserve previews.
+        text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1 (\2)", text)
+        # Strikethrough: ~~text~~ -> ~text~
+        text = re.sub(r"~~(.+?)~~", r"~\1~", text)
+        # Bold: __text__ -> **text** (Signal uses ** for bold).
+        text = re.sub(r"__(.+?)__", r"**\1**", text)
+        # Italic: _text_ -> *text* (Signal uses * for italic).
+        text = re.sub(r"_(.+?)_", r"*\1*", text)
+        return text
+
+    def _render_block(text: str) -> str:
+        # Headings: convert to bold line (Signal has no heading style).
+        text = re.sub(r"(?m)^#{1,6}\s+(.+)$", r"**\1**", text)
+        # Blockquotes: keep prefix for readability.
+        text = re.sub(r"(?m)^>\s?", r"> ", text)
+
+        # Protect inline code segments from other substitutions.
+        code_spans = {}
+        def _stash_code(match: re.Match[str]) -> str:
+            key = f"__CODE_SPAN_{len(code_spans)}__"
+            code_spans[key] = match.group(0)
+            return key
+
+        text = re.sub(r"`[^`]+`", _stash_code, text)
+        text = _render_inline(text)
+
+        for key, value in code_spans.items():
+            text = text.replace(key, value)
+
+        return text
+
+    # Preserve fenced code blocks (```...```) but map to Signal monospace.
+    parts = re.split(r"(```[\s\S]*?```)", markdown)
+    rendered = []
+    for part in parts:
+        if part.startswith("```") and part.endswith("```"):
+            inner = part[3:-3]
+            if inner.startswith("\n"):
+                inner = inner[1:]
+            elif "\n" in inner:
+                inner = inner.split("\n", 1)[1]
+            if inner.endswith("\n"):
+                inner = inner[:-1]
+            rendered.append(f"`{inner}`")
+        else:
+            rendered.append(_render_block(part))
+
+    return "".join(rendered)
+
+
 def _record_llm_metrics(result: object, agent: Agent[AgentDeps, str], start_time: float) -> None:
     """Record LLM usage metrics when available."""
     usage = None
@@ -424,7 +483,9 @@ async def handle_signal_message(
 
         # Send reply via Signal
         send_start = time.perf_counter()
-        await signal_client.send_message(phone_number, sender, response)
+        await signal_client.send_message(
+            phone_number, sender, _render_signal_message(response)
+        )
 
         if _brain_metrics:
             send_duration = (time.perf_counter() - send_start) * 1000

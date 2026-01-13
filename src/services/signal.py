@@ -100,6 +100,7 @@ class SignalClient:
                     f"{self.api_url}/v2/send",
                     json={
                         "message": message,
+                        "text_mode": "styled",
                         "number": from_number,
                         "recipients": [to_number],
                     },
