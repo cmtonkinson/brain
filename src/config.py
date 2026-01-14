@@ -31,6 +31,15 @@ class Settings(BaseSettings):
     ollama_url: str = "http://host.docker.internal:11434"
     signal_api_url: str = "http://signal-api:8080"
     ollama_embed_model: str = "mxbai-embed-large"
+
+    # Letta
+    letta_base_url: str | None = None
+    letta_api_key: str | None = None
+    letta_server_password: str | None = None
+    letta_agent_name: str = "brain"
+    letta_model: str = "ollama/llama3.1:8b"
+    letta_embed_model: str = "ollama/mxbai-embed-large:latest"
+    letta_bootstrap_on_start: bool = False
     
     # User Context
     user: str = "user"
@@ -69,6 +78,14 @@ class Settings(BaseSettings):
         self.database_url = (
             f"postgresql://brain:{self.postgres_password}@postgres:5432/brain"
         )
+        return self
+
+    @model_validator(mode="after")
+    def populate_letta_api_key(self) -> "Settings":
+        if self.letta_api_key:
+            return self
+        if self.letta_server_password:
+            self.letta_api_key = self.letta_server_password
         return self
 
     @model_validator(mode="after")

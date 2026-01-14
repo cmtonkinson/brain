@@ -20,10 +20,12 @@ from services.code_mode import CodeModeManager, create_code_mode_manager
 from services.database import init_db, get_session, log_action
 from access_control import is_sender_allowed
 from services.signal import SignalClient
+from services.letta import LettaService
 from prompts import render_prompt
 from tools.obsidian import ObsidianClient
 from tools.memory import ConversationMemory
 from indexer import index_vault as run_indexer
+from services.vector_search import search_vault as search_vault_vectors
 
 # Observability imports (conditional to allow running without OTEL)
 try:
@@ -75,6 +77,13 @@ class AgentDeps:
     memory: ConversationMemory
     code_mode: CodeModeManager
     signal_sender: str | None = None  # Phone number of current message sender
+
+
+def _preview(text: str, limit: int = 160) -> str:
+    cleaned = " ".join(text.split())
+    if len(cleaned) > limit:
+        return cleaned[:limit] + "..."
+    return cleaned
 
 
 def _get_summary_agent() -> Agent[None, str]:
@@ -133,8 +142,10 @@ def create_agent() -> Agent[AgentDeps, str]:
             results = await ctx.deps.obsidian.search(query, limit=limit)
 
             if not results:
+                logger.info("search_notes: no results")
                 return f"No notes found matching '{query}'."
 
+            logger.info("search_notes: %s result(s)", len(results))
             # Format results for the LLM
             formatted = []
             for i, result in enumerate(results, 1):
@@ -175,6 +186,69 @@ def create_agent() -> Agent[AgentDeps, str]:
             return f"Error searching notes: {e}"
 
     @agent.tool
+    async def search_vault_embeddings(
+        ctx: RunContext[AgentDeps], query: str, limit: int = 8
+    ) -> str:
+        """Semantic search over indexed vault embeddings in Qdrant."""
+        logger.info(f"Tool: search_vault_embeddings(query={query!r}, limit={limit})")
+
+        try:
+            results = await asyncio.to_thread(
+                search_vault_vectors,
+                query=query,
+                limit=limit,
+            )
+            if not results:
+                logger.info("search_vault_embeddings: no results")
+                return f"No embedding matches found for '{query}'."
+
+            formatted = []
+            for i, result in enumerate(results, 1):
+                path = result.get("path") or "Unknown"
+                score = result.get("score")
+                text = (result.get("text") or "").strip()
+                snippet = " ".join(text.split())
+                if len(snippet) > 240:
+                    snippet = snippet[:240] + "..."
+                score_text = f"{score:.3f}" if isinstance(score, (int, float)) else "n/a"
+                formatted.append(f"{i}. **{path}** (score {score_text})")
+                if snippet:
+                    formatted.append(f"   {snippet}")
+
+            logger.info("search_vault_embeddings: %s result(s)", len(results))
+            return "Embedding matches:\n\n" + "\n".join(formatted)
+
+        except Exception as e:
+            logger.error(f"search_vault_embeddings failed: {e}")
+            return f"Error searching embeddings: {e}"
+
+    @agent.tool
+    async def search_memory(ctx: RunContext[AgentDeps], query: str) -> str:
+        """Search Letta archival memory for past context or stored facts."""
+        logger.info(f"Tool: search_memory(query={query!r})")
+        letta = LettaService()
+        if not letta.enabled:
+            return "Letta memory is not configured."
+        try:
+            return await asyncio.to_thread(letta.search_archival_memory, query)
+        except Exception as e:
+            logger.error(f"search_memory failed: {e}")
+            return f"Error searching memory: {e}"
+
+    @agent.tool
+    async def save_to_memory(ctx: RunContext[AgentDeps], fact: str) -> str:
+        """Save important facts into Letta archival memory."""
+        logger.info("Tool: save_to_memory")
+        letta = LettaService()
+        if not letta.enabled:
+            return "Letta memory is not configured."
+        try:
+            return await asyncio.to_thread(letta.insert_to_archival, fact)
+        except Exception as e:
+            logger.error(f"save_to_memory failed: {e}")
+            return f"Error saving to memory: {e}"
+
+    @agent.tool
     async def read_note(ctx: RunContext[AgentDeps], path: str) -> str:
         """Read the full content of a specific note from Obsidian.
 
@@ -193,6 +267,7 @@ def create_agent() -> Agent[AgentDeps, str]:
             if len(content) > 8000:
                 content = content[:8000] + "\n\n... (note truncated)"
 
+            logger.info("read_note: %s chars from %s", len(content), path)
             return f"Content of **{path}**:\n\n{content}"
 
         except FileNotFoundError:
@@ -218,6 +293,7 @@ def create_agent() -> Agent[AgentDeps, str]:
 
         try:
             result = await ctx.deps.obsidian.create_note(path, content)
+            logger.info("create_note: %s chars to %s", len(content), result.get("path", path))
             return f"Created note: {result.get('path', path)}"
 
         except Exception as e:
@@ -241,6 +317,7 @@ def create_agent() -> Agent[AgentDeps, str]:
 
         try:
             result = await ctx.deps.obsidian.append_to_note(path, content)
+            logger.info("append_to_note: %s chars to %s", len(content), result.get("path", path))
             return f"Appended to note: {result.get('path', path)}"
 
         except FileNotFoundError:
@@ -315,7 +392,7 @@ async def process_message(
         response = _extract_agent_response(result)
         if _brain_metrics:
             _record_llm_metrics(result, agent, start_time)
-        logger.info(f"Response generated: {response[:100]}...")
+        logger.info("Response generated (%s chars): %s", len(response), _preview(response, 120))
         if deps.signal_sender and deps.memory.should_write_summary(
             deps.signal_sender, settings.summary_every_turns
         ):
@@ -496,6 +573,8 @@ async def handle_signal_message(
     sender = signal_msg.sender
     message = signal_msg.message
 
+    logger.info("Incoming message from %s: %s", sender, _preview(message))
+
     # Record message received metric
     if _brain_metrics:
         _brain_metrics.messages_received.add(1, {"channel": "signal"})
@@ -542,6 +621,7 @@ async def handle_signal_message(
 
         # Log response to conversation
         await memory.log_message(sender, "assistant", response)
+        logger.info("Outgoing message to %s: %s", sender, _preview(response))
 
         # Send reply via Signal
         send_start = time.perf_counter()
@@ -602,7 +682,9 @@ async def run_signal_loop(
     while True:
         poll_start = time.perf_counter()
         try:
+            logger.info("Polling Signal for %s", phone_number)
             messages = await signal_client.poll_messages(phone_number)
+            logger.info("Signal poll returned %s message(s)", len(messages))
 
             # Record poll metrics
             if _brain_metrics:
@@ -705,6 +787,14 @@ async def main() -> None:
         await init_db()
     except Exception as e:
         logger.warning(f"Database init failed (may not be available): {e}")
+
+    if settings.letta_bootstrap_on_start:
+        try:
+            from letta_bootstrap import bootstrap_letta
+
+            bootstrap_letta()
+        except Exception as e:
+            logger.warning(f"Letta bootstrap failed: {e}")
 
     code_mode = await create_code_mode_manager(
         settings.utcp_config_path,

@@ -56,6 +56,23 @@ services:
     networks:
       - brain-network
 
+  letta:
+    image: letta/letta:latest
+    container_name: brain-letta
+    env_file:
+      - .env
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_URL}
+      SECURE: "true"
+      LETTA_SERVER_PASSWORD: ${LETTA_SERVER_PASSWORD}
+    ports:
+      - "8283:8283"
+    volumes:
+      - ./data/letta:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - brain-network
+
   agent:
     build: .
     container_name: brain-agent

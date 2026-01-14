@@ -23,6 +23,7 @@ pydantic-settings = "^2.5.0"
 instructor = "^1.6.0"
 code-mode = "^0.0.3"
 utcp-mcp = "^1.1.2"
+letta-client = "*"
 # Observability
 opentelemetry-api = "^1.22.0"
 opentelemetry-sdk = "^1.22.0"
