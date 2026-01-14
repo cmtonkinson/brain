@@ -228,6 +228,10 @@ class LettaService:
             ),
         ]
         data = self._get_with_fallbacks(attempts, timeout=30.0)
+        logger.info(
+            "Letta archival search results: %s item(s)",
+            len(self._extract_memory_results(data)),
+        )
         return self._format_memory_results(data)
 
     def insert_to_archival(self, content: str) -> str:

@@ -36,6 +36,12 @@ _DESTRUCTIVE_KEYWORDS: tuple[str, ...] = (
     "add",
 )
 
+def _preview_text(text: str, limit: int = 200) -> str:
+    cleaned = " ".join(text.split())
+    if len(cleaned) > limit:
+        return cleaned[:limit] + "..."
+    return cleaned
+
 
 def _expand_path(path: str) -> Path:
     return Path(os.path.expanduser(path)).resolve()
@@ -66,6 +72,7 @@ class CodeModeManager:
         if not self.client:
             return "Code-Mode is not configured. Set UTCP_CONFIG_PATH to enable external tools."
 
+        logger.info("Code-Mode search_tools: %s", _preview_text(query, 160))
         try:
             tools = await self.client.search_tools(query)
         except Exception as exc:
@@ -75,6 +82,7 @@ class CodeModeManager:
         if not tools:
             return f"No tools found for query '{query}'."
 
+        logger.info("Code-Mode search_tools results: %s", len(tools))
         lines = []
         for tool in tools:
             description = getattr(tool, "description", "") or ""
@@ -92,12 +100,21 @@ class CodeModeManager:
 
         detected = _detect_destructive_ops(code, _DESTRUCTIVE_KEYWORDS)
         if detected and not confirm_destructive:
+            logger.warning(
+                "Code-Mode tool chain blocked (destructive=%s)",
+                ", ".join(detected),
+            )
             return (
                 "Potentially destructive operations detected. "
                 "Ask the user for confirmation, then retry with "
                 "`confirm_destructive=True`."
             )
 
+        logger.info(
+            "Code-Mode call_tool_chain start (chars=%s timeout=%s)",
+            len(code),
+            timeout or self.timeout,
+        )
         try:
             result = await self.client.call_tool_chain(
                 code, timeout=timeout or self.timeout
@@ -108,6 +125,11 @@ class CodeModeManager:
 
         logs = result.get("logs", [])
         output = result.get("result")
+        logger.info(
+            "Code-Mode call_tool_chain done (logs=%s result=%s)",
+            len(logs),
+            _preview_text(str(output), 160),
+        )
 
         response_lines = []
         if logs:

@@ -2,8 +2,9 @@
 
 import argparse
 import hashlib
-import uuid
 import logging
+import sys
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -18,10 +19,11 @@ from config import settings
 from models import IndexedChunk, IndexedNote
 from services.database import get_sync_session, run_migrations_sync
 
-# Configure logging
+# Configure logging (when run standalone; agent.py overrides with force=True).
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 
 logger = logging.getLogger(__name__)

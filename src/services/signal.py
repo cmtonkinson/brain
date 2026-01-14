@@ -27,6 +27,7 @@ class SignalClient:
         Returns:
             List of new SignalMessage objects
         """
+        logger.info("Signal poll request: %s", phone_number)
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
@@ -63,8 +64,7 @@ class SignalClient:
                     )
                 )
 
-            if messages:
-                logger.info(f"Received {len(messages)} new message(s)")
+            logger.info("Signal poll response: %s message(s)", len(messages))
 
             return messages
 
@@ -94,6 +94,7 @@ class SignalClient:
         Returns:
             True if message was sent successfully, False otherwise
         """
+        logger.info("Signal send request: to=%s chars=%s", to_number, len(message))
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
@@ -107,7 +108,7 @@ class SignalClient:
                 )
                 response.raise_for_status()
 
-            logger.info(f"Sent message to {to_number}")
+            logger.info("Signal send response: to=%s status=success", to_number)
             return True
 
         except httpx.HTTPStatusError as e:

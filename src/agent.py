@@ -7,6 +7,7 @@ import asyncio
 import logging
 import os
 import re
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -43,18 +44,16 @@ try:
 except ImportError:
     OBSERVABILITY_AVAILABLE = False
 
-# Configure logging - use JSON if observability available, otherwise basic
-log_dir = Path("/app/logs") if Path("/app/logs").exists() else Path("logs")
-log_dir.mkdir(exist_ok=True)
-
-# Basic logging setup (may be replaced by JSON logging if observability is enabled)
+# Configure logging - use JSON if observability available, otherwise basic (stdout only).
+# Use force=True to override any handlers set by imported modules (e.g., indexer.py).
+# Explicitly use sys.stdout (not stderr) for Docker log capture reliability.
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler(log_dir / "agent.log"),
-        logging.StreamHandler(),
+        logging.StreamHandler(sys.stdout),
     ],
+    force=True,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,6 +83,27 @@ def _preview(text: str, limit: int = 160) -> str:
     if len(cleaned) > limit:
         return cleaned[:limit] + "..."
     return cleaned
+
+
+def _ensure_logging() -> None:
+    """Force logging to stdout at INFO in case another lib muted it."""
+    logging.disable(logging.NOTSET)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    for handler in root.handlers:
+        handler.setLevel(logging.INFO)
+        handler.flush()  # Ensure any buffered output is written
+    logger.setLevel(logging.INFO)
+    logger.propagate = True
+    logger.info("Logging configured (handlers=%s)", len(root.handlers))
+    # Flush again after logging to ensure immediate output
+    for handler in root.handlers:
+        handler.flush()
+
+
+def _stdout(msg: str) -> None:
+    sys.stdout.write(msg + "\n")
+    sys.stdout.flush()
 
 
 def _get_summary_agent() -> Agent[None, str]:
@@ -230,7 +250,9 @@ def create_agent() -> Agent[AgentDeps, str]:
         if not letta.enabled:
             return "Letta memory is not configured."
         try:
-            return await asyncio.to_thread(letta.search_archival_memory, query)
+            result = await asyncio.to_thread(letta.search_archival_memory, query)
+            logger.info("search_memory: %s chars", len(result))
+            return result
         except Exception as e:
             logger.error(f"search_memory failed: {e}")
             return f"Error searching memory: {e}"
@@ -243,7 +265,9 @@ def create_agent() -> Agent[AgentDeps, str]:
         if not letta.enabled:
             return "Letta memory is not configured."
         try:
-            return await asyncio.to_thread(letta.insert_to_archival, fact)
+            result = await asyncio.to_thread(letta.insert_to_archival, fact)
+            logger.info("save_to_memory: %s", result)
+            return result
         except Exception as e:
             logger.error(f"save_to_memory failed: {e}")
             return f"Error saving to memory: {e}"
@@ -343,11 +367,13 @@ def create_agent() -> Agent[AgentDeps, str]:
     ) -> str:
         """Execute a Code-Mode Python tool chain against MCP servers."""
         logger.info("Tool: code_mode_call_tool_chain")
-        return await ctx.deps.code_mode.call_tool_chain(
+        result = await ctx.deps.code_mode.call_tool_chain(
             code,
             confirm_destructive=confirm_destructive,
             timeout=timeout,
         )
+        logger.info("code_mode_call_tool_chain result: %s chars", len(result))
+        return result
 
     return agent
 
@@ -370,9 +396,10 @@ async def process_message(
     Returns:
         The agent's response text
     """
-    logger.info(f"Processing message: {message[:100]}...")
+    logger.info("Processing message (%s chars): %s", len(message), _preview(message, 120))
     start_time = time.perf_counter()
     status = "success"
+    llm_start = None
 
     try:
         prompt = message
@@ -383,15 +410,25 @@ async def process_message(
                 recent = None
                 logger.warning(f"Failed to load recent context: {e}")
             if recent:
+                logger.info(
+                    "Recent context loaded (%s chars) for %s",
+                    len(recent),
+                    deps.signal_sender,
+                )
                 prompt = render_prompt(
                     "user/recent_context",
                     {"recent": recent, "message": message},
                 )
 
+        logger.info("LLM request start (prompt_chars=%s)", len(prompt))
+        llm_start = time.perf_counter()
         result = await agent.run(prompt, deps=deps)
         response = _extract_agent_response(result)
         if _brain_metrics:
             _record_llm_metrics(result, agent, start_time)
+        if llm_start is not None:
+            llm_ms = (time.perf_counter() - llm_start) * 1000
+            logger.info("LLM response received (duration_ms=%.1f)", llm_ms)
         logger.info("Response generated (%s chars): %s", len(response), _preview(response, 120))
         if deps.signal_sender and deps.memory.should_write_summary(
             deps.signal_sender, settings.summary_every_turns
@@ -494,7 +531,8 @@ def _render_signal_message(markdown: str) -> str:
         # Protect inline code segments from other substitutions.
         code_spans = {}
         def _stash_code(match: re.Match[str]) -> str:
-            key = f"__CODE_SPAN_{len(code_spans)}__"
+            # Use a placeholder that won't be altered by markdown substitutions.
+            key = f"<<<CODE_SPAN_{len(code_spans)}>>>"
             code_spans[key] = match.group(0)
             return key
 
@@ -573,6 +611,8 @@ async def handle_signal_message(
     sender = signal_msg.sender
     message = signal_msg.message
 
+    _ensure_logging()
+    _stdout("AGENT: message received")
     logger.info("Incoming message from %s: %s", sender, _preview(message))
 
     # Record message received metric
@@ -680,6 +720,7 @@ async def run_signal_loop(
     logger.info(f"Starting Signal polling for {phone_number}")
 
     while True:
+        _ensure_logging()
         poll_start = time.perf_counter()
         try:
             logger.info("Polling Signal for %s", phone_number)
@@ -777,6 +818,8 @@ async def main() -> None:
     else:
         logger.info("Observability disabled (OTEL_EXPORTER_OTLP_ENDPOINT not set)")
 
+    _ensure_logging()
+
     logger.info("Brain assistant starting...")
     logger.info(f"User: {settings.user}")
     logger.info(f"Obsidian URL: {settings.obsidian_url}")
@@ -796,10 +839,29 @@ async def main() -> None:
         except Exception as e:
             logger.warning(f"Letta bootstrap failed: {e}")
 
-    code_mode = await create_code_mode_manager(
-        settings.utcp_config_path,
-        settings.code_mode_timeout,
-    )
+    logger.info("Initializing Code-Mode/UTCP...")
+    try:
+        code_mode = await asyncio.wait_for(
+            create_code_mode_manager(
+                settings.utcp_config_path,
+                settings.code_mode_timeout,
+            ),
+            timeout=settings.code_mode_timeout,
+        )
+        logger.info(
+            "Code-Mode initialized (enabled=%s)",
+            bool(code_mode.client),
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Code-Mode init timed out after %s seconds; continuing without it",
+            settings.code_mode_timeout,
+        )
+        code_mode = CodeModeManager(
+            client=None,
+            config_path=Path(os.path.expanduser(settings.utcp_config_path)).resolve(),
+            timeout=settings.code_mode_timeout,
+        )
 
     # Create agent
     agent = create_agent()

@@ -118,6 +118,7 @@ class ConversationMemory:
             cached_path = self._conversation_paths[sender]
             # If same day, return cached path
             if cached_path == path:
+                logger.info("Memory conversation reused: %s", path)
                 return path
 
         # Check if note exists
@@ -127,7 +128,9 @@ class ConversationMemory:
             # Create new conversation note
             frontmatter = create_conversation_frontmatter(sender, timestamp)
             await self.obsidian.create_note(path, frontmatter)
-            logger.info(f"Created new conversation: {path}")
+            logger.info("Created new conversation: %s", path)
+        else:
+            logger.info("Memory conversation exists: %s", path)
 
         # Update cache
         self._conversation_paths[sender] = path
@@ -160,7 +163,12 @@ class ConversationMemory:
         # Append message to note
         markdown = f"\n{message.to_markdown()}"
         await self.obsidian.append_to_note(path, markdown)
-        logger.debug(f"Logged {role} message to {path}")
+        logger.info(
+            "Memory log_message role=%s chars=%s path=%s",
+            role,
+            len(content),
+            path,
+        )
 
     async def get_recent_context(
         self, sender: str, max_chars: int = 4000
@@ -186,8 +194,14 @@ class ConversationMemory:
                 newline_pos = content.find("\n## ")
                 if newline_pos > 0:
                     content = content[newline_pos:]
+            logger.info(
+                "Memory recent_context loaded chars=%s path=%s",
+                len(content),
+                path,
+            )
             return content
         except FileNotFoundError:
+            logger.info("Memory recent_context missing path=%s", path)
             return None
 
     async def log_summary(
@@ -203,7 +217,7 @@ class ConversationMemory:
         frontmatter = create_summary_frontmatter(sender, timestamp, conversation_path)
         content = f"{frontmatter}{summary.strip()}\n"
         await self.obsidian.create_note(path, content)
-        logger.info(f"Created summary note: {path}")
+        logger.info("Created summary note: %s", path)
         return path
 
     async def log_summary_marker(
@@ -217,6 +231,7 @@ class ConversationMemory:
         conversation_path = await self.get_or_create_conversation(sender, timestamp)
         marker = f"\n> Summary saved: [[{summary_path}]]\n"
         await self.obsidian.append_to_note(conversation_path, marker)
+        logger.info("Summary marker appended: %s", conversation_path)
 
     def should_write_summary(self, sender: str, interval: int) -> bool:
         """Return True when the sender hits the summary interval."""

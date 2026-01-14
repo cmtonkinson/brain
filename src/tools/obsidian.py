@@ -30,6 +30,7 @@ class ObsidianClient:
         Returns:
             List of matching notes with metadata
         """
+        logger.info("Obsidian search: query_chars=%s limit=%s", len(query), limit)
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # Use query parameter instead of JSON body
@@ -46,6 +47,8 @@ class ObsidianClient:
                         if isinstance(value, list):
                             results = value
                             break
+                count = len(results) if isinstance(results, list) else 1
+                logger.info("Obsidian search results: %s", count)
                 return results[:limit] if isinstance(results, list) else results
         except httpx.HTTPStatusError as e:
             logger.error(f"Obsidian search failed: {e}")
@@ -63,6 +66,7 @@ class ObsidianClient:
         Returns:
             Note content as string
         """
+        logger.info("Obsidian get_note: %s", path)
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
@@ -70,6 +74,7 @@ class ObsidianClient:
                     headers=self.headers
                 )
                 response.raise_for_status()
+                logger.info("Obsidian get_note OK: %s chars=%s", path, len(response.text))
                 return response.text
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
@@ -95,6 +100,7 @@ class ObsidianClient:
         if not path.endswith(".md"):
             path = f"{path}.md"
 
+        logger.info("Obsidian create_note: %s chars=%s", path, len(content))
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # Use text/markdown content type for note creation
@@ -105,7 +111,7 @@ class ObsidianClient:
                     content=content
                 )
                 response.raise_for_status()
-                logger.info(f"Created note: {path}")
+                logger.info("Created note: %s", path)
                 return {"path": path, "status": "created"}
         except httpx.HTTPStatusError as e:
             logger.error(f"Obsidian create_note failed: {e}")
@@ -124,6 +130,7 @@ class ObsidianClient:
         Returns:
             Updated note metadata
         """
+        logger.info("Obsidian append_to_note: %s chars=%s", path, len(content))
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 headers = {**self.headers, "Content-Type": "text/markdown"}
@@ -133,7 +140,7 @@ class ObsidianClient:
                     content=content
                 )
                 response.raise_for_status()
-                logger.info(f"Appended to note: {path}")
+                logger.info("Appended to note: %s", path)
                 return {"path": path, "status": "appended"}
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:

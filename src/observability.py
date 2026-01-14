@@ -52,12 +52,15 @@ class BrainJsonFormatter(jsonlogger.JsonFormatter):
     ) -> None:
         super().add_fields(log_record, record, message_dict)
 
-        # Add trace context for correlation
-        span = trace.get_current_span()
-        if span and span.is_recording():
-            ctx = span.get_span_context()
-            log_record["trace_id"] = format(ctx.trace_id, "032x")
-            log_record["span_id"] = format(ctx.span_id, "016x")
+        # Add trace context for correlation (wrapped to never break logging)
+        try:
+            span = trace.get_current_span()
+            if span and span.is_recording():
+                ctx = span.get_span_context()
+                log_record["trace_id"] = format(ctx.trace_id, "032x")
+                log_record["span_id"] = format(ctx.span_id, "016x")
+        except Exception:
+            pass  # Never let trace context issues break logging
 
         # Standardize timestamp
         log_record["timestamp"] = datetime.utcnow().isoformat()
@@ -281,7 +284,10 @@ def setup_json_logging(level: int = logging.INFO) -> None:
     Args:
         level: Logging level (default INFO)
     """
-    handler = logging.StreamHandler()
+    import sys
+
+    # Explicitly use stdout (not stderr) for Docker log capture reliability.
+    handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(
         BrainJsonFormatter("%(timestamp)s %(level)s %(name)s %(message)s")
     )
