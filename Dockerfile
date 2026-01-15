@@ -51,6 +51,18 @@ if old in text:
     path.write_text(text.replace(old, new), encoding='utf-8')
 PY
 
+# Reuse MCP client sessions by comparing server configs correctly.
+RUN python - <<'PY'
+from pathlib import Path
+
+path = Path('/usr/local/lib/python3.11/site-packages/utcp_mcp/mcp_communication_protocol.py')
+text = path.read_text(encoding='utf-8')
+old = "if self._mcp_client is None or self._mcp_client.config != manual_call_template.config.mcpServers:\\n"
+new = "if self._mcp_client is None or self._mcp_client.config.get('mcpServers') != manual_call_template.config.mcpServers:\\n"
+if old in text:
+    path.write_text(text.replace(old, new), encoding='utf-8')
+PY
+
 # Allow string tool args (commonly used for search tools) by mapping to {"query": "..."}.
 RUN python - <<'PY'
 from pathlib import Path
@@ -75,6 +87,29 @@ new = (
 )
 if old in text:
     path.write_text(text.replace(old, new), encoding='utf-8')
+PY
+
+# Handle MCP content that comes as dict instead of object (item['text'] vs item.text).
+# The library expects Pydantic model objects but HTTP responses deserialize as plain dicts.
+RUN python - <<'PY'
+from pathlib import Path
+
+path = Path('/usr/local/lib/python3.11/site-packages/utcp_mcp/mcp_communication_protocol.py')
+text = path.read_text(encoding='utf-8')
+
+# Fix single item case - add dict handling after attribute check
+old = "                    if hasattr(item, 'text'):\n                        return self._parse_text_content(item.text)\n                    return item"
+new = "                    if hasattr(item, 'text'):\n                        return self._parse_text_content(item.text)\n                    elif isinstance(item, dict) and 'text' in item:\n                        return self._parse_text_content(item['text'])\n                    return item"
+if old in text:
+    text = text.replace(old, new)
+
+# Fix loop case - add dict handling in the for loop
+old = "                    if hasattr(item, 'text'):\n                        result_list.append(self._parse_text_content(item.text))\n                    else:\n                        result_list.append(item)"
+new = "                    if hasattr(item, 'text'):\n                        result_list.append(self._parse_text_content(item.text))\n                    elif isinstance(item, dict) and 'text' in item:\n                        result_list.append(self._parse_text_content(item['text']))\n                    else:\n                        result_list.append(item)"
+if old in text:
+    text = text.replace(old, new)
+
+path.write_text(text, encoding='utf-8')
 PY
 
 # Copy application code

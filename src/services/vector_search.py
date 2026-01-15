@@ -36,14 +36,15 @@ def search_vault(
     logger.info("vector_search: query=%r limit=%s collection=%s", query, limit, collection)
     qdrant = QdrantClient(url=settings.qdrant_url)
     vector = _embed_query(query)
-    results = qdrant.search(
+    results = qdrant.query_points(
         collection_name=collection,
-        query_vector=vector,
+        query=vector,
         limit=limit,
+        with_payload=True,
     )
 
     formatted: list[dict[str, Any]] = []
-    for hit in results:
+    for hit in results.points:
         payload = hit.payload or {}
         formatted.append(
             {

@@ -36,17 +36,18 @@ def search_vault(query: str, limit: int = 8) -> str:
 
     vector = _embed_query(query)
     qdrant = QdrantClient(url=qdrant_url)
-    results = qdrant.search(
+    results = qdrant.query_points(
         collection_name=collection,
-        query_vector=vector,
+        query=vector,
         limit=limit,
+        with_payload=True,
     )
 
-    if not results:
+    if not results.points:
         return "No results found."
 
     lines = []
-    for idx, hit in enumerate(results, 1):
+    for idx, hit in enumerate(results.points, 1):
         payload = hit.payload or {}
         path = payload.get("path") or "Unknown"
         text = (payload.get("text") or "").strip()
