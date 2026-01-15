@@ -138,7 +138,7 @@ def _build_llm_config() -> dict[str, object] | None:
         response = httpx.get(
             f"{settings.letta.base_url.rstrip('/')}/v1/models/",
             headers={"Authorization": f"Bearer {settings.letta.api_key}"},
-            timeout=30.0,
+            timeout=settings.llm.timeout,
             follow_redirects=True,
         )
         response.raise_for_status()
@@ -183,15 +183,15 @@ def _normalize_openai_endpoint(endpoint: str | None) -> str | None:
 
 
 def _build_embedding_config() -> dict[str, object] | None:
-    if not settings.ollama.url or not settings.letta.embed_model:
+    if not settings.llm.embed_base_url or not settings.letta.embed_model:
         return None
     model_name = _strip_ollama_prefix(settings.letta.embed_model)
-    embedding_endpoint = _normalize_openai_endpoint(settings.ollama.url)
+    embedding_endpoint = _normalize_openai_endpoint(settings.llm.embed_base_url)
     try:
         response = httpx.post(
-            f"{settings.ollama.url.rstrip('/')}/api/embeddings",
+            f"{settings.llm.embed_base_url.rstrip('/')}/api/embeddings",
             json={"model": model_name, "prompt": "dimension probe"},
-            timeout=60.0,
+            timeout=settings.llm.timeout,
         )
         response.raise_for_status()
         payload = response.json()

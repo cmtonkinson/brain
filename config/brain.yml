@@ -4,9 +4,12 @@
 obsidian:
   url: "http://host.docker.internal:27123"
 
-ollama:
-  url: "http://host.docker.internal:11434"
+llm:
+  model: "anthropic:claude-sonnet-4-20250514"
+  base_url: null
+  timeout: 600
   embed_model: "mxbai-embed-large"
+  embed_base_url: "http://host.docker.internal:11434"
 
 signal:
   url: "http://signal-api:8080"
@@ -17,12 +20,9 @@ letta:
   embed_model: "ollama/mxbai-embed-large:latest"
   bootstrap_on_start: false
 
-litellm:
-  model: "claude-sonnet-4-20250514"
-  timeout: 600
-
 conversation:
   folder: "Brain/Conversations"
+  default_channel: "signal"
   summary_every_turns: 7
 
 utcp:

@@ -85,6 +85,7 @@ class AgentDeps:
     memory: ConversationMemory
     code_mode: CodeModeManager
     signal_sender: str | None = None  # Phone number of current message sender
+    channel: str = "signal"
 
 
 def _preview(text: str, limit: int = 160) -> str:
@@ -125,7 +126,7 @@ def _get_summary_agent() -> Agent[None, str]:
     global _summary_agent
     if _summary_agent is None:
         _summary_agent = Agent(
-            "anthropic:claude-sonnet-4-20250514",
+            settings.llm.model,
             result_type=str,
             system_prompt=render_prompt("system/summary"),
         )
@@ -138,7 +139,7 @@ def _get_summary_agent() -> Agent[None, str]:
 def create_agent() -> Agent[AgentDeps, str]:
     """Create and configure the Pydantic AI agent."""
     agent: Agent[AgentDeps, str] = Agent(
-        "anthropic:claude-sonnet-4-20250514",
+        settings.llm.model,
         deps_type=AgentDeps,
         result_type=str,
         system_prompt=render_prompt("system/assistant", {"user": settings.user.name}),
@@ -687,7 +688,10 @@ async def process_message(
         prompt = message
         if deps.signal_sender:
             try:
-                recent = await deps.memory.get_recent_context(deps.signal_sender)
+                recent = await deps.memory.get_recent_context(
+                    deps.signal_sender,
+                    channel=deps.channel,
+                )
             except Exception as e:
                 recent = None
                 logger.warning(f"Failed to load recent context: {e}")
@@ -713,7 +717,9 @@ async def process_message(
             logger.info("LLM response received (duration_ms=%.1f)", llm_ms)
         logger.info("Response generated (%s chars): %s", len(response), _preview(response, 120))
         if deps.signal_sender and deps.memory.should_write_summary(
-            deps.signal_sender, settings.conversation.summary_every_turns
+            deps.signal_sender,
+            settings.conversation.summary_every_turns,
+            channel=deps.channel,
         ):
             try:
                 summary_prompt = render_prompt(
@@ -725,10 +731,10 @@ async def process_message(
                 summary_text = _extract_agent_response(summary_result).strip()
                 if summary_text:
                     summary_path = await deps.memory.log_summary(
-                        deps.signal_sender, summary_text
+                        deps.signal_sender, summary_text, channel=deps.channel
                     )
                     await deps.memory.log_summary_marker(
-                        deps.signal_sender, summary_path
+                        deps.signal_sender, summary_path, channel=deps.channel
                     )
             except Exception as e:
                 logger.warning(f"Failed to write summary: {e}")
@@ -757,7 +763,7 @@ async def run_indexer_task(full_reindex: bool = False) -> str:
                 run_indexer,
                 vault_path=settings.obsidian.vault_path,
                 collection=settings.indexer.collection,
-                embed_model=settings.ollama.embed_model,
+                embed_model=settings.llm.embed_model,
                 max_tokens=settings.indexer.chunk_tokens,
                 full_reindex=full_reindex,
                 run_migrations=False,
@@ -928,7 +934,13 @@ async def handle_signal_message(
             span_context.__enter__()
 
         # Log incoming message to conversation
-        await memory.log_message(sender, "user", message, signal_msg.timestamp)
+        await memory.log_message(
+            sender,
+            "user",
+            message,
+            signal_msg.timestamp,
+            channel="signal",
+        )
 
         # Create dependencies with sender context
         deps = AgentDeps(
@@ -937,13 +949,19 @@ async def handle_signal_message(
             memory=memory,
             code_mode=code_mode,
             signal_sender=sender,
+            channel="signal",
         )
 
         # Process message
         response = await process_message(agent, message, deps)
 
         # Log response to conversation
-        await memory.log_message(sender, "assistant", response)
+        await memory.log_message(
+            sender,
+            "assistant",
+            response,
+            channel="signal",
+        )
         logger.info("Outgoing message to %s: %s", sender, _preview(response))
 
         # Send reply via Signal
@@ -1049,6 +1067,7 @@ async def run_test_mode(
         memory=memory,
         code_mode=code_mode,
         signal_sender="test",
+        channel="test",
     )
 
     print(f"\n[User]: {message}\n")

@@ -25,7 +25,7 @@ def test_yaml_precedence(monkeypatch, tmp_path):
                 "      - \"+15551234567\"",
                 "user:",
                 "  name: default-user",
-                "litellm:",
+                "llm:",
                 "  timeout: 100",
                 "qdrant:",
                 "  url: http://default",
@@ -38,7 +38,7 @@ def test_yaml_precedence(monkeypatch, tmp_path):
             [
                 "user:",
                 "  name: user-override",
-                "litellm:",
+                "llm:",
                 "  timeout: 200",
                 "qdrant:",
                 "  url: http://user",
@@ -51,7 +51,7 @@ def test_yaml_precedence(monkeypatch, tmp_path):
             [
                 "user:",
                 "  name: secrets-override",
-                "litellm:",
+                "llm:",
                 "  timeout: 300",
                 "qdrant:",
                 "  url: http://secrets",
@@ -68,11 +68,11 @@ def test_yaml_precedence(monkeypatch, tmp_path):
             "ALLOWED_SENDERS",
             "ALLOWED_SENDERS_BY_CHANNEL",
             "USER",
-            "LITELLM_TIMEOUT",
+            "LLM_TIMEOUT",
         ],
     )
     monkeypatch.setenv("USER", "env-user")
-    monkeypatch.setenv("LITELLM_TIMEOUT", "400")
+    monkeypatch.setenv("LLM_TIMEOUT", "400")
 
     monkeypatch.setattr(config_module, "_DEFAULT_CONFIG_PATH", defaults)
     monkeypatch.setattr(config_module, "_USER_CONFIG_PATHS", [user_cfg])
@@ -81,7 +81,7 @@ def test_yaml_precedence(monkeypatch, tmp_path):
     settings = config_module.Settings()
 
     assert settings.user.name == "env-user"
-    assert settings.litellm.timeout == 400
+    assert settings.llm.timeout == 400
     assert settings.qdrant.url == "http://secrets"
 
 
@@ -123,3 +123,50 @@ def test_non_mapping_yaml_raises(monkeypatch, tmp_path):
 
     with pytest.raises(ValueError, match="Config file must contain a mapping"):
         config_module.Settings()
+
+
+def test_legacy_llm_yaml_is_mapped(monkeypatch, tmp_path):
+    defaults = tmp_path / "defaults.yml"
+    defaults.write_text(
+        "\n".join(
+            [
+                "obsidian:",
+                "  api_key: default-key",
+                "  vault_path: /vault",
+                "signal:",
+                "  allowed_senders_by_channel:",
+                "    signal:",
+                "      - \"+15551234567\"",
+                "litellm:",
+                "  model: claude-sonnet-4-20250514",
+                "  base_url: http://llm.local",
+                "  timeout: 123",
+                "ollama:",
+                "  url: http://embeddings.local",
+                "  embed_model: mxbai-embed-large",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    _clear_env(
+        monkeypatch,
+        [
+            "OBSIDIAN_API_KEY",
+            "OBSIDIAN_VAULT_PATH",
+            "ALLOWED_SENDERS",
+            "ALLOWED_SENDERS_BY_CHANNEL",
+        ],
+    )
+
+    monkeypatch.setattr(config_module, "_DEFAULT_CONFIG_PATH", defaults)
+    monkeypatch.setattr(config_module, "_USER_CONFIG_PATHS", [])
+    monkeypatch.setattr(config_module, "_USER_SECRETS_PATHS", [])
+
+    settings = config_module.Settings()
+
+    assert settings.llm.model == "claude-sonnet-4-20250514"
+    assert settings.llm.base_url == "http://llm.local"
+    assert settings.llm.timeout == 123
+    assert settings.llm.embed_base_url == "http://embeddings.local"
+    assert settings.llm.embed_model == "mxbai-embed-large"

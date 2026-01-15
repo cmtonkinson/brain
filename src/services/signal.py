@@ -29,7 +29,7 @@ class SignalClient:
         """
         logger.info("Signal poll request: %s", phone_number)
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
                 response = await client.get(
                     f"{self.api_url}/v1/receive/{phone_number}"
                 )
@@ -96,7 +96,7 @@ class SignalClient:
         """
         logger.info("Signal send request: to=%s chars=%s", to_number, len(message))
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
                 response = await client.post(
                     f"{self.api_url}/v2/send",
                     json={
@@ -125,7 +125,7 @@ class SignalClient:
             List of account information dicts
         """
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
                 response = await client.get(f"{self.api_url}/v1/accounts")
                 response.raise_for_status()
                 return response.json()
@@ -140,7 +140,7 @@ class SignalClient:
             True if API is reachable, False otherwise
         """
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
                 response = await client.get(f"{self.api_url}/v1/about")
                 return response.status_code == 200
         except Exception:

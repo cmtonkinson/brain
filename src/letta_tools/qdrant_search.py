@@ -9,12 +9,12 @@ from config import settings
 
 
 def _embed_query(text: str) -> list[float]:
-    base_url = settings.ollama.url
-    model = settings.ollama.embed_model
+    base_url = settings.llm.embed_base_url
+    model = settings.llm.embed_model
     response = httpx.post(
         f"{base_url.rstrip('/')}/api/embeddings",
         json={"model": model, "prompt": text},
-        timeout=60.0,
+        timeout=settings.llm.timeout,
     )
     response.raise_for_status()
     payload = response.json()

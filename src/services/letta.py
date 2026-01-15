@@ -40,7 +40,7 @@ class LettaService:
         response = httpx.get(
             f"{self.base_url}/v1/agents",
             headers=self._headers(),
-            timeout=15.0,
+            timeout=settings.llm.timeout,
             follow_redirects=True,
         )
         response.raise_for_status()
@@ -64,7 +64,7 @@ class LettaService:
             url,
             headers=self._headers(),
             json=payload,
-            timeout=120.0,
+            timeout=settings.llm.timeout,
             follow_redirects=True,
         )
         response.raise_for_status()
@@ -129,8 +129,10 @@ class LettaService:
     def _post_with_fallbacks(
         self,
         attempts: list[tuple[str, dict[str, Any]]],
-        timeout: float = 30.0,
+        timeout: float | None = None,
     ) -> Any:
+        if timeout is None:
+            timeout = settings.llm.timeout
         last_status: int | None = None
         last_body: str | None = None
         for url, payload in attempts:
@@ -153,8 +155,10 @@ class LettaService:
     def _get_with_fallbacks(
         self,
         attempts: list[tuple[str, dict[str, Any]]],
-        timeout: float = 30.0,
+        timeout: float | None = None,
     ) -> Any:
+        if timeout is None:
+            timeout = settings.llm.timeout
         last_status: int | None = None
         last_body: str | None = None
         for url, params in attempts:
@@ -227,7 +231,7 @@ class LettaService:
                 {"query": query, "memory_type": "archival"},
             ),
         ]
-        data = self._get_with_fallbacks(attempts, timeout=30.0)
+        data = self._get_with_fallbacks(attempts)
         logger.info(
             "Letta archival search results: %s item(s)",
             len(self._extract_memory_results(data)),
@@ -257,7 +261,7 @@ class LettaService:
                 {"content": content},
             ),
         ]
-        data = self._post_with_fallbacks(attempts, timeout=30.0)
+        data = self._post_with_fallbacks(attempts)
         memory_id = None
         if isinstance(data, dict):
             memory_id = data.get("id") or data.get("memory_id")

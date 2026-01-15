@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 def _embed_query(text: str) -> list[float]:
     response = httpx.post(
-        f"{settings.ollama.url.rstrip('/')}/api/embeddings",
-        json={"model": settings.ollama.embed_model, "prompt": text},
-        timeout=60.0,
+        f"{settings.llm.embed_base_url.rstrip('/')}/api/embeddings",
+        json={"model": settings.llm.embed_model, "prompt": text},
+        timeout=settings.llm.timeout,
     )
     response.raise_for_status()
     payload = response.json()

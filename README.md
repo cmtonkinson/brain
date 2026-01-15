@@ -128,7 +128,7 @@ cp .env.sample .env
 Keep these in sync between `.env` (Docker Compose) and YAML config:
 - `POSTGRES_PASSWORD` ↔ `database.postgres_password`
 - `OBSIDIAN_VAULT_PATH` ↔ `obsidian.vault_path` (volume mount path)
-- `OLLAMA_URL` ↔ `ollama.url` (used by Letta container)
+- `LLM_EMBED_BASE_URL` ↔ `llm.embed_base_url` (used by Letta container)
 - `LETTA_SERVER_PASSWORD` ↔ `letta.server_password`
 
 ### 3. Install Python dependencies
@@ -267,6 +267,12 @@ Defaults live in `config/brain.yml`. Override in `~/.config/brain/brain.yml` and
 obsidian:
   vault_path: "/Users/you/Documents/Vault"
   api_key: "your-obsidian-api-key"
+
+llm:
+  model: "anthropic:claude-sonnet-4-20250514"
+  timeout: 600
+  embed_model: "mxbai-embed-large"
+  embed_base_url: "http://host.docker.internal:11434"
 
 signal:
   allowed_senders_by_channel:

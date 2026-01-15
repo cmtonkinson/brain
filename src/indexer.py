@@ -316,9 +316,9 @@ def file_hash(content: str) -> str:
 
 def embed_text(client: httpx.Client, text: str, model: str) -> list[float]:
     response = client.post(
-        f"{settings.ollama.url.rstrip('/')}/api/embeddings",
+        f"{settings.llm.embed_base_url.rstrip('/')}/api/embeddings",
         json={"model": model, "prompt": text},
-        timeout=60.0,
+        timeout=settings.llm.timeout,
     )
     response.raise_for_status()
     payload = response.json()
@@ -586,8 +586,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--embed-model",
-        default=settings.ollama.embed_model,
-        help="Ollama embedding model name",
+        default=settings.llm.embed_model,
+        help="Embedding model name",
     )
     parser.add_argument(
         "--max-tokens",

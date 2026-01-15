@@ -37,7 +37,7 @@ def _yaml_settings_source(paths: list[Path]):
         merged: dict[str, Any] = {}
         for path in paths:
             merged.update(_load_yaml(path))
-        return merged
+        return _apply_legacy_llm_config(merged)
 
     return source
 
@@ -74,8 +74,6 @@ def _env_settings_source():
         "POSTGRES_PASSWORD": ("database.postgres_password", "str"),
         "QDRANT_URL": ("qdrant.url", "str"),
         "REDIS_URL": ("redis.url", "str"),
-        "OLLAMA_URL": ("ollama.url", "str"),
-        "OLLAMA_EMBED_MODEL": ("ollama.embed_model", "str"),
         "SIGNAL_API_URL": ("signal.url", "str"),
         "SIGNAL_PHONE_NUMBER": ("signal.phone_number", "str"),
         "ALLOWED_SENDERS": ("signal.allowed_senders", "json"),
@@ -87,12 +85,20 @@ def _env_settings_source():
         "LETTA_MODEL": ("letta.model", "str"),
         "LETTA_EMBED_MODEL": ("letta.embed_model", "str"),
         "LETTA_BOOTSTRAP_ON_START": ("letta.bootstrap_on_start", "bool"),
-        "LITELLM_MODEL": ("litellm.model", "str"),
-        "LITELLM_BASE_URL": ("litellm.base_url", "str"),
-        "LITELLM_TIMEOUT": ("litellm.timeout", "int"),
+        "LLM_MODEL": ("llm.model", "str"),
+        "LLM_BASE_URL": ("llm.base_url", "str"),
+        "LLM_TIMEOUT": ("llm.timeout", "int"),
+        "LLM_EMBED_MODEL": ("llm.embed_model", "str"),
+        "LLM_EMBED_BASE_URL": ("llm.embed_base_url", "str"),
+        "LITELLM_MODEL": ("llm.model", "str"),
+        "LITELLM_BASE_URL": ("llm.base_url", "str"),
+        "LITELLM_TIMEOUT": ("llm.timeout", "int"),
+        "OLLAMA_URL": ("llm.embed_base_url", "str"),
+        "OLLAMA_EMBED_MODEL": ("llm.embed_model", "str"),
         "USER": ("user.name", "str"),
         "HOME_DIR": ("user.home_dir", "str"),
         "CONVERSATION_FOLDER": ("conversation.folder", "str"),
+        "CONVERSATION_DEFAULT_CHANNEL": ("conversation.default_channel", "str"),
         "SUMMARY_EVERY_TURNS": ("conversation.summary_every_turns", "int"),
         "UTCP_CONFIG_PATH": ("utcp.config_path", "str"),
         "CODE_MODE_TIMEOUT": ("utcp.code_mode_timeout", "int"),
@@ -111,6 +117,32 @@ def _env_settings_source():
         return data
 
     return source
+
+
+def _apply_legacy_llm_config(data: dict[str, Any]) -> dict[str, Any]:
+    llm = data.get("llm")
+    if not isinstance(llm, dict):
+        llm = {}
+
+    legacy_litellm = data.get("litellm")
+    if isinstance(legacy_litellm, dict):
+        if legacy_litellm.get("model") is not None:
+            llm.setdefault("model", legacy_litellm.get("model"))
+        if legacy_litellm.get("base_url") is not None:
+            llm.setdefault("base_url", legacy_litellm.get("base_url"))
+        if legacy_litellm.get("timeout") is not None:
+            llm.setdefault("timeout", legacy_litellm.get("timeout"))
+
+    legacy_ollama = data.get("ollama")
+    if isinstance(legacy_ollama, dict):
+        if legacy_ollama.get("url") is not None:
+            llm.setdefault("embed_base_url", legacy_ollama.get("url"))
+        if legacy_ollama.get("embed_model") is not None:
+            llm.setdefault("embed_model", legacy_ollama.get("embed_model"))
+
+    if llm:
+        data["llm"] = llm
+    return data
 
 
 class ObsidianConfig(BaseModel):
@@ -133,9 +165,18 @@ class DatabaseConfig(BaseModel):
         return self
 
 
-class OllamaConfig(BaseModel):
-    url: str = "http://host.docker.internal:11434"
+class LlmConfig(BaseModel):
+    model: str = "anthropic:claude-sonnet-4-20250514"
+    base_url: str | None = None
+    timeout: int = 600
     embed_model: str = "mxbai-embed-large"
+    embed_base_url: str = "http://host.docker.internal:11434"
+
+    @model_validator(mode="after")
+    def populate_embed_base_url(self) -> "LlmConfig":
+        if not self.embed_base_url and self.base_url:
+            self.embed_base_url = self.base_url
+        return self
 
 
 class SignalConfig(BaseModel):
@@ -163,14 +204,9 @@ class LettaConfig(BaseModel):
         return self
 
 
-class LiteLLMConfig(BaseModel):
-    model: str = "claude-sonnet-4-20250514"
-    base_url: str | None = None
-    timeout: int = 600
-
-
 class ConversationConfig(BaseModel):
     folder: str = "Brain/Conversations"
+    default_channel: str = "signal"
     summary_every_turns: int = 7
 
 
@@ -202,6 +238,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         case_sensitive=False,
         env_nested_delimiter="__",
+        extra="ignore",
     )
 
     @classmethod
@@ -233,7 +270,6 @@ class Settings(BaseSettings):
     # Service URLs
     qdrant: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="http://qdrant:6333"))
     redis: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="redis://redis:6379"))
-    ollama: OllamaConfig = Field(default_factory=OllamaConfig)
 
     # Signal
     signal: SignalConfig = Field(default_factory=SignalConfig)
@@ -244,8 +280,8 @@ class Settings(BaseSettings):
     # User Context
     user: UserConfig = Field(default_factory=UserConfig)
 
-    # LiteLLM
-    litellm: LiteLLMConfig = Field(default_factory=LiteLLMConfig)
+    # LLM
+    llm: LlmConfig = Field(default_factory=LlmConfig)
 
     # Conversation Storage
     conversation: ConversationConfig = Field(default_factory=ConversationConfig)

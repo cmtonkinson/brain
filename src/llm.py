@@ -7,14 +7,14 @@ from config import settings
 
 class LLMClient:
     """Wrapper around LiteLLM for consistent LLM access."""
-    
+
     def __init__(self, model: Optional[str] = None):
-        self.model = model or settings.litellm.model
+        self.model = model or settings.llm.model
 
     def _litellm_kwargs(self) -> Dict[str, Any]:
         extra: Dict[str, Any] = {}
-        if settings.litellm.base_url:
-            extra["api_base"] = settings.litellm.base_url
+        if settings.llm.base_url:
+            extra["api_base"] = settings.llm.base_url
         if settings.anthropic_api_key and self._uses_anthropic():
             extra["api_key"] = settings.anthropic_api_key
         return extra
@@ -46,7 +46,7 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            timeout=settings.litellm.timeout,
+            timeout=settings.llm.timeout,
             **self._litellm_kwargs(),
             **kwargs
         )
@@ -75,7 +75,7 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            timeout=settings.litellm.timeout,
+            timeout=settings.llm.timeout,
             **self._litellm_kwargs(),
             **kwargs
         )

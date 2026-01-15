@@ -32,7 +32,7 @@ class ObsidianClient:
         """
         logger.info("Obsidian search: query_chars=%s limit=%s", len(query), limit)
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
                 # Use query parameter instead of JSON body
                 response = await client.post(
                     f"{self.base_url}/search/simple/",
@@ -68,7 +68,7 @@ class ObsidianClient:
         """
         logger.info("Obsidian get_note: %s", path)
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
                 response = await client.get(
                     f"{self.base_url}/vault/{path}",
                     headers=self.headers
@@ -102,7 +102,7 @@ class ObsidianClient:
 
         logger.info("Obsidian create_note: %s chars=%s", path, len(content))
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
                 # Use text/markdown content type for note creation
                 headers = {**self.headers, "Content-Type": "text/markdown"}
                 response = await client.put(
@@ -132,7 +132,7 @@ class ObsidianClient:
         """
         logger.info("Obsidian append_to_note: %s chars=%s", path, len(content))
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
                 headers = {**self.headers, "Content-Type": "text/markdown"}
                 response = await client.post(
                     f"{self.base_url}/vault/{path}",
@@ -183,7 +183,7 @@ class ObsidianClient:
             url = f"{self.base_url}/vault/"
         logger.info("Obsidian list_dir: %s", normalized or "/")
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
                 response = await client.get(url, headers=self.headers)
                 response.raise_for_status()
                 try:

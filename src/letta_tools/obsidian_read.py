@@ -23,7 +23,7 @@ def read_note(path: str, max_chars: int = 12000) -> str:
     response = httpx.get(
         f"{base_url.rstrip('/')}/vault/{path}",
         headers=headers,
-        timeout=30.0,
+        timeout=settings.llm.timeout,
     )
     if response.status_code == 404:
         return f"Note not found: {path}"
