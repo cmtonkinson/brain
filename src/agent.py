@@ -532,7 +532,8 @@ def _render_signal_message(markdown: str) -> str:
         code_spans = {}
         def _stash_code(match: re.Match[str]) -> str:
             # Use a placeholder that won't be altered by markdown substitutions.
-            key = f"<<<CODE_SPAN_{len(code_spans)}>>>"
+            # Avoid underscores/tildes/asterisks which trigger italic/bold/strikethrough.
+            key = f"--CODESPAN{len(code_spans)}--"
             code_spans[key] = match.group(0)
             return key
 
