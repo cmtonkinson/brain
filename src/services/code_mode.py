@@ -123,8 +123,17 @@ class CodeModeManager:
             logger.error(f"Code-Mode call_tool_chain failed: {exc}")
             return f"Code-Mode execution failed: {exc}"
 
+        # Log raw response for debugging
+        logger.info("Code-Mode raw response keys: %s", list(result.keys()) if isinstance(result, dict) else type(result))
+
         logs = result.get("logs", [])
         output = result.get("result")
+
+        # Log what we got
+        logger.info("Code-Mode output type: %s, is None: %s", type(output), output is None)
+        if output is None:
+            logger.warning("Code-Mode result is None. Full response: %s", result)
+
         logger.info(
             "Code-Mode call_tool_chain done (logs=%s result=%s)",
             len(logs),
