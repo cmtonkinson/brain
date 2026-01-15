@@ -694,7 +694,7 @@ async def search_notes(ctx: RunContext[AgentDeps], query: str) -> str:
 ```python
 result = await agent.run(
     user_message,
-    deps=AgentDeps(user=settings.user, obsidian=ObsidianClient(), ...)
+    deps=AgentDeps(user=settings.user.name, obsidian=ObsidianClient(), ...)
 )
 response_text = result.data
 ```

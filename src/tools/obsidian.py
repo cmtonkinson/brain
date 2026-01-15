@@ -166,3 +166,57 @@ class ObsidianClient:
             return True
         except FileNotFoundError:
             return False
+
+    async def list_dir(self, path: str = "") -> list[str]:
+        """List entries in a vault directory.
+
+        Args:
+            path: Vault-relative directory path (default: vault root)
+
+        Returns:
+            List of entry names or paths
+        """
+        normalized = path.strip("/")
+        if normalized:
+            url = f"{self.base_url}/vault/{normalized}/"
+        else:
+            url = f"{self.base_url}/vault/"
+        logger.info("Obsidian list_dir: %s", normalized or "/")
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=self.headers)
+                response.raise_for_status()
+                try:
+                    data = response.json()
+                except ValueError as exc:
+                    raise ValueError("Obsidian list_dir returned non-JSON response.") from exc
+            entries = None
+            if isinstance(data, list):
+                entries = data
+            elif isinstance(data, dict):
+                for key in ("files", "items", "children", "entries", "data"):
+                    value = data.get(key)
+                    if isinstance(value, list):
+                        entries = value
+                        break
+            if entries is None:
+                raise ValueError("Obsidian list_dir returned unexpected response shape.")
+
+            names: list[str] = []
+            for entry in entries:
+                if isinstance(entry, str):
+                    names.append(entry)
+                elif isinstance(entry, dict):
+                    name = entry.get("path") or entry.get("name") or entry.get("file")
+                    if name is not None:
+                        names.append(str(name))
+                else:
+                    names.append(str(entry))
+            logger.info("Obsidian list_dir OK: %s entries", len(names))
+            return names
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Obsidian list_dir failed: {e}")
+            raise
+        except httpx.RequestError as e:
+            logger.error(f"Obsidian connection error: {e}")
+            raise

@@ -38,7 +38,11 @@ qdrant:
   url: "http://qdrant:6333"
 redis:
   url: "redis://redis:6379"
-user: "user"
+user:
+  name: "user"
+  home_dir: "/Users/you"
+  test_calendar_name: null
+  test_reminder_list_name: null
 
 # Required (set in ~/.config/brain/brain.yml or ~/.config/brain/secrets.yml):
 # obsidian:

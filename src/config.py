@@ -90,7 +90,8 @@ def _env_settings_source():
         "LITELLM_MODEL": ("litellm.model", "str"),
         "LITELLM_BASE_URL": ("litellm.base_url", "str"),
         "LITELLM_TIMEOUT": ("litellm.timeout", "int"),
-        "USER": ("user", "str"),
+        "USER": ("user.name", "str"),
+        "HOME_DIR": ("user.home_dir", "str"),
         "CONVERSATION_FOLDER": ("conversation.folder", "str"),
         "SUMMARY_EVERY_TURNS": ("conversation.summary_every_turns", "int"),
         "UTCP_CONFIG_PATH": ("utcp.config_path", "str"),
@@ -188,6 +189,13 @@ class ServiceConfig(BaseModel):
     url: str
 
 
+class UserConfig(BaseModel):
+    name: str = "user"
+    home_dir: str = str(Path.home())
+    test_calendar_name: str | None = None
+    test_reminder_list_name: str | None = None
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -208,7 +216,6 @@ class Settings(BaseSettings):
         return (
             init_settings,
             _env_settings_source(),
-            env_settings,
             _yaml_settings_source(_USER_SECRETS_PATHS),
             _yaml_settings_source(_USER_CONFIG_PATHS),
             _yaml_settings_source([_DEFAULT_CONFIG_PATH]),
@@ -235,7 +242,7 @@ class Settings(BaseSettings):
     letta: LettaConfig = Field(default_factory=LettaConfig)
 
     # User Context
-    user: str = "user"
+    user: UserConfig = Field(default_factory=UserConfig)
 
     # LiteLLM
     litellm: LiteLLMConfig = Field(default_factory=LiteLLMConfig)
@@ -257,6 +264,54 @@ class Settings(BaseSettings):
             return self
         raise ValueError(
             "signal.allowed_senders or signal.allowed_senders_by_channel must be configured."
+        )
+
+    @model_validator(mode="after")
+    def validate_home_dir(self) -> "Settings":
+        config_path = Path(os.path.expanduser(self.utcp.config_path))
+        if not config_path.exists():
+            return self
+        try:
+            raw = json.loads(config_path.read_text(encoding="utf-8"))
+        except Exception:
+            return self
+        templates = raw.get("manual_call_templates", [])
+        roots: list[Path] = []
+        for template in templates:
+            servers = template.get("config", {}).get("mcpServers", {})
+            filesystem = servers.get("filesystem")
+            if not filesystem:
+                continue
+            args = filesystem.get("args", []) or []
+            for idx, arg in enumerate(args):
+                if isinstance(arg, str) and "server-filesystem" in arg:
+                    for path in args[idx + 1 :]:
+                        if isinstance(path, str) and path.startswith("/"):
+                            roots.append(Path(path))
+                    break
+            else:
+                for path in args:
+                    if isinstance(path, str) and path.startswith("/"):
+                        roots.append(Path(path))
+        if not roots:
+            return self
+        home_dir = self.user.home_dir
+        if not home_dir:
+            raise ValueError("user.home_dir must be configured when filesystem MCP is enabled.")
+        home_path = Path(os.path.expanduser(home_dir)).resolve()
+        for root in roots:
+            root_path = Path(os.path.expanduser(str(root))).resolve()
+            if home_path == root_path:
+                return self
+            try:
+                home_path.relative_to(root_path)
+                return self
+            except ValueError:
+                continue
+        roots_display = ", ".join(str(path) for path in roots)
+        raise ValueError(
+            "user.home_dir must match a filesystem MCP allowed directory. "
+            f"Configured roots: {roots_display}"
         )
 
 

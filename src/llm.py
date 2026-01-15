@@ -15,7 +15,13 @@ class LLMClient:
         extra: Dict[str, Any] = {}
         if settings.litellm.base_url:
             extra["api_base"] = settings.litellm.base_url
+        if settings.anthropic_api_key and self._uses_anthropic():
+            extra["api_key"] = settings.anthropic_api_key
         return extra
+
+    def _uses_anthropic(self) -> bool:
+        model = (self.model or "").lower()
+        return "claude" in model or "anthropic" in model
     
     async def complete(
         self,

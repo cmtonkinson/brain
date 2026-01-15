@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -67,6 +67,47 @@ class CodeModeManager:
     client: CodeModeUtcpClient | None
     config_path: Path | None
     timeout: int
+    _tools_cache: list[Any] = field(default_factory=list)
+    _namespace_index: dict[str, list[Any]] = field(default_factory=dict)
+
+    def _route_namespace(self, query: str) -> str | None:
+        normalized = query.lower()
+        if re.search(r"\b(file|files|filesystem|directory|folder|path|read|write|list)\b", normalized):
+            return "filesystem"
+        if re.search(r"\b(calendar|calendars|event|events|reminder|reminders)\b", normalized):
+            return "eventkit"
+        if re.search(r"\b(github|repo|repository|pr|pull request|issue|branch|commit|tag|release)\b", normalized):
+            return "github"
+        return None
+
+    async def _ensure_tools_cache(self) -> list[Any]:
+        if not self._tools_cache:
+            self._tools_cache = await self.client.get_tools() if self.client else []
+            index: dict[str, list[Any]] = {}
+            for tool in self._tools_cache:
+                name = getattr(tool, "name", "") or ""
+                prefix = name.split(".", 1)[0] if "." in name else ""
+                index.setdefault(prefix, []).append(tool)
+            self._namespace_index = index
+        return self._tools_cache
+
+    def _rank_tools(self, tools: list[Any], query: str) -> list[Any]:
+        terms = [term for term in re.split(r"\W+", query.lower()) if term]
+        if not terms:
+            return tools
+        scored: list[tuple[int, Any]] = []
+        for tool in tools:
+            name = (getattr(tool, "name", "") or "").lower()
+            description = (getattr(tool, "description", "") or "").lower()
+            score = 0
+            for term in terms:
+                if term in name:
+                    score += 2
+                if term in description:
+                    score += 1
+            scored.append((score, tool))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [tool for score, tool in scored if score > 0] or tools
 
     async def search_tools(self, query: str) -> str:
         if not self.client:
@@ -74,7 +115,12 @@ class CodeModeManager:
 
         logger.info("Code-Mode search_tools: %s", _preview_text(query, 160))
         try:
-            tools = await self.client.search_tools(query)
+            namespace = self._route_namespace(query)
+            if namespace:
+                await self._ensure_tools_cache()
+                tools = self._rank_tools(self._namespace_index.get(namespace, []), query)
+            else:
+                tools = await self.client.search_tools(query)
         except Exception as exc:
             logger.error(f"Code-Mode search_tools failed: {exc}")
             return f"Code-Mode search failed: {exc}"

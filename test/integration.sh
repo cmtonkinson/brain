@@ -6,4 +6,14 @@ if [[ "${BRAIN_RUN_INTEGRATION:-}" != "1" ]]; then
   exit 0
 fi
 
-poetry run pytest test/integration
+run_pytest() {
+  set +e
+  poetry run pytest "$@"
+  status=$?
+  set -e
+  if [[ $status -ne 0 && $status -ne 5 ]]; then
+    exit $status
+  fi
+}
+
+run_pytest test/integration

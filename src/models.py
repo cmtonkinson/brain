@@ -118,6 +118,6 @@ class ConversationMessage(BaseModel):
     def to_markdown(self) -> str:
         """Format message as markdown for Obsidian."""
         time_str = self.timestamp.strftime("%H:%M")
-        user_display = settings.user or "User"
+        user_display = settings.user.name or "User"
         role_display = user_display if self.role == "user" else "Brain"
         return f"## {time_str} - {role_display}\n\n{self.content}\n"

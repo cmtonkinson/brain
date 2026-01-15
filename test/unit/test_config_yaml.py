@@ -23,7 +23,8 @@ def test_yaml_precedence(monkeypatch, tmp_path):
                 "  allowed_senders_by_channel:",
                 "    signal:",
                 "      - \"+15551234567\"",
-                "user: default-user",
+                "user:",
+                "  name: default-user",
                 "litellm:",
                 "  timeout: 100",
                 "qdrant:",
@@ -35,7 +36,8 @@ def test_yaml_precedence(monkeypatch, tmp_path):
     user_cfg.write_text(
         "\n".join(
             [
-                "user: user-override",
+                "user:",
+                "  name: user-override",
                 "litellm:",
                 "  timeout: 200",
                 "qdrant:",
@@ -47,7 +49,8 @@ def test_yaml_precedence(monkeypatch, tmp_path):
     secrets.write_text(
         "\n".join(
             [
-                "user: secrets-override",
+                "user:",
+                "  name: secrets-override",
                 "litellm:",
                 "  timeout: 300",
                 "qdrant:",
@@ -77,7 +80,7 @@ def test_yaml_precedence(monkeypatch, tmp_path):
 
     settings = config_module.Settings()
 
-    assert settings.user == "env-user"
+    assert settings.user.name == "env-user"
     assert settings.litellm.timeout == 400
     assert settings.qdrant.url == "http://secrets"
 
