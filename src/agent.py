@@ -431,7 +431,7 @@ async def process_message(
             logger.info("LLM response received (duration_ms=%.1f)", llm_ms)
         logger.info("Response generated (%s chars): %s", len(response), _preview(response, 120))
         if deps.signal_sender and deps.memory.should_write_summary(
-            deps.signal_sender, settings.summary_every_turns
+            deps.signal_sender, settings.conversation.summary_every_turns
         ):
             try:
                 summary_prompt = render_prompt(
@@ -473,10 +473,10 @@ async def run_indexer_task(full_reindex: bool = False) -> str:
             logger.info("Starting indexer run (full_reindex=%s)", full_reindex)
             await asyncio.to_thread(
                 run_indexer,
-                vault_path=settings.obsidian_vault_path,
-                collection=settings.indexer_collection,
-                embed_model=settings.ollama_embed_model,
-                max_tokens=settings.indexer_chunk_tokens,
+                vault_path=settings.obsidian.vault_path,
+                collection=settings.indexer.collection,
+                embed_model=settings.ollama.embed_model,
+                max_tokens=settings.indexer.chunk_tokens,
                 full_reindex=full_reindex,
                 run_migrations=False,
             )
@@ -706,7 +706,7 @@ async def run_signal_loop(
         memory: Conversation memory manager
         poll_interval: Seconds between polls
     """
-    phone_number = settings.signal_phone_number
+    phone_number = settings.signal.phone_number
     if not phone_number:
         logger.error("SIGNAL_PHONE_NUMBER not configured")
         return
@@ -823,8 +823,8 @@ async def main() -> None:
 
     logger.info("Brain assistant starting...")
     logger.info(f"User: {settings.user}")
-    logger.info(f"Obsidian URL: {settings.obsidian_url}")
-    logger.info(f"Signal API URL: {settings.signal_api_url}")
+    logger.info(f"Obsidian URL: {settings.obsidian.url}")
+    logger.info(f"Signal API URL: {settings.signal.url}")
 
     # Initialize database
     try:
@@ -832,7 +832,7 @@ async def main() -> None:
     except Exception as e:
         logger.warning(f"Database init failed (may not be available): {e}")
 
-    if settings.letta_bootstrap_on_start:
+    if settings.letta.bootstrap_on_start:
         try:
             from letta_bootstrap import bootstrap_letta
 
@@ -844,10 +844,10 @@ async def main() -> None:
     try:
         code_mode = await asyncio.wait_for(
             create_code_mode_manager(
-                settings.utcp_config_path,
-                settings.code_mode_timeout,
+                settings.utcp.config_path,
+                settings.utcp.code_mode_timeout,
             ),
-            timeout=settings.code_mode_timeout,
+            timeout=settings.utcp.code_mode_timeout,
         )
         logger.info(
             "Code-Mode initialized (enabled=%s)",
@@ -856,12 +856,12 @@ async def main() -> None:
     except asyncio.TimeoutError:
         logger.warning(
             "Code-Mode init timed out after %s seconds; continuing without it",
-            settings.code_mode_timeout,
+            settings.utcp.code_mode_timeout,
         )
         code_mode = CodeModeManager(
             client=None,
-            config_path=Path(os.path.expanduser(settings.utcp_config_path)).resolve(),
-            timeout=settings.code_mode_timeout,
+            config_path=Path(os.path.expanduser(settings.utcp.config_path)).resolve(),
+            timeout=settings.utcp.code_mode_timeout,
         )
 
     # Create agent
@@ -877,12 +877,12 @@ async def main() -> None:
     obsidian = ObsidianClient()
     memory = ConversationMemory(obsidian)
 
-    if settings.indexer_interval_seconds > 0:
+    if settings.indexer.interval_seconds > 0:
         logger.info(
             "Starting scheduled indexing every %s seconds",
-            settings.indexer_interval_seconds,
+            settings.indexer.interval_seconds,
         )
-        asyncio.create_task(indexer_loop(settings.indexer_interval_seconds))
+        asyncio.create_task(indexer_loop(settings.indexer.interval_seconds))
 
     logger.info("Starting Signal message loop...")
     try:

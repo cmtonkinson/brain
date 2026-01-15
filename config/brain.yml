@@ -1,0 +1,50 @@
+# Brain configuration defaults (non-secret).
+# Override in ~/.config/brain/brain.yml or /config/brain.yml.
+
+obsidian:
+  url: "http://host.docker.internal:27123"
+
+ollama:
+  url: "http://host.docker.internal:11434"
+  embed_model: "mxbai-embed-large"
+
+signal:
+  url: "http://signal-api:8080"
+
+letta:
+  agent_name: "brain"
+  model: "ollama/llama3.1:8b"
+  embed_model: "ollama/mxbai-embed-large:latest"
+  bootstrap_on_start: false
+
+litellm:
+  model: "claude-sonnet-4-20250514"
+  timeout: 600
+
+conversation:
+  folder: "Brain/Conversations"
+  summary_every_turns: 7
+
+utcp:
+  config_path: "~/.config/brain/utcp.json"
+  code_mode_timeout: 30
+
+indexer:
+  interval_seconds: 0
+  chunk_tokens: 1000
+  collection: "obsidian"
+
+qdrant:
+  url: "http://qdrant:6333"
+redis:
+  url: "redis://redis:6379"
+user: "user"
+
+# Required (set in ~/.config/brain/brain.yml or ~/.config/brain/secrets.yml):
+# obsidian:
+#   vault_path: "/Users/you/Documents/Vault"
+#   api_key: "your-obsidian-api-key"
+# signal:
+#   allowed_senders_by_channel:
+#     signal:
+#       - "+15551234567"

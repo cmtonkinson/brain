@@ -1,102 +1,264 @@
 """Configuration management for Brain assistant."""
 
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, model_validator
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_DEFAULT_CONFIG_PATH = _REPO_ROOT / "config" / "brain.yml"
+_USER_CONFIG_PATHS = [
+    Path("~/.config/brain/brain.yml").expanduser(),
+    Path("/config/brain.yml"),
+]
+_USER_SECRETS_PATHS = [
+    Path("~/.config/brain/secrets.yml").expanduser(),
+    Path("/config/secrets.yml"),
+]
+
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        raise ValueError(f"Config file must contain a mapping: {path}")
+    return data
+
+
+def _yaml_settings_source(paths: list[Path]):
+    def source() -> dict[str, Any]:
+        merged: dict[str, Any] = {}
+        for path in paths:
+            merged.update(_load_yaml(path))
+        return merged
+
+    return source
+
+
+def _set_nested_value(target: dict[str, Any], path: str, value: Any) -> None:
+    parts = path.split(".")
+    cursor = target
+    for key in parts[:-1]:
+        node = cursor.get(key)
+        if not isinstance(node, dict):
+            node = {}
+            cursor[key] = node
+        cursor = node
+    cursor[parts[-1]] = value
+
+
+def _parse_env_value(raw: str, kind: str) -> Any:
+    if kind == "int":
+        return int(raw)
+    if kind == "bool":
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    if kind == "json":
+        return json.loads(raw)
+    return raw
+
+
+def _env_settings_source():
+    mapping = {
+        "ANTHROPIC_API_KEY": ("anthropic_api_key", "str"),
+        "OBSIDIAN_API_KEY": ("obsidian.api_key", "str"),
+        "OBSIDIAN_URL": ("obsidian.url", "str"),
+        "OBSIDIAN_VAULT_PATH": ("obsidian.vault_path", "str"),
+        "DATABASE_URL": ("database.url", "str"),
+        "POSTGRES_PASSWORD": ("database.postgres_password", "str"),
+        "QDRANT_URL": ("qdrant.url", "str"),
+        "REDIS_URL": ("redis.url", "str"),
+        "OLLAMA_URL": ("ollama.url", "str"),
+        "OLLAMA_EMBED_MODEL": ("ollama.embed_model", "str"),
+        "SIGNAL_API_URL": ("signal.url", "str"),
+        "SIGNAL_PHONE_NUMBER": ("signal.phone_number", "str"),
+        "ALLOWED_SENDERS": ("signal.allowed_senders", "json"),
+        "ALLOWED_SENDERS_BY_CHANNEL": ("signal.allowed_senders_by_channel", "json"),
+        "LETTA_BASE_URL": ("letta.base_url", "str"),
+        "LETTA_API_KEY": ("letta.api_key", "str"),
+        "LETTA_SERVER_PASSWORD": ("letta.server_password", "str"),
+        "LETTA_AGENT_NAME": ("letta.agent_name", "str"),
+        "LETTA_MODEL": ("letta.model", "str"),
+        "LETTA_EMBED_MODEL": ("letta.embed_model", "str"),
+        "LETTA_BOOTSTRAP_ON_START": ("letta.bootstrap_on_start", "bool"),
+        "LITELLM_MODEL": ("litellm.model", "str"),
+        "LITELLM_BASE_URL": ("litellm.base_url", "str"),
+        "LITELLM_TIMEOUT": ("litellm.timeout", "int"),
+        "USER": ("user", "str"),
+        "CONVERSATION_FOLDER": ("conversation.folder", "str"),
+        "SUMMARY_EVERY_TURNS": ("conversation.summary_every_turns", "int"),
+        "UTCP_CONFIG_PATH": ("utcp.config_path", "str"),
+        "CODE_MODE_TIMEOUT": ("utcp.code_mode_timeout", "int"),
+        "INDEXER_INTERVAL_SECONDS": ("indexer.interval_seconds", "int"),
+        "INDEXER_CHUNK_TOKENS": ("indexer.chunk_tokens", "int"),
+        "INDEXER_COLLECTION": ("indexer.collection", "str"),
+    }
+
+    def source() -> dict[str, Any]:
+        data: dict[str, Any] = {}
+        for env_key, (path, kind) in mapping.items():
+            raw = os.environ.get(env_key)
+            if raw is None:
+                continue
+            _set_nested_value(data, path, _parse_env_value(raw, kind))
+        return data
+
+    return source
+
+
+class ObsidianConfig(BaseModel):
+    api_key: str
+    url: str = "http://host.docker.internal:27123"
+    vault_path: str
+
+
+class DatabaseConfig(BaseModel):
+    url: str | None = None
+    postgres_password: str | None = None
+
+    @model_validator(mode="after")
+    def populate_database_url(self) -> "DatabaseConfig":
+        if self.url:
+            return self
+        if not self.postgres_password:
+            return self
+        self.url = f"postgresql://brain:{self.postgres_password}@postgres:5432/brain"
+        return self
+
+
+class OllamaConfig(BaseModel):
+    url: str = "http://host.docker.internal:11434"
+    embed_model: str = "mxbai-embed-large"
+
+
+class SignalConfig(BaseModel):
+    phone_number: str | None = None
+    url: str = "http://signal-api:8080"
+    allowed_senders: list[str] = []
+    allowed_senders_by_channel: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class LettaConfig(BaseModel):
+    base_url: str | None = None
+    api_key: str | None = None
+    server_password: str | None = None
+    agent_name: str = "brain"
+    model: str = "ollama/llama3.1:8b"
+    embed_model: str = "ollama/mxbai-embed-large:latest"
+    bootstrap_on_start: bool = False
+
+    @model_validator(mode="after")
+    def populate_letta_api_key(self) -> "LettaConfig":
+        if self.api_key:
+            return self
+        if self.server_password:
+            self.api_key = self.server_password
+        return self
+
+
+class LiteLLMConfig(BaseModel):
+    model: str = "claude-sonnet-4-20250514"
+    base_url: str | None = None
+    timeout: int = 600
+
+
+class ConversationConfig(BaseModel):
+    folder: str = "Brain/Conversations"
+    summary_every_turns: int = 7
+
+
+class UtcpConfig(BaseModel):
+    config_path: str = "~/.config/brain/utcp.json"
+    code_mode_timeout: int = 30
+
+
+class IndexerConfig(BaseModel):
+    interval_seconds: int = 0
+    chunk_tokens: int = 1000
+    collection: str = "obsidian"
+
+
+class ServiceConfig(BaseModel):
+    url: str
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         case_sensitive=False,
+        env_nested_delimiter="__",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        return (
+            init_settings,
+            _env_settings_source(),
+            env_settings,
+            _yaml_settings_source(_USER_SECRETS_PATHS),
+            _yaml_settings_source(_USER_CONFIG_PATHS),
+            _yaml_settings_source([_DEFAULT_CONFIG_PATH]),
+        )
 
     # LLM Configuration
     anthropic_api_key: str | None = None
-    
+
     # Obsidian Configuration
-    obsidian_api_key: str
-    obsidian_url: str = "http://host.docker.internal:27123"
-    obsidian_vault_path: str
-    
+    obsidian: ObsidianConfig
+
     # Database Configuration
-    database_url: str | None = None
-    postgres_password: str | None = None
-    
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+
     # Service URLs
-    qdrant_url: str = "http://qdrant:6333"
-    redis_url: str = "redis://redis:6379"
-    ollama_url: str = "http://host.docker.internal:11434"
-    signal_api_url: str = "http://signal-api:8080"
-    ollama_embed_model: str = "mxbai-embed-large"
+    qdrant: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="http://qdrant:6333"))
+    redis: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="redis://redis:6379"))
+    ollama: OllamaConfig = Field(default_factory=OllamaConfig)
+
+    # Signal
+    signal: SignalConfig = Field(default_factory=SignalConfig)
 
     # Letta
-    letta_base_url: str | None = None
-    letta_api_key: str | None = None
-    letta_server_password: str | None = None
-    letta_agent_name: str = "brain"
-    letta_model: str = "ollama/llama3.1:8b"
-    letta_embed_model: str = "ollama/mxbai-embed-large:latest"
-    letta_bootstrap_on_start: bool = False
-    
+    letta: LettaConfig = Field(default_factory=LettaConfig)
+
     # User Context
     user: str = "user"
 
-    # LLM Configuration (expand the existing anthropic_api_key section)
-    litellm_model: str = "claude-sonnet-4-20250514"  # Default model
-    litellm_base_url: str | None = None  # For custom endpoints
-    litellm_timeout: int = 600  # Timeout in seconds
-
-    # Signal Configuration
-    signal_phone_number: str | None = None  # Agent's registered phone number
-    allowed_senders: list[str] = []  # Legacy allowlist for Signal; empty = deny all
-    allowed_senders_by_channel: dict[str, list[str]] = Field(
-        default_factory=dict
-    )  # Prefer per-channel allowlists; empty/missing = deny all
+    # LiteLLM
+    litellm: LiteLLMConfig = Field(default_factory=LiteLLMConfig)
 
     # Conversation Storage
-    conversation_folder: str = "Brain/Conversations"  # Obsidian path for conversations
-    summary_every_turns: int = 7  # Write a summary every N assistant turns (0 disables)
+    conversation: ConversationConfig = Field(default_factory=ConversationConfig)
 
     # Code-Mode / UTCP
-    utcp_config_path: str = "~/.config/brain/utcp.json"
-    code_mode_timeout: int = 30
+    utcp: UtcpConfig = Field(default_factory=UtcpConfig)
 
     # Indexer Configuration
-    indexer_interval_seconds: int = 0  # 0 disables scheduled indexing
-    indexer_chunk_tokens: int = 1000
-    indexer_collection: str = "obsidian"
-
-    @model_validator(mode="after")
-    def populate_database_url(self) -> "Settings":
-        if self.database_url:
-            return self
-        if not self.postgres_password:
-            return self
-        self.database_url = (
-            f"postgresql://brain:{self.postgres_password}@postgres:5432/brain"
-        )
-        return self
-
-    @model_validator(mode="after")
-    def populate_letta_api_key(self) -> "Settings":
-        if self.letta_api_key:
-            return self
-        if self.letta_server_password:
-            self.letta_api_key = self.letta_server_password
-        return self
+    indexer: IndexerConfig = Field(default_factory=IndexerConfig)
 
     @model_validator(mode="after")
     def validate_sender_allowlist(self) -> "Settings":
-        if self.allowed_senders_by_channel:
+        if self.signal.allowed_senders_by_channel:
             return self
-        if self.allowed_senders:
+        if self.signal.allowed_senders:
             return self
         raise ValueError(
-            "ALLOWED_SENDERS or ALLOWED_SENDERS_BY_CHANNEL must be configured."
+            "signal.allowed_senders or signal.allowed_senders_by_channel must be configured."
         )
+
 
 # Global settings instance
 settings = Settings()

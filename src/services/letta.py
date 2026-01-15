@@ -21,9 +21,9 @@ def _get_attr(obj: Any, key: str) -> Any:
 
 class LettaService:
     def __init__(self) -> None:
-        self.base_url = (settings.letta_base_url or "").rstrip("/")
-        self.api_key = settings.letta_api_key
-        self.agent_name = settings.letta_agent_name
+        self.base_url = (settings.letta.base_url or "").rstrip("/")
+        self.api_key = settings.letta.api_key
+        self.agent_name = settings.letta.agent_name
         self._agent_id: str | None = None
 
     @property

@@ -107,15 +107,29 @@ git clone <your-repo> brain  # Or extract the bootstrap zip
 cd brain
 ```
 
-### 2. Configure environment
+### 2. Configure Brain (YAML)
 ```bash
-cp .env.example .env
-# Edit .env with your values:
-# - ANTHROPIC_API_KEY (from console.anthropic.com)
-# - OBSIDIAN_API_KEY (from Local REST API plugin)
-# - OBSIDIAN_VAULT_PATH (absolute path to your vault)
-# - POSTGRES_PASSWORD (choose a secure password)
+mkdir -p ~/.config/brain
+cp config/brain.yml ~/.config/brain/brain.yml
+cp config/secrets.yml.sample ~/.config/brain/secrets.yml
+chmod 600 ~/.config/brain/secrets.yml
+
+# Edit the files with your values:
+# - obsidian.vault_path (absolute path to your vault)
+# - obsidian.api_key (from Local REST API plugin)
+# - signal.allowed_senders_by_channel (Signal allowlist)
+# - anthropic_api_key (from console.anthropic.com, if using Claude)
+# - postgres_password (if using Postgres)
 ```
+If you're using Docker, set `POSTGRES_PASSWORD` in `.env` (used by Docker Compose) to match your `postgres_password`.
+```bash
+cp .env.sample .env
+```
+Keep these in sync between `.env` (Docker Compose) and YAML config:
+- `POSTGRES_PASSWORD` ↔ `database.postgres_password`
+- `OBSIDIAN_VAULT_PATH` ↔ `obsidian.vault_path` (volume mount path)
+- `OLLAMA_URL` ↔ `ollama.url` (used by Letta container)
+- `LETTA_SERVER_PASSWORD` ↔ `letta.server_password`
 
 ### 3. Install Python dependencies
 ```bash
@@ -215,8 +229,9 @@ brain/
 ├── docker-compose.yml       # Service orchestration
 ├── Dockerfile              # Agent container definition
 ├── pyproject.toml          # Python dependencies
-├── .env                    # Configuration (gitignored)
-├── .env.example            # Configuration template
+├── config/brain.yml        # Checked-in defaults (non-secret)
+├── config/secrets.yml.sample # Secrets template
+├── .env.sample             # Docker Compose env template
 ├── README.md               # This file
 ├── data/                   # Docker volumes (gitignored)
 │   ├── qdrant/            # Vector database storage
@@ -238,40 +253,31 @@ brain/
 
 ## Configuration
 
-### Environment Variables (.env)
+### YAML Configuration
 
-```bash
-# LLM API Keys
-ANTHROPIC_API_KEY=sk-ant-...           # Claude API key
+Defaults live in `config/brain.yml`. Override in `~/.config/brain/brain.yml` and store secrets in `~/.config/brain/secrets.yml`. Docker Compose mounts `~/.config/brain` into the container at `/config`, and the loader checks both paths.
 
-# Obsidian
-OBSIDIAN_API_KEY=your-api-key-here     # From Local REST API plugin
-OBSIDIAN_VAULT_PATH=/Users/you/Documents/Vault  # Absolute path; mounted into container at same path
-OBSIDIAN_URL=http://host.docker.internal:27123
+**Precedence (highest to lowest):**
+- Environment variables
+- `~/.config/brain/secrets.yml` (or `/config/secrets.yml` in containers)
+- `~/.config/brain/brain.yml` (or `/config/brain.yml` in containers)
+- `config/brain.yml`
 
-# Database
-POSTGRES_PASSWORD=secure-password-here
+```yaml
+obsidian:
+  vault_path: "/Users/you/Documents/Vault"
+  api_key: "your-obsidian-api-key"
 
-# Ollama (local embeddings)
-OLLAMA_URL=http://host.docker.internal:11434
-OLLAMA_EMBED_MODEL=mxbai-embed-large
+signal:
+  allowed_senders_by_channel:
+    signal:
+      - "+15551234567"
 
-# Internal (set by docker-compose)
-QDRANT_URL=http://qdrant:6333
-REDIS_URL=redis://redis:6379
-DATABASE_URL=postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain
-
-# Indexer Configuration
-INDEXER_INTERVAL_SECONDS=0
-INDEXER_CHUNK_TOKENS=1000
-INDEXER_COLLECTION=obsidian
-
-# Optional
-LITELLM_BASE_URL=
-
-# User context
-USER=your-username
+anthropic_api_key: "sk-ant-..."
+database:
+  postgres_password: "secure-password-here"
 ```
+Environment variables still override YAML (useful for CI or Docker).
 
 ## Usage
 
@@ -299,7 +305,7 @@ Hotkey → agent command → notification
 
 ### Qdrant not indexing
 1. Check indexer logs: `poetry run python src/indexer.py --verbose`
-2. Verify Obsidian vault path in .env
+2. Verify Obsidian vault path in `~/.config/brain/brain.yml`
 3. Check Qdrant UI: http://localhost:6333/dashboard
 
 ### Ollama embeddings failing
@@ -309,7 +315,7 @@ Hotkey → agent command → notification
 
 ### Database connection errors
 1. Check PostgreSQL is running: `docker-compose ps postgres`
-2. Verify password in .env matches docker-compose.yml
+2. Verify password in `~/.config/brain/secrets.yml` matches docker-compose `.env`
 3. Check logs: `docker-compose logs postgres`
 
 ## Backup Strategy
@@ -323,7 +329,8 @@ Hotkey → agent command → notification
 ~/brain/data/postgres/         # Task history, action logs
 
 # Configuration
-~/brain/.env                   # API keys, passwords
+~/.config/brain/brain.yml      # Non-secret config
+~/.config/brain/secrets.yml    # API keys, passwords
 ```
 
 ### What you can regenerate
@@ -340,7 +347,7 @@ rsync -av ~/brain/data/postgres/ /backup/brain-postgres/
 
 ## Security Notes
 
-- **API Keys**: Never commit `.env` to version control
+- **API Keys**: Never commit `~/.config/brain/secrets.yml` to version control
 - **Signal E2EE**: All messages encrypted end-to-end between your devices
 - **Local Data**: Everything runs on your Mac; LLM API calls are the only external dependency
 - **Future**: Consider encrypting PostgreSQL data at rest

@@ -19,7 +19,7 @@ from models import ActionLog
 logger = logging.getLogger(__name__)
 
 # Convert sync URL to async URL
-_db_url = settings.database_url
+_db_url = settings.database.url
 if _db_url and _db_url.startswith("postgresql://"):
     _db_url = _db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 

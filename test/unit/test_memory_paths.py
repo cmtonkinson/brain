@@ -6,7 +6,7 @@ from tools.memory import get_conversation_path, get_summary_path
 
 
 def test_get_conversation_path_uses_hash_and_date(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "conversation_folder", "Brain/Conversations", raising=False)
+    monkeypatch.setattr(settings.conversation, "folder", "Brain/Conversations", raising=False)
     sender = "sender-id"
     timestamp = datetime(2026, 1, 12, 15, 30, 45)
     sender_hash = hashlib.sha256(sender.encode()).hexdigest()[:4]
@@ -16,7 +16,7 @@ def test_get_conversation_path_uses_hash_and_date(monkeypatch) -> None:
 
 
 def test_get_summary_path_uses_hash_and_time(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "conversation_folder", "Brain/Conversations", raising=False)
+    monkeypatch.setattr(settings.conversation, "folder", "Brain/Conversations", raising=False)
     sender = "sender-id"
     timestamp = datetime(2026, 1, 12, 15, 30, 45)
     sender_hash = hashlib.sha256(sender.encode()).hexdigest()[:4]

@@ -410,8 +410,8 @@ class SignalClient:
 #### 8. `src/config.py` - Minor Updates
 
 **Add:**
-- `signal_phone_number: str` - The registered phone number for the agent
-- `conversation_folder: str = "Brain/Conversations"` - Obsidian path
+- `signal.phone_number: str` - The registered phone number for the agent
+- `conversation.folder: str = "Brain/Conversations"` - Obsidian path
 
 ---
 
@@ -598,10 +598,10 @@ SIGNAL_API_URL=http://signal-api:8080
 Add to `src/config.py`:
 
 ```python
-signal_phone_number: str  # Required - agent's registered number
+signal.phone_number: str  # Required - agent's registered number
 conversation_folder: str = "Brain/Conversations"  # Obsidian path
 allowed_senders: list[str] = []  # Legacy Signal allowlist; required if no per-channel allowlist
-allowed_senders_by_channel: dict[str, list[str]] = {}  # Preferred per-channel allowlists; required if legacy allowlist empty
+signal.allowed_senders_by_channel: dict[str, list[str]] = {}  # Preferred per-channel allowlists; required if legacy allowlist empty
 ```
 
 ### Obsidian Vault Setup

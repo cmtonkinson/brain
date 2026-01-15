@@ -6,14 +6,14 @@
 - Uses Qdrant via tool calls to search the vault embeddings.
 - Lets Letta manage memory on its side while the agent can still do direct semantic search.
 
-### Required env vars
-Set these in `.env`:
-- `LETTA_BASE_URL` (for in-network containers: `http://letta:8283`)
-- `LETTA_SERVER_PASSWORD` (required when `SECURE=true`)
-- `LETTA_AGENT_NAME` (default `brain`)
-- `LETTA_MODEL` (example: `ollama/llama3.1:8b`)
-- `LETTA_EMBED_MODEL` (example: `ollama/mxbai-embed-large:latest`)
-- `LETTA_BOOTSTRAP_ON_START` (optional, `true` to auto-bootstrap on agent start)
+### Required config
+Set these in `~/.config/brain/brain.yml` or `~/.config/brain/secrets.yml`:
+- `letta.base_url` (for in-network containers: `http://letta:8283`)
+- `letta.server_password` (required when `SECURE=true`)
+- `letta.agent_name` (default `brain`)
+- `letta.model` (example: `ollama/llama3.1:8b`)
+- `letta.embed_model` (example: `ollama/mxbai-embed-large:latest`)
+- `letta.bootstrap_on_start` (optional, `true` to auto-bootstrap on agent start)
 
 ### Bootstrapping
 Bootstrapping registers custom tools and creates a Letta agent if missing.

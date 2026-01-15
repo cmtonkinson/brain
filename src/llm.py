@@ -9,12 +9,12 @@ class LLMClient:
     """Wrapper around LiteLLM for consistent LLM access."""
     
     def __init__(self, model: Optional[str] = None):
-        self.model = model or settings.litellm_model
+        self.model = model or settings.litellm.model
 
     def _litellm_kwargs(self) -> Dict[str, Any]:
         extra: Dict[str, Any] = {}
-        if settings.litellm_base_url:
-            extra["api_base"] = settings.litellm_base_url
+        if settings.litellm.base_url:
+            extra["api_base"] = settings.litellm.base_url
         return extra
     
     async def complete(
@@ -40,7 +40,7 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            timeout=settings.litellm_timeout,
+            timeout=settings.litellm.timeout,
             **self._litellm_kwargs(),
             **kwargs
         )
@@ -69,7 +69,7 @@ class LLMClient:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            timeout=settings.litellm_timeout,
+            timeout=settings.litellm.timeout,
             **self._litellm_kwargs(),
             **kwargs
         )

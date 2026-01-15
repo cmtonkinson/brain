@@ -69,7 +69,7 @@ def _ensure_tool(client: Letta, spec: dict[str, Any]) -> str | None:
 
 def _ensure_agent(client: Letta, tool_ids: list[str]) -> None:
     agents = client.agents.list()
-    existing = _index_by_name(agents).get(settings.letta_agent_name)
+    existing = _index_by_name(agents).get(settings.letta.agent_name)
     llm_config = _build_llm_config()
     embedding_config = _build_embedding_config()
     if existing:
@@ -81,40 +81,40 @@ def _ensure_agent(client: Letta, tool_ids: list[str]) -> None:
             update_kwargs["embedding_config"] = embedding_config
         if update_kwargs and agent_id:
             client.agents.update(agent_id, **update_kwargs)
-            logger.info("Updated Letta agent config: %s", settings.letta_agent_name)
+            logger.info("Updated Letta agent config: %s", settings.letta.agent_name)
         else:
-            logger.info("Letta agent already exists: %s", settings.letta_agent_name)
+            logger.info("Letta agent already exists: %s", settings.letta.agent_name)
         return
 
     create_kwargs = {
-        "name": settings.letta_agent_name,
+        "name": settings.letta.agent_name,
         "tool_ids": tool_ids,
     }
     if llm_config:
         create_kwargs["llm_config"] = llm_config
     else:
-        create_kwargs["model"] = settings.letta_model
+        create_kwargs["model"] = settings.letta.model
     if embedding_config:
         create_kwargs["embedding_config"] = embedding_config
     else:
-        create_kwargs["embedding"] = settings.letta_embed_model
+        create_kwargs["embedding"] = settings.letta.embed_model
     try:
         client.agents.create(**create_kwargs)
     except TypeError:
         create_kwargs["tools"] = create_kwargs.pop("tool_ids")
         client.agents.create(**create_kwargs)
-    logger.info("Created Letta agent: %s", settings.letta_agent_name)
+    logger.info("Created Letta agent: %s", settings.letta.agent_name)
 
 
 def bootstrap_letta() -> None:
-    if not settings.letta_base_url:
+    if not settings.letta.base_url:
         logger.warning("LETTA_BASE_URL not configured; skipping Letta bootstrap.")
         return
-    if not settings.letta_api_key:
+    if not settings.letta.api_key:
         logger.warning("LETTA_SERVER_PASSWORD/LETTA_API_KEY not configured.")
         return
 
-    client = Letta(base_url=settings.letta_base_url, api_key=settings.letta_api_key)
+    client = Letta(base_url=settings.letta.base_url, api_key=settings.letta.api_key)
 
     tool_ids: list[str] = []
     for spec in _TOOLS:
@@ -132,12 +132,12 @@ def _strip_ollama_prefix(handle: str) -> str:
 
 
 def _build_llm_config() -> dict[str, object] | None:
-    if not settings.letta_model or not settings.letta_base_url or not settings.letta_api_key:
+    if not settings.letta.model or not settings.letta.base_url or not settings.letta.api_key:
         return None
     try:
         response = httpx.get(
-            f"{settings.letta_base_url.rstrip('/')}/v1/models/",
-            headers={"Authorization": f"Bearer {settings.letta_api_key}"},
+            f"{settings.letta.base_url.rstrip('/')}/v1/models/",
+            headers={"Authorization": f"Bearer {settings.letta.api_key}"},
             timeout=30.0,
             follow_redirects=True,
         )
@@ -151,7 +151,7 @@ def _build_llm_config() -> dict[str, object] | None:
 
     for model in models:
         handle = model.get("handle")
-        if handle == settings.letta_model:
+        if handle == settings.letta.model:
             endpoint = _normalize_openai_endpoint(model.get("model_endpoint"))
             return {
                 "model": model.get("model") or _strip_ollama_prefix(handle),
@@ -169,7 +169,7 @@ def _build_llm_config() -> dict[str, object] | None:
                 "response_format": model.get("response_format"),
             }
 
-    logger.warning("Letta model handle not found in /v1/models: %s", settings.letta_model)
+    logger.warning("Letta model handle not found in /v1/models: %s", settings.letta.model)
     return None
 
 
@@ -183,13 +183,13 @@ def _normalize_openai_endpoint(endpoint: str | None) -> str | None:
 
 
 def _build_embedding_config() -> dict[str, object] | None:
-    if not settings.ollama_url or not settings.letta_embed_model:
+    if not settings.ollama.url or not settings.letta.embed_model:
         return None
-    model_name = _strip_ollama_prefix(settings.letta_embed_model)
-    embedding_endpoint = _normalize_openai_endpoint(settings.ollama_url)
+    model_name = _strip_ollama_prefix(settings.letta.embed_model)
+    embedding_endpoint = _normalize_openai_endpoint(settings.ollama.url)
     try:
         response = httpx.post(
-            f"{settings.ollama_url.rstrip('/')}/api/embeddings",
+            f"{settings.ollama.url.rstrip('/')}/api/embeddings",
             json={"model": model_name, "prompt": "dimension probe"},
             timeout=60.0,
         )

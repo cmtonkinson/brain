@@ -165,7 +165,9 @@ brain/
 ├── docker-compose.yml       # Service orchestration
 ├── Dockerfile              # Agent container definition
 ├── pyproject.toml          # Python dependencies (Poetry)
-├── .env                    # Configuration and API keys
+├── config/brain.yml         # Checked-in defaults (non-secret)
+├── config/secrets.yml.sample # Secrets template
+├── .env.sample              # Docker Compose env template
 ├── src/agent.py           # Main agent daemon
 ├── src/indexer.py         # Obsidian vault indexer
 ├── src/config.py          # Settings management
@@ -253,7 +255,7 @@ Signal provides cryptographic E2EE for all text communications. Unlike iMessage 
 
 ### API Key Management
 
-API keys and sensitive configuration live in `.env` file (excluded from version control via `.gitignore`). For production deployment, consider using MacOS Keychain via the Python keyring library for additional protection.
+API keys and sensitive configuration live in `~/.config/brain/secrets.yml` (excluded from version control). For production deployment, consider using MacOS Keychain via the Python keyring library for additional protection.
 
 ### Future Considerations
 
@@ -316,7 +318,7 @@ poetry run python src/agent.py --test "Create a reminder for tomorrow"
 - ✓ Obsidian + Smart Connections + Local REST API configured
 - ✓ Ollama installed with nomic-embed-text model
 - ☐ Extract bootstrap.zip to ~/brain
-- ☐ Configure .env with API keys and paths
+- ☐ Configure `~/.config/brain/brain.yml` and `~/.config/brain/secrets.yml`
 - ☐ Start Docker services (`docker-compose up -d`)
 - ☐ Link Signal device (QR code scan)
 - ☐ Run initial vault indexing

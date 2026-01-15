@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import os
-
 import httpx
 from qdrant_client import QdrantClient
 
+from config import settings
+
 
 def _embed_query(text: str) -> list[float]:
-    base_url = os.environ.get("OLLAMA_URL", "http://host.docker.internal:11434")
-    model = os.environ.get("OLLAMA_EMBED_MODEL", "mxbai-embed-large")
+    base_url = settings.ollama.url
+    model = settings.ollama.embed_model
     response = httpx.post(
         f"{base_url.rstrip('/')}/api/embeddings",
         json={"model": model, "prompt": text},
@@ -31,8 +31,8 @@ def search_vault(query: str, limit: int = 8) -> str:
         query: Natural language query to embed and search.
         limit: Maximum number of results to return.
     """
-    qdrant_url = os.environ.get("QDRANT_URL", "http://qdrant:6333")
-    collection = os.environ.get("INDEXER_COLLECTION", "obsidian")
+    qdrant_url = settings.qdrant.url
+    collection = settings.indexer.collection
 
     vector = _embed_query(query)
     qdrant = QdrantClient(url=qdrant_url)

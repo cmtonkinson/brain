@@ -1,5 +1,5 @@
 # TODO
-- There are a lot of hardcoded configs still and .env sucks - json? yaml?
+- Move config from .env to YAML files (done; see config/brain.yml)
 - BUG: why are summaries no longer happening? Because Letta?
 - Add total e2e delay as a metric for observability
 - Integrate with Tactiq API for automatic pull of transcriptions into Obsidian

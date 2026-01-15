@@ -316,7 +316,7 @@ def file_hash(content: str) -> str:
 
 def embed_text(client: httpx.Client, text: str, model: str) -> list[float]:
     response = client.post(
-        f"{settings.ollama_url.rstrip('/')}/api/embeddings",
+        f"{settings.ollama.url.rstrip('/')}/api/embeddings",
         json={"model": model, "prompt": text},
         timeout=60.0,
     )
@@ -405,7 +405,7 @@ def index_vault(
         logger.error(f"Vault path does not exist: {vault_path}")
         return
 
-    qdrant = QdrantClient(url=settings.qdrant_url)
+    qdrant = QdrantClient(url=settings.qdrant.url)
     if run_migrations:
         global _migrations_applied
         with _migrations_lock:
@@ -576,23 +576,23 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Index Obsidian vault")
     parser.add_argument(
         "--vault-path",
-        default=settings.obsidian_vault_path,
+        default=settings.obsidian.vault_path,
         help="Path to Obsidian vault",
     )
     parser.add_argument(
         "--collection",
-        default=settings.indexer_collection,
+        default=settings.indexer.collection,
         help="Qdrant collection name",
     )
     parser.add_argument(
         "--embed-model",
-        default=settings.ollama_embed_model,
+        default=settings.ollama.embed_model,
         help="Ollama embedding model name",
     )
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=settings.indexer_chunk_tokens,
+        default=settings.indexer.chunk_tokens,
         help="Maximum estimated tokens per chunk",
     )
     parser.add_argument(

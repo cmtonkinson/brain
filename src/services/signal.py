@@ -16,7 +16,7 @@ class SignalClient:
     """Client for signal-cli-rest-api."""
 
     def __init__(self, api_url: str | None = None):
-        self.api_url = (api_url or settings.signal_api_url).rstrip("/")
+        self.api_url = (api_url or settings.signal.url).rstrip("/")
 
     async def poll_messages(self, phone_number: str) -> list[SignalMessage]:
         """Poll for new messages.

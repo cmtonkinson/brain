@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import os
-
 import httpx
+
+from config import settings
 
 
 def read_note(path: str, max_chars: int = 12000) -> str:
@@ -14,8 +14,8 @@ def read_note(path: str, max_chars: int = 12000) -> str:
         path: Vault-relative path to the note.
         max_chars: Maximum characters to return.
     """
-    base_url = os.environ.get("OBSIDIAN_URL", "http://host.docker.internal:27123")
-    api_key = os.environ.get("OBSIDIAN_API_KEY")
+    base_url = settings.obsidian.url
+    api_key = settings.obsidian.api_key
     if not api_key:
         raise ValueError("OBSIDIAN_API_KEY is not configured.")
 

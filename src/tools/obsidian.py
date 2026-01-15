@@ -14,9 +14,9 @@ class ObsidianClient:
     
     def __init__(self):
         # Normalize to avoid accidental double slashes in request URLs.
-        self.base_url = settings.obsidian_url.rstrip("/")
+        self.base_url = settings.obsidian.url.rstrip("/")
         self.headers = {
-            "Authorization": f"Bearer {settings.obsidian_api_key}",
+            "Authorization": f"Bearer {settings.obsidian.api_key}",
             "Content-Type": "application/json"
         }
     

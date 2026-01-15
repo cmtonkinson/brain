@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 def _embed_query(text: str) -> list[float]:
     response = httpx.post(
-        f"{settings.ollama_url.rstrip('/')}/api/embeddings",
-        json={"model": settings.ollama_embed_model, "prompt": text},
+        f"{settings.ollama.url.rstrip('/')}/api/embeddings",
+        json={"model": settings.ollama.embed_model, "prompt": text},
         timeout=60.0,
     )
     response.raise_for_status()
@@ -32,9 +32,9 @@ def search_vault(
     limit: int = 8,
     collection: str | None = None,
 ) -> list[dict[str, Any]]:
-    collection = collection or settings.indexer_collection
+    collection = collection or settings.indexer.collection
     logger.info("vector_search: query=%r limit=%s collection=%s", query, limit, collection)
-    qdrant = QdrantClient(url=settings.qdrant_url)
+    qdrant = QdrantClient(url=settings.qdrant.url)
     vector = _embed_query(query)
     results = qdrant.query_points(
         collection_name=collection,

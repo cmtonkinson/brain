@@ -27,7 +27,7 @@ def get_conversation_path(date: datetime, sender: str) -> str:
     year = date.strftime("%Y")
     month = date.strftime("%m")
 
-    folder = settings.conversation_folder
+    folder = settings.conversation.folder
     return f"{folder}/{year}/{month}/signal-{date_str}-{sender_hash}.md"
 
 
@@ -39,7 +39,7 @@ def get_summary_path(date: datetime, sender: str) -> str:
     year = date.strftime("%Y")
     month = date.strftime("%m")
 
-    folder = settings.conversation_folder
+    folder = settings.conversation.folder
     return f"{folder}/Summaries/{year}/{month}/signal-summary-{date_str}-{time_str}-{sender_hash}.md"
 
 
