@@ -1,207 +1,185 @@
 # Brain
 
-A privacy-first, MacOS-native personal AI assistant with end-to-end encrypted messaging, local knowledge management, and pluggable LLM architecture.
+An exocortex for attention, memory, and action rooted in data soverignty (a self-hosted virtual assistant). Brain runs a
+containerized agent that integrates with Obsidian and MCP tools while keeping your data under your control.
 
 ## Overview
 
-Brain is a modular personal assistant that:
-- Uses **Obsidian** as the canonical knowledge base (notes, conversations, extracted facts)
-- Communicates via **Signal** with E2EE for remote text commands
-- Runs entirely on your MacBook with **local data sovereignty**
-- Supports **pluggable LLM backends** (Claude via API, future local models via Ollama)
-- Integrates with MacOS apps (Calendar, Reminders, Messages) via **Hammerspoon** and **PyXA**
+Brain currently provides:
+- **Obsidian as canonical memory** via the Local REST API (read/write notes) and a file-based indexer.
+- **Signal messaging** through `signal-cli-rest-api` with an explicit allowlist.
+- **Semantic search** with Qdrant embeddings generated from your vault.
+- **Pydantic AI over LiteLLM** for model orchestration with pluggable backends.
+- **Letta (MemGPT)** as a memory manager and archival store.
+- **Code-Mode (UTCP)** for MCP tool discovery/execution (filesystem, EventKit, GitHub, etc.).
+- **Optional observability stack** (OpenTelemetry, Prometheus, Loki, Grafana).
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Obsidian Vault                          │
-│          (Canonical source: notes, conversations)            │
-└──────────────────┬──────────────────────────────────────────┘
-                   │
-                   ├─→ Smart Connections (UI semantic search)
-                   │
-                   └─→ Qdrant + Ollama embeddings (agent access)
-                              ↓
-                   ┌──────────────────────┐
-                   │   Pydantic AI Agent   │
-                   │   + LiteLLM           │
-                   └──────────┬────────────┘
-                              │
-            ┌─────────────────┼─────────────────┐
-            ↓                 ↓                  ↓
-       PostgreSQL        Signal (E2EE)    Hammerspoon
-    (operational state)   (messaging)   (MacOS integration)
+│                      Obsidian Vault (Tier 0)                │
+│          Canonical notes, decisions, and memory             │
+└───────────────┬─────────────────────────────────────────────┘
+                │ Local REST API (read/write)
+                │
+        ┌───────▼──────────────────────────────────────┐
+        │           Brain Agent (Pydantic AI)          │
+        │   LiteLLM routing + tools + access control   │
+        └───────┬────────────┬────────────┬────────────┘
+                │            │            │
+          Signal API       Qdrant     Postgres/Redis
+          (E2EE I/O)     (embeddings)  (state/logs)
+                │
+                ▼
+          Code-Mode (UTCP)
+                │
+        MCP servers (filesystem, EventKit, GitHub)
+                │
+        host-mcp-gateway (macOS APIs, optional)
+
+        Letta (MemGPT) runs as a parallel service for
+        archival memory and tool-augmented recall.
 ```
 
-### Data Model
+## Data Tiers (Current State)
 
-**Canonical (long-term):**
-- Obsidian vault: knowledge notes, conversation transcripts, extracted facts
-- Backed up via Git/cloud sync
+**Tier 0 — Authoritative**
+- Obsidian vault (canonical notes, promoted memory)
+- Configuration/policy files under `~/.config/brain`
 
-**Operational (short-term):**
-- PostgreSQL: pending tasks, action logs, queue state
-- Regeneratable or archived to Obsidian
+**Tier 1 — Durable system state**
+- Postgres (action logs, operational state)
+- Letta internal DB (archival memory state)
+- Signal CLI state (device + message metadata)
 
-**Derived (regeneratable):**
-- Qdrant: embeddings of Obsidian content
-- Smart Connections cache
+**Tier 2 — Derived / cache**
+- Qdrant embeddings and indexes
+- Summaries and derived artifacts
 
 ## Phased Implementation
 
-### Phase 1: Text interaction, PKM, and agentic actions ← **YOU ARE HERE**
-- Obsidian + Smart Connections + Local REST API
-- Qdrant vector database
-- Ollama (local embeddings)
-- LiteLLM (LLM abstraction)
-- Pydantic AI (agent orchestration)
-- PostgreSQL (operational state)
-- signal-cli (E2EE messaging)
-- Hammerspoon (system integration)
+### Phase 1: Text interaction + memory + MCP tools (current)
+- Obsidian Local REST API integration (read/write)
+- Letta archival memory
+- Code-Mode (UTCP) for MCP tool calls
+- Signal messaging with allowlisted senders
+- Vault indexer + Qdrant semantic search
+- Optional observability stack (OTel)
 
-### Phase 2: Local voice interaction
-- whisper.cpp (STT, Metal-optimized)
-- Piper (local TTS)
-- openWakeWord (custom wake word)
+### Phase 2: The "Assitant Triangle"
+- Skill framework + capability registry
+- Attention router + interruption policy
+- Commitment tracking + loop closure
 
-### Phase 3: POTS phone support
-- Twilio Voice + Media Streams
-- WebSocket real-time audio
-
-### Phase 4: SMS fallback
-- Google Voice integration (non-E2EE convenience)
+### Phase 3: Voice + telephony + SMS (combined)
+- Local voice (whisper.cpp + Piper)
+- POTS phone support (Twilio Media Streams)
+- SMS fallback (Google Voice)
 
 ## Prerequisites
 
-### Native MacOS Tools (install first)
-```bash
-# Ollama (for local embeddings)
-brew install ollama
-ollama pull nomic-embed-text
+- macOS host (for EventKit MCP and host gateway)
+- Docker + Docker Compose
+- Python 3.11+
+- Obsidian + Local REST API plugin
+- Optional: Ollama for local embeddings
 
-# signal-cli (will be containerized via signal-cli-rest-api)
-# No need to install if using Docker approach
-
-# Obsidian (download from obsidian.md)
-# Install plugins: Smart Connections, Local REST API
-```
-
-### Obsidian Setup
+### Obsidian setup
 1. Install Obsidian from https://obsidian.md
-2. Create or open your vault
-3. Install community plugins:
-   - **Smart Connections**: Settings → Community Plugins → Browse → "Smart Connections"
-   - **Local REST API**: Settings → Community Plugins → Browse → "Local REST API"
-4. Configure Local REST API:
-   - Enable the plugin
-   - Generate an API key
-   - Note the URL (default: `http://localhost:27123`)
+2. Enable the **Local REST API** community plugin
+3. Generate an API key and note the URL (default `http://localhost:27123`)
 
 ## Quick Start
 
-### 1. Clone and setup
+### 1) Clone and install Python deps
 ```bash
 cd ~
-git clone <your-repo> brain  # Or extract the bootstrap zip
+git clone <your-repo> brain
 cd brain
-```
 
-### 2. Configure Brain (YAML)
-```bash
-mkdir -p ~/.config/brain
-cp config/brain.yml ~/.config/brain/brain.yml
-cp config/secrets.yml.sample ~/.config/brain/secrets.yml
-chmod 600 ~/.config/brain/secrets.yml
-
-# Edit the files with your values:
-# - obsidian.vault_path (absolute path to your vault)
-# - obsidian.api_key (from Local REST API plugin)
-# - signal.allowed_senders_by_channel (Signal allowlist)
-# - anthropic_api_key (from console.anthropic.com, if using Claude)
-# - postgres_password (if using Postgres)
-```
-If you're using Docker, set `POSTGRES_PASSWORD` in `.env` (used by Docker Compose) to match your `postgres_password`.
-```bash
-cp .env.sample .env
-```
-Keep these in sync between `.env` (Docker Compose) and YAML config:
-- `POSTGRES_PASSWORD` ↔ `database.postgres_password`
-- `OBSIDIAN_VAULT_PATH` ↔ `obsidian.vault_path` (volume mount path)
-- `LLM_EMBED_BASE_URL` ↔ `llm.embed_base_url` (used by Letta container)
-- `LETTA_SERVER_PASSWORD` ↔ `letta.server_password`
-
-### 3. Install Python dependencies
-```bash
-# Install Poetry if you don't have it
+# Install Poetry if needed
 curl -sSL https://install.python-poetry.org | python3 -
-
-# Install project dependencies
 poetry install
 ```
 
-### 4. Start Docker services
+### 2) Configure Brain
+```bash
+mkdir -p ~/.config/brain
+
+# Base config (override defaults as needed)
+cp config/brain.yml ~/.config/brain/brain.yml
+
+# Secrets
+cp config/secrets.yml.sample ~/.config/brain/secrets.yml
+chmod 600 ~/.config/brain/secrets.yml
+
+# MCP/UTCP tool config (optional but recommended)
+cp utcp.json.sample ~/.config/brain/utcp.json
+```
+
+Update `~/.config/brain/brain.yml` and `~/.config/brain/secrets.yml` with:
+- `obsidian.vault_path` (absolute path)
+- `obsidian.api_key` + `obsidian.url`
+- `signal.phone_number` and `signal.allowed_senders_by_channel`
+- `database.postgres_password` (for Postgres)
+- `letta.server_password` (if using Letta)
+
+If using Docker Compose, copy the env file and keep passwords in sync:
+```bash
+cp .env.sample .env
+```
+Update `.env` with `OBSIDIAN_VAULT_PATH`, `POSTGRES_PASSWORD`, and `LETTA_SERVER_PASSWORD`.
+
+### 3) Start Docker services
 ```bash
 docker-compose up -d
 ```
 
 This starts:
-- Qdrant (vector database) on port 6333
-- Redis (task queue) on port 6379
-- PostgreSQL (operational state) on port 5432
-- signal-cli-rest-api (Signal messaging) on port 8080
-- brain-agent (your AI assistant)
+- `brain-agent` (Pydantic AI)
+- Qdrant (vectors)
+- Postgres (state)
+- Redis (queue/cache)
+- signal-cli-rest-api (Signal)
+- Letta (optional memory service)
 
-### 5. Register Signal account
+### 4) Register Signal account
 ```bash
-# Register a new Signal account with your Google Voice number
-# Replace +1XXXXXXXXXX with your Google Voice number
 curl -X POST "http://localhost:8080/v1/register/+1XXXXXXXXXX"
-
-# If Signal requires a captcha, solve it at:
-# https://signalcaptchas.org/registration/generate.html
-# Then pass the full signalcaptcha://... token as JSON:
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"captcha":"signalcaptcha://signal-hcaptcha..."}' \
-  "http://localhost:8080/v1/register/+1XXXXXXXXXX"
-
-# Signal will send an SMS verification code to your Google Voice number
-# Once you receive the code, verify:
-curl -X POST "http://localhost:8080/v1/register/+1XXXXXXXXXX/verify/XXXXXX"
-# Replace XXXXXX with the 6-digit code from the SMS
-
-# If SMS doesn't arrive, request voice verification instead:
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"captcha":"signalcaptcha://signal-hcaptcha...","voice":true}' \
-  "http://localhost:8080/v1/register/+1XXXXXXXXXX"
 ```
+Follow the verification flow from `signal-cli-rest-api` if prompted.
 
-### 6. Index your Obsidian vault
+### 5) Index your Obsidian vault
 ```bash
 docker-compose exec agent poetry run python src/indexer.py
 ```
-Optional: set `INDEXER_INTERVAL_SECONDS` to schedule automatic indexing; the agent tool `index_vault` can also be invoked to trigger a manual reindex.
 
-### 7. Test the agent
+### 6) (Optional) Bootstrap Letta tools
 ```bash
-# Send a Signal message to yourself
-# The agent should respond
-
-# Or test locally:
-poetry run python src/agent.py --test "What's in my knowledge base?"
+docker-compose exec agent python src/letta_bootstrap.py
 ```
+Run this once after configuring Letta or changing Letta tool code.
+
+## MCP Integrations (Code-Mode)
+
+Brain uses UTCP Code-Mode to discover and call MCP servers. Configure your MCP servers in `~/.config/brain/utcp.json` (see `utcp.json.sample`).
+
+For macOS-only MCP servers (like EventKit), run the host gateway on your Mac:
+```bash
+cd host-mcp-gateway
+
+go build -o host-mcp-gateway ./...
+./host-mcp-gateway -config ~/.config/brain/host-mcp-gateway.json
+```
+
+See `host-mcp-gateway/README.md` and `docs/mcp_servers.md` for details.
 
 ## Development Workflow
 
 ### View logs
 ```bash
-# All services
 docker-compose logs -f
-
-# Specific service
-docker-compose logs -f agent
 ```
 
 ### Rebuild after code changes
@@ -209,63 +187,24 @@ docker-compose logs -f agent
 docker-compose up -d --build agent
 ```
 
-### Access PostgreSQL
+### Run the agent locally (no Docker)
 ```bash
-docker-compose exec postgres psql -U brain -d brain
+poetry run python src/agent.py --test "What's in my knowledge base?"
 ```
 
-### Access Qdrant UI
-Open http://localhost:6333/dashboard
-
-### Re-index Obsidian vault
+### Observability stack (optional)
 ```bash
-docker-compose exec agent poetry run python src/indexer.py --full-reindex
-```
-
-## Project Structure
-
-```
-brain/
-├── docker-compose.yml       # Service orchestration
-├── Dockerfile              # Agent container definition
-├── pyproject.toml          # Python dependencies
-├── config/brain.yml        # Checked-in defaults (non-secret)
-├── config/secrets.yml.sample # Secrets template
-├── .env.sample             # Docker Compose env template
-├── README.md               # This file
-├── data/                   # Docker volumes (gitignored)
-│   ├── qdrant/            # Vector database storage
-│   ├── redis/             # Redis persistence
-│   ├── postgres/          # PostgreSQL data
-│   └── signal/            # Signal-cli data
-├── logs/                   # Application logs
-└── src/
-    ├── agent.py           # Main agent daemon
-    ├── indexer.py         # Obsidian vault indexer
-    ├── signal_handler.py  # Signal message handling
-    ├── models.py          # Data models
-    ├── config.py          # Configuration loading
-    └── tools/             # Agent tools
-        ├── obsidian.py    # Obsidian API wrapper
-        ├── calendar.py    # Calendar integration
-        └── reminders.py   # Reminders integration
+docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
 ```
 
 ## Configuration
 
-### YAML Configuration
-
-Defaults live in `config/brain.yml`. Override in `~/.config/brain/brain.yml` and store secrets in `~/.config/brain/secrets.yml`. Docker Compose mounts `~/.config/brain` into the container at `/config`, and the loader checks both paths.
-
-**Precedence (highest to lowest):**
-- Environment variables
-- `~/.config/brain/secrets.yml` (or `/config/secrets.yml` in containers)
-- `~/.config/brain/brain.yml` (or `/config/brain.yml` in containers)
-- `config/brain.yml`
+Defaults live in `config/brain.yml`. Override in `~/.config/brain/brain.yml` and store secrets in `~/.config/brain/secrets.yml`. Environment variables still override YAML (useful for CI or Docker).
 
 ```yaml
 obsidian:
   vault_path: "/Users/you/Documents/Vault"
+  url: "http://host.docker.internal:27123"
   api_key: "your-obsidian-api-key"
 
 llm:
@@ -275,98 +214,76 @@ llm:
   embed_base_url: "http://host.docker.internal:11434"
 
 signal:
+  phone_number: "+15551234567"
   allowed_senders_by_channel:
     signal:
       - "+15551234567"
 
-anthropic_api_key: "sk-ant-..."
 database:
   postgres_password: "secure-password-here"
+
+letta:
+  base_url: "http://letta:8283"
+  server_password: "letta-password"
+  agent_name: "brain"
 ```
-Environment variables still override YAML (useful for CI or Docker).
 
 ## Usage
 
-### Text Commands via Signal
-
-Send messages to yourself via Signal:
+Send messages to your Signal account:
 
 ```
-"Remind me to call Mom tomorrow at 2pm"
+"Remind me to follow up next Tuesday"
 "What did I decide about the website redesign?"
 "Summarize my notes on Ruby performance"
-"Add a calendar event: dentist appointment Friday 10am"
+"Create a note in Ideas/NewIdea.md with ..."
 ```
-
-### Local Hammerspoon Triggers (coming soon)
-
-Hotkey → agent command → notification
 
 ## Troubleshooting
 
 ### Agent not responding to Signal messages
 1. Check agent logs: `docker-compose logs -f agent`
-2. Verify Signal linking: `curl http://localhost:8080/v1/about`
-3. Test Signal send: `curl -X POST http://localhost:8080/v2/send -H "Content-Type: application/json" -d '{"number":"+your-number","recipients":["+your-number"],"message":"test"}'`
+2. Verify Signal API: `curl http://localhost:8080/v1/about`
+3. Confirm sender is allowlisted in `~/.config/brain/secrets.yml`
 
 ### Qdrant not indexing
-1. Check indexer logs: `poetry run python src/indexer.py --verbose`
-2. Verify Obsidian vault path in `~/.config/brain/brain.yml`
+1. Run: `poetry run python src/indexer.py --verbose`
+2. Verify `obsidian.vault_path` matches the mounted path
 3. Check Qdrant UI: http://localhost:6333/dashboard
 
-### Ollama embeddings failing
-1. Verify Ollama is running: `ollama list`
-2. Check model is downloaded: `ollama pull nomic-embed-text`
-3. Test embeddings: `ollama embeddings model nomic-embed-text prompt "test"`
+### Letta memory not responding
+1. Verify `LETTA_SERVER_PASSWORD` and `letta.base_url`
+2. Run `docker-compose exec agent python src/letta_bootstrap.py`
 
-### Database connection errors
-1. Check PostgreSQL is running: `docker-compose ps postgres`
-2. Verify password in `~/.config/brain/secrets.yml` matches docker-compose `.env`
-3. Check logs: `docker-compose logs postgres`
+### Code-Mode tools missing
+1. Confirm `~/.config/brain/utcp.json` exists
+2. Run the host gateway if using macOS-only servers
 
 ## Backup Strategy
 
-### What to backup
-```bash
-# Canonical data (critical)
-~/Documents/ObsidianVault/     # Your knowledge base (already backed up via Git/iCloud?)
-
-# Operational data (nice to have)
-~/brain/data/postgres/         # Task history, action logs
-
-# Configuration
-~/.config/brain/brain.yml      # Non-secret config
-~/.config/brain/secrets.yml    # API keys, passwords
-```
+### What to back up
+- Obsidian vault (Tier 0)
+- `~/.config/brain/*` (config + secrets)
+- `data/postgres` and `data/letta` (Tier 1)
+- `data/signal` (Signal device state)
 
 ### What you can regenerate
-- Qdrant embeddings (re-run indexer)
-- Redis cache
-- Smart Connections cache
-
-### Recommended backup
-```bash
-# Automated via Time Machine or:
-rsync -av ~/brain/data/postgres/ /backup/brain-postgres/
-# Exclude: data/qdrant, data/redis (regeneratable)
-```
+- Qdrant embeddings (`data/qdrant`)
+- Redis cache (`data/redis`)
 
 ## Security Notes
 
-- **API Keys**: Never commit `~/.config/brain/secrets.yml` to version control
-- **Signal E2EE**: All messages encrypted end-to-end between your devices
-- **Local Data**: Everything runs on your Mac; LLM API calls are the only external dependency
-- **Future**: Consider encrypting PostgreSQL data at rest
+- **Allowlist enforced**: Signal senders must be explicitly allowed.
+- **Secrets stay local**: store API keys in `~/.config/brain/secrets.yml` or env vars.
+- **Trust boundaries**: ingested data and external APIs are treated as untrusted.
 
 ## Roadmap
 
-- [ ] Phase 1: Basic text agent (in progress)
-- [ ] Add MemGPT/Letta for advanced memory management
-- [ ] Phase 2: Voice interface (whisper.cpp + Piper)
-- [ ] Phase 3: POTS phone calls (Twilio)
-- [ ] Phase 4: SMS fallback (Google Voice)
-- [ ] Multi-agent workflows (research, writing, coding)
-- [ ] Scheduled automations (morning briefing, reminder checks)
+- [ ] Phase 1 hardening + stability work
+- [ ] Phase 2: Triangle PRDs (attention router, commitments, skills)
+- [ ] Phase 3: Voice + telephony + SMS
+- [ ] Universal ingestion pipeline + object storage
+- [ ] Policy engine + autonomy levels
 
 ## Contributing
 
