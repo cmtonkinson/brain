@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from skills.registry_schema import OpRegistry
 from skills.registry_validation import (
     RegistryIndex,
     validate_overlay_data,
@@ -18,12 +19,14 @@ def test_registry_rejects_unknown_capability(tmp_path):
                 "version": "1.0.0",
                 "status": "enabled",
                 "description": "Search notes",
+                "kind": "logic",
                 "inputs_schema": {"type": "object", "properties": {"q": {"type": "string"}}},
                 "outputs_schema": {"type": "object", "properties": {"results": {"type": "array"}}},
                 "capabilities": ["unknown.cap"],
                 "side_effects": [],
                 "autonomy": "L1",
                 "entrypoint": {"runtime": "python", "module": "x", "handler": "run"},
+                "call_targets": [{"kind": "op", "name": "dummy_op", "version": "1.0.0"}],
                 "failure_modes": [
                     {
                         "code": "skill_unexpected_error",
@@ -51,12 +54,14 @@ def test_registry_rejects_duplicate_entries():
                 "version": "1.0.0",
                 "status": "enabled",
                 "description": "Search notes",
+                "kind": "logic",
                 "inputs_schema": {"type": "object", "properties": {"q": {"type": "string"}}},
                 "outputs_schema": {"type": "object", "properties": {"results": {"type": "array"}}},
                 "capabilities": ["obsidian.read"],
                 "side_effects": [],
                 "autonomy": "L1",
                 "entrypoint": {"runtime": "python", "module": "x", "handler": "run"},
+                "call_targets": [{"kind": "op", "name": "dummy_op", "version": "1.0.0"}],
                 "failure_modes": [
                     {
                         "code": "skill_unexpected_error",
@@ -70,12 +75,14 @@ def test_registry_rejects_duplicate_entries():
                 "version": "1.0.0",
                 "status": "enabled",
                 "description": "Search notes",
+                "kind": "logic",
                 "inputs_schema": {"type": "object", "properties": {"q": {"type": "string"}}},
                 "outputs_schema": {"type": "object", "properties": {"results": {"type": "array"}}},
                 "capabilities": ["obsidian.read"],
                 "side_effects": [],
                 "autonomy": "L1",
                 "entrypoint": {"runtime": "python", "module": "x", "handler": "run"},
+                "call_targets": [{"kind": "op", "name": "dummy_op", "version": "1.0.0"}],
                 "failure_modes": [
                     {
                         "code": "skill_unexpected_error",
@@ -120,12 +127,14 @@ def test_overlay_requires_known_skill():
                 "version": "1.0.0",
                 "status": "enabled",
                 "description": "Search notes",
+                "kind": "logic",
                 "inputs_schema": {"type": "object", "properties": {"q": {"type": "string"}}},
                 "outputs_schema": {"type": "object", "properties": {"results": {"type": "array"}}},
                 "capabilities": ["obsidian.read"],
                 "side_effects": [],
                 "autonomy": "L1",
                 "entrypoint": {"runtime": "python", "module": "x", "handler": "run"},
+                "call_targets": [{"kind": "op", "name": "dummy_op", "version": "1.0.0"}],
                 "failure_modes": [
                     {
                         "code": "skill_unexpected_error",
@@ -150,3 +159,40 @@ def test_overlay_requires_known_skill():
     errors = validate_overlay_data(overlay, registry_index)
 
     assert any("unknown skill" in error for error in errors)
+
+
+def test_registry_rejects_unknown_call_target():
+    """Ensure call target validation rejects unknown ops."""
+    registry = {
+        "registry_version": "1.0.0",
+        "skills": [
+            {
+                "name": "search_notes",
+                "version": "1.0.0",
+                "status": "enabled",
+                "description": "Search notes",
+                "kind": "logic",
+                "inputs_schema": {"type": "object", "properties": {"q": {"type": "string"}}},
+                "outputs_schema": {"type": "object", "properties": {"results": {"type": "array"}}},
+                "capabilities": ["obsidian.read"],
+                "side_effects": [],
+                "autonomy": "L1",
+                "entrypoint": {"runtime": "python", "module": "x", "handler": "run"},
+                "call_targets": [{"kind": "op", "name": "missing_op", "version": "1.0.0"}],
+                "failure_modes": [
+                    {
+                        "code": "skill_unexpected_error",
+                        "description": "Unexpected skill failure.",
+                        "retryable": False,
+                    }
+                ],
+            }
+        ],
+    }
+    capability_ids = {"obsidian.read"}
+    op_registry = OpRegistry.model_validate({"registry_version": "1.0.0", "ops": []})
+    op_index = RegistryIndex.from_op_registry(op_registry)
+
+    errors = validate_registry_data(registry, capability_ids, op_index=op_index, op_registry=op_registry)
+
+    assert any("unknown op target" in error for error in errors)

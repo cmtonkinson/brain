@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from .registry_schema import AutonomyLevel
-from .registry import SkillRuntimeEntry
+from .registry import OpRuntimeEntry, SkillRuntimeEntry
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class PolicyDecision:
     reasons: list[str]
     metadata: dict[str, str] = field(default_factory=dict)
 
-    def log(self, skill: SkillRuntimeEntry) -> None:
+    def log(self, skill: SkillRuntimeEntry | OpRuntimeEntry) -> None:
         logger.info(
             "policy decision",
             extra={
@@ -50,7 +50,7 @@ class PolicyDecision:
 
 
 class PolicyEvaluator(Protocol):
-    def evaluate(self, skill: SkillRuntimeEntry, context: PolicyContext) -> PolicyDecision:
+    def evaluate(self, skill: SkillRuntimeEntry | OpRuntimeEntry, context: PolicyContext) -> PolicyDecision:
         ...
 
 
@@ -74,7 +74,7 @@ class DefaultPolicy:
     def __init__(self) -> None:
         self._rate_limiter = RateLimiter()
 
-    def evaluate(self, skill: SkillRuntimeEntry, context: PolicyContext) -> PolicyDecision:
+    def evaluate(self, skill: SkillRuntimeEntry | OpRuntimeEntry, context: PolicyContext) -> PolicyDecision:
         reasons: list[str] = []
         metadata = {
             "actor": context.actor or "",
@@ -107,6 +107,11 @@ class DefaultPolicy:
         if context.max_autonomy is not None:
             if _AUTONOMY_ORDER[skill.autonomy] > _AUTONOMY_ORDER[context.max_autonomy]:
                 reasons.append("autonomy_exceeds_limit")
+
+        if skill.autonomy == AutonomyLevel.L0:
+            reasons.append("autonomy_suggest_only")
+        if skill.autonomy == AutonomyLevel.L1 and not context.confirmed:
+            reasons.append("approval_required")
 
         if "requires_review" in skill.definition.policy_tags and not context.confirmed:
             reasons.append("review_required")

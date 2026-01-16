@@ -9,7 +9,7 @@ from services.code_mode import CodeModeManager
 
 from ..context import SkillContext
 from ..registry import SkillRuntimeEntry
-from ..runtime import SkillExecutionError
+from ..errors import SkillExecutionError
 
 
 class MCPSkillAdapter:

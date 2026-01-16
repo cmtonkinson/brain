@@ -6,23 +6,34 @@ import pytest
 from skills.adapters.python_adapter import PythonSkillAdapter
 from skills.context import SkillContext
 from skills.registry import SkillRuntimeEntry
-from skills.registry_schema import AutonomyLevel, Entrypoint, EntrypointRuntime, SkillDefinition, SkillStatus
-from skills.runtime import SkillExecutionError
+from skills.registry_schema import (
+    AutonomyLevel,
+    CallTargetKind,
+    CallTargetRef,
+    Entrypoint,
+    EntrypointRuntime,
+    LogicSkillDefinition,
+    SkillKind,
+    SkillStatus,
+)
+from skills.errors import SkillExecutionError
 
 
 def _make_skill(module: str, handler: str) -> SkillRuntimeEntry:
     """Build a SkillRuntimeEntry for Python adapter tests."""
-    definition = SkillDefinition(
+    definition = LogicSkillDefinition(
         name="demo_skill",
         version="1.0.0",
         status=SkillStatus.enabled,
         description="Demo",
+        kind=SkillKind.logic,
         inputs_schema={"type": "object"},
         outputs_schema={"type": "object"},
         capabilities=["obsidian.read"],
         side_effects=[],
         autonomy=AutonomyLevel.L1,
         entrypoint=Entrypoint(runtime=EntrypointRuntime.python, module=module, handler=handler),
+        call_targets=[CallTargetRef(kind=CallTargetKind.op, name="dummy_op", version="1.0.0")],
         failure_modes=[
             {
                 "code": "skill_unexpected_error",
@@ -102,3 +113,27 @@ async def test_python_adapter_invalid_handler(tmp_path):
 
     with pytest.raises(SkillExecutionError):
         await adapter.execute(skill, {}, SkillContext({"obsidian.read"}))
+
+
+@pytest.mark.asyncio
+async def test_python_adapter_passes_invoker(tmp_path):
+    """Ensure the adapter passes the invoker when the handler accepts it."""
+    _write_module(
+        tmp_path,
+        "invoker_skill",
+        """
+        def run(inputs, context, invoker):
+            return {"has_invoker": invoker is not None}
+        """.strip(),
+    )
+    skill = _make_skill("invoker_skill", "run")
+    adapter = PythonSkillAdapter()
+
+    result = await adapter.execute(
+        skill,
+        {"value": "ok"},
+        SkillContext({"obsidian.read"}),
+        invoker={"ok": True},
+    )
+
+    assert result["has_invoker"] is True

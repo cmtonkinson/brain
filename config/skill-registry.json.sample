@@ -1,11 +1,12 @@
 {
-  "registry_version": "1.0.0",
+  "registry_version": "2.0.0",
   "skills": [
     {
       "name": "search_notes",
       "version": "1.0.0",
       "status": "enabled",
       "description": "Search notes in the Obsidian vault.",
+      "kind": "logic",
       "inputs_schema": {
         "type": "object",
         "required": ["query"],
@@ -31,6 +32,9 @@
         "module": "skills.search_notes",
         "handler": "run"
       },
+      "call_targets": [
+        {"kind": "op", "name": "obsidian_search", "version": "1.0.0"}
+      ],
       "redaction": {
         "inputs": ["query"],
         "outputs": []
@@ -48,6 +52,7 @@
       "version": "1.0.0",
       "status": "enabled",
       "description": "Read a note from the Obsidian vault.",
+      "kind": "logic",
       "inputs_schema": {
         "type": "object",
         "required": ["path"],
@@ -72,6 +77,9 @@
         "module": "skills.read_note",
         "handler": "run"
       },
+      "call_targets": [
+        {"kind": "op", "name": "obsidian_read_note", "version": "1.0.0"}
+      ],
       "failure_modes": [
         {
           "code": "skill_unexpected_error",
@@ -85,6 +93,7 @@
       "version": "1.0.0",
       "status": "enabled",
       "description": "Create or append a note in the Obsidian vault.",
+      "kind": "logic",
       "inputs_schema": {
         "type": "object",
         "required": ["path", "content"],
@@ -111,6 +120,9 @@
         "module": "skills.create_note",
         "handler": "run"
       },
+      "call_targets": [
+        {"kind": "op", "name": "obsidian_create_note", "version": "1.0.0"}
+      ],
       "redaction": {
         "inputs": ["content"],
         "outputs": []
@@ -128,6 +140,7 @@
       "version": "1.0.0",
       "status": "enabled",
       "description": "Append content to an existing note.",
+      "kind": "logic",
       "inputs_schema": {
         "type": "object",
         "required": ["path", "content"],
@@ -154,6 +167,9 @@
         "module": "skills.append_note",
         "handler": "run"
       },
+      "call_targets": [
+        {"kind": "op", "name": "obsidian_append_note", "version": "1.0.0"}
+      ],
       "redaction": {
         "inputs": ["content"],
         "outputs": []
@@ -171,6 +187,7 @@
       "version": "1.0.0",
       "status": "disabled",
       "description": "Fetch a URL, store the raw artifact, and summarize it into a note.",
+      "kind": "logic",
       "inputs_schema": {
         "type": "object",
         "required": ["url"],
@@ -198,6 +215,11 @@
         "module": "skills.clip_and_summarize_url",
         "handler": "run"
       },
+      "call_targets": [
+        {"kind": "op", "name": "web_fetch", "version": "1.0.0"},
+        {"kind": "op", "name": "blob_store", "version": "1.0.0"},
+        {"kind": "op", "name": "obsidian_create_note", "version": "1.0.0"}
+      ],
       "redaction": {
         "inputs": ["url"],
         "outputs": []
@@ -215,6 +237,7 @@
       "version": "1.0.0",
       "status": "disabled",
       "description": "Create a reminder from structured input.",
+      "kind": "logic",
       "inputs_schema": {
         "type": "object",
         "required": ["title"],
@@ -241,6 +264,9 @@
         "module": "skills.create_reminder",
         "handler": "run"
       },
+      "call_targets": [
+        {"kind": "op", "name": "reminders_create", "version": "1.0.0"}
+      ],
       "failure_modes": [
         {
           "code": "skill_unexpected_error",
@@ -254,6 +280,7 @@
       "version": "1.0.0",
       "status": "disabled",
       "description": "Send an outbound message over an approved channel.",
+      "kind": "logic",
       "inputs_schema": {
         "type": "object",
         "required": ["channel", "recipient", "body"],
@@ -281,6 +308,9 @@
         "module": "skills.send_message",
         "handler": "run"
       },
+      "call_targets": [
+        {"kind": "op", "name": "messaging_send", "version": "1.0.0"}
+      ],
       "redaction": {
         "inputs": ["recipient", "body"],
         "outputs": []

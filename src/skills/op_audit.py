@@ -1,4 +1,4 @@
-"""Audit logging with redaction for skill executions."""
+"""Audit logging with redaction for op executions."""
 
 from __future__ import annotations
 
@@ -7,18 +7,18 @@ from dataclasses import dataclass
 from typing import Any
 
 from .context import SkillContext
-from .registry import SkillRuntimeEntry
+from .registry import OpRuntimeEntry
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class AuditEvent:
-    """Structured audit record for a skill execution."""
+class OpAuditEvent:
+    """Structured audit record for an op execution."""
 
     trace_id: str
     span_id: str
-    skill: str
+    op: str
     version: str
     status: str
     duration_ms: int | None
@@ -35,12 +35,12 @@ class AuditEvent:
     policy_metadata: dict[str, str] | None = None
 
 
-class AuditLogger:
-    """Audit logger for skill execution events with redaction."""
+class OpAuditLogger:
+    """Audit logger for op execution events with redaction."""
 
     def record(
         self,
-        skill: SkillRuntimeEntry,
+        op_entry: OpRuntimeEntry,
         context: SkillContext,
         status: str,
         duration_ms: int | None,
@@ -50,37 +50,37 @@ class AuditLogger:
         policy_reasons: list[str] | None = None,
         policy_metadata: dict[str, str] | None = None,
     ) -> None:
-        """Record a skill execution event after applying redactions."""
-        redacted_inputs = _redact_payload(inputs, _redaction_fields(skill, "inputs"))
-        redacted_outputs = _redact_payload(outputs, _redaction_fields(skill, "outputs"))
+        """Record an op execution event after applying redactions."""
+        redacted_inputs = _redact_payload(inputs, _redaction_fields(op_entry, "inputs"))
+        redacted_outputs = _redact_payload(outputs, _redaction_fields(op_entry, "outputs"))
 
-        event = AuditEvent(
+        event = OpAuditEvent(
             trace_id=context.trace_id,
             span_id=context.invocation_id,
-            skill=skill.definition.name,
-            version=skill.definition.version,
+            op=op_entry.definition.name,
+            version=op_entry.definition.version,
             status=status,
             duration_ms=duration_ms,
             actor=context.actor,
             channel=context.channel,
             invocation_id=context.invocation_id,
             parent_invocation_id=context.parent_invocation_id,
-            capabilities=list(skill.definition.capabilities),
-            side_effects=list(skill.definition.side_effects),
+            capabilities=list(op_entry.definition.capabilities),
+            side_effects=list(op_entry.definition.side_effects),
             inputs=redacted_inputs,
             outputs=redacted_outputs,
             error=error,
             policy_reasons=policy_reasons,
             policy_metadata=policy_metadata,
         )
-        logger.info("skill_audit", extra=event.__dict__)
+        logger.info("op_audit", extra=event.__dict__)
 
 
-def _redaction_fields(skill: SkillRuntimeEntry, kind: str) -> set[str]:
+def _redaction_fields(op_entry: OpRuntimeEntry, kind: str) -> set[str]:
     """Return the set of redacted fields for inputs or outputs."""
-    if skill.definition.redaction is None:
+    if op_entry.definition.redaction is None:
         return set()
-    return set(getattr(skill.definition.redaction, kind, []))
+    return set(getattr(op_entry.definition.redaction, kind, []))
 
 
 def _redact_payload(payload: dict[str, Any] | None, fields: set[str]) -> dict[str, Any] | None:

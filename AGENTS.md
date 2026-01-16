@@ -1,18 +1,25 @@
-# AGENTS.md
-Instructions for agents working in this repo:
-- Read README.md
-- Read docs/manifesto.md
-- Read docs/architecture-doctrine.md
-- Read docs/security-trust-boundary-model.md
-- Write new tests when approptiate.
-- Run tests (`./test.sh`) after making changes to validate behavior.
-- Before adding new units, search for existing functionality that may be reused or refactored.
-- Every class, method, and function should have a full docblock.
+Instructions for working in this repo:
+- Read `README.md`.
+- Read `docs/manifesto.md`.
+- Read `docs/architecture-doctrine.md`.
+- Read `docs/security-trust-boundary-model.md`.
+- Never modify `docs/manifesto.md`.
+- Ask clarifying questions when needed.
 
-Whenever changes are required that would impact config files such as `config/brain.yml`,
-`config/utcp.json`, `config/secrets.yml`, `.env`, etc.:
+When modifying code:
+- Write code that is concise, readable, maintainable, and idiomatic.
+- Every file/class/unit should have a complete docblock/docstring.
+- Prefer smaller composable units over larger monolithic ones.
+- Code defensively; assume failure; assume invalid input.
+- Before adding new units, search existing code for logic that may be reused/refactored.
+- When modifying existing untis, write/modify tests as appropriate.
+- When creating new units, design them to be tested, and write appropriate tests.
+- Run tests after making changes to validate behavior (`./test.sh`).
+
+Whenever changes impact config files (`.env`, `config/*.{yml,json}`, etc.):
 - Always modify `.sample` files in the course of your other work.
 - Once your changes are complete, always request approval to modify the live/.gitignored files.
 - When modifying the live/.gitignored files, always migrate the existing data to the new format.
 - Never replace existing live/.gitignored config values with sample data.
 - Never modify the live/.gitignored files without approval.
+- Always report what changes were made to live/.gitignored files.

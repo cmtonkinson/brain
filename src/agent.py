@@ -29,14 +29,6 @@ from tools.memory import ConversationMemory
 from indexer import index_vault as run_indexer
 from services.vector_search import search_vault as search_vault_vectors
 from qdrant_client import QdrantClient
-from skills.adapters.mcp_adapter import MCPSkillAdapter
-from skills.adapters.python_adapter import PythonSkillAdapter
-from skills.context import SkillContext
-from skills.policy import DefaultPolicy
-from skills.registry import SkillRegistryLoader
-from skills.runtime import SkillRuntime, SkillPolicyError, SkillRuntimeError
-from skills.registry_schema import AutonomyLevel, SkillStatus
-from skills.services import SkillServices, set_services
 from self_diagnostic_utils import (
     contains_expected_name,
     extract_allowed_directories,
@@ -45,6 +37,16 @@ from self_diagnostic_utils import (
     extract_content_text,
     parse_code_mode_payload,
 )
+from skills.adapters.op_adapter import MCPOpAdapter, NativeOpAdapter
+from skills.adapters.python_adapter import PythonSkillAdapter
+from skills.context import SkillContext
+from skills.op_runtime import OpRuntime
+from skills.policy import DefaultPolicy
+from skills.registry import OpRegistryLoader, SkillRegistryLoader
+from skills.errors import SkillPolicyError, SkillRuntimeError
+from skills.runtime import SkillRuntime
+from skills.registry_schema import AutonomyLevel, SkillStatus
+from skills.services import SkillServices, set_services
 
 # Observability imports (conditional to allow running without OTEL)
 try:
@@ -82,6 +84,7 @@ _summary_agent: Agent[None, str] | None = None
 _indexer_lock = asyncio.Lock()
 _skill_registry_loader: SkillRegistryLoader | None = None
 _skill_policy: DefaultPolicy | None = None
+_op_registry_loader: OpRegistryLoader | None = None
 _DEFAULT_ALLOWED_CAPABILITIES = {
     "obsidian.read",
     "vault.search",
@@ -148,6 +151,177 @@ def _get_summary_agent() -> Agent[None, str]:
     return _summary_agent
 
 
+async def _run_code_mode_diagnostics(ctx: RunContext[AgentDeps]) -> list[str]:
+    """Run Code-Mode/MCP checks for self-diagnostic only."""
+    results: list[str] = []
+    code_mode_enabled = ctx.deps.code_mode.client is not None
+
+    def _has_non_empty_listing(raw: str | None) -> bool:
+        if raw is None:
+            return False
+        if raw in ("", "None", "null", "[]", "{}"):
+            return False
+        parsed = parse_code_mode_payload(raw)
+        text = extract_content_text(parsed)
+        if text is not None:
+            return bool(text.strip())
+        if isinstance(parsed, (list, tuple, set, dict)):
+            return bool(parsed)
+        return parsed is not None
+
+    def _has_tool_results(raw: str) -> bool:
+        return bool(re.search(r"^- \S+:", raw, re.MULTILINE))
+
+    if not code_mode_enabled:
+        logger.info("self_diagnostic: code-mode search_tools skipped (not configured)")
+        _stdout("AGENT: self_diagnostic code-mode search_tools skipped (not configured)")
+        results.append("- code-mode: skipped (not configured)")
+        results.append("- mcp/filesystem: skipped (not configured)")
+        results.append("- mcp/calendar: skipped (not configured)")
+        results.append("- mcp/reminders: skipped (not configured)")
+        results.append("- mcp/github: skipped (not configured)")
+        return results
+
+    # Code-Mode: search tools to confirm UTCP is available.
+    try:
+        logger.info("self_diagnostic: code-mode search_tools")
+        _stdout("AGENT: self_diagnostic code-mode search_tools")
+        response = await ctx.deps.code_mode.search_tools("list tools")
+        if response.startswith("Code-Mode is not configured"):
+            logger.warning("self_diagnostic: code-mode not configured")
+            _stdout("AGENT: self_diagnostic code-mode not configured")
+            results.append("- code-mode: error (not configured)")
+        elif _has_tool_results(response):
+            logger.info("self_diagnostic: code-mode ok (search_tools)")
+            _stdout("AGENT: self_diagnostic code-mode ok (search_tools)")
+            results.append("- code-mode: ok (search_tools)")
+        else:
+            logger.warning("self_diagnostic: code-mode empty search_tools result")
+            _stdout("AGENT: self_diagnostic code-mode empty search_tools result")
+            results.append("- code-mode: error (empty tool search)")
+    except Exception as exc:
+        logger.error(f"self_diagnostic code-mode failed: {exc}")
+        _stdout(f"AGENT: self_diagnostic code-mode failed ({exc})")
+        results.append(f"- code-mode: error ({exc})")
+
+    # MCP filesystem: list base directory.
+    try:
+        logger.info("self_diagnostic: mcp filesystem list_directory")
+        _stdout("AGENT: self_diagnostic mcp filesystem list_directory")
+        allowed_code = "result = filesystem.list_allowed_directories({})\nreturn result"
+        allowed_output = await ctx.deps.code_mode.call_tool_chain(allowed_code)
+        allowed_raw = extract_code_mode_result(allowed_output)
+        allowed_parsed = parse_code_mode_payload(allowed_raw)
+        allowed_dirs = extract_allowed_directories(allowed_parsed)
+        if not allowed_dirs:
+            allowed_dirs = extract_allowed_directories_from_text(allowed_output)
+        if not allowed_dirs:
+            logger.warning("self_diagnostic: mcp filesystem no allowed directories")
+            _stdout("AGENT: self_diagnostic mcp filesystem no allowed directories")
+            results.append("- mcp/filesystem: error (no allowed directories)")
+        else:
+            base_path = Path(os.path.expanduser(allowed_dirs[0])).resolve()
+            code = f"result = filesystem.list_directory({{'path': {str(base_path)!r}}})\nreturn result"
+            output = await ctx.deps.code_mode.call_tool_chain(code)
+            raw = extract_code_mode_result(output)
+            if _has_non_empty_listing(raw):
+                logger.info("self_diagnostic: mcp filesystem ok")
+                _stdout("AGENT: self_diagnostic mcp filesystem ok")
+                results.append("- mcp/filesystem: ok (base directory listed)")
+            else:
+                logger.warning("self_diagnostic: mcp filesystem empty listing")
+                _stdout("AGENT: self_diagnostic mcp filesystem empty listing")
+                results.append("- mcp/filesystem: error (empty directory listing)")
+    except Exception as exc:
+        logger.error(f"self_diagnostic mcp filesystem failed: {exc}")
+        _stdout(f"AGENT: self_diagnostic mcp filesystem failed ({exc})")
+        results.append(f"- mcp/filesystem: error ({exc})")
+
+    # MCP calendar: list event calendars.
+    try:
+        logger.info("self_diagnostic: mcp calendar list_event_calendars")
+        _stdout("AGENT: self_diagnostic mcp calendar list_event_calendars")
+        code = "result = eventkit.list_event_calendars({})\nreturn result"
+        output = await ctx.deps.code_mode.call_tool_chain(code)
+        raw = extract_code_mode_result(output)
+        expected_calendar = settings.user.test_calendar_name
+        if _has_non_empty_listing(raw) and contains_expected_name(raw, expected_calendar):
+            logger.info("self_diagnostic: mcp calendar ok")
+            _stdout("AGENT: self_diagnostic mcp calendar ok")
+            results.append("- mcp/calendar: ok (calendars listed)")
+        else:
+            if _has_non_empty_listing(raw):
+                logger.warning(
+                    "self_diagnostic: mcp calendar missing expected name (%s)",
+                    expected_calendar,
+                )
+                _stdout("AGENT: self_diagnostic mcp calendar missing expected name")
+                results.append(
+                    f"- mcp/calendar: error (missing expected calendar: {expected_calendar})"
+                )
+            else:
+                logger.warning("self_diagnostic: mcp calendar empty list")
+                _stdout("AGENT: self_diagnostic mcp calendar empty list")
+                results.append("- mcp/calendar: error (no calendars)")
+    except Exception as exc:
+        logger.error(f"self_diagnostic mcp calendar failed: {exc}")
+        _stdout(f"AGENT: self_diagnostic mcp calendar failed ({exc})")
+        results.append(f"- mcp/calendar: error ({exc})")
+
+    # MCP reminders: list reminder lists.
+    try:
+        logger.info("self_diagnostic: mcp reminders list_calendars")
+        _stdout("AGENT: self_diagnostic mcp reminders list_calendars")
+        code = "result = eventkit.list_calendars({})\nreturn result"
+        output = await ctx.deps.code_mode.call_tool_chain(code)
+        raw = extract_code_mode_result(output)
+        expected_reminders = settings.user.test_reminder_list_name
+        if _has_non_empty_listing(raw) and contains_expected_name(raw, expected_reminders):
+            logger.info("self_diagnostic: mcp reminders ok")
+            _stdout("AGENT: self_diagnostic mcp reminders ok")
+            results.append("- mcp/reminders: ok (reminder lists listed)")
+        else:
+            if _has_non_empty_listing(raw):
+                logger.warning(
+                    "self_diagnostic: mcp reminders missing expected name (%s)",
+                    expected_reminders,
+                )
+                _stdout("AGENT: self_diagnostic mcp reminders missing expected name")
+                results.append(
+                    f"- mcp/reminders: error (missing expected reminder list: {expected_reminders})"
+                )
+            else:
+                logger.warning("self_diagnostic: mcp reminders empty list")
+                _stdout("AGENT: self_diagnostic mcp reminders empty list")
+                results.append("- mcp/reminders: error (no reminder lists)")
+    except Exception as exc:
+        logger.error(f"self_diagnostic mcp reminders failed: {exc}")
+        _stdout(f"AGENT: self_diagnostic mcp reminders failed ({exc})")
+        results.append(f"- mcp/reminders: error ({exc})")
+
+    # MCP github: fetch authenticated user.
+    try:
+        logger.info("self_diagnostic: mcp github get_authenticated_user")
+        _stdout("AGENT: self_diagnostic mcp github get_authenticated_user")
+        code = "result = github.get_me({})\nreturn result"
+        output = await ctx.deps.code_mode.call_tool_chain(code)
+        raw = extract_code_mode_result(output)
+        if _has_non_empty_listing(raw):
+            logger.info("self_diagnostic: mcp github ok")
+            _stdout("AGENT: self_diagnostic mcp github ok")
+            results.append("- mcp/github: ok (authenticated user)")
+        else:
+            logger.warning("self_diagnostic: mcp github empty response")
+            _stdout("AGENT: self_diagnostic mcp github empty response")
+            results.append("- mcp/github: error (empty response)")
+    except Exception as exc:
+        logger.error(f"self_diagnostic mcp github failed: {exc}")
+        _stdout(f"AGENT: self_diagnostic mcp github failed ({exc})")
+        results.append(f"- mcp/github: error ({exc})")
+
+    return results
+
+
 def _get_skill_registry() -> SkillRegistryLoader:
     global _skill_registry_loader
     if _skill_registry_loader is None:
@@ -163,6 +337,15 @@ def _get_skill_policy() -> DefaultPolicy:
     return _skill_policy
 
 
+def _get_op_registry() -> OpRegistryLoader:
+    """Return the cached op registry loader."""
+    global _op_registry_loader
+    if _op_registry_loader is None:
+        _op_registry_loader = OpRegistryLoader()
+        _op_registry_loader.load()
+    return _op_registry_loader
+
+
 async def _execute_skill(
     deps: AgentDeps,
     name: str,
@@ -172,6 +355,7 @@ async def _execute_skill(
     confirmed: bool = False,
 ) -> dict:
     registry = _get_skill_registry()
+    op_registry = _get_op_registry()
     policy = _get_skill_policy()
     allowed = set(_DEFAULT_ALLOWED_CAPABILITIES)
     if allow_capabilities and confirmed:
@@ -188,8 +372,15 @@ async def _execute_skill(
         policy=policy,
         adapters={
             "python": PythonSkillAdapter(),
-            "mcp": MCPSkillAdapter(deps.code_mode),
         },
+        op_runtime=OpRuntime(
+            registry=op_registry,
+            policy=policy,
+            adapters={
+                "native": NativeOpAdapter(),
+                "mcp": MCPOpAdapter(deps.code_mode),
+            },
+        ),
     )
     set_services(
         SkillServices(
@@ -431,23 +622,6 @@ def create_agent() -> Agent[AgentDeps, str]:
         logger.info("Tool: self_diagnostic")
         _stdout("AGENT: self_diagnostic started")
         results: list[str] = []
-        code_mode_enabled = ctx.deps.code_mode.client is not None
-
-        def _has_non_empty_listing(raw: str | None) -> bool:
-            if raw is None:
-                return False
-            if raw in ("", "None", "null", "[]", "{}"):
-                return False
-            parsed = parse_code_mode_payload(raw)
-            text = extract_content_text(parsed)
-            if text is not None:
-                return bool(text.strip())
-            if isinstance(parsed, (list, tuple, set, dict)):
-                return bool(parsed)
-            return parsed is not None
-
-        def _has_tool_results(raw: str) -> bool:
-            return bool(re.search(r"^- \S+:", raw, re.MULTILINE))
 
         # Obsidian: list base vault directory.
         try:
@@ -528,194 +702,9 @@ def create_agent() -> Agent[AgentDeps, str]:
             _stdout(f"AGENT: self_diagnostic qdrant failed ({exc})")
             results.append(f"- qdrant: error ({exc})")
 
-        # Code-Mode: search tools to confirm UTCP is available.
-        if not code_mode_enabled:
-            logger.info("self_diagnostic: code-mode search_tools skipped (not configured)")
-            _stdout("AGENT: self_diagnostic code-mode search_tools skipped (not configured)")
-            results.append("- code-mode: skipped (not configured)")
-        else:
-            try:
-                logger.info("self_diagnostic: code-mode search_tools")
-                _stdout("AGENT: self_diagnostic code-mode search_tools")
-                response = await ctx.deps.code_mode.search_tools("list tools")
-                if response.startswith("Code-Mode is not configured"):
-                    logger.warning("self_diagnostic: code-mode not configured")
-                    _stdout("AGENT: self_diagnostic code-mode not configured")
-                    results.append("- code-mode: error (not configured)")
-                elif _has_tool_results(response):
-                    logger.info("self_diagnostic: code-mode ok (search_tools)")
-                    _stdout("AGENT: self_diagnostic code-mode ok (search_tools)")
-                    results.append("- code-mode: ok (search_tools)")
-                else:
-                    logger.warning("self_diagnostic: code-mode empty search_tools result")
-                    _stdout("AGENT: self_diagnostic code-mode empty search_tools result")
-                    results.append("- code-mode: error (empty tool search)")
-            except Exception as exc:
-                logger.error(f"self_diagnostic code-mode failed: {exc}")
-                _stdout(f"AGENT: self_diagnostic code-mode failed ({exc})")
-                results.append(f"- code-mode: error ({exc})")
-
-        # MCP filesystem: list base directory.
-        if not code_mode_enabled:
-            logger.info("self_diagnostic: mcp filesystem skipped (code-mode not configured)")
-            _stdout("AGENT: self_diagnostic mcp filesystem skipped (code-mode not configured)")
-            results.append("- mcp/filesystem: skipped (not configured)")
-        else:
-            try:
-                logger.info("self_diagnostic: mcp filesystem list_directory")
-                _stdout("AGENT: self_diagnostic mcp filesystem list_directory")
-                allowed_code = "result = filesystem.list_allowed_directories({})\nreturn result"
-                allowed_output = await ctx.deps.code_mode.call_tool_chain(allowed_code)
-                allowed_raw = extract_code_mode_result(allowed_output)
-                allowed_parsed = parse_code_mode_payload(allowed_raw)
-                allowed_dirs = extract_allowed_directories(allowed_parsed)
-                if not allowed_dirs:
-                    allowed_dirs = extract_allowed_directories_from_text(allowed_output)
-                if not allowed_dirs:
-                    logger.warning("self_diagnostic: mcp filesystem no allowed directories")
-                    _stdout("AGENT: self_diagnostic mcp filesystem no allowed directories")
-                    results.append("- mcp/filesystem: error (no allowed directories)")
-                else:
-                    base_path = Path(os.path.expanduser(allowed_dirs[0])).resolve()
-                    code = f"result = filesystem.list_directory({{'path': {str(base_path)!r}}})\nreturn result"
-                    output = await ctx.deps.code_mode.call_tool_chain(code)
-                    raw = extract_code_mode_result(output)
-                    if _has_non_empty_listing(raw):
-                        logger.info("self_diagnostic: mcp filesystem ok")
-                        _stdout("AGENT: self_diagnostic mcp filesystem ok")
-                        results.append("- mcp/filesystem: ok (base directory listed)")
-                    else:
-                        logger.warning("self_diagnostic: mcp filesystem empty listing")
-                        _stdout("AGENT: self_diagnostic mcp filesystem empty listing")
-                        results.append("- mcp/filesystem: error (empty directory listing)")
-            except Exception as exc:
-                logger.error(f"self_diagnostic mcp filesystem failed: {exc}")
-                _stdout(f"AGENT: self_diagnostic mcp filesystem failed ({exc})")
-                results.append(f"- mcp/filesystem: error ({exc})")
-
-        # MCP calendar: list event calendars.
-        if not code_mode_enabled:
-            logger.info("self_diagnostic: mcp calendar skipped (code-mode not configured)")
-            _stdout("AGENT: self_diagnostic mcp calendar skipped (code-mode not configured)")
-            results.append("- mcp/calendar: skipped (not configured)")
-        else:
-            try:
-                logger.info("self_diagnostic: mcp calendar list_event_calendars")
-                _stdout("AGENT: self_diagnostic mcp calendar list_event_calendars")
-                code = "result = eventkit.list_event_calendars({})\nreturn result"
-                output = await ctx.deps.code_mode.call_tool_chain(code)
-                raw = extract_code_mode_result(output)
-                expected_calendar = settings.user.test_calendar_name
-                if _has_non_empty_listing(raw) and contains_expected_name(raw, expected_calendar):
-                    logger.info("self_diagnostic: mcp calendar ok")
-                    _stdout("AGENT: self_diagnostic mcp calendar ok")
-                    results.append("- mcp/calendar: ok (calendars listed)")
-                else:
-                    if _has_non_empty_listing(raw):
-                        logger.warning(
-                            "self_diagnostic: mcp calendar missing expected name (%s)",
-                            expected_calendar,
-                        )
-                        _stdout("AGENT: self_diagnostic mcp calendar missing expected name")
-                        results.append(
-                            f"- mcp/calendar: error (missing expected calendar: {expected_calendar})"
-                        )
-                    else:
-                        logger.warning("self_diagnostic: mcp calendar empty list")
-                        _stdout("AGENT: self_diagnostic mcp calendar empty list")
-                        results.append("- mcp/calendar: error (no calendars)")
-            except Exception as exc:
-                logger.error(f"self_diagnostic mcp calendar failed: {exc}")
-                _stdout(f"AGENT: self_diagnostic mcp calendar failed ({exc})")
-                results.append(f"- mcp/calendar: error ({exc})")
-
-        # MCP reminders: list reminder lists.
-        if not code_mode_enabled:
-            logger.info("self_diagnostic: mcp reminders skipped (code-mode not configured)")
-            _stdout("AGENT: self_diagnostic mcp reminders skipped (code-mode not configured)")
-            results.append("- mcp/reminders: skipped (not configured)")
-        else:
-            try:
-                logger.info("self_diagnostic: mcp reminders list_calendars")
-                _stdout("AGENT: self_diagnostic mcp reminders list_calendars")
-                code = "result = eventkit.list_calendars({})\nreturn result"
-                output = await ctx.deps.code_mode.call_tool_chain(code)
-                raw = extract_code_mode_result(output)
-                expected_reminders = settings.user.test_reminder_list_name
-                if _has_non_empty_listing(raw) and contains_expected_name(raw, expected_reminders):
-                    logger.info("self_diagnostic: mcp reminders ok")
-                    _stdout("AGENT: self_diagnostic mcp reminders ok")
-                    results.append("- mcp/reminders: ok (reminder lists listed)")
-                else:
-                    if _has_non_empty_listing(raw):
-                        logger.warning(
-                            "self_diagnostic: mcp reminders missing expected name (%s)",
-                            expected_reminders,
-                        )
-                        _stdout("AGENT: self_diagnostic mcp reminders missing expected name")
-                        results.append(
-                            f"- mcp/reminders: error (missing expected reminder list: {expected_reminders})"
-                        )
-                    else:
-                        logger.warning("self_diagnostic: mcp reminders empty list")
-                        _stdout("AGENT: self_diagnostic mcp reminders empty list")
-                        results.append("- mcp/reminders: error (no reminder lists)")
-            except Exception as exc:
-                logger.error(f"self_diagnostic mcp reminders failed: {exc}")
-                _stdout(f"AGENT: self_diagnostic mcp reminders failed ({exc})")
-                results.append(f"- mcp/reminders: error ({exc})")
-
-        # MCP github: fetch authenticated user.
-        if not code_mode_enabled:
-            logger.info("self_diagnostic: mcp github skipped (code-mode not configured)")
-            _stdout("AGENT: self_diagnostic mcp github skipped (code-mode not configured)")
-            results.append("- mcp/github: skipped (not configured)")
-        else:
-            try:
-                logger.info("self_diagnostic: mcp github get_authenticated_user")
-                _stdout("AGENT: self_diagnostic mcp github get_authenticated_user")
-                code = "result = github.get_me({})\nreturn result"
-                output = await ctx.deps.code_mode.call_tool_chain(code)
-                raw = extract_code_mode_result(output)
-                if _has_non_empty_listing(raw):
-                    logger.info("self_diagnostic: mcp github ok")
-                    _stdout("AGENT: self_diagnostic mcp github ok")
-                    results.append("- mcp/github: ok (authenticated user)")
-                else:
-                    logger.warning("self_diagnostic: mcp github empty response")
-                    _stdout("AGENT: self_diagnostic mcp github empty response")
-                    results.append("- mcp/github: error (empty response)")
-            except Exception as exc:
-                logger.error(f"self_diagnostic mcp github failed: {exc}")
-                _stdout(f"AGENT: self_diagnostic mcp github failed ({exc})")
-                results.append(f"- mcp/github: error ({exc})")
+        results.extend(await _run_code_mode_diagnostics(ctx))
 
         return "\n".join(results)
-
-    @agent.tool
-    async def code_mode_search_tools(
-        ctx: RunContext[AgentDeps], query: str
-    ) -> str:
-        """Search Code-Mode/UTCP tools for relevant external capabilities."""
-        logger.info(f"Tool: code_mode_search_tools(query={query!r})")
-        return await ctx.deps.code_mode.search_tools(query)
-
-    @agent.tool
-    async def code_mode_call_tool_chain(
-        ctx: RunContext[AgentDeps],
-        code: str,
-        confirm_destructive: bool = False,
-        timeout: int | None = None,
-    ) -> str:
-        """Execute a Code-Mode Python tool chain against MCP servers."""
-        logger.info("Tool: code_mode_call_tool_chain")
-        result = await ctx.deps.code_mode.call_tool_chain(
-            code,
-            confirm_destructive=confirm_destructive,
-            timeout=timeout,
-        )
-        logger.info("code_mode_call_tool_chain result: %s chars", len(result))
-        return result
 
     @agent.tool
     async def list_skills(

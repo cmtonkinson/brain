@@ -4,10 +4,11 @@ from pathlib import Path
 import pytest
 
 from skills.context import SkillContext
+from skills.errors import SkillPolicyError, SkillValidationError
 from skills.policy import DefaultPolicy
 from skills.registry import SkillRegistryLoader
 from skills.registry_schema import AutonomyLevel
-from skills.runtime import SkillPolicyError, SkillRuntime, SkillValidationError
+from skills.runtime import SkillRuntime
 
 
 class DummyAdapter:
@@ -17,7 +18,7 @@ class DummyAdapter:
         """Initialize the adapter with a static output."""
         self._output = output
 
-    async def execute(self, skill, inputs, context):
+    async def execute(self, skill, inputs, context, invoker=None):
         """Return the static output for any invocation."""
         return self._output
 
@@ -37,6 +38,7 @@ def _setup_registry(
 ) -> SkillRegistryLoader:
     """Create a temporary registry for runtime validation tests."""
     registry_path = tmp_path / "skill-registry.json"
+    op_registry_path = tmp_path / "op-registry.json"
     capabilities_path = tmp_path / "capabilities.json"
 
     _write_json(
@@ -59,6 +61,7 @@ def _setup_registry(
                     "version": "1.0.0",
                     "status": status,
                     "description": "Search notes",
+                    "kind": "logic",
                     "inputs_schema": inputs_schema
                     or {
                         "type": "object",
@@ -70,10 +73,40 @@ def _setup_registry(
                     "side_effects": [],
                     "autonomy": autonomy,
                     "entrypoint": {"runtime": "python", "module": "skills.search_notes", "handler": "run"},
+                    "call_targets": [{"kind": "op", "name": "dummy_op", "version": "1.0.0"}],
                     "failure_modes": [
                         {
                             "code": "skill_unexpected_error",
                             "description": "Unexpected skill failure.",
+                            "retryable": False,
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    _write_json(
+        op_registry_path,
+        {
+            "registry_version": "1.0.0",
+            "ops": [
+                {
+                    "name": "dummy_op",
+                    "version": "1.0.0",
+                    "status": "enabled",
+                    "description": "Dummy op",
+                    "inputs_schema": {"type": "object"},
+                    "outputs_schema": {"type": "object"},
+                    "capabilities": ["obsidian.read"],
+                    "side_effects": [],
+                    "autonomy": "L1",
+                    "runtime": "native",
+                    "module": "json",
+                    "handler": "dumps",
+                    "failure_modes": [
+                        {
+                            "code": "op_unexpected_error",
+                            "description": "Unexpected op failure.",
                             "retryable": False,
                         }
                     ],
@@ -86,6 +119,7 @@ def _setup_registry(
         base_path=registry_path,
         overlay_paths=[],
         capability_path=capabilities_path,
+        op_registry_path=op_registry_path,
     )
     loader.load()
     return loader
@@ -121,7 +155,7 @@ async def test_runtime_validates_outputs(tmp_path):
         policy=DefaultPolicy(),
         adapters={"python": DummyAdapter({"results": "oops"})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"})
+    context = SkillContext(allowed_capabilities={"obsidian.read"}, confirmed=True)
 
     with pytest.raises(SkillValidationError):
         await runtime.execute("search_notes", {"query": "hi"}, context)
@@ -187,6 +221,7 @@ overrides:
         base_path=tmp_path / "skill-registry.json",
         overlay_paths=[overlay_path],
         capability_path=tmp_path / "capabilities.json",
+        op_registry_path=tmp_path / "op-registry.json",
     )
     loader.load()
     runtime = SkillRuntime(

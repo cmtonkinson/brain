@@ -8,3 +8,4 @@ def test_child_context_cannot_escalate_capabilities():
 
     assert child.allowed_capabilities == {"obsidian.read"}
     assert child.parent_invocation_id == parent.invocation_id
+    assert child.trace_id == parent.trace_id

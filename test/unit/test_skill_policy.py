@@ -1,15 +1,26 @@
 from skills.policy import DefaultPolicy, PolicyContext
 from skills.registry import SkillRuntimeEntry, ActorPolicy
-from skills.registry_schema import AutonomyLevel, SkillDefinition, SkillStatus, RateLimit, Entrypoint, EntrypointRuntime
+from skills.registry_schema import (
+    AutonomyLevel,
+    CallTargetKind,
+    CallTargetRef,
+    Entrypoint,
+    EntrypointRuntime,
+    LogicSkillDefinition,
+    RateLimit,
+    SkillKind,
+    SkillStatus,
+)
 
 
 def _make_skill(capabilities, autonomy=AutonomyLevel.L1, rate_limit=None, policy_tags=None, actors=None):
     """Build a SkillRuntimeEntry for policy evaluation tests."""
-    definition = SkillDefinition(
+    definition = LogicSkillDefinition(
         name="search_notes",
         version="1.0.0",
         status=SkillStatus.enabled,
         description="Search notes",
+        kind=SkillKind.logic,
         inputs_schema={"type": "object"},
         outputs_schema={"type": "object"},
         capabilities=capabilities,
@@ -17,6 +28,7 @@ def _make_skill(capabilities, autonomy=AutonomyLevel.L1, rate_limit=None, policy
         autonomy=autonomy,
         policy_tags=policy_tags or [],
         entrypoint=Entrypoint(runtime=EntrypointRuntime.python, module="x", handler="run"),
+        call_targets=[CallTargetRef(kind=CallTargetKind.op, name="dummy_op", version="1.0.0")],
         failure_modes=[
             {
                 "code": "skill_unexpected_error",
@@ -63,7 +75,7 @@ def test_policy_enforces_rate_limits():
     """Ensure rate limiting blocks excess invocations."""
     policy = DefaultPolicy()
     skill = _make_skill(["obsidian.read"], rate_limit=RateLimit(max_per_minute=1))
-    context = PolicyContext(allowed_capabilities={"obsidian.read"})
+    context = PolicyContext(allowed_capabilities={"obsidian.read"}, confirmed=True)
 
     first = policy.evaluate(skill, context)
     second = policy.evaluate(skill, context)

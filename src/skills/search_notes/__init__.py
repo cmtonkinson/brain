@@ -4,32 +4,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from skills.services import get_services
+from skills.composition import SkillInvocation
+from skills.context import SkillContext
 
 
-async def run(inputs: dict[str, Any], context) -> dict[str, Any]:
-    obsidian = get_services().obsidian
-    if obsidian is None:
-        raise RuntimeError("Obsidian service not available")
-
+async def run(
+    inputs: dict[str, Any],
+    context: SkillContext,
+    invoker: SkillInvocation | None = None,
+) -> dict[str, Any]:
+    """Search notes via the governed op invocation interface."""
+    if invoker is None:
+        raise RuntimeError("Skill invocation interface not available")
     query = inputs["query"]
     limit = inputs.get("limit", 10)
-    results = await obsidian.search(query, limit=limit)
-
-    formatted = []
-    for result in results:
-        if isinstance(result, dict):
-            path = result.get("path") or result.get("filename") or "Unknown"
-            matches = result.get("matches", [])
-            snippet = ""
-            if matches:
-                first = matches[0]
-                if isinstance(first, dict):
-                    snippet = first.get("match") or first.get("context") or ""
-                else:
-                    snippet = str(first)
-            formatted.append(f"{path}: {snippet}".strip())
-        else:
-            formatted.append(str(result))
-
-    return {"results": formatted}
+    result = await invoker.invoke_op(
+        "obsidian_search",
+        {"query": query, "limit": limit},
+        version="1.0.0",
+    )
+    return result.output

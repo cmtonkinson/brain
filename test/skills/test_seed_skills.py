@@ -4,7 +4,7 @@ import pytest
 
 from skills.adapters.python_adapter import PythonSkillAdapter
 from skills.services import SkillServices
-from skills.runtime import SkillPolicyError
+from skills.errors import SkillPolicyError
 from test.skills.harness import SkillTestHarness, DryRunResult
 from test.skills.mocks.obsidian import MockObsidianClient
 from test.skills.mocks.fixtures import SAMPLE_NOTES
