@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import re
@@ -28,6 +29,14 @@ from tools.memory import ConversationMemory
 from indexer import index_vault as run_indexer
 from services.vector_search import search_vault as search_vault_vectors
 from qdrant_client import QdrantClient
+from skills.adapters.mcp_adapter import MCPSkillAdapter
+from skills.adapters.python_adapter import PythonSkillAdapter
+from skills.context import SkillContext
+from skills.policy import DefaultPolicy
+from skills.registry import SkillRegistryLoader
+from skills.runtime import SkillRuntime, SkillPolicyError, SkillRuntimeError
+from skills.registry_schema import AutonomyLevel, SkillStatus
+from skills.services import SkillServices, set_services
 from self_diagnostic_utils import (
     contains_expected_name,
     extract_allowed_directories,
@@ -71,6 +80,12 @@ logger = logging.getLogger(__name__)
 _brain_metrics: BrainMetrics | None = None
 _summary_agent: Agent[None, str] | None = None
 _indexer_lock = asyncio.Lock()
+_skill_registry_loader: SkillRegistryLoader | None = None
+_skill_policy: DefaultPolicy | None = None
+_DEFAULT_ALLOWED_CAPABILITIES = {
+    "obsidian.read",
+    "vault.search",
+}
 
 
 # --- Dependency Injection ---
@@ -133,6 +148,60 @@ def _get_summary_agent() -> Agent[None, str]:
     return _summary_agent
 
 
+def _get_skill_registry() -> SkillRegistryLoader:
+    global _skill_registry_loader
+    if _skill_registry_loader is None:
+        _skill_registry_loader = SkillRegistryLoader()
+        _skill_registry_loader.load()
+    return _skill_registry_loader
+
+
+def _get_skill_policy() -> DefaultPolicy:
+    global _skill_policy
+    if _skill_policy is None:
+        _skill_policy = DefaultPolicy()
+    return _skill_policy
+
+
+async def _execute_skill(
+    deps: AgentDeps,
+    name: str,
+    inputs: dict,
+    version: str | None = None,
+    allow_capabilities: list[str] | None = None,
+    confirmed: bool = False,
+) -> dict:
+    registry = _get_skill_registry()
+    policy = _get_skill_policy()
+    allowed = set(_DEFAULT_ALLOWED_CAPABILITIES)
+    if allow_capabilities and confirmed:
+        allowed.update(allow_capabilities)
+    context = SkillContext(
+        allowed_capabilities=allowed,
+        actor=deps.signal_sender,
+        channel=deps.channel,
+        max_autonomy=AutonomyLevel.L1,
+        confirmed=confirmed,
+    )
+    runtime = SkillRuntime(
+        registry=registry,
+        policy=policy,
+        adapters={
+            "python": PythonSkillAdapter(),
+            "mcp": MCPSkillAdapter(deps.code_mode),
+        },
+    )
+    set_services(
+        SkillServices(
+            obsidian=deps.obsidian,
+            code_mode=deps.code_mode,
+            signal=None,
+        )
+    )
+    result = await runtime.execute(name, inputs, context, version=version)
+    return result.output
+
+
 # --- Agent Definition ---
 
 
@@ -175,49 +244,21 @@ def create_agent() -> Agent[AgentDeps, str]:
         logger.info(f"Tool: search_notes(query={query!r}, limit={limit})")
 
         try:
-            results = await ctx.deps.obsidian.search(query, limit=limit)
-
+            output = await _execute_skill(
+                ctx.deps,
+                "search_notes",
+                {"query": query, "limit": limit},
+            )
+            results = output.get("results", [])
             if not results:
                 logger.info("search_notes: no results")
                 return f"No notes found matching '{query}'."
 
             logger.info("search_notes: %s result(s)", len(results))
-            # Format results for the LLM
-            formatted = []
-            for i, result in enumerate(results, 1):
-                if isinstance(result, dict):
-                    filename = (
-                        result.get("filename")
-                        or result.get("path")
-                        or result.get("file")
-                        or "Unknown"
-                    )
-                    matches = result.get("matches", [])
-                else:
-                    filename = str(result)
-                    matches = []
-
-                snippet = ""
-                if isinstance(matches, list) and matches:
-                    first = matches[0]
-                    if isinstance(first, dict):
-                        snippet_value = (
-                            first.get("match")
-                            or first.get("context")
-                            or first.get("snippet")
-                            or ""
-                        )
-                    else:
-                        snippet_value = first
-                    snippet = str(snippet_value)[:200]
-
-                formatted.append(f"{i}. **{filename}**")
-                if snippet:
-                    formatted.append(f"   {snippet}...")
-
+            formatted = [f"{i}. {item}" for i, item in enumerate(results, 1)]
             return f"Found {len(results)} note(s):\n\n" + "\n".join(formatted)
 
-        except Exception as e:
+        except SkillRuntimeError as e:
             logger.error(f"search_notes failed: {e}")
             return f"Error searching notes: {e}"
 
@@ -301,9 +342,9 @@ def create_agent() -> Agent[AgentDeps, str]:
         logger.info(f"Tool: read_note(path={path!r})")
 
         try:
-            content = await ctx.deps.obsidian.get_note(path)
+            output = await _execute_skill(ctx.deps, "read_note", {"path": path})
+            content = output.get("content", "")
 
-            # Truncate very long notes
             if len(content) > 8000:
                 content = content[:8000] + "\n\n... (note truncated)"
 
@@ -312,13 +353,13 @@ def create_agent() -> Agent[AgentDeps, str]:
 
         except FileNotFoundError:
             return f"Note not found: {path}"
-        except Exception as e:
+        except SkillRuntimeError as e:
             logger.error(f"read_note failed: {e}")
             return f"Error reading note: {e}"
 
     @agent.tool
     async def create_note(
-        ctx: RunContext[AgentDeps], path: str, content: str
+        ctx: RunContext[AgentDeps], path: str, content: str, confirm: bool = False
     ) -> str:
         """Create a new note in the Obsidian vault.
 
@@ -331,18 +372,27 @@ def create_agent() -> Agent[AgentDeps, str]:
         """
         logger.info(f"Tool: create_note(path={path!r})")
 
-        try:
-            result = await ctx.deps.obsidian.create_note(path, content)
-            logger.info("create_note: %s chars to %s", len(content), result.get("path", path))
-            return f"Created note: {result.get('path', path)}"
+        if not confirm:
+            return "Confirmation required to create notes. Ask the user, then retry with confirm=True."
 
-        except Exception as e:
+        try:
+            output = await _execute_skill(
+                ctx.deps,
+                "create_note",
+                {"path": path, "content": content},
+                allow_capabilities=["obsidian.write"],
+                confirmed=confirm,
+            )
+            logger.info("create_note: %s chars to %s", len(content), output.get("path", path))
+            return f"Created note: {output.get('path', path)}"
+
+        except SkillRuntimeError as e:
             logger.error(f"create_note failed: {e}")
             return f"Error creating note: {e}"
 
     @agent.tool
     async def append_to_note(
-        ctx: RunContext[AgentDeps], path: str, content: str
+        ctx: RunContext[AgentDeps], path: str, content: str, confirm: bool = False
     ) -> str:
         """Append content to an existing note in Obsidian.
 
@@ -355,14 +405,23 @@ def create_agent() -> Agent[AgentDeps, str]:
         """
         logger.info(f"Tool: append_to_note(path={path!r})")
 
+        if not confirm:
+            return "Confirmation required to append notes. Ask the user, then retry with confirm=True."
+
         try:
-            result = await ctx.deps.obsidian.append_to_note(path, content)
-            logger.info("append_to_note: %s chars to %s", len(content), result.get("path", path))
-            return f"Appended to note: {result.get('path', path)}"
+            output = await _execute_skill(
+                ctx.deps,
+                "append_note",
+                {"path": path, "content": content},
+                allow_capabilities=["obsidian.write"],
+                confirmed=confirm,
+            )
+            logger.info("append_to_note: %s chars to %s", len(content), output.get("path", path))
+            return f"Appended to note: {output.get('path', path)}"
 
         except FileNotFoundError:
             return f"Note not found: {path}. Use create_note to create it first."
-        except Exception as e:
+        except SkillRuntimeError as e:
             logger.error(f"append_to_note failed: {e}")
             return f"Error appending to note: {e}"
 
@@ -657,6 +716,63 @@ def create_agent() -> Agent[AgentDeps, str]:
         )
         logger.info("code_mode_call_tool_chain result: %s chars", len(result))
         return result
+
+    @agent.tool
+    async def list_skills(
+        ctx: RunContext[AgentDeps],
+        status: str | None = None,
+        capability: str | None = None,
+    ) -> str:
+        """List skills from the registry, optionally filtered by status/capability."""
+        registry = _get_skill_registry()
+        try:
+            skill_status = SkillStatus(status) if status else None
+        except ValueError:
+            return f"Unknown status: {status}"
+        skills = registry.list_skills(status=skill_status, capability=capability)
+        if not skills:
+            return "No skills matched the filter."
+        lines = []
+        for skill in skills:
+            caps = ", ".join(skill.definition.capabilities)
+            lines.append(
+                f"- {skill.definition.name}@{skill.definition.version} "
+                f"({skill.status.value}, caps: {caps})"
+            )
+        return "Skills:\n" + "\n".join(lines)
+
+    @agent.tool
+    async def run_skill(
+        ctx: RunContext[AgentDeps],
+        name: str,
+        inputs: dict,
+        version: str | None = None,
+        allow_capabilities: list[str] | None = None,
+        confirm: bool = False,
+    ) -> str:
+        """Run a skill by name/version through the skill runtime."""
+        if allow_capabilities and not confirm:
+            return (
+                "Confirmation required to grant extra capabilities. "
+                "Ask the user, then retry with confirm=True."
+            )
+        try:
+            result = await _execute_skill(
+                ctx.deps,
+                name,
+                inputs,
+                version=version,
+                allow_capabilities=allow_capabilities,
+                confirmed=confirm,
+            )
+        except SkillPolicyError as exc:
+            return f"Skill denied by policy: {exc.details.get('reasons', [])}"
+        except SkillRuntimeError as exc:
+            return f"Skill failed ({exc.code}): {exc}"
+        except Exception as exc:
+            return f"Skill execution error: {exc}"
+
+        return json.dumps(result, indent=2)
 
     return agent
 

@@ -1,7 +1,6 @@
 # Brain
-
-An exocortex for attention, memory, and action rooted in data soverignty (a self-hosted virtual assistant). Brain runs a
-containerized agent that integrates with Obsidian and MCP tools while keeping your data under your control.
+An exocortex for attention, memory, and action. Brain is a local-first AI system grounded in data sovereignty and
+durable knowledge; "cognitive infrastructure" that prioritizes context, directs intent deliberately, and closes loops.
 
 ## Overview
 

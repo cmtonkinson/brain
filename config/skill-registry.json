@@ -1,0 +1,297 @@
+{
+  "registry_version": "1.0.0",
+  "skills": [
+    {
+      "name": "search_notes",
+      "version": "1.0.0",
+      "status": "enabled",
+      "description": "Search notes in the Obsidian vault.",
+      "inputs_schema": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": {"type": "string"},
+          "limit": {"type": "integer", "minimum": 1}
+        }
+      },
+      "outputs_schema": {
+        "type": "object",
+        "required": ["results"],
+        "properties": {
+          "results": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "capabilities": ["obsidian.read", "vault.search"],
+      "side_effects": [],
+      "autonomy": "L1",
+      "owners": ["core"],
+      "rate_limit": {"max_per_minute": 10},
+      "entrypoint": {
+        "runtime": "python",
+        "module": "skills.search_notes",
+        "handler": "run"
+      },
+      "redaction": {
+        "inputs": ["query"],
+        "outputs": []
+      },
+      "failure_modes": [
+        {
+          "code": "skill_unexpected_error",
+          "description": "Unexpected skill failure.",
+          "retryable": false
+        }
+      ]
+    },
+    {
+      "name": "read_note",
+      "version": "1.0.0",
+      "status": "enabled",
+      "description": "Read a note from the Obsidian vault.",
+      "inputs_schema": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string"}
+        }
+      },
+      "outputs_schema": {
+        "type": "object",
+        "required": ["content"],
+        "properties": {
+          "content": {"type": "string"}
+        }
+      },
+      "capabilities": ["obsidian.read"],
+      "side_effects": [],
+      "autonomy": "L1",
+      "owners": ["core"],
+      "rate_limit": {"max_per_minute": 10},
+      "entrypoint": {
+        "runtime": "python",
+        "module": "skills.read_note",
+        "handler": "run"
+      },
+      "failure_modes": [
+        {
+          "code": "skill_unexpected_error",
+          "description": "Unexpected skill failure.",
+          "retryable": false
+        }
+      ]
+    },
+    {
+      "name": "create_note",
+      "version": "1.0.0",
+      "status": "enabled",
+      "description": "Create or append a note in the Obsidian vault.",
+      "inputs_schema": {
+        "type": "object",
+        "required": ["path", "content"],
+        "properties": {
+          "path": {"type": "string"},
+          "content": {"type": "string"}
+        }
+      },
+      "outputs_schema": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string"}
+        }
+      },
+      "capabilities": ["obsidian.write"],
+      "side_effects": ["obsidian.write"],
+      "autonomy": "L1",
+      "policy_tags": ["requires_review"],
+      "owners": ["core"],
+      "rate_limit": {"max_per_minute": 5},
+      "entrypoint": {
+        "runtime": "python",
+        "module": "skills.create_note",
+        "handler": "run"
+      },
+      "redaction": {
+        "inputs": ["content"],
+        "outputs": []
+      },
+      "failure_modes": [
+        {
+          "code": "skill_unexpected_error",
+          "description": "Unexpected skill failure.",
+          "retryable": false
+        }
+      ]
+    },
+    {
+      "name": "append_note",
+      "version": "1.0.0",
+      "status": "enabled",
+      "description": "Append content to an existing note.",
+      "inputs_schema": {
+        "type": "object",
+        "required": ["path", "content"],
+        "properties": {
+          "path": {"type": "string"},
+          "content": {"type": "string"}
+        }
+      },
+      "outputs_schema": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {"type": "string"}
+        }
+      },
+      "capabilities": ["obsidian.write"],
+      "side_effects": ["obsidian.write"],
+      "autonomy": "L1",
+      "policy_tags": ["requires_review"],
+      "owners": ["core"],
+      "rate_limit": {"max_per_minute": 5},
+      "entrypoint": {
+        "runtime": "python",
+        "module": "skills.append_note",
+        "handler": "run"
+      },
+      "redaction": {
+        "inputs": ["content"],
+        "outputs": []
+      },
+      "failure_modes": [
+        {
+          "code": "skill_unexpected_error",
+          "description": "Unexpected skill failure.",
+          "retryable": false
+        }
+      ]
+    },
+    {
+      "name": "clip_and_summarize_url",
+      "version": "1.0.0",
+      "status": "disabled",
+      "description": "Fetch a URL, store the raw artifact, and summarize it into a note.",
+      "inputs_schema": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": {"type": "string", "format": "uri"},
+          "note_path": {"type": "string"}
+        }
+      },
+      "outputs_schema": {
+        "type": "object",
+        "required": ["summary", "note_path"],
+        "properties": {
+          "summary": {"type": "string"},
+          "note_path": {"type": "string"}
+        }
+      },
+      "capabilities": ["web.fetch", "blob.store", "obsidian.write"],
+      "side_effects": ["web.fetch", "blob.store", "obsidian.write"],
+      "autonomy": "L1",
+      "policy_tags": ["requires_review"],
+      "owners": ["core"],
+      "rate_limit": {"max_per_minute": 2},
+      "entrypoint": {
+        "runtime": "python",
+        "module": "skills.clip_and_summarize_url",
+        "handler": "run"
+      },
+      "redaction": {
+        "inputs": ["url"],
+        "outputs": []
+      },
+      "failure_modes": [
+        {
+          "code": "skill_unexpected_error",
+          "description": "Unexpected skill failure.",
+          "retryable": false
+        }
+      ]
+    },
+    {
+      "name": "create_reminder",
+      "version": "1.0.0",
+      "status": "disabled",
+      "description": "Create a reminder from structured input.",
+      "inputs_schema": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": {"type": "string"},
+          "due_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "outputs_schema": {
+        "type": "object",
+        "required": ["reminder_id"],
+        "properties": {
+          "reminder_id": {"type": "string"}
+        }
+      },
+      "capabilities": ["reminders.write"],
+      "side_effects": ["reminders.write"],
+      "autonomy": "L1",
+      "policy_tags": ["requires_review"],
+      "owners": ["core"],
+      "rate_limit": {"max_per_minute": 6},
+      "entrypoint": {
+        "runtime": "python",
+        "module": "skills.create_reminder",
+        "handler": "run"
+      },
+      "failure_modes": [
+        {
+          "code": "skill_unexpected_error",
+          "description": "Unexpected skill failure.",
+          "retryable": false
+        }
+      ]
+    },
+    {
+      "name": "send_message",
+      "version": "1.0.0",
+      "status": "disabled",
+      "description": "Send an outbound message over an approved channel.",
+      "inputs_schema": {
+        "type": "object",
+        "required": ["channel", "recipient", "body"],
+        "properties": {
+          "channel": {"type": "string"},
+          "recipient": {"type": "string"},
+          "body": {"type": "string"}
+        }
+      },
+      "outputs_schema": {
+        "type": "object",
+        "required": ["message_id"],
+        "properties": {
+          "message_id": {"type": "string"}
+        }
+      },
+      "capabilities": ["messaging.send"],
+      "side_effects": ["messaging.send"],
+      "autonomy": "L1",
+      "policy_tags": ["requires_review"],
+      "owners": ["core"],
+      "rate_limit": {"max_per_minute": 6},
+      "entrypoint": {
+        "runtime": "python",
+        "module": "skills.send_message",
+        "handler": "run"
+      },
+      "redaction": {
+        "inputs": ["recipient", "body"],
+        "outputs": []
+      },
+      "failure_modes": [
+        {
+          "code": "skill_unexpected_error",
+          "description": "Unexpected skill failure.",
+          "retryable": false
+        }
+      ]
+    }
+  ]
+}

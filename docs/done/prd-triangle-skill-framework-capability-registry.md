@@ -107,7 +107,7 @@ Every skill must declare:
 - side effects
 - required capabilities
 - autonomy level
-- failure modes
+- failure modes (structured error codes)
 
 Example (conceptual):
 
@@ -195,7 +195,6 @@ Each skill must be:
 - unit‑testable without the agent
 - testable with mocked tools
 - validated against its schema
-- safe to run in dry‑run mode (where applicable)
 
 Skills are the **unit of reliability**.
 

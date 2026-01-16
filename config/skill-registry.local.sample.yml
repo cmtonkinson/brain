@@ -1,0 +1,18 @@
+overlay_version: "1.0.0"
+overrides:
+  - name: search_notes
+    version: "1.0.0"
+    status: disabled
+    autonomy: L0
+    rate_limit:
+      max_per_minute: 2
+    channels:
+      allow:
+        - signal
+      deny:
+        - email
+    actors:
+      allow:
+        - user
+      deny:
+        - celery
