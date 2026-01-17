@@ -2662,7 +2662,7 @@ files = [
 aiohttp = ">=3.10"
 click = "*"
 fastuuid = ">=0.13.0"
-grpcio = {version = ">=1.75.0", markers = "python_version >= \"3.14\""}
+grpcio = {version = ">=1.62.3,<1.68.dev0 || >1.71.0,<1.71.1 || >1.71.1,<1.72.0 || >1.72.0,<1.72.1 || >1.72.1,<1.73.0 || >1.73.0", markers = "python_version < \"3.14\""}
 httpx = ">=0.23.0"
 importlib-metadata = ">=6.8.0"
 jinja2 = ">=3.1.2,<4.0.0"
@@ -4998,7 +4998,7 @@ files = [
 [package.dependencies]
 grpcio = ">=1.41.0"
 httpx = {version = ">=0.20.0", extras = ["http2"]}
-numpy = {version = ">=2.3.0", markers = "python_version >= \"3.14\""}
+numpy = {version = ">=2.1.0", markers = "python_version == \"3.13\""}
 portalocker = ">=2.7.0,<4.0"
 protobuf = ">=3.20.0"
 pydantic = ">=1.10.8,<2.0.dev0 || >2.2.0"
@@ -6620,5 +6620,5 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.14,<3.15"
-content-hash = "fb8294d945528cb8c62f594e97e5ac086c662488deac018b13d863e70ca64605"
+python-versions = ">=3.13,<3.14"
+content-hash = "7089cd7d3f53a6656b87915a2b83f0439b47ed5668a9ba7b8e99fd9eadf1d13f"

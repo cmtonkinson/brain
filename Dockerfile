@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -31,7 +31,7 @@ RUN pip install --no-cache-dir poetry && \
 RUN python - <<'PY'
 from pathlib import Path
 
-path = Path('/usr/local/lib/python3.14/site-packages/utcp_mcp/mcp_communication_protocol.py')
+path = Path('/usr/local/lib/python3.13/site-packages/utcp_mcp/mcp_communication_protocol.py')
 text = path.read_text(encoding='utf-8')
 old = 'outputs=mcp_tool.outputSchema,'
 new = 'outputs=mcp_tool.outputSchema or {},'
@@ -43,7 +43,7 @@ PY
 RUN python - <<'PY'
 from pathlib import Path
 
-path = Path('/usr/local/lib/python3.14/site-packages/utcp_mcp/mcp_communication_protocol.py')
+path = Path('/usr/local/lib/python3.13/site-packages/utcp_mcp/mcp_communication_protocol.py')
 text = path.read_text(encoding='utf-8')
 old = "if hasattr(result, 'structuredContent'):"
 new = "if hasattr(result, 'structuredContent') and result.structuredContent is not None:"
@@ -55,7 +55,7 @@ PY
 RUN python - <<'PY'
 from pathlib import Path
 
-path = Path('/usr/local/lib/python3.14/site-packages/utcp_mcp/mcp_communication_protocol.py')
+path = Path('/usr/local/lib/python3.13/site-packages/utcp_mcp/mcp_communication_protocol.py')
 text = path.read_text(encoding='utf-8')
 old = "if self._mcp_client is None or self._mcp_client.config != manual_call_template.config.mcpServers:\\n"
 new = "if self._mcp_client is None or self._mcp_client.config.get('mcpServers') != manual_call_template.config.mcpServers:\\n"
@@ -67,7 +67,7 @@ PY
 RUN python - <<'PY'
 from pathlib import Path
 
-path = Path('/usr/local/lib/python3.14/site-packages/utcp_code_mode/code_mode_utcp_client.py')
+path = Path('/usr/local/lib/python3.13/site-packages/utcp_code_mode/code_mode_utcp_client.py')
 text = path.read_text(encoding='utf-8')
 old = (
     "                if args is None:\\n"
@@ -94,7 +94,7 @@ PY
 RUN python - <<'PY'
 from pathlib import Path
 
-path = Path('/usr/local/lib/python3.14/site-packages/utcp_mcp/mcp_communication_protocol.py')
+path = Path('/usr/local/lib/python3.13/site-packages/utcp_mcp/mcp_communication_protocol.py')
 text = path.read_text(encoding='utf-8')
 
 # Fix single item case - add dict handling after attribute check

@@ -1,4 +1,7 @@
 # Brain
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Python: 3.13](https://img.shields.io/badge/Python-3.13-blue.svg)
+
 An exocortex for attention, memory, and action. Brain is a local-first AI system grounded in data sovereignty and
 durable knowledge; "cognitive infrastructure" that prioritizes context, directs intent deliberately, and closes loops.
 
@@ -80,7 +83,7 @@ Brain currently provides:
 
 - macOS host (for EventKit MCP and host gateway)
 - Docker + Docker Compose
-- Python 3.14+
+- Python 3.13
 - Obsidian + Local REST API plugin
 - Optional: Ollama for local embeddings
 
