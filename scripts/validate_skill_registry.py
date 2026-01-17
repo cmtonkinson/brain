@@ -18,6 +18,7 @@ from skills.registry_validation import (
 
 
 def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for registry validation."""
     parser = argparse.ArgumentParser(description="Validate skill registry files.")
     parser.add_argument(
         "--registry",
@@ -55,6 +56,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Run registry validation and return a process exit code."""
     args = _parse_args()
 
     if not args.registry.exists():

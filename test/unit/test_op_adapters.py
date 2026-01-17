@@ -1,3 +1,5 @@
+"""Unit tests for op adapter execution paths."""
+
 import sys
 from pathlib import Path
 

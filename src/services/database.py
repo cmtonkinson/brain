@@ -42,6 +42,7 @@ _sync_session_factory: sessionmaker | None = None
 
 
 def _get_sync_db_url() -> str:
+    """Return the sync SQLAlchemy database URL."""
     url = _db_url or "postgresql+asyncpg://brain:brain@localhost:5432/brain"
     if url.startswith("postgresql+asyncpg://"):
         return url.replace("postgresql+asyncpg://", "postgresql://", 1)
@@ -49,6 +50,7 @@ def _get_sync_db_url() -> str:
 
 
 def get_sync_engine():
+    """Return a cached synchronous SQLAlchemy engine."""
     global _sync_engine
     if _sync_engine is None:
         _sync_engine = create_engine(
@@ -59,6 +61,7 @@ def get_sync_engine():
 
 
 def get_sync_session() -> Session:
+    """Create a synchronous SQLAlchemy session."""
     global _sync_session_factory
     if _sync_session_factory is None:
         _sync_session_factory = sessionmaker(bind=get_sync_engine())
@@ -66,6 +69,7 @@ def get_sync_session() -> Session:
 
 
 def _run_migrations() -> None:
+    """Apply Alembic migrations to the configured database."""
     alembic_ini = Path(__file__).resolve().parents[2] / "alembic.ini"
     alembic_cfg = Config(str(alembic_ini))
     alembic_cfg.set_main_option("sqlalchemy.url", _get_sync_db_url())

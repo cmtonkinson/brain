@@ -1,3 +1,5 @@
+"""Seed skill tests for basic read/write behaviors."""
+
 from pathlib import Path
 
 import pytest
@@ -12,6 +14,7 @@ from test.skills.mocks.fixtures import SAMPLE_NOTES
 
 @pytest.mark.asyncio
 async def test_search_notes_skill():
+    """Search returns expected note matches."""
     harness = SkillTestHarness(
         registry_path=Path("config/skill-registry.json"),
         capabilities_path=Path("config/capabilities.json"),
@@ -31,6 +34,7 @@ async def test_search_notes_skill():
 
 @pytest.mark.asyncio
 async def test_create_note_dry_run():
+    """Dry-run create_note does not write to Obsidian."""
     harness = SkillTestHarness(
         registry_path=Path("config/skill-registry.json"),
         capabilities_path=Path("config/capabilities.json"),
@@ -54,6 +58,7 @@ async def test_create_note_dry_run():
 
 @pytest.mark.asyncio
 async def test_create_note_requires_write_capability():
+    """Create note is denied without write capability."""
     harness = SkillTestHarness(
         registry_path=Path("config/skill-registry.json"),
         capabilities_path=Path("config/capabilities.json"),

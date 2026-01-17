@@ -9,9 +9,11 @@ class LLMClient:
     """Wrapper around LiteLLM for consistent LLM access."""
 
     def __init__(self, model: Optional[str] = None):
+        """Initialize the client with a default model if omitted."""
         self.model = model or settings.llm.model
 
     def _litellm_kwargs(self) -> Dict[str, Any]:
+        """Build LiteLLM keyword arguments from settings."""
         extra: Dict[str, Any] = {}
         if settings.llm.base_url:
             extra["api_base"] = settings.llm.base_url
@@ -20,6 +22,7 @@ class LLMClient:
         return extra
 
     def _uses_anthropic(self) -> bool:
+        """Return True if the configured model is an Anthropic model."""
         model = (self.model or "").lower()
         return "claude" in model or "anthropic" in model
     

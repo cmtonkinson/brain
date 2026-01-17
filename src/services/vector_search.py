@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def _embed_query(text: str) -> list[float]:
+    """Embed a query string using the configured embedding endpoint."""
     response = httpx.post(
         f"{settings.llm.embed_base_url.rstrip('/')}/api/embeddings",
         json={"model": settings.llm.embed_model, "prompt": text},
@@ -32,6 +33,7 @@ def search_vault(
     limit: int = 8,
     collection: str | None = None,
 ) -> list[dict[str, Any]]:
+    """Search the Qdrant collection for similar embeddings."""
     collection = collection or settings.indexer.collection
     logger.info("vector_search: query=%r limit=%s collection=%s", query, limit, collection)
     qdrant = QdrantClient(url=settings.qdrant.url)

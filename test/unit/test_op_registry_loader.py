@@ -1,3 +1,5 @@
+"""Unit tests for op registry loading and overrides."""
+
 import json
 from pathlib import Path
 

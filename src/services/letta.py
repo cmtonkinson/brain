@@ -14,13 +14,17 @@ logger = logging.getLogger(__name__)
 
 
 def _get_attr(obj: Any, key: str) -> Any:
+    """Return attribute or mapping key values with a None fallback."""
     if isinstance(obj, dict):
         return obj.get(key)
     return getattr(obj, key, None)
 
 
 class LettaService:
+    """Client wrapper for Letta archival memory endpoints."""
+
     def __init__(self) -> None:
+        """Initialize the service from settings."""
         self.base_url = (settings.letta.base_url or "").rstrip("/")
         self.api_key = settings.letta.api_key
         self.agent_name = settings.letta.agent_name
@@ -28,12 +32,15 @@ class LettaService:
 
     @property
     def enabled(self) -> bool:
+        """Return True when Letta is configured with URL and API key."""
         return bool(self.base_url and self.api_key)
 
     def _headers(self) -> dict[str, str]:
+        """Build authorization headers for Letta requests."""
         return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
 
     def _get_agent_id(self) -> str:
+        """Resolve and cache the Letta agent ID by name."""
         if self._agent_id:
             return self._agent_id
 
@@ -58,6 +65,7 @@ class LettaService:
         raise ValueError(f"Letta agent not found: {self.agent_name}")
 
     def _post_message_http(self, agent_id: str, message: str) -> str:
+        """Send a raw message to a Letta agent via HTTP."""
         url = f"{self.base_url}/v1/agents/{agent_id}/messages"
         payload = {"input": message, "streaming": False}
         response = httpx.post(
@@ -72,6 +80,7 @@ class LettaService:
         return self._extract_response_text(data)
 
     def _extract_response_text(self, data: Any) -> str:
+        """Extract assistant text from a Letta response payload."""
         def _content_to_text(content: Any) -> str | None:
             if isinstance(content, str):
                 return content
@@ -131,6 +140,7 @@ class LettaService:
         attempts: list[tuple[str, dict[str, Any]]],
         timeout: float | None = None,
     ) -> Any:
+        """POST to the first available endpoint from a fallback list."""
         if timeout is None:
             timeout = settings.llm.timeout
         last_status: int | None = None
@@ -157,6 +167,7 @@ class LettaService:
         attempts: list[tuple[str, dict[str, Any]]],
         timeout: float | None = None,
     ) -> Any:
+        """GET from the first available endpoint in a fallback list."""
         if timeout is None:
             timeout = settings.llm.timeout
         last_status: int | None = None
@@ -179,6 +190,7 @@ class LettaService:
         raise RuntimeError(f"Letta memory endpoint not available{detail}")
 
     def _extract_memory_results(self, data: Any) -> list[dict[str, Any]]:
+        """Normalize memory search results into a list of dicts."""
         if isinstance(data, dict):
             for key in ("results", "memories", "data", "items"):
                 value = data.get(key)
@@ -189,6 +201,7 @@ class LettaService:
         return []
 
     def _format_memory_results(self, data: Any) -> str:
+        """Render memory search results into a human-readable list."""
         items = self._extract_memory_results(data)
         if not items:
             return "No memory results found."
@@ -213,6 +226,7 @@ class LettaService:
         return "\n".join(lines)
 
     def search_archival_memory(self, query: str) -> str:
+        """Search archival memory for the query text."""
         if not self.enabled:
             raise RuntimeError("Letta is not configured.")
         agent_id = self._get_agent_id()
@@ -239,6 +253,7 @@ class LettaService:
         return self._format_memory_results(data)
 
     def insert_to_archival(self, content: str) -> str:
+        """Insert content into archival memory and return a status string."""
         if not self.enabled:
             raise RuntimeError("Letta is not configured.")
         agent_id = self._get_agent_id()

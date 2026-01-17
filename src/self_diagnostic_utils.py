@@ -1,3 +1,5 @@
+"""Helpers for parsing Code-Mode diagnostics output."""
+
 from __future__ import annotations
 
 import ast
@@ -5,6 +7,7 @@ import json
 
 
 def parse_code_mode_payload(raw: str | None) -> object | None:
+    """Parse a Code-Mode payload string into structured data."""
     if raw is None:
         return None
     try:
@@ -17,6 +20,7 @@ def parse_code_mode_payload(raw: str | None) -> object | None:
 
 
 def extract_code_mode_result(payload: str | None) -> str | None:
+    """Extract the Result payload from a Code-Mode response."""
     if payload is None:
         return None
     result_lines: list[str] = []
@@ -34,6 +38,7 @@ def extract_code_mode_result(payload: str | None) -> str | None:
 
 
 def extract_content_text(value: object | None) -> str | None:
+    """Extract a content string from a structured response payload."""
     if isinstance(value, dict) and "content" in value:
         content = value.get("content")
         return str(content) if content is not None else None
@@ -43,6 +48,7 @@ def extract_content_text(value: object | None) -> str | None:
 
 
 def extract_allowed_directories(value: object | None) -> list[str]:
+    """Extract a list of allowed directories from a payload."""
     def _from_lines(text: str) -> list[str]:
         lines = []
         for line in text.splitlines():
@@ -110,6 +116,7 @@ def extract_allowed_directories(value: object | None) -> list[str]:
 
 
 def contains_expected_name(raw: str | None, expected: str | None) -> bool:
+    """Check for a case-insensitive expected name in a payload."""
     if not expected:
         return True
     if raw is None:
@@ -121,6 +128,7 @@ def contains_expected_name(raw: str | None, expected: str | None) -> bool:
 
 
 def extract_allowed_directories_from_text(text: str) -> list[str]:
+    """Parse allowed directory lists embedded in log text."""
     for line in text.splitlines():
         if "allowed directories" not in line.lower():
             continue

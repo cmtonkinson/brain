@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _normalize_channel(channel: str | None) -> str:
+    """Normalize a channel name to a lowercase identifier."""
     normalized = (channel or settings.conversation.default_channel or "").strip().lower()
     return normalized or "default"
 
@@ -110,11 +111,13 @@ class ConversationMemory:
     """Manages conversation persistence in Obsidian."""
 
     def __init__(self, obsidian_client: ObsidianClient):
+        """Initialize memory manager with an Obsidian client."""
         self.obsidian = obsidian_client
         self._conversation_paths: dict[str, str] = {}  # channel+sender -> current path
         self._summary_turn_counts: dict[str, int] = {}  # channel+sender -> turns since last summary
 
     def _cache_key(self, sender: str, channel: str | None) -> str:
+        """Return the cache key for a sender/channel pair."""
         return f"{_normalize_channel(channel)}::{sender}"
 
     async def get_or_create_conversation(

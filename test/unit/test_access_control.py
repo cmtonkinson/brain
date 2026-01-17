@@ -1,8 +1,11 @@
+"""Unit tests for sender allowlist access control."""
+
 from access_control import is_sender_allowed
 from config import settings
 
 
 def test_sender_allowed_by_channel(monkeypatch) -> None:
+    """Allowlist respects per-channel sender lists."""
     monkeypatch.setattr(
         settings.signal,
         "allowed_senders_by_channel",
@@ -17,6 +20,7 @@ def test_sender_allowed_by_channel(monkeypatch) -> None:
 
 
 def test_sender_allowed_legacy_list(monkeypatch) -> None:
+    """Allowlist falls back to legacy sender lists."""
     monkeypatch.setattr(settings.signal, "allowed_senders_by_channel", {}, raising=False)
     monkeypatch.setattr(settings.signal, "allowed_senders", ["+15550001111"], raising=False)
 

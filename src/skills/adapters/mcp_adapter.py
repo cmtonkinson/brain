@@ -13,7 +13,10 @@ from ..errors import SkillExecutionError
 
 
 class MCPSkillAdapter:
+    """Adapter to execute skills via MCP tools through Code-Mode."""
+
     def __init__(self, code_mode: CodeModeManager, timeout_seconds: int = 30) -> None:
+        """Initialize the adapter with a Code-Mode manager."""
         self._code_mode = code_mode
         self._timeout_seconds = timeout_seconds
 
@@ -23,6 +26,7 @@ class MCPSkillAdapter:
         inputs: dict[str, Any],
         context: SkillContext,
     ) -> dict[str, Any]:
+        """Execute an MCP-backed skill and return the tool response."""
         entrypoint = skill.definition.entrypoint
         tool_name = entrypoint.tool
         if not tool_name:

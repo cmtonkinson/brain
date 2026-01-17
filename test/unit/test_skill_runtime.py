@@ -1,3 +1,5 @@
+"""Unit tests for skill runtime execution and validation."""
+
 import json
 from pathlib import Path
 

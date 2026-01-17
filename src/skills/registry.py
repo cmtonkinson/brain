@@ -35,18 +35,24 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ChannelPolicy:
+    """Allow/deny lists scoped to communication channels."""
+
     allow: set[str]
     deny: set[str]
 
 
 @dataclass(frozen=True)
 class ActorPolicy:
+    """Allow/deny lists scoped to actors."""
+
     allow: set[str]
     deny: set[str]
 
 
 @dataclass(frozen=True)
 class SkillRuntimeEntry:
+    """Resolved skill definition with runtime policy metadata."""
+
     definition: SkillDefinition
     status: SkillStatus
     autonomy: AutonomyLevel
@@ -57,6 +63,8 @@ class SkillRuntimeEntry:
 
 @dataclass(frozen=True)
 class SkillRegistryView:
+    """Resolved view of the skill registry."""
+
     registry_version: str
     skills: list[SkillRuntimeEntry]
 
@@ -285,6 +293,7 @@ class OpRegistryLoader:
         return matches[0]
 
     def _current_mtimes(self) -> dict[Path, float]:
+        """Return modification times for op registry files."""
         mtimes: dict[Path, float] = {}
         paths = [self._base_path] + list(self._overlay_paths)
         for path in paths:

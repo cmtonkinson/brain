@@ -24,6 +24,7 @@ _USER_SECRETS_PATHS = [
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
+    """Load a YAML mapping from disk, returning an empty mapping if missing."""
     if not path.exists():
         return {}
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -33,6 +34,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def _yaml_settings_source(paths: list[Path]):
+    """Create a Pydantic settings source for a list of YAML paths."""
     def source() -> dict[str, Any]:
         merged: dict[str, Any] = {}
         for path in paths:
@@ -43,6 +45,7 @@ def _yaml_settings_source(paths: list[Path]):
 
 
 def _set_nested_value(target: dict[str, Any], path: str, value: Any) -> None:
+    """Set a dotted-path value on a nested mapping, creating containers."""
     parts = path.split(".")
     cursor = target
     for key in parts[:-1]:
@@ -55,6 +58,7 @@ def _set_nested_value(target: dict[str, Any], path: str, value: Any) -> None:
 
 
 def _parse_env_value(raw: str, kind: str) -> Any:
+    """Parse an environment value into the requested primitive type."""
     if kind == "int":
         return int(raw)
     if kind == "bool":
@@ -65,6 +69,7 @@ def _parse_env_value(raw: str, kind: str) -> Any:
 
 
 def _env_settings_source():
+    """Create a settings source that maps environment variables to config keys."""
     mapping = {
         "ANTHROPIC_API_KEY": ("anthropic_api_key", "str"),
         "OBSIDIAN_API_KEY": ("obsidian.api_key", "str"),
@@ -120,6 +125,7 @@ def _env_settings_source():
 
 
 def _apply_legacy_llm_config(data: dict[str, Any]) -> dict[str, Any]:
+    """Normalize legacy LLM keys into the canonical llm section."""
     llm = data.get("llm")
     if not isinstance(llm, dict):
         llm = {}
@@ -146,17 +152,22 @@ def _apply_legacy_llm_config(data: dict[str, Any]) -> dict[str, Any]:
 
 
 class ObsidianConfig(BaseModel):
+    """Obsidian REST API configuration."""
+
     api_key: str
     url: str = "http://host.docker.internal:27123"
     vault_path: str
 
 
 class DatabaseConfig(BaseModel):
+    """Database connection configuration."""
+
     url: str | None = None
     postgres_password: str | None = None
 
     @model_validator(mode="after")
     def populate_database_url(self) -> "DatabaseConfig":
+        """Populate the database URL from the Postgres password when missing."""
         if self.url:
             return self
         if not self.postgres_password:
@@ -166,6 +177,8 @@ class DatabaseConfig(BaseModel):
 
 
 class LlmConfig(BaseModel):
+    """Language model routing and embedding settings."""
+
     model: str = "anthropic:claude-sonnet-4-20250514"
     base_url: str | None = None
     timeout: int = 600
@@ -174,12 +187,15 @@ class LlmConfig(BaseModel):
 
     @model_validator(mode="after")
     def populate_embed_base_url(self) -> "LlmConfig":
+        """Use the LLM base URL for embeddings when no embed URL is set."""
         if not self.embed_base_url and self.base_url:
             self.embed_base_url = self.base_url
         return self
 
 
 class SignalConfig(BaseModel):
+    """Signal API connection and allowlist settings."""
+
     phone_number: str | None = None
     url: str = "http://signal-api:8080"
     allowed_senders: list[str] = []
@@ -187,6 +203,8 @@ class SignalConfig(BaseModel):
 
 
 class LettaConfig(BaseModel):
+    """Letta service configuration."""
+
     base_url: str | None = None
     api_key: str | None = None
     server_password: str | None = None
@@ -197,6 +215,7 @@ class LettaConfig(BaseModel):
 
     @model_validator(mode="after")
     def populate_letta_api_key(self) -> "LettaConfig":
+        """Default the API key to the server password when provided."""
         if self.api_key:
             return self
         if self.server_password:
@@ -205,27 +224,37 @@ class LettaConfig(BaseModel):
 
 
 class ConversationConfig(BaseModel):
+    """Conversation note storage defaults."""
+
     folder: str = "Brain/Conversations"
     default_channel: str = "signal"
     summary_every_turns: int = 7
 
 
 class UtcpConfig(BaseModel):
+    """UTCP Code-Mode configuration."""
+
     config_path: str = "~/.config/brain/utcp.json"
     code_mode_timeout: int = 30
 
 
 class IndexerConfig(BaseModel):
+    """Indexer scheduling and chunking settings."""
+
     interval_seconds: int = 0
     chunk_tokens: int = 1000
     collection: str = "obsidian"
 
 
 class ServiceConfig(BaseModel):
+    """Generic service URL wrapper."""
+
     url: str
 
 
 class UserConfig(BaseModel):
+    """User identity and local directory configuration."""
+
     name: str = "user"
     home_dir: str = str(Path.home())
     test_calendar_name: str | None = None
@@ -250,6 +279,7 @@ class Settings(BaseSettings):
         dotenv_settings,
         file_secret_settings,
     ):
+        """Layer settings sources in descending order of precedence."""
         return (
             init_settings,
             _env_settings_source(),
@@ -294,6 +324,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_sender_allowlist(self) -> "Settings":
+        """Ensure a Signal allowlist is configured before startup."""
         if self.signal.allowed_senders_by_channel:
             return self
         if self.signal.allowed_senders:
@@ -304,6 +335,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_home_dir(self) -> "Settings":
+        """Validate that user.home_dir is within filesystem MCP roots."""
         config_path = Path(os.path.expanduser(self.utcp.config_path))
         if not config_path.exists():
             return self

@@ -1,3 +1,5 @@
+"""Unit tests for pipeline dry-run behavior."""
+
 import json
 from pathlib import Path
 

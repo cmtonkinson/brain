@@ -1,3 +1,5 @@
+"""Unit tests for MCP skill adapter behavior."""
+
 import pytest
 
 from skills.adapters.mcp_adapter import MCPSkillAdapter

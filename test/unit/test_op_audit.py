@@ -1,3 +1,5 @@
+"""Unit tests for op audit logging."""
+
 import logging
 
 from skills.context import SkillContext

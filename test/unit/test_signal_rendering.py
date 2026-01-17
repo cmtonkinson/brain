@@ -1,7 +1,10 @@
+"""Unit tests for Signal markdown rendering."""
+
 from agent import _render_signal_message
 
 
 def test_render_signal_message_transforms_markdown() -> None:
+    """Markdown is transformed to Signal-friendly formatting."""
     text = (
         "# Title\n\n"
         "A [link](http://example.com) and ![img](http://img)\n\n"
@@ -17,12 +20,14 @@ def test_render_signal_message_transforms_markdown() -> None:
 
 
 def test_render_signal_message_handles_code_fence() -> None:
+    """Code fences are converted to Signal monospace formatting."""
     text = "```python\nx = 1\n```"
     rendered = _render_signal_message(text)
     assert rendered.strip() == "`x = 1`"
 
 
 def test_render_signal_message_preserves_inline_code() -> None:
+    """Inline code spans are preserved during rendering."""
     text = "Use `__bold__` and _ital_."
     rendered = _render_signal_message(text)
     assert "`__bold__`" in rendered

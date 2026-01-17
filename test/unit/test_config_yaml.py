@@ -1,14 +1,18 @@
+"""Unit tests for YAML configuration loading."""
+
 import pytest
 
 import config as config_module
 
 
 def _clear_env(monkeypatch, keys):
+    """Clear environment variables for config tests."""
     for key in keys:
         monkeypatch.delenv(key, raising=False)
 
 
 def test_yaml_precedence(monkeypatch, tmp_path):
+    """Environment variables override secrets, user, and default YAML."""
     defaults = tmp_path / "defaults.yml"
     user_cfg = tmp_path / "user.yml"
     secrets = tmp_path / "secrets.yml"
@@ -86,6 +90,7 @@ def test_yaml_precedence(monkeypatch, tmp_path):
 
 
 def test_missing_yaml_files(monkeypatch, tmp_path):
+    """Missing YAML files fall back to environment settings."""
     missing_default = tmp_path / "missing-default.yml"
     missing_user = tmp_path / "missing-user.yml"
     missing_secrets = tmp_path / "missing-secrets.yml"
@@ -114,6 +119,7 @@ def test_missing_yaml_files(monkeypatch, tmp_path):
 
 
 def test_non_mapping_yaml_raises(monkeypatch, tmp_path):
+    """Non-mapping YAML raises a validation error."""
     defaults = tmp_path / "defaults.yml"
     defaults.write_text("- just\n- a\n- list\n", encoding="utf-8")
 
@@ -126,6 +132,7 @@ def test_non_mapping_yaml_raises(monkeypatch, tmp_path):
 
 
 def test_legacy_llm_yaml_is_mapped(monkeypatch, tmp_path):
+    """Legacy litellm/ollama keys map into llm configuration."""
     defaults = tmp_path / "defaults.yml"
     defaults.write_text(
         "\n".join(

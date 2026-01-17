@@ -17,6 +17,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Create initial tables for action logs, conversations, and tasks."""
     op.create_table(
         "action_logs",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -45,6 +46,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop initial tables."""
     op.drop_table("tasks")
     op.drop_table("conversations")
     op.drop_table("action_logs")

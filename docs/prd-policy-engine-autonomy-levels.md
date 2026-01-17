@@ -70,12 +70,16 @@ A policy is a rule that determines:
 - under what conditions
 - with what level of approval
 
-Policies are data, not code.
+Policies are data, not code. Current implementation evaluates policy in
+code using registry metadata and overlays; the policy data lives in those
+registries and overlay files, while the evaluator logic remains centralized.
 
 ---
 
 ### 5.2 Action
-An action is any operation that causes side effects.
+An action is any operation that causes side effects. In the current
+framework, policy evaluation is applied at **skill** and **op**
+invocation boundaries (including pipeline steps).
 
 Examples:
 - sending a message
@@ -159,7 +163,7 @@ Examples:
 - Explicit opt-in
 - Continuous audit
 
-Not enabled by default.
+Not enabled by default. (Current implementation supports L0-L3 only.)
 
 ---
 
@@ -180,13 +184,16 @@ Action proceeds only if policy permits.
 
 ### 7.2 Approval Workflow
 
-For actions requiring approval:
+For actions requiring approval (planned workflow):
 - generate a proposal artifact
 - route via Attention Router
 - wait for explicit confirmation
 - execute or cancel based on response
 
 Approvals are time-bound and logged.
+
+Current implementation uses a `confirmed` flag on the execution context
+to gate L1 and `requires_review` policy tags.
 
 ---
 
@@ -198,6 +205,10 @@ Policies bind:
 - actors → maximum autonomy
 
 This prevents privilege escalation.
+
+In the current skill framework, allowed capabilities are carried on the
+execution context and narrowed on child calls (including pipeline steps),
+so child invocations cannot expand their capability set.
 
 ---
 
@@ -226,6 +237,10 @@ conditions:
 ```
 
 Policies are versioned and reloadable at runtime.
+
+Current implementation evaluates policy in code using registry metadata
+and overlays (autonomy overrides, channels/actors allow/deny, rate limits,
+and policy tags). A structured policy file is a planned extension.
 
 ---
 

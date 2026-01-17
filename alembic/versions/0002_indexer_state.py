@@ -17,6 +17,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Create tables for indexed notes and chunks."""
     op.create_table(
         "indexed_notes",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -48,6 +49,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop tables and indexes for indexed notes and chunks."""
     op.drop_index("ix_indexed_chunks_note_id", table_name="indexed_chunks")
     op.drop_table("indexed_chunks")
     op.drop_table("indexed_notes")

@@ -1,3 +1,5 @@
+"""Unit tests for the capabilities registry JSON."""
+
 import json
 import re
 from pathlib import Path
@@ -9,10 +11,12 @@ ALLOWED_STATUSES = {"active", "deprecated"}
 
 
 def _load_json(path: Path) -> dict:
+    """Load JSON from disk into a dict."""
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def test_capabilities_registry_ids_are_unique_and_well_formed():
+    """Capability IDs are unique and match the expected format."""
     repo_root = Path(__file__).resolve().parents[2]
     registry_path = repo_root / "config" / "capabilities.json"
     data = _load_json(registry_path)
@@ -29,6 +33,7 @@ def test_capabilities_registry_ids_are_unique_and_well_formed():
 
 
 def test_capabilities_registry_entries_have_required_fields():
+    """Capabilities include required metadata fields."""
     repo_root = Path(__file__).resolve().parents[2]
     registry_path = repo_root / "config" / "capabilities.json"
     data = _load_json(registry_path)
@@ -41,6 +46,7 @@ def test_capabilities_registry_entries_have_required_fields():
 
 
 def test_capabilities_sample_matches_registry():
+    """Sample capabilities file matches the canonical registry."""
     repo_root = Path(__file__).resolve().parents[2]
     registry_path = repo_root / "config" / "capabilities.json"
     sample_path = repo_root / "config" / "capabilities.json.sample"

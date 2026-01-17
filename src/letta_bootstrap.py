@@ -31,12 +31,14 @@ _TOOLS = [
 
 
 def _get_attr(obj: Any, key: str) -> Any:
+    """Return attribute or mapping key values with a None fallback."""
     if isinstance(obj, dict):
         return obj.get(key)
     return getattr(obj, key, None)
 
 
 def _index_by_name(items: list[Any]) -> dict[str, Any]:
+    """Index a list of objects by their name attribute."""
     indexed: dict[str, Any] = {}
     for item in items:
         name = _get_attr(item, "name")
@@ -46,6 +48,7 @@ def _index_by_name(items: list[Any]) -> dict[str, Any]:
 
 
 def _ensure_tool(client: Letta, spec: dict[str, Any]) -> str | None:
+    """Ensure a Letta tool exists and return its id."""
     tools = client.tools.list()
     existing = _index_by_name(tools).get(spec["name"])
     if existing:
@@ -68,6 +71,7 @@ def _ensure_tool(client: Letta, spec: dict[str, Any]) -> str | None:
 
 
 def _ensure_agent(client: Letta, tool_ids: list[str]) -> None:
+    """Ensure the configured Letta agent exists and is up to date."""
     agents = client.agents.list()
     existing = _index_by_name(agents).get(settings.letta.agent_name)
     llm_config = _build_llm_config()
@@ -107,6 +111,7 @@ def _ensure_agent(client: Letta, tool_ids: list[str]) -> None:
 
 
 def bootstrap_letta() -> None:
+    """Bootstrap Letta tools and agent configuration."""
     if not settings.letta.base_url:
         logger.warning("LETTA_BASE_URL not configured; skipping Letta bootstrap.")
         return
@@ -126,12 +131,14 @@ def bootstrap_letta() -> None:
 
 
 def _strip_ollama_prefix(handle: str) -> str:
+    """Remove the 'ollama/' prefix from a model handle if present."""
     if handle.startswith("ollama/"):
         return handle.split("/", 1)[1]
     return handle
 
 
 def _build_llm_config() -> dict[str, object] | None:
+    """Build a Letta LLM config if the model is registered."""
     if not settings.letta.model or not settings.letta.base_url or not settings.letta.api_key:
         return None
     try:
@@ -174,6 +181,7 @@ def _build_llm_config() -> dict[str, object] | None:
 
 
 def _normalize_openai_endpoint(endpoint: str | None) -> str | None:
+    """Normalize an OpenAI-compatible endpoint to end with /v1."""
     if not endpoint:
         return endpoint
     trimmed = endpoint.rstrip("/")
@@ -183,6 +191,7 @@ def _normalize_openai_endpoint(endpoint: str | None) -> str | None:
 
 
 def _build_embedding_config() -> dict[str, object] | None:
+    """Build a Letta embedding config from the embedding endpoint."""
     if not settings.llm.embed_base_url or not settings.letta.embed_model:
         return None
     model_name = _strip_ollama_prefix(settings.letta.embed_model)

@@ -16,6 +16,8 @@ from skills.services import SkillServices, set_services
 
 @dataclass(frozen=True)
 class DryRunResult:
+    """Result payload for dry-run skill execution."""
+
     dry_run: bool
     skill: str
     version: str
@@ -24,6 +26,8 @@ class DryRunResult:
 
 
 class SkillTestHarness:
+    """Helper to execute skills in tests with consistent setup."""
+
     def __init__(
         self,
         registry_path: Path,
@@ -31,6 +35,7 @@ class SkillTestHarness:
         overlay_paths: list[Path] | None = None,
         op_registry_path: Path | None = None,
     ) -> None:
+        """Initialize the harness with registry paths."""
         self.registry = SkillRegistryLoader(
             base_path=registry_path,
             overlay_paths=overlay_paths or [],
@@ -51,6 +56,7 @@ class SkillTestHarness:
         services: SkillServices | None = None,
         pipeline_step_results: dict[str, dict[str, Any]] | None = None,
     ) -> ExecutionResult | DryRunResult:
+        """Run a skill or simulate its pipeline wiring in dry-run mode."""
         context = SkillContext(allowed_capabilities=allow_capabilities)
         runtime = SkillRuntime(
             registry=self.registry,

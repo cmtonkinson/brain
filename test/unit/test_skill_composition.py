@@ -1,3 +1,5 @@
+"""Unit tests for skill composition behavior."""
+
 import json
 from pathlib import Path
 

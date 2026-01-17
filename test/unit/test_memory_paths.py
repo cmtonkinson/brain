@@ -1,3 +1,5 @@
+"""Unit tests for conversation and summary path helpers."""
+
 import hashlib
 from datetime import datetime
 
@@ -6,6 +8,7 @@ from tools.memory import get_conversation_path, get_summary_path
 
 
 def test_get_conversation_path_uses_hash_and_date(monkeypatch) -> None:
+    """Conversation paths include sender hash and date."""
     monkeypatch.setattr(settings.conversation, "folder", "Brain/Conversations", raising=False)
     monkeypatch.setattr(settings.conversation, "default_channel", "signal", raising=False)
     sender = "sender-id"
@@ -17,6 +20,7 @@ def test_get_conversation_path_uses_hash_and_date(monkeypatch) -> None:
 
 
 def test_get_summary_path_uses_hash_and_time(monkeypatch) -> None:
+    """Summary paths include sender hash and time."""
     monkeypatch.setattr(settings.conversation, "folder", "Brain/Conversations", raising=False)
     monkeypatch.setattr(settings.conversation, "default_channel", "signal", raising=False)
     sender = "sender-id"
@@ -32,6 +36,7 @@ def test_get_summary_path_uses_hash_and_time(monkeypatch) -> None:
 
 
 def test_get_conversation_path_uses_channel_prefix(monkeypatch) -> None:
+    """Conversation paths include the channel prefix."""
     monkeypatch.setattr(settings.conversation, "folder", "Brain/Conversations", raising=False)
     monkeypatch.setattr(settings.conversation, "default_channel", "signal", raising=False)
     sender = "sender-id"

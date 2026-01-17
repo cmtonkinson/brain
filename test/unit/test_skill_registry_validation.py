@@ -1,3 +1,5 @@
+"""Unit tests for skill registry validation."""
+
 import json
 from pathlib import Path
 

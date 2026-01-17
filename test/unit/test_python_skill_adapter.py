@@ -1,3 +1,5 @@
+"""Unit tests for the Python skill adapter."""
+
 import sys
 from pathlib import Path
 

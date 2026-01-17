@@ -35,6 +35,7 @@ _migrations_applied = False
 
 
 def iter_markdown_files(vault: Path) -> Iterator[Path]:
+    """Yield markdown files in the vault, skipping excluded directories."""
     for path in vault.rglob("*.md"):
         if any(part in EXCLUDED_DIRS for part in path.parts):
             continue
@@ -42,11 +43,13 @@ def iter_markdown_files(vault: Path) -> Iterator[Path]:
 
 
 def estimate_tokens(text: str) -> int:
+    """Estimate token count using a simple character heuristic."""
     # TODO: Replace with a real tokenizer (e.g. tiktoken) once model-specific tokens matter.
     return max(1, len(text) // 4)
 
 
 def _is_heading(line: str) -> tuple[int, str] | None:
+    """Return the heading level and text if the line is a Markdown heading."""
     stripped = line.lstrip()
     if not stripped.startswith("#"):
         return None
@@ -59,16 +62,20 @@ def _is_heading(line: str) -> tuple[int, str] | None:
 
 
 def _has_primary_heading(lines: list[str], level: int) -> bool:
+    """Check whether a document contains a heading of the target level."""
     return any((_is_heading(line) or (0, ""))[0] == level for line in lines)
 
 
 @dataclass
 class Section:
+    """Markdown section with a heading and content body."""
+
     heading: str
     content: str
 
 
 def split_sections(text: str) -> list[Section]:
+    """Split a document into top-level Markdown sections."""
     lines = text.splitlines()
     primary_level = 2 if _has_primary_heading(lines, 2) else 1 if _has_primary_heading(lines, 1) else None
     sections: list[Section] = []
@@ -111,6 +118,7 @@ def split_sections(text: str) -> list[Section]:
 
 
 def split_by_subheadings(section: Section) -> list[Section]:
+    """Split a section into level-3 subsections when present."""
     lines = section.content.splitlines()
     sub_sections: list[Section] = []
     current_heading: str | None = None
@@ -154,11 +162,14 @@ def split_by_subheadings(section: Section) -> list[Section]:
 
 @dataclass
 class Block:
+    """Markdown block with an atomicity marker for chunking."""
+
     text: str
     atomic: bool
 
 
 def _is_list_line(line: str) -> bool:
+    """Return True if the line appears to be a Markdown list item."""
     stripped = line.lstrip()
     if stripped.startswith(_LIST_PREFIXES):
         return True
@@ -169,6 +180,7 @@ def _is_list_line(line: str) -> bool:
 
 
 def _is_table_header(line: str, next_line: str) -> bool:
+    """Return True if the line pair looks like a Markdown table header."""
     if "|" not in line:
         return False
     stripped = next_line.strip()
@@ -181,6 +193,7 @@ def _is_table_header(line: str, next_line: str) -> bool:
 
 
 def markdown_blocks(text: str) -> list[Block]:
+    """Split Markdown into atomic and non-atomic blocks for chunking."""
     lines = text.splitlines()
     blocks: list[Block] = []
     i = 0
@@ -246,6 +259,7 @@ def markdown_blocks(text: str) -> list[Block]:
 
 
 def split_section_by_paragraphs(section: Section, max_tokens: int) -> list[Section]:
+    """Chunk a section into token-limited sections while preserving blocks."""
     prefix = section.heading.strip()
     blocks = markdown_blocks(section.content)
     chunks: list[Section] = []
@@ -283,6 +297,7 @@ def split_section_by_paragraphs(section: Section, max_tokens: int) -> list[Secti
 
 
 def chunk_markdown(text: str, max_tokens: int) -> list[str]:
+    """Chunk Markdown into size-bounded strings suitable for embedding."""
     sections = split_sections(text)
     chunks: list[str] = []
     for section in sections:
@@ -311,10 +326,12 @@ def chunk_markdown(text: str, max_tokens: int) -> list[str]:
 
 
 def file_hash(content: str) -> str:
+    """Return a stable SHA-256 hash for content."""
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def embed_text(client: httpx.Client, text: str, model: str) -> list[float]:
+    """Fetch an embedding vector for text from the configured embedding API."""
     response = client.post(
         f"{settings.llm.embed_base_url.rstrip('/')}/api/embeddings",
         json={"model": model, "prompt": text},
@@ -329,6 +346,7 @@ def embed_text(client: httpx.Client, text: str, model: str) -> list[float]:
 
 
 def ensure_collection(client: QdrantClient, collection: str, vector_size: int) -> None:
+    """Create a Qdrant collection if it does not already exist."""
     if client.collection_exists(collection):
         return
     client.create_collection(
@@ -338,6 +356,7 @@ def ensure_collection(client: QdrantClient, collection: str, vector_size: int) -
 
 
 def delete_note_points(client: QdrantClient, collection: str, note_path: str) -> None:
+    """Delete all vector points associated with a note path."""
     if not client.collection_exists(collection):
         return
     filter_obj = qmodels.Filter(
@@ -350,6 +369,7 @@ def delete_note_points(client: QdrantClient, collection: str, note_path: str) ->
 
 
 def make_point_id(note_path: str, chunk_index: int) -> str:
+    """Create a deterministic UUID for a note chunk."""
     raw = f"{note_path}:{chunk_index}"
     digest = hashlib.sha256(raw.encode("utf-8")).digest()
     return str(uuid.UUID(bytes=digest[:16]))
@@ -363,6 +383,7 @@ def build_points(
     embed_client: httpx.Client,
     embed_model: str,
 ) -> tuple[list[qmodels.PointStruct], list[tuple[int, str, int]]]:
+    """Build Qdrant point structs and metadata for each chunk."""
     points: list[qmodels.PointStruct] = []
     chunk_meta: list[tuple[int, str, int]] = []
     chunk_list = list(chunks)

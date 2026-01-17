@@ -23,6 +23,8 @@ _AUTONOMY_ORDER = {
 
 @dataclass(frozen=True)
 class PolicyContext:
+    """Inputs required to evaluate skill policy decisions."""
+
     actor: str | None = None
     channel: str | None = None
     allowed_capabilities: set[str] | None = None
@@ -32,11 +34,14 @@ class PolicyContext:
 
 @dataclass(frozen=True)
 class PolicyDecision:
+    """Policy evaluation result with reasons and metadata."""
+
     allowed: bool
     reasons: list[str]
     metadata: dict[str, str] = field(default_factory=dict)
 
     def log(self, skill: SkillRuntimeEntry | OpRuntimeEntry) -> None:
+        """Emit a structured log entry for the policy decision."""
         logger.info(
             "policy decision",
             extra={
@@ -50,15 +55,22 @@ class PolicyDecision:
 
 
 class PolicyEvaluator(Protocol):
+    """Protocol for policy evaluators."""
+
     def evaluate(self, skill: SkillRuntimeEntry | OpRuntimeEntry, context: PolicyContext) -> PolicyDecision:
+        """Evaluate policy for the given skill and context."""
         ...
 
 
 class RateLimiter:
+    """In-memory rate limiter for per-skill enforcement."""
+
     def __init__(self) -> None:
+        """Initialize the rate limiter history."""
         self._history: dict[str, list[float]] = {}
 
     def allow(self, key: str, max_per_minute: int) -> bool:
+        """Return True if a new request is allowed within the rate limit."""
         now = time.time()
         window_start = now - 60
         history = [ts for ts in self._history.get(key, []) if ts >= window_start]
@@ -71,10 +83,14 @@ class RateLimiter:
 
 
 class DefaultPolicy:
+    """Default policy implementation for skills and ops."""
+
     def __init__(self) -> None:
+        """Initialize the default policy evaluator."""
         self._rate_limiter = RateLimiter()
 
     def evaluate(self, skill: SkillRuntimeEntry | OpRuntimeEntry, context: PolicyContext) -> PolicyDecision:
+        """Evaluate a skill against the default policy checks."""
         reasons: list[str] = []
         metadata = {
             "actor": context.actor or "",

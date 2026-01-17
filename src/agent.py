@@ -107,6 +107,7 @@ class AgentDeps:
 
 
 def _preview(text: str, limit: int = 160) -> str:
+    """Return a single-line preview of text for logging."""
     cleaned = " ".join(text.split())
     if len(cleaned) > limit:
         return cleaned[:limit] + "..."
@@ -130,6 +131,7 @@ def _ensure_logging() -> None:
 
 
 def _stdout(msg: str) -> None:
+    """Write a message to stdout and flush immediately."""
     sys.stdout.write(msg + "\n")
     sys.stdout.flush()
 
@@ -141,6 +143,7 @@ def _ensure_llm_env() -> None:
 
 
 def _get_summary_agent() -> Agent[None, str]:
+    """Lazy-initialize the summary agent used for conversation summaries."""
     global _summary_agent
     if _summary_agent is None:
         _summary_agent = Agent(
@@ -323,6 +326,7 @@ async def _run_code_mode_diagnostics(ctx: RunContext[AgentDeps]) -> list[str]:
 
 
 def _get_skill_registry() -> SkillRegistryLoader:
+    """Return the cached skill registry loader."""
     global _skill_registry_loader
     if _skill_registry_loader is None:
         _skill_registry_loader = SkillRegistryLoader()
@@ -331,6 +335,7 @@ def _get_skill_registry() -> SkillRegistryLoader:
 
 
 def _get_skill_policy() -> DefaultPolicy:
+    """Return the cached default skill policy."""
     global _skill_policy
     if _skill_policy is None:
         _skill_policy = DefaultPolicy()
@@ -354,6 +359,7 @@ async def _execute_skill(
     allow_capabilities: list[str] | None = None,
     confirmed: bool = False,
 ) -> dict:
+    """Execute a skill through the runtime with policy enforcement."""
     registry = _get_skill_registry()
     op_registry = _get_op_registry()
     policy = _get_skill_policy()
@@ -861,6 +867,7 @@ async def process_message(
 
 
 async def run_indexer_task(full_reindex: bool = False) -> str:
+    """Run a single vault indexing task under a shared lock."""
     async with _indexer_lock:
         try:
             logger.info("Starting indexer run (full_reindex=%s)", full_reindex)
@@ -881,6 +888,7 @@ async def run_indexer_task(full_reindex: bool = False) -> str:
 
 
 async def indexer_loop(interval_seconds: int) -> None:
+    """Continuously run the indexer on a fixed interval."""
     while True:
         await run_indexer_task(full_reindex=False)
         await asyncio.sleep(interval_seconds)

@@ -13,6 +13,7 @@ class ObsidianClient:
     """Client for Obsidian Local REST API."""
     
     def __init__(self):
+        """Initialize the client with base URL and auth headers."""
         # Normalize to avoid accidental double slashes in request URLs.
         self.base_url = settings.obsidian.url.rstrip("/")
         self.headers = {

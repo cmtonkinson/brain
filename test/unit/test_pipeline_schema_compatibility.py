@@ -1,3 +1,5 @@
+"""Unit tests for pipeline schema compatibility checks."""
+
 from skills.pipeline_validation import PipelineValidationContext, validate_pipeline_skill
 from skills.registry_schema import (
     AutonomyLevel,

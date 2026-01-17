@@ -43,6 +43,7 @@ class RegistryIndex:
         return cls(names_to_versions)
 
     def has_skill(self, name: str, version: str | None = None) -> bool:
+        """Return True if the registry contains the named skill/version."""
         versions = self.names_to_versions.get(name)
         if not versions:
             return False

@@ -1,3 +1,5 @@
+"""Unit tests for skill registry loading and overlays."""
+
 import json
 from pathlib import Path
 

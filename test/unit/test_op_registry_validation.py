@@ -1,3 +1,5 @@
+"""Unit tests for op registry validation."""
+
 from skills.registry_validation import validate_op_registry_data
 
 

@@ -9,6 +9,7 @@ from config import settings
 
 
 def _embed_query(text: str) -> list[float]:
+    """Embed a search query using the configured embedding endpoint."""
     base_url = settings.llm.embed_base_url
     model = settings.llm.embed_model
     response = httpx.post(

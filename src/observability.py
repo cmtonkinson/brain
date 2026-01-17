@@ -50,6 +50,7 @@ class BrainJsonFormatter(jsonlogger.JsonFormatter):
         record: logging.LogRecord,
         message_dict: dict[str, Any],
     ) -> None:
+        """Inject trace context and Brain metadata into log fields."""
         super().add_fields(log_record, record, message_dict)
 
         # Add trace context for correlation (wrapped to never break logging)
@@ -77,6 +78,7 @@ class BrainMetrics:
     """
 
     def __init__(self, meter: Meter) -> None:
+        """Initialize Brain metrics instruments on the provided meter."""
         # Message processing
         self.messages_received = meter.create_counter(
             "brain.messages.received",
@@ -442,11 +444,13 @@ class SpanContext:
     """
 
     def __init__(self, name: str, attributes: dict[str, Any] | None = None) -> None:
+        """Initialize a span context with optional attributes."""
         self.name = name
         self.attributes = attributes or {}
         self.span: trace.Span | None = None
 
     def __enter__(self) -> trace.Span:
+        """Enter a span context and attach attributes."""
         tracer = get_tracer()
         self.span = tracer.start_span(self.name)
         self.span.__enter__()
@@ -455,6 +459,7 @@ class SpanContext:
         return self.span
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Exit the span, recording errors if any."""
         if self.span:
             if exc_val:
                 self.span.record_exception(exc_val)
@@ -462,7 +467,9 @@ class SpanContext:
             self.span.__exit__(exc_type, exc_val, exc_tb)
 
     async def __aenter__(self) -> trace.Span:
+        """Async enter wrapper for compatibility with async contexts."""
         return self.__enter__()
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Async exit wrapper for compatibility with async contexts."""
         self.__exit__(exc_type, exc_val, exc_tb)

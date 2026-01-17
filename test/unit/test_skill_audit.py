@@ -1,3 +1,5 @@
+"""Unit tests for skill audit logging."""
+
 import logging
 
 from skills.audit import AuditLogger

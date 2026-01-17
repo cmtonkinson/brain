@@ -13,6 +13,8 @@ from ..registry import SkillRuntimeEntry
 
 
 class PythonSkillAdapter:
+    """Adapter to execute local Python skill handlers."""
+
     def __init__(self, timeout_seconds: int = 30) -> None:
         """Initialize the adapter with a timeout."""
         self._timeout_seconds = timeout_seconds

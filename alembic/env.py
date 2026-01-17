@@ -1,3 +1,5 @@
+"""Alembic environment configuration for Brain database migrations."""
+
 from __future__ import annotations
 
 import os
@@ -21,6 +23,7 @@ target_metadata = Base.metadata
 
 
 def _get_url() -> str:
+    """Resolve the SQLAlchemy database URL for migrations."""
     url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
     if not url:
         raise RuntimeError("No database URL configured for Alembic migrations")
@@ -30,6 +33,7 @@ def _get_url() -> str:
 
 
 def run_migrations_offline() -> None:
+    """Run migrations in offline mode."""
     url = _get_url()
     context.configure(
         url=url,
@@ -43,6 +47,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    """Run migrations in online mode."""
     configuration = config.get_section(config.config_ini_section) or {}
     configuration["sqlalchemy.url"] = _get_url()
     connectable = engine_from_config(

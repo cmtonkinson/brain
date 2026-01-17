@@ -37,6 +37,7 @@ _DESTRUCTIVE_KEYWORDS: tuple[str, ...] = (
 )
 
 def _preview_text(text: str, limit: int = 200) -> str:
+    """Return a condensed preview of text for logging."""
     cleaned = " ".join(text.split())
     if len(cleaned) > limit:
         return cleaned[:limit] + "..."
@@ -44,15 +45,18 @@ def _preview_text(text: str, limit: int = 200) -> str:
 
 
 def _expand_path(path: str) -> Path:
+    """Expand a user path into an absolute, resolved Path."""
     return Path(os.path.expanduser(path)).resolve()
 
 
 def _load_config(path: Path) -> dict[str, Any]:
+    """Load the UTCP JSON configuration from disk."""
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
 
 def _detect_destructive_ops(code: str, keywords: Iterable[str]) -> list[str]:
+    """Detect potentially destructive tool calls in Code-Mode chains."""
     keyword_list = list(keywords)
     if not keyword_list:
         return []
@@ -64,6 +68,8 @@ def _detect_destructive_ops(code: str, keywords: Iterable[str]) -> list[str]:
 
 @dataclass
 class CodeModeManager:
+    """Stateful wrapper around the UTCP Code-Mode client."""
+
     client: CodeModeUtcpClient | None
     config_path: Path | None
     timeout: int
@@ -71,6 +77,7 @@ class CodeModeManager:
     _namespace_index: dict[str, list[Any]] = field(default_factory=dict)
 
     def _route_namespace(self, query: str) -> str | None:
+        """Heuristically route queries to a tool namespace."""
         normalized = query.lower()
         if re.search(r"\b(file|files|filesystem|directory|folder|path|read|write|list)\b", normalized):
             return "filesystem"
@@ -81,6 +88,7 @@ class CodeModeManager:
         return None
 
     async def _ensure_tools_cache(self) -> list[Any]:
+        """Populate the tool cache and namespace index if empty."""
         if not self._tools_cache:
             self._tools_cache = await self.client.get_tools() if self.client else []
             index: dict[str, list[Any]] = {}
@@ -92,6 +100,7 @@ class CodeModeManager:
         return self._tools_cache
 
     def _rank_tools(self, tools: list[Any], query: str) -> list[Any]:
+        """Rank tools by keyword relevance to the query."""
         terms = [term for term in re.split(r"\W+", query.lower()) if term]
         if not terms:
             return tools
@@ -110,6 +119,7 @@ class CodeModeManager:
         return [tool for score, tool in scored if score > 0] or tools
 
     async def search_tools(self, query: str) -> str:
+        """Search available tools and render a readable list."""
         if not self.client:
             return "Code-Mode is not configured. Set UTCP_CONFIG_PATH to enable external tools."
 
@@ -141,6 +151,7 @@ class CodeModeManager:
         confirm_destructive: bool = False,
         timeout: int | None = None,
     ) -> str:
+        """Execute a Code-Mode tool chain with safety gating."""
         if not self.client:
             return "Code-Mode is not configured. Set UTCP_CONFIG_PATH to enable external tools."
 
@@ -198,6 +209,7 @@ async def create_code_mode_manager(
     config_path: str,
     timeout: int,
 ) -> CodeModeManager:
+    """Initialize a Code-Mode manager from the UTCP config path."""
     expanded = _expand_path(config_path)
     if not expanded.exists():
         logger.warning(f"UTCP config not found at {expanded}")
