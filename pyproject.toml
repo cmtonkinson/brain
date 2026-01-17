@@ -45,6 +45,10 @@ pyright = "^1.1.383"
 testpaths = ["test"]
 asyncio_mode = "auto"
 addopts = "-ra"
+filterwarnings = [
+  "ignore:pkg_resources is deprecated as an API.*:UserWarning",
+  "ignore:Type google\\._upb\\._message\\..*:DeprecationWarning",
+]
 
 [build-system]
 requires = ["poetry-core"]

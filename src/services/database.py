@@ -3,7 +3,7 @@
 import logging
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import AsyncGenerator
 from pathlib import Path
 
@@ -125,7 +125,7 @@ async def log_action(
         action_type=action_type,
         description=description,
         result=result,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
     )
     session.add(action)
     await session.flush()

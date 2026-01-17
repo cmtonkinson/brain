@@ -1,11 +1,11 @@
 """Data models for Brain assistant."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
-from pydantic import BaseModel, Field
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import declarative_base
 
 from config import settings
 
@@ -23,7 +23,7 @@ class Task(Base):
     description = Column(Text, nullable=False)
     scheduled_for = Column(DateTime, nullable=True)
     completed = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
 
 
@@ -36,7 +36,7 @@ class ActionLog(Base):
     action_type = Column(String(100), nullable=False)
     description = Column(Text, nullable=False)
     result = Column(Text, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class Conversation(Base):
@@ -46,8 +46,8 @@ class Conversation(Base):
 
     id = Column(Integer, primary_key=True)
     obsidian_path = Column(String(500), nullable=False)
-    started_at = Column(DateTime, default=datetime.utcnow)
-    last_message_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_message_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     message_count = Column(Integer, default=0)
 
 
@@ -62,7 +62,7 @@ class IndexedNote(Base):
     content_hash = Column(String(64), nullable=False)
     modified_at = Column(DateTime, nullable=True)
     chunk_count = Column(Integer, nullable=False, default=0)
-    last_indexed_at = Column(DateTime, default=datetime.utcnow)
+    last_indexed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class IndexedChunk(Base):
@@ -75,7 +75,7 @@ class IndexedChunk(Base):
     chunk_index = Column(Integer, nullable=False)
     qdrant_id = Column(String(64), nullable=False)
     chunk_chars = Column(Integer, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 # Pydantic models for API/validation
@@ -95,8 +95,7 @@ class TaskResponse(BaseModel):
     completed: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SignalMessage(BaseModel):
@@ -104,7 +103,7 @@ class SignalMessage(BaseModel):
 
     sender: str
     message: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source_device: int = 1
     expires_in_seconds: int = 0
 
@@ -114,7 +113,7 @@ class ConversationMessage(BaseModel):
 
     role: str  # "user" or "assistant"
     content: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_markdown(self) -> str:
         """Format message as markdown for Obsidian."""
