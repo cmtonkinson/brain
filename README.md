@@ -80,7 +80,7 @@ Brain currently provides:
 
 - macOS host (for EventKit MCP and host gateway)
 - Docker + Docker Compose
-- Python 3.11+
+- Python 3.14+
 - Obsidian + Local REST API plugin
 - Optional: Ollama for local embeddings
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -12,6 +13,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from pydantic_ai import Agent, RunContext
 
@@ -139,14 +141,26 @@ def _ensure_llm_env() -> None:
         os.environ["ANTHROPIC_API_KEY"] = settings.anthropic_api_key
 
 
+def _agent_init_kwargs(system_prompt: str, deps_type: type | None = None) -> dict[str, object]:
+    """Build Agent constructor kwargs compatible with installed pydantic_ai."""
+    signature = inspect.signature(Agent)
+    kwargs: dict[str, object] = {"system_prompt": system_prompt}
+    if deps_type is not None:
+        kwargs["deps_type"] = deps_type
+    if "output_type" in signature.parameters:
+        kwargs["output_type"] = str
+    else:
+        kwargs["result_type"] = str
+    return kwargs
+
+
 def _get_summary_agent() -> Agent[None, str]:
     """Lazy-initialize the summary agent used for conversation summaries."""
     global _summary_agent
     if _summary_agent is None:
         _summary_agent = Agent(
             settings.llm.model,
-            result_type=str,
-            system_prompt=render_prompt("system/summary"),
+            **_agent_init_kwargs(render_prompt("system/summary")),
         )
     return _summary_agent
 
@@ -403,11 +417,15 @@ async def _execute_skill(
 
 def create_agent() -> Agent[AgentDeps, str]:
     """Create and configure the Pydantic AI agent."""
-    agent: Agent[AgentDeps, str] = Agent(
-        settings.llm.model,
-        deps_type=AgentDeps,
-        result_type=str,
-        system_prompt=render_prompt("system/assistant", {"user": settings.user.name}),
+    agent = cast(
+        Agent[AgentDeps, str],
+        Agent(
+            settings.llm.model,
+            **_agent_init_kwargs(
+                render_prompt("system/assistant", {"user": settings.user.name}),
+                deps_type=AgentDeps,
+            ),
+        ),
     )
 
     # --- Tool Definitions ---
@@ -978,10 +996,10 @@ def _record_llm_metrics(result: object, agent: Agent[AgentDeps, str], start_time
     model_label = getattr(model, "model_name", None) or str(model or "unknown")
     base_attrs = {"model": model_label}
 
-    if getattr(usage, "request_tokens", None) is not None:
-        _brain_metrics.llm_tokens_input.add(usage.request_tokens, base_attrs)
-    if getattr(usage, "response_tokens", None) is not None:
-        _brain_metrics.llm_tokens_output.add(usage.response_tokens, base_attrs)
+    if getattr(usage, "input_tokens", None) is not None:
+        _brain_metrics.llm_tokens_input.add(usage.input_tokens, base_attrs)
+    if getattr(usage, "output_tokens", None) is not None:
+        _brain_metrics.llm_tokens_output.add(usage.output_tokens, base_attrs)
 
     requests = getattr(usage, "requests", 0) or 1
     _brain_metrics.llm_requests.add(requests, {"model": model_label, "status": "success"})

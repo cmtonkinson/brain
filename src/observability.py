@@ -24,7 +24,7 @@ from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Status, StatusCode
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 if TYPE_CHECKING:
     from opentelemetry.metrics import Meter
@@ -41,7 +41,7 @@ _meter: Meter | None = None
 _metrics: BrainMetrics | None = None
 
 
-class BrainJsonFormatter(jsonlogger.JsonFormatter):
+class BrainJsonFormatter(JsonFormatter):
     """Custom JSON formatter with Brain-specific fields and trace correlation."""
 
     def add_fields(
