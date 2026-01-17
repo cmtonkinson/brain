@@ -2,3 +2,6 @@
 __pycache__
 data/
 logs/
+
+# For local agent management
+/work-*/
