@@ -8,6 +8,7 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Foreign
 from sqlalchemy.ext.declarative import declarative_base
 
 from config import settings
+
 # SQLAlchemy base
 Base = declarative_base()
 
@@ -15,9 +16,9 @@ Base = declarative_base()
 # Database models
 class Task(Base):
     """Pending task or reminder."""
-    
+
     __tablename__ = "tasks"
-    
+
     id = Column(Integer, primary_key=True)
     description = Column(Text, nullable=False)
     scheduled_for = Column(DateTime, nullable=True)
@@ -28,9 +29,9 @@ class Task(Base):
 
 class ActionLog(Base):
     """Log of actions taken by the agent."""
-    
+
     __tablename__ = "action_logs"
-    
+
     id = Column(Integer, primary_key=True)
     action_type = Column(String(100), nullable=False)
     description = Column(Text, nullable=False)
@@ -40,9 +41,9 @@ class ActionLog(Base):
 
 class Conversation(Base):
     """Conversation metadata (full content stored in Obsidian)."""
-    
+
     __tablename__ = "conversations"
-    
+
     id = Column(Integer, primary_key=True)
     obsidian_path = Column(String(500), nullable=False)
     started_at = Column(DateTime, default=datetime.utcnow)
@@ -80,20 +81,20 @@ class IndexedChunk(Base):
 # Pydantic models for API/validation
 class TaskCreate(BaseModel):
     """Create a new task."""
-    
+
     description: str
     scheduled_for: Optional[datetime] = None
 
 
 class TaskResponse(BaseModel):
     """Task response."""
-    
+
     id: int
     description: str
     scheduled_for: Optional[datetime]
     completed: bool
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 

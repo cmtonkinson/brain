@@ -242,9 +242,7 @@ class ConversationMemory:
         timestamp = timestamp or datetime.now()
         conversation_path = await self.get_or_create_conversation(sender, timestamp, channel)
         path = get_summary_path(timestamp, sender, channel)
-        frontmatter = create_summary_frontmatter(
-            sender, timestamp, conversation_path, channel
-        )
+        frontmatter = create_summary_frontmatter(sender, timestamp, conversation_path, channel)
         content = f"{frontmatter}{summary.strip()}\n"
         await self.obsidian.create_note(path, content)
         logger.info("Created summary note: %s", path)

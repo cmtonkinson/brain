@@ -15,7 +15,9 @@ from skills.registry_schema import (
 )
 
 
-def _make_skill(capabilities, autonomy=AutonomyLevel.L1, rate_limit=None, policy_tags=None, actors=None):
+def _make_skill(
+    capabilities, autonomy=AutonomyLevel.L1, rate_limit=None, policy_tags=None, actors=None
+):
     """Build a SkillRuntimeEntry for policy evaluation tests."""
     definition = LogicSkillDefinition(
         name="search_notes",

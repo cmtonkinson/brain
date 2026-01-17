@@ -11,16 +11,16 @@ logger = logging.getLogger(__name__)
 
 class ObsidianClient:
     """Client for Obsidian Local REST API."""
-    
+
     def __init__(self):
         """Initialize the client with base URL and auth headers."""
         # Normalize to avoid accidental double slashes in request URLs.
         self.base_url = settings.obsidian.url.rstrip("/")
         self.headers = {
             "Authorization": f"Bearer {settings.obsidian.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
-    
+
     async def search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Search vault for notes matching query.
 
@@ -57,7 +57,7 @@ class ObsidianClient:
         except httpx.RequestError as e:
             logger.error(f"Obsidian connection error: {e}")
             raise
-    
+
     async def get_note(self, path: str) -> str:
         """Get content of a specific note.
 
@@ -70,10 +70,7 @@ class ObsidianClient:
         logger.info("Obsidian get_note: %s", path)
         try:
             async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
-                response = await client.get(
-                    f"{self.base_url}/vault/{path}",
-                    headers=self.headers
-                )
+                response = await client.get(f"{self.base_url}/vault/{path}", headers=self.headers)
                 response.raise_for_status()
                 logger.info("Obsidian get_note OK: %s chars=%s", path, len(response.text))
                 return response.text
@@ -86,7 +83,7 @@ class ObsidianClient:
         except httpx.RequestError as e:
             logger.error(f"Obsidian connection error: {e}")
             raise
-    
+
     async def create_note(self, path: str, content: str) -> Dict[str, Any]:
         """Create a new note.
 
@@ -107,9 +104,7 @@ class ObsidianClient:
                 # Use text/markdown content type for note creation
                 headers = {**self.headers, "Content-Type": "text/markdown"}
                 response = await client.put(
-                    f"{self.base_url}/vault/{path}",
-                    headers=headers,
-                    content=content
+                    f"{self.base_url}/vault/{path}", headers=headers, content=content
                 )
                 response.raise_for_status()
                 logger.info("Created note: %s", path)
@@ -120,7 +115,7 @@ class ObsidianClient:
         except httpx.RequestError as e:
             logger.error(f"Obsidian connection error: {e}")
             raise
-    
+
     async def append_to_note(self, path: str, content: str) -> Dict[str, Any]:
         """Append content to existing note.
 
@@ -136,9 +131,7 @@ class ObsidianClient:
             async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
                 headers = {**self.headers, "Content-Type": "text/markdown"}
                 response = await client.post(
-                    f"{self.base_url}/vault/{path}",
-                    headers=headers,
-                    content=content
+                    f"{self.base_url}/vault/{path}", headers=headers, content=content
                 )
                 response.raise_for_status()
                 logger.info("Appended to note: %s", path)

@@ -101,8 +101,7 @@ def _simulate_pipeline(
             raise ValueError(f"missing dry-run output for step {step.id}")
         output_payload = step_results[step.id]
         step_outputs[step.id] = {
-            output_name: output_payload.get(output_name)
-            for output_name in step.outputs.keys()
+            output_name: output_payload.get(output_name) for output_name in step.outputs.keys()
         }
 
 

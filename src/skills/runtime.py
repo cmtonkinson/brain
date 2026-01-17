@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -274,7 +273,9 @@ class SkillRuntime:
             else:
                 op_entry = self._op_runtime._registry.get_op(step.target.name, step.target.version)
                 child_context = context.child(op_entry.definition.capabilities)
-                result = await self._op_runtime.execute(step.target.name, step_inputs, child_context, version=step.target.version)
+                result = await self._op_runtime.execute(
+                    step.target.name, step_inputs, child_context, version=step.target.version
+                )
                 output_payload = result.output
 
             step_output_payload = {}

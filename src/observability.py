@@ -290,9 +290,7 @@ def setup_json_logging(level: int = logging.INFO) -> None:
 
     # Explicitly use stdout (not stderr) for Docker log capture reliability.
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(
-        BrainJsonFormatter("%(timestamp)s %(level)s %(name)s %(message)s")
-    )
+    handler.setFormatter(BrainJsonFormatter("%(timestamp)s %(level)s %(name)s %(message)s"))
 
     root = logging.getLogger()
     root.handlers = [handler]

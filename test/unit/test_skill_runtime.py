@@ -74,7 +74,11 @@ def _setup_registry(
                     "capabilities": ["obsidian.read"],
                     "side_effects": [],
                     "autonomy": autonomy,
-                    "entrypoint": {"runtime": "python", "module": "skills.search_notes", "handler": "run"},
+                    "entrypoint": {
+                        "runtime": "python",
+                        "module": "skills.search_notes",
+                        "handler": "run",
+                    },
                     "call_targets": [{"kind": "op", "name": "dummy_op", "version": "1.0.0"}],
                     "failure_modes": [
                         {

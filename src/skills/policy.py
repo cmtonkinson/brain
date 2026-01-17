@@ -57,7 +57,9 @@ class PolicyDecision:
 class PolicyEvaluator(Protocol):
     """Protocol for policy evaluators."""
 
-    def evaluate(self, skill: SkillRuntimeEntry | OpRuntimeEntry, context: PolicyContext) -> PolicyDecision:
+    def evaluate(
+        self, skill: SkillRuntimeEntry | OpRuntimeEntry, context: PolicyContext
+    ) -> PolicyDecision:
         """Evaluate policy for the given skill and context."""
         ...
 
@@ -89,7 +91,9 @@ class DefaultPolicy:
         """Initialize the default policy evaluator."""
         self._rate_limiter = RateLimiter()
 
-    def evaluate(self, skill: SkillRuntimeEntry | OpRuntimeEntry, context: PolicyContext) -> PolicyDecision:
+    def evaluate(
+        self, skill: SkillRuntimeEntry | OpRuntimeEntry, context: PolicyContext
+    ) -> PolicyDecision:
         """Evaluate a skill against the default policy checks."""
         reasons: list[str] = []
         metadata = {

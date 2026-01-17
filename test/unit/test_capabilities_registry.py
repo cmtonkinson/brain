@@ -4,8 +4,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
-
 CAPABILITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 ALLOWED_STATUSES = {"active", "deprecated"}
 

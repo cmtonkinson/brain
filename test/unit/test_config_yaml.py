@@ -26,7 +26,7 @@ def test_yaml_precedence(monkeypatch, tmp_path):
                 "signal:",
                 "  allowed_senders_by_channel:",
                 "    signal:",
-                "      - \"+15551234567\"",
+                '      - "+15551234567"',
                 "user:",
                 "  name: default-user",
                 "llm:",
@@ -106,7 +106,7 @@ def test_missing_yaml_files(monkeypatch, tmp_path):
     )
     monkeypatch.setenv("OBSIDIAN_API_KEY", "env-key")
     monkeypatch.setenv("OBSIDIAN_VAULT_PATH", "/env-vault")
-    monkeypatch.setenv("ALLOWED_SENDERS", "[\"+15551234567\"]")
+    monkeypatch.setenv("ALLOWED_SENDERS", '["+15551234567"]')
 
     monkeypatch.setattr(config_module, "_DEFAULT_CONFIG_PATH", missing_default)
     monkeypatch.setattr(config_module, "_USER_CONFIG_PATHS", [missing_user])
@@ -143,7 +143,7 @@ def test_legacy_llm_yaml_is_mapped(monkeypatch, tmp_path):
                 "signal:",
                 "  allowed_senders_by_channel:",
                 "    signal:",
-                "      - \"+15551234567\"",
+                '      - "+15551234567"',
                 "litellm:",
                 "  model: claude-sonnet-4-20250514",
                 "  base_url: http://llm.local",

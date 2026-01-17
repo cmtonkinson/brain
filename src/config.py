@@ -35,6 +35,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 def _yaml_settings_source(paths: list[Path]):
     """Create a Pydantic settings source for a list of YAML paths."""
+
     def source() -> dict[str, Any]:
         merged: dict[str, Any] = {}
         for path in paths:

@@ -11,7 +11,6 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 from pydantic_ai import Agent, RunContext
@@ -53,9 +52,7 @@ try:
     from observability import (
         setup_observability,
         setup_json_logging,
-        get_metrics,
         get_tracer,
-        traced,
         BrainMetrics,
     )
     from observability_litellm import setup_litellm_observability
@@ -224,7 +221,9 @@ async def _run_code_mode_diagnostics(ctx: RunContext[AgentDeps]) -> list[str]:
             results.append("- mcp/filesystem: error (no allowed directories)")
         else:
             base_path = Path(os.path.expanduser(allowed_dirs[0])).resolve()
-            code = f"result = filesystem.list_directory({{'path': {str(base_path)!r}}})\nreturn result"
+            code = (
+                f"result = filesystem.list_directory({{'path': {str(base_path)!r}}})\nreturn result"
+            )
             output = await ctx.deps.code_mode.call_tool_chain(code)
             raw = extract_code_mode_result(output)
             if _has_non_empty_listing(raw):
@@ -414,9 +413,7 @@ def create_agent() -> Agent[AgentDeps, str]:
     # --- Tool Definitions ---
 
     @agent.tool
-    async def index_vault(
-        ctx: RunContext[AgentDeps], full_reindex: bool = False
-    ) -> str:
+    async def index_vault(ctx: RunContext[AgentDeps], full_reindex: bool = False) -> str:
         """Trigger a vault indexing run into Qdrant.
 
         Use this when the user asks to refresh embeddings, reindex the vault,
@@ -426,9 +423,7 @@ def create_agent() -> Agent[AgentDeps, str]:
         return await run_indexer_task(full_reindex=full_reindex)
 
     @agent.tool
-    async def search_notes(
-        ctx: RunContext[AgentDeps], query: str, limit: int = 10
-    ) -> str:
+    async def search_notes(ctx: RunContext[AgentDeps], query: str, limit: int = 10) -> str:
         """Search the Obsidian knowledge base for notes matching a query.
 
         Use this tool when the user asks about topics, people, projects, or concepts
@@ -570,7 +565,9 @@ def create_agent() -> Agent[AgentDeps, str]:
         logger.info(f"Tool: create_note(path={path!r})")
 
         if not confirm:
-            return "Confirmation required to create notes. Ask the user, then retry with confirm=True."
+            return (
+                "Confirmation required to create notes. Ask the user, then retry with confirm=True."
+            )
 
         try:
             output = await _execute_skill(
@@ -603,7 +600,9 @@ def create_agent() -> Agent[AgentDeps, str]:
         logger.info(f"Tool: append_to_note(path={path!r})")
 
         if not confirm:
-            return "Confirmation required to append notes. Ask the user, then retry with confirm=True."
+            return (
+                "Confirmation required to append notes. Ask the user, then retry with confirm=True."
+            )
 
         try:
             output = await _execute_skill(
@@ -931,6 +930,7 @@ def _render_signal_message(markdown: str) -> str:
 
         # Protect inline code segments from other substitutions.
         code_spans = {}
+
         def _stash_code(match: re.Match[str]) -> str:
             # Use a placeholder that won't be altered by markdown substitutions.
             # Avoid underscores/tildes/asterisks which trigger italic/bold/strikethrough.
@@ -1034,13 +1034,17 @@ async def handle_signal_message(
             tracer = get_tracer()
         except RuntimeError:
             tracer = None
-    span_context = tracer.start_as_current_span(
-        "signal.handle_message",
-        attributes={
-            "signal.sender": sender,
-            "signal.message_length": len(message),
-        },
-    ) if tracer else None
+    span_context = (
+        tracer.start_as_current_span(
+            "signal.handle_message",
+            attributes={
+                "signal.sender": sender,
+                "signal.message_length": len(message),
+            },
+        )
+        if tracer
+        else None
+    )
 
     try:
         if span_context:
@@ -1079,9 +1083,7 @@ async def handle_signal_message(
 
         # Send reply via Signal
         send_start = time.perf_counter()
-        await signal_client.send_message(
-            phone_number, sender, _render_signal_message(response)
-        )
+        await signal_client.send_message(phone_number, sender, _render_signal_message(response))
 
         if _brain_metrics:
             send_duration = (time.perf_counter() - send_start) * 1000

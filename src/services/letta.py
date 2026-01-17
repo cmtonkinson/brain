@@ -81,6 +81,7 @@ class LettaService:
 
     def _extract_response_text(self, data: Any) -> str:
         """Extract assistant text from a Letta response payload."""
+
         def _content_to_text(content: Any) -> str | None:
             if isinstance(content, str):
                 return content
@@ -219,9 +220,7 @@ class LettaService:
             if content is None:
                 content = str(item)
             score = item.get("score") or item.get("similarity")
-            score_text = (
-                f" (score {score:.3f})" if isinstance(score, (int, float)) else ""
-            )
+            score_text = f" (score {score:.3f})" if isinstance(score, (int, float)) else ""
             lines.append(f"- {content}{score_text}")
         return "\n".join(lines)
 

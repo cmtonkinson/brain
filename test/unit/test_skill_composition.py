@@ -90,7 +90,7 @@ async def test_child_skill_inherits_capability_limits(tmp_path):
                             "retryable": False,
                         }
                     ],
-                }
+                },
             ],
         },
     )

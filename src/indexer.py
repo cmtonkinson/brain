@@ -56,7 +56,7 @@ def _is_heading(line: str) -> tuple[int, str] | None:
     hashes = len(stripped) - len(stripped.lstrip("#"))
     if hashes < 1 or hashes > 6:
         return None
-    if stripped[hashes:hashes + 1] != " ":
+    if stripped[hashes : hashes + 1] != " ":
         return None
     return hashes, stripped.strip()
 
@@ -77,7 +77,9 @@ class Section:
 def split_sections(text: str) -> list[Section]:
     """Split a document into top-level Markdown sections."""
     lines = text.splitlines()
-    primary_level = 2 if _has_primary_heading(lines, 2) else 1 if _has_primary_heading(lines, 1) else None
+    primary_level = (
+        2 if _has_primary_heading(lines, 2) else 1 if _has_primary_heading(lines, 1) else None
+    )
     sections: list[Section] = []
     current_heading: str | None = None
     current_lines: list[str] = []
@@ -107,12 +109,14 @@ def split_sections(text: str) -> list[Section]:
             current_lines.append(line)
 
     if current_heading is None:
-        if any(l.strip() for l in preamble):
+        if any(line.strip() for line in preamble):
             sections.append(Section(heading="## Document", content="\n".join(preamble).strip("\n")))
     else:
         flush()
         if preamble:
-            sections[-1].content = "\n".join([sections[-1].content, "\n".join(preamble)]).strip("\n")
+            sections[-1].content = "\n".join([sections[-1].content, "\n".join(preamble)]).strip(
+                "\n"
+            )
 
     return sections
 
@@ -154,9 +158,7 @@ def split_by_subheadings(section: Section) -> list[Section]:
     flush()
     if preamble and sub_sections:
         preamble_text = "\n".join(preamble).strip("\n")
-        sub_sections[0].content = "\n\n".join(
-            [preamble_text, sub_sections[0].content]
-        ).strip("\n")
+        sub_sections[0].content = "\n\n".join([preamble_text, sub_sections[0].content]).strip("\n")
     return sub_sections
 
 
@@ -175,7 +177,7 @@ def _is_list_line(line: str) -> bool:
         return True
     if stripped[:1].isdigit() and "." in stripped:
         prefix = stripped.split(".", 1)[0]
-        return prefix.isdigit() and stripped[len(prefix):].startswith(". ")
+        return prefix.isdigit() and stripped[len(prefix) :].startswith(". ")
     return False
 
 
@@ -314,9 +316,7 @@ def chunk_markdown(text: str, max_tokens: int) -> list[str]:
                     chunks.append(sub_text)
                     continue
                 for para_section in split_section_by_paragraphs(sub_section, max_tokens):
-                    chunks.append(
-                        f"{para_section.heading}\n\n{para_section.content}".strip("\n")
-                    )
+                    chunks.append(f"{para_section.heading}\n\n{para_section.content}".strip("\n"))
             continue
 
         for para_section in split_section_by_paragraphs(section, max_tokens):
@@ -456,9 +456,9 @@ def index_vault(
                 .all()
             ]
             if note_ids:
-                session.query(IndexedChunk).filter(
-                    IndexedChunk.note_id.in_(note_ids)
-                ).delete(synchronize_session=False)
+                session.query(IndexedChunk).filter(IndexedChunk.note_id.in_(note_ids)).delete(
+                    synchronize_session=False
+                )
             session.query(IndexedNote).filter(IndexedNote.collection == collection).delete(
                 synchronize_session=False
             )
@@ -486,9 +486,9 @@ def index_vault(
                 if not content.strip():
                     if note:
                         delete_note_points(qdrant, collection, relative_path)
-                        session.query(IndexedChunk).filter(
-                            IndexedChunk.note_id == note.id
-                        ).delete(synchronize_session=False)
+                        session.query(IndexedChunk).filter(IndexedChunk.note_id == note.id).delete(
+                            synchronize_session=False
+                        )
                         session.delete(note)
                         session.commit()
                         updated += 1
@@ -503,9 +503,9 @@ def index_vault(
 
                 if note:
                     delete_note_points(qdrant, collection, relative_path)
-                    session.query(IndexedChunk).filter(
-                        IndexedChunk.note_id == note.id
-                    ).delete(synchronize_session=False)
+                    session.query(IndexedChunk).filter(IndexedChunk.note_id == note.id).delete(
+                        synchronize_session=False
+                    )
 
                 chunks = chunk_markdown(content, max_tokens=max_tokens)
                 if not chunks:
@@ -565,18 +565,14 @@ def index_vault(
                 if (indexed + updated) % 50 == 0:
                     logger.info(f"Indexed {indexed}, updated {updated} notes...")
 
-        db_notes = (
-            session.query(IndexedNote)
-            .filter(IndexedNote.collection == collection)
-            .all()
-        )
+        db_notes = session.query(IndexedNote).filter(IndexedNote.collection == collection).all()
         for note in db_notes:
             if note.path in current_paths:
                 continue
             delete_note_points(qdrant, collection, note.path)
-            session.query(IndexedChunk).filter(
-                IndexedChunk.note_id == note.id
-            ).delete(synchronize_session=False)
+            session.query(IndexedChunk).filter(IndexedChunk.note_id == note.id).delete(
+                synchronize_session=False
+            )
             session.delete(note)
             updated += 1
 

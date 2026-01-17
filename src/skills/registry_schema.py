@@ -9,8 +9,7 @@ from typing import Annotated, Any, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SEMVER_RE = re.compile(
-    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
-    r"(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$"
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)" r"(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?$"
 )
 CAPABILITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 SKILL_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -67,6 +66,7 @@ class CallTargetKind(str, Enum):
 
 class RateLimit(BaseModel):
     """Rate limit configuration for a registry entry."""
+
     model_config = ConfigDict(extra="forbid")
 
     max_per_minute: int = Field(..., ge=1)
@@ -74,6 +74,7 @@ class RateLimit(BaseModel):
 
 class Entrypoint(BaseModel):
     """Runtime-specific entrypoint metadata for a logic skill."""
+
     model_config = ConfigDict(extra="forbid")
 
     runtime: EntrypointRuntime
@@ -99,6 +100,7 @@ class Entrypoint(BaseModel):
 
 class Redaction(BaseModel):
     """Redaction rules for skill inputs and outputs."""
+
     model_config = ConfigDict(extra="forbid")
 
     inputs: list[str] = Field(default_factory=list)
@@ -107,6 +109,7 @@ class Redaction(BaseModel):
 
 class Deprecation(BaseModel):
     """Deprecation metadata for skills marked as deprecated."""
+
     model_config = ConfigDict(extra="forbid")
 
     deprecated: bool = True
@@ -126,6 +129,7 @@ class Deprecation(BaseModel):
 
 class FailureMode(BaseModel):
     """Structured failure mode metadata for a skill."""
+
     model_config = ConfigDict(extra="forbid")
 
     code: str
@@ -143,6 +147,7 @@ class FailureMode(BaseModel):
 
 class CallTargetRef(BaseModel):
     """Reference to a skill or op by name and optional version."""
+
     model_config = ConfigDict(extra="forbid")
 
     kind: CallTargetKind
@@ -170,6 +175,7 @@ class CallTargetRef(BaseModel):
 
 class PipelineStep(BaseModel):
     """Single pipeline step definition."""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -188,6 +194,7 @@ class PipelineStep(BaseModel):
 
 class BaseSkillDefinition(BaseModel):
     """Common schema fields for all skills."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -249,6 +256,7 @@ class BaseSkillDefinition(BaseModel):
 
 class LogicSkillDefinition(BaseSkillDefinition):
     """Schema for logic skill definitions."""
+
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal[SkillKind.logic]
@@ -258,6 +266,7 @@ class LogicSkillDefinition(BaseSkillDefinition):
 
 class PipelineSkillDefinition(BaseSkillDefinition):
     """Schema for pipeline skill definitions."""
+
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal[SkillKind.pipeline]
@@ -272,6 +281,7 @@ SkillDefinition = Annotated[
 
 class OpDefinition(BaseModel):
     """Schema for a single op definition entry."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -350,6 +360,7 @@ class OpDefinition(BaseModel):
 
 class SkillRegistry(BaseModel):
     """Schema wrapper for the skill registry file."""
+
     model_config = ConfigDict(extra="forbid")
 
     registry_version: str
@@ -366,6 +377,7 @@ class SkillRegistry(BaseModel):
 
 class OpRegistry(BaseModel):
     """Schema wrapper for the op registry file."""
+
     model_config = ConfigDict(extra="forbid")
 
     registry_version: str

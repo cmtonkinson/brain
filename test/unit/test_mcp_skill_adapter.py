@@ -5,7 +5,13 @@ import pytest
 from skills.adapters.mcp_adapter import MCPSkillAdapter
 from skills.context import SkillContext
 from skills.registry import SkillRuntimeEntry
-from skills.registry_schema import AutonomyLevel, Entrypoint, EntrypointRuntime, SkillDefinition, SkillStatus
+from skills.registry_schema import (
+    AutonomyLevel,
+    Entrypoint,
+    EntrypointRuntime,
+    SkillDefinition,
+    SkillStatus,
+)
 from skills.errors import SkillExecutionError
 
 pytest.skip("MCP skill adapter deprecated in v2; replaced by op runtime.", allow_module_level=True)

@@ -61,7 +61,7 @@ def test_op_loader_applies_overrides(tmp_path):
     overlay_path.write_text(
         "\n".join(
             [
-                "overlay_version: \"1.0.0\"",
+                'overlay_version: "1.0.0"',
                 "overrides:",
                 "  - name: obsidian_search",
                 "    status: disabled",

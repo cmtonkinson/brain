@@ -25,22 +25,22 @@ class LLMClient:
         """Return True if the configured model is an Anthropic model."""
         model = (self.model or "").lower()
         return "claude" in model or "anthropic" in model
-    
+
     async def complete(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4000,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Async completion request.
-        
+
         Args:
             messages: List of message dicts with 'role' and 'content'
             temperature: Sampling temperature
             max_tokens: Maximum response tokens
             **kwargs: Additional LiteLLM parameters
-            
+
         Returns:
             Response text
         """
@@ -51,25 +51,25 @@ class LLMClient:
             max_tokens=max_tokens,
             timeout=settings.llm.timeout,
             **self._litellm_kwargs(),
-            **kwargs
+            **kwargs,
         )
         return response.choices[0].message.content
-    
+
     def complete_sync(
         self,
         messages: List[Dict[str, str]],
         temperature: float = 0.7,
         max_tokens: int = 4000,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Synchronous completion request.
-        
+
         Args:
             messages: List of message dicts with 'role' and 'content'
             temperature: Sampling temperature
             max_tokens: Maximum response tokens
             **kwargs: Additional LiteLLM parameters
-            
+
         Returns:
             Response text
         """
@@ -80,7 +80,7 @@ class LLMClient:
             max_tokens=max_tokens,
             timeout=settings.llm.timeout,
             **self._litellm_kwargs(),
-            **kwargs
+            **kwargs,
         )
         return response.choices[0].message.content
 

@@ -49,6 +49,7 @@ def extract_content_text(value: object | None) -> str | None:
 
 def extract_allowed_directories(value: object | None) -> list[str]:
     """Extract a list of allowed directories from a payload."""
+
     def _from_lines(text: str) -> list[str]:
         lines = []
         for line in text.splitlines():

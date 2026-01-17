@@ -36,6 +36,7 @@ _DESTRUCTIVE_KEYWORDS: tuple[str, ...] = (
     "add",
 )
 
+
 def _preview_text(text: str, limit: int = 200) -> str:
     """Return a condensed preview of text for logging."""
     cleaned = " ".join(text.split())
@@ -79,11 +80,16 @@ class CodeModeManager:
     def _route_namespace(self, query: str) -> str | None:
         """Heuristically route queries to a tool namespace."""
         normalized = query.lower()
-        if re.search(r"\b(file|files|filesystem|directory|folder|path|read|write|list)\b", normalized):
+        if re.search(
+            r"\b(file|files|filesystem|directory|folder|path|read|write|list)\b", normalized
+        ):
             return "filesystem"
         if re.search(r"\b(calendar|calendars|event|events|reminder|reminders)\b", normalized):
             return "eventkit"
-        if re.search(r"\b(github|repo|repository|pr|pull request|issue|branch|commit|tag|release)\b", normalized):
+        if re.search(
+            r"\b(github|repo|repository|pr|pull request|issue|branch|commit|tag|release)\b",
+            normalized,
+        ):
             return "github"
         return None
 
@@ -173,15 +179,16 @@ class CodeModeManager:
             timeout or self.timeout,
         )
         try:
-            result = await self.client.call_tool_chain(
-                code, timeout=timeout or self.timeout
-            )
+            result = await self.client.call_tool_chain(code, timeout=timeout or self.timeout)
         except Exception as exc:
             logger.error(f"Code-Mode call_tool_chain failed: {exc}")
             return f"Code-Mode execution failed: {exc}"
 
         # Log raw response for debugging
-        logger.info("Code-Mode raw response keys: %s", list(result.keys()) if isinstance(result, dict) else type(result))
+        logger.info(
+            "Code-Mode raw response keys: %s",
+            list(result.keys()) if isinstance(result, dict) else type(result),
+        )
 
         logs = result.get("logs", [])
         output = result.get("result")

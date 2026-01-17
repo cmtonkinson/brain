@@ -31,9 +31,7 @@ class SignalClient:
         logger.info("Signal poll request: %s", phone_number)
         try:
             async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:
-                response = await client.get(
-                    f"{self.api_url}/v1/receive/{phone_number}"
-                )
+                response = await client.get(f"{self.api_url}/v1/receive/{phone_number}")
                 response.raise_for_status()
                 envelopes = response.json()
 

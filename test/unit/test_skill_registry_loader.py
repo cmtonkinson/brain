@@ -48,7 +48,11 @@ def test_loader_applies_overrides_and_filters(tmp_path):
                     "capabilities": ["obsidian.read", "vault.search"],
                     "side_effects": [],
                     "autonomy": "L1",
-                    "entrypoint": {"runtime": "python", "module": "skills.search_notes", "handler": "run"},
+                    "entrypoint": {
+                        "runtime": "python",
+                        "module": "skills.search_notes",
+                        "handler": "run",
+                    },
                     "call_targets": [{"kind": "op", "name": "dummy_op", "version": "1.0.0"}],
                     "failure_modes": [
                         {
@@ -94,7 +98,7 @@ def test_loader_applies_overrides_and_filters(tmp_path):
     overlay_path.write_text(
         "\n".join(
             [
-                "overlay_version: \"1.0.0\"",
+                'overlay_version: "1.0.0"',
                 "overrides:",
                 "  - name: search_notes",
                 "    status: disabled",
@@ -156,7 +160,11 @@ def test_loader_filters_disabled_skills_without_entrypoints(tmp_path):
                     "capabilities": ["obsidian.read"],
                     "side_effects": [],
                     "autonomy": "L1",
-                    "entrypoint": {"runtime": "python", "module": "missing.module", "handler": "run"},
+                    "entrypoint": {
+                        "runtime": "python",
+                        "module": "missing.module",
+                        "handler": "run",
+                    },
                     "call_targets": [{"kind": "op", "name": "dummy_op", "version": "1.0.0"}],
                     "failure_modes": [
                         {

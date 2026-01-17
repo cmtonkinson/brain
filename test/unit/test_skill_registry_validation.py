@@ -1,8 +1,5 @@
 """Unit tests for skill registry validation."""
 
-import json
-from pathlib import Path
-
 from skills.registry_schema import OpRegistry
 from skills.registry_validation import (
     RegistryIndex,
@@ -121,32 +118,6 @@ def test_overlay_rejects_contract_fields():
 
 def test_overlay_requires_known_skill():
     """Ensure overlays reference known skills only."""
-    registry = {
-        "registry_version": "1.0.0",
-        "skills": [
-            {
-                "name": "search_notes",
-                "version": "1.0.0",
-                "status": "enabled",
-                "description": "Search notes",
-                "kind": "logic",
-                "inputs_schema": {"type": "object", "properties": {"q": {"type": "string"}}},
-                "outputs_schema": {"type": "object", "properties": {"results": {"type": "array"}}},
-                "capabilities": ["obsidian.read"],
-                "side_effects": [],
-                "autonomy": "L1",
-                "entrypoint": {"runtime": "python", "module": "x", "handler": "run"},
-                "call_targets": [{"kind": "op", "name": "dummy_op", "version": "1.0.0"}],
-                "failure_modes": [
-                    {
-                        "code": "skill_unexpected_error",
-                        "description": "Unexpected skill failure.",
-                        "retryable": False,
-                    }
-                ],
-            }
-        ],
-    }
     registry_index = RegistryIndex({"search_notes": {"1.0.0"}})
     overlay = {
         "overlay_version": "1.0.0",
@@ -195,6 +166,8 @@ def test_registry_rejects_unknown_call_target():
     op_registry = OpRegistry.model_validate({"registry_version": "1.0.0", "ops": []})
     op_index = RegistryIndex.from_op_registry(op_registry)
 
-    errors = validate_registry_data(registry, capability_ids, op_index=op_index, op_registry=op_registry)
+    errors = validate_registry_data(
+        registry, capability_ids, op_index=op_index, op_registry=op_registry
+    )
 
     assert any("unknown op target" in error for error in errors)

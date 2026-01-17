@@ -7,7 +7,7 @@ from typing import Any, Protocol, TYPE_CHECKING
 from .context import SkillContext
 from .errors import SkillRuntimeError
 from .registry import SkillRuntimeEntry
-from .registry_schema import CallTargetKind, CallTargetRef
+from .registry_schema import CallTargetKind
 
 if TYPE_CHECKING:
     from .op_runtime import OpExecutionResult

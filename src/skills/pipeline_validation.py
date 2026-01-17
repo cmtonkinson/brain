@@ -18,7 +18,9 @@ class PipelineValidationContext:
     def resolve_skill(self, name: str, version: str | None) -> Any | None:
         """Resolve a skill definition by name and optional version."""
         if version is None:
-            matches = [value for (key_name, _), value in self.skills_by_key.items() if key_name == name]
+            matches = [
+                value for (key_name, _), value in self.skills_by_key.items() if key_name == name
+            ]
             if len(matches) == 1:
                 return matches[0]
             return None
@@ -27,7 +29,9 @@ class PipelineValidationContext:
     def resolve_op(self, name: str, version: str | None) -> Any | None:
         """Resolve an op definition by name and optional version."""
         if version is None:
-            matches = [value for (key_name, _), value in self.ops_by_key.items() if key_name == name]
+            matches = [
+                value for (key_name, _), value in self.ops_by_key.items() if key_name == name
+            ]
             if len(matches) == 1:
                 return matches[0]
             return None
@@ -53,7 +57,9 @@ def validate_pipeline_skill(
         if step.target.kind == CallTargetKind.skill:
             target = context.resolve_skill(step.target.name, step.target.version)
             if target is None:
-                errors.append(f"pipeline step {step.id} references unknown skill {step.target.name}")
+                errors.append(
+                    f"pipeline step {step.id} references unknown skill {step.target.name}"
+                )
                 continue
         else:
             target = context.resolve_op(step.target.name, step.target.version)
@@ -77,9 +83,7 @@ def validate_pipeline_skill(
 
         for input_name, source in step.inputs.items():
             if input_name not in target_input_props:
-                errors.append(
-                    f"pipeline step {step.id} maps unknown input {input_name}"
-                )
+                errors.append(f"pipeline step {step.id} maps unknown input {input_name}")
                 continue
             source_schema, source_errors = _resolve_input_source_schema(
                 step,
@@ -101,9 +105,7 @@ def validate_pipeline_skill(
         output_fields: dict[str, dict[str, Any]] = {}
         for output_name, destination in step.outputs.items():
             if output_name not in target_output_props:
-                errors.append(
-                    f"pipeline step {step.id} maps unknown output {output_name}"
-                )
+                errors.append(f"pipeline step {step.id} maps unknown output {output_name}")
                 continue
             output_fields[output_name] = target_output_props[output_name]
             if destination.startswith("$outputs."):
@@ -126,9 +128,7 @@ def validate_pipeline_skill(
 
     missing_outputs = pipeline_output_required - mapped_pipeline_outputs
     if missing_outputs:
-        errors.append(
-            f"pipeline outputs missing required fields: {sorted(missing_outputs)}"
-        )
+        errors.append(f"pipeline outputs missing required fields: {sorted(missing_outputs)}")
 
     return errors, capabilities
 
@@ -153,9 +153,7 @@ def _resolve_input_source_schema(
         field = source.split(".", 1)[1]
         schema = pipeline_inputs.get(field)
         if schema is None:
-            errors.append(
-                f"pipeline step {step.id} references unknown pipeline input {field}"
-            )
+            errors.append(f"pipeline step {step.id} references unknown pipeline input {field}")
         return schema, errors
 
     if source.startswith("$step."):
@@ -166,9 +164,7 @@ def _resolve_input_source_schema(
         step_id = parts[1]
         field = parts[2]
         if step_id not in step_outputs:
-            errors.append(
-                f"pipeline step {step.id} references unknown step output {step_id}"
-            )
+            errors.append(f"pipeline step {step.id} references unknown step output {step_id}")
             return None, errors
         if field not in step_outputs[step_id]:
             errors.append(
@@ -196,9 +192,7 @@ def _validate_schema_compatibility(
             errors.append(f"{label} missing source type for required {target_type}")
             return errors
         if source_type != target_type:
-            errors.append(
-                f"{label} type {source_type} incompatible with required {target_type}"
-            )
+            errors.append(f"{label} type {source_type} incompatible with required {target_type}")
             return errors
 
     target_enum = target.get("enum")

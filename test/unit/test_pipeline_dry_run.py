@@ -127,24 +127,24 @@ async def test_pipeline_dry_run_wiring(tmp_path):
                             "id": "read",
                             "target": {"kind": "op", "name": "read_note_op", "version": "1.0.0"},
                             "inputs": {"path": "$inputs.path"},
-                            "outputs": {"content": "$step.read.content"}
+                            "outputs": {"content": "$step.read.content"},
                         },
                         {
                             "id": "summarize",
                             "target": {"kind": "op", "name": "summarize_op", "version": "1.0.0"},
                             "inputs": {"text": "$step.read.content"},
-                            "outputs": {"summary": "$outputs.summary"}
-                        }
+                            "outputs": {"summary": "$outputs.summary"},
+                        },
                     ],
                     "failure_modes": [
                         {
                             "code": "pipeline_failed",
                             "description": "Pipeline execution failed.",
-                            "retryable": False
+                            "retryable": False,
                         }
-                    ]
+                    ],
                 }
-            ]
+            ],
         },
     )
 

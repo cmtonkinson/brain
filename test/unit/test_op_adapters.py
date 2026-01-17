@@ -25,7 +25,9 @@ class DummyCodeMode:
         return {"ok": True, "code": code}
 
 
-def _make_op_entry(runtime: OpRuntime, module: str | None, handler: str | None, tool: str | None) -> OpRuntimeEntry:
+def _make_op_entry(
+    runtime: OpRuntime, module: str | None, handler: str | None, tool: str | None
+) -> OpRuntimeEntry:
     """Build an OpRuntimeEntry for adapter tests."""
     definition = OpDefinition(
         name="demo_op",

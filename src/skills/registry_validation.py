@@ -93,7 +93,11 @@ def validate_registry_data(
             if cap_id not in capability_ids:
                 errors.append(f"unknown capability: {cap_id} (skill {skill.name})")
 
-        errors.extend(_validate_skill_call_targets(skill, registry, op_index, require_ops=op_index is not None))
+        errors.extend(
+            _validate_skill_call_targets(
+                skill, registry, op_index, require_ops=op_index is not None
+            )
+        )
 
         if skill.kind == SkillKind.pipeline and op_registry is not None:
             context = PipelineValidationContext(
@@ -286,7 +290,9 @@ def _validate_skill_call_targets(
         if target.kind == CallTargetKind.skill:
             if not skill_index.has_skill(target.name, target.version):
                 if target.version:
-                    errors.append(f"unknown skill target {target.name}@{target.version} in {skill.name}")
+                    errors.append(
+                        f"unknown skill target {target.name}@{target.version} in {skill.name}"
+                    )
                 else:
                     errors.append(f"unknown skill target {target.name} in {skill.name}")
         else:
@@ -296,7 +302,9 @@ def _validate_skill_call_targets(
                 continue
             if not op_index.has_skill(target.name, target.version):
                 if target.version:
-                    errors.append(f"unknown op target {target.name}@{target.version} in {skill.name}")
+                    errors.append(
+                        f"unknown op target {target.name}@{target.version} in {skill.name}"
+                    )
                 else:
                     errors.append(f"unknown op target {target.name} in {skill.name}")
 

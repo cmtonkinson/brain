@@ -103,10 +103,14 @@ class SkillRegistryLoader:
         self._base_path = base_path or Path("/config/skill-registry.json")
         self._capability_path = capability_path or Path("/config/capabilities.json")
         self._op_registry_path = op_registry_path or Path("/config/op-registry.json")
-        self._overlay_paths = list(overlay_paths) if overlay_paths is not None else [
-            Path("/config/skill-registry.local.yml"),
-            Path("~/.config/brain/skill-registry.local.yml").expanduser(),
-        ]
+        self._overlay_paths = (
+            list(overlay_paths)
+            if overlay_paths is not None
+            else [
+                Path("/config/skill-registry.local.yml"),
+                Path("~/.config/brain/skill-registry.local.yml").expanduser(),
+            ]
+        )
         self._cached_view: SkillRegistryView | None = None
         self._cached_mtimes: dict[Path, float] = {}
 
@@ -136,24 +140,16 @@ class SkillRegistryLoader:
         if status is not None:
             skills = [skill for skill in skills if skill.status == status]
         if capability is not None:
-            skills = [
-                skill for skill in skills if capability in skill.definition.capabilities
-            ]
+            skills = [skill for skill in skills if capability in skill.definition.capabilities]
         return skills
 
     def get_skill(self, name: str, version: str | None = None) -> SkillRuntimeEntry:
         """Resolve a skill by name/version."""
         matches = [
-            skill
-            for skill in self.reload_if_changed().skills
-            if skill.definition.name == name
+            skill for skill in self.reload_if_changed().skills if skill.definition.name == name
         ]
         if version is not None:
-            matches = [
-                skill
-                for skill in matches
-                if skill.definition.version == version
-            ]
+            matches = [skill for skill in matches if skill.definition.version == version]
         if not matches:
             raise KeyError(f"skill not found: {name}@{version or '*'}")
         if len(matches) > 1:
@@ -206,9 +202,7 @@ class SkillRegistryLoader:
                 )
                 pipeline_errors, computed_caps = validate_pipeline_skill(skill, context)
                 if pipeline_errors:
-                    raise ValueError(
-                        "pipeline validation failed: " + "; ".join(pipeline_errors)
-                    )
+                    raise ValueError("pipeline validation failed: " + "; ".join(pipeline_errors))
                 if skill.capabilities and set(skill.capabilities) != computed_caps:
                     raise ValueError(
                         f"pipeline capability mismatch for {skill.name}: "
@@ -235,10 +229,14 @@ class OpRegistryLoader:
         """Initialize the op registry loader."""
         self._base_path = base_path or Path("/config/op-registry.json")
         self._capability_path = capability_path or Path("/config/capabilities.json")
-        self._overlay_paths = list(overlay_paths) if overlay_paths is not None else [
-            Path("/config/op-registry.local.yml"),
-            Path("~/.config/brain/op-registry.local.yml").expanduser(),
-        ]
+        self._overlay_paths = (
+            list(overlay_paths)
+            if overlay_paths is not None
+            else [
+                Path("/config/op-registry.local.yml"),
+                Path("~/.config/brain/op-registry.local.yml").expanduser(),
+            ]
+        )
         self._cached_view: OpRegistryView | None = None
         self._cached_mtimes: dict[Path, float] = {}
 
@@ -268,24 +266,14 @@ class OpRegistryLoader:
         if status is not None:
             ops = [op for op in ops if op.status == status]
         if capability is not None:
-            ops = [
-                op for op in ops if capability in op.definition.capabilities
-            ]
+            ops = [op for op in ops if capability in op.definition.capabilities]
         return ops
 
     def get_op(self, name: str, version: str | None = None) -> OpRuntimeEntry:
         """Resolve an op by name/version."""
-        matches = [
-            op
-            for op in self.reload_if_changed().ops
-            if op.definition.name == name
-        ]
+        matches = [op for op in self.reload_if_changed().ops if op.definition.name == name]
         if version is not None:
-            matches = [
-                op
-                for op in matches
-                if op.definition.version == version
-            ]
+            matches = [op for op in matches if op.definition.version == version]
         if not matches:
             raise KeyError(f"op not found: {name}@{version or '*'}")
         if len(matches) > 1:
@@ -352,8 +340,7 @@ def _load_overrides(
         )
         if overlay_errors:
             raise ValueError(
-                f"overlay validation failed for {overlay_path}: "
-                + "; ".join(overlay_errors)
+                f"overlay validation failed for {overlay_path}: " + "; ".join(overlay_errors)
             )
         overrides.extend(overlay_data.get("overrides", []))
     return overrides
