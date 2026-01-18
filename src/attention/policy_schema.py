@@ -113,6 +113,27 @@ class TimeWindow(BaseModel):
         return self
 
 
+class AuthorizationScope(BaseModel):
+    """Scope constraints for action authorization context."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    autonomy_levels: set[str] | None = None
+    approval_statuses: set[str] | None = None
+    policy_tags: set[str] | None = None
+
+    @field_validator("autonomy_levels", "approval_statuses", "policy_tags")
+    @classmethod
+    def _validate_tokens(cls, value: set[str] | None) -> set[str] | None:
+        """Normalize scope tokens and reject empty values."""
+        if value is None:
+            return None
+        normalized = {item.strip() for item in value if item is not None}
+        if not normalized or any(not item for item in normalized):
+            raise ValueError("Values must be non-empty strings.")
+        return normalized
+
+
 class PolicyOutcomeKind(str, Enum):
     """Allowed policy outcomes for interruption routing."""
 
@@ -163,8 +184,10 @@ class PolicyScope(BaseModel):
     source_components: set[str] | None = None
     urgency: UrgencyConstraint | None = None
     confidence: ScoreRange | None = None
+    channel_cost: ScoreRange | None = None
     preferences: list[PreferenceCondition] | None = None
     time_windows: list[TimeWindow] | None = None
+    authorization: AuthorizationScope | None = None
 
     @field_validator("signal_types", "source_components")
     @classmethod

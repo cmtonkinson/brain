@@ -12,11 +12,21 @@ from attention.assessment_engine import BaseAssessmentOutcome
 from attention.audit import AttentionAuditLogger
 from attention.policy_schema import (
     AttentionPolicy,
+    AuthorizationScope,
     PolicyOutcomeKind,
     TimeWindow,
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class AuthorizationContext:
+    """Action authorization context supplied by callers."""
+
+    autonomy_level: str | None
+    approval_status: str | None
+    policy_tags: set[str]
 
 
 @dataclass(frozen=True)
@@ -28,8 +38,10 @@ class PolicyInputs:
     urgency_level: str
     urgency_score: float
     confidence: float
+    channel_cost: float
     preferences: dict[str, str | int | bool | None]
     timestamp: datetime
+    authorization: AuthorizationContext | None = None
 
 
 @dataclass(frozen=True)
@@ -99,11 +111,33 @@ def _policy_matches(policy: AttentionPolicy, inputs: PolicyInputs) -> bool:
             return False
     if scope.confidence and not _score_in_range(inputs.confidence, scope.confidence):
         return False
+    if scope.channel_cost and not _score_in_range(inputs.channel_cost, scope.channel_cost):
+        return False
     if scope.preferences:
         for pref in scope.preferences:
             if inputs.preferences.get(pref.key) != pref.value:
                 return False
     if scope.time_windows and not _matches_time_window(scope.time_windows, inputs.timestamp):
+        return False
+    if scope.authorization and not _authorization_matches(
+        scope.authorization, inputs.authorization
+    ):
+        return False
+    return True
+
+
+def _authorization_matches(
+    scope: AuthorizationScope,
+    context: AuthorizationContext | None,
+) -> bool:
+    """Return True when authorization context matches the policy scope."""
+    if context is None:
+        return False
+    if scope.autonomy_levels and (context.autonomy_level not in scope.autonomy_levels):
+        return False
+    if scope.approval_statuses and (context.approval_status not in scope.approval_statuses):
+        return False
+    if scope.policy_tags and not scope.policy_tags.issubset(context.policy_tags):
         return False
     return True
 

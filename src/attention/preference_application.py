@@ -43,6 +43,22 @@ class PreferenceApplicationResult:
     preference_reference: str | None
 
 
+def resolve_preference_flags(
+    session: Session,
+    owner: str,
+    timestamp: datetime,
+) -> dict[str, bool]:
+    """Resolve preference flags for policy input evaluation."""
+    quiet_hours = session.query(AttentionQuietHours).filter_by(owner=owner).all()
+    dnd_windows = session.query(AttentionDoNotDisturb).filter_by(owner=owner).all()
+    quiet_match = _match_time_window(quiet_hours, timestamp)
+    dnd_match = _match_time_window(dnd_windows, timestamp)
+    return {
+        "quiet_hours": bool(quiet_match),
+        "do_not_disturb": bool(dnd_match),
+    }
+
+
 def apply_preferences(
     session: Session,
     inputs: PreferenceApplicationInputs,

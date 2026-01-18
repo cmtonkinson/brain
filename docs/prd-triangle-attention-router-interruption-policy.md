@@ -59,6 +59,7 @@ The system’s value depends as much on *what it withholds* as on what it delive
 3. **Channels have intent, not equality**
 4. **Interruptions should close loops**
 5. **Humans must understand why they were interrupted**
+6. **Attention routing is distinct from action authorization**
 
 ---
 
@@ -105,6 +106,18 @@ Inputs may include:
 - quiet hours
 - recent interruptions
 - explicit user preferences
+
+---
+
+### 5.5 Routing Request (Envelope)
+A normalized payload used by Skills, Ops, Jobs, and other components to request outbound communication.
+
+The router consumes this envelope to:
+- validate provenance
+- apply attention policy
+- select channel or suppress
+
+It does **not** re-authorize the underlying action.
 
 ---
 
@@ -194,6 +207,24 @@ This metadata is surfaced to the human in a compact form and logged for audit.
 
 ---
 
+### 6.7 Router Interface & Integration
+
+All outbound attempts from Skills, Ops, Jobs, watchers, and system components **call the router directly** using a normalized envelope.
+
+The router is responsible for **attention policy** (interrupt, defer, batch, suppress, escalate), while the Skill Framework and Policy Engine remain responsible for **action authorization**.
+
+Minimum required envelope fields:
+- signal type
+- source component
+- actor (human, scheduled, watcher, skill, system)
+- channel hint (if any)
+- urgency + confidence
+- provenance inputs
+- correlation id (for tracing and audit)
+- action authorization context (autonomy level, approval status, policy tags)
+
+---
+
 ## 7. Interruption Policy Model
 
 ### 7.1 Policy Inputs
@@ -205,6 +236,7 @@ Policies may reference:
 - confidence score
 - user-defined preferences
 - time windows
+- action authorization context (autonomy level, approval state, policy tags)
 
 ---
 
@@ -277,6 +309,7 @@ Mitigation:
 ## 12. Definition of Done
 
 - [ ] Attention Router implemented as mandatory gate
+- [ ] Router interface defined and adopted by Skills/Ops/Jobs
 - [ ] Policy model defined and enforced
 - [ ] Channel selection logic implemented
 - [ ] Batching and digest support

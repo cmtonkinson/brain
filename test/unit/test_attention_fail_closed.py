@@ -43,7 +43,10 @@ async def test_router_unavailable_queues_signal(
     now = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
     with closing(session_factory()) as session:
         audit_logger = AttentionAuditLogger(session)
-        router = AttentionRouter(signal_client=FakeSignalClient())
+        router = AttentionRouter(
+            signal_client=FakeSignalClient(),
+            session_factory=session_factory,
+        )
         fail_closed = FailClosedRouter(router, session, audit_logger)
         signal = OutboundSignal(
             source_component="agent",
@@ -76,7 +79,10 @@ async def test_policy_unavailable_queues_signal(
     now = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
     with closing(session_factory()) as session:
         audit_logger = AttentionAuditLogger(session)
-        router = AttentionRouter(signal_client=FakeSignalClient())
+        router = AttentionRouter(
+            signal_client=FakeSignalClient(),
+            session_factory=session_factory,
+        )
         fail_closed = FailClosedRouter(router, session, audit_logger)
         signal = OutboundSignal(
             source_component="agent",
@@ -110,7 +116,10 @@ async def test_recovery_reprocesses_queued_signals(
     with closing(session_factory()) as session:
         signal_client = FakeSignalClient()
         audit_logger = AttentionAuditLogger(session)
-        router = AttentionRouter(signal_client=signal_client)
+        router = AttentionRouter(
+            signal_client=signal_client,
+            session_factory=session_factory,
+        )
         fail_closed = FailClosedRouter(
             router,
             session,
@@ -137,4 +146,5 @@ async def test_recovery_reprocesses_queued_signals(
         session.commit()
 
     assert processed == 1
-    assert signal_client.sent == ["hello"]
+    assert len(signal_client.sent) == 1
+    assert signal_client.sent[0].startswith("hello")

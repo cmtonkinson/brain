@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy.orm import sessionmaker
 
-from attention.router import AttentionRouter, OutboundSignal
+from attention.envelope_schema import NotificationEnvelope, ProvenanceInput, RoutingEnvelope
+from attention.router import AttentionRouter
 from attention.router_gate import RouterViolationError, get_violation_recorder
 from services.signal import SignalClient
 
@@ -30,24 +32,47 @@ class FakeSignalClient:
 
 
 @pytest.mark.asyncio
-async def test_router_invoked_for_all_components() -> None:
+async def test_router_invoked_for_all_components(
+    sqlite_session_factory: sessionmaker,
+) -> None:
     """Ensure signals from all components pass through the router."""
-    router = AttentionRouter(signal_client=FakeSignalClient())
+    session_factory = sqlite_session_factory
+    router = AttentionRouter(
+        signal_client=FakeSignalClient(),
+        session_factory=session_factory,
+    )
     sources = ["scheduled_task", "watcher", "skill", "memory", "agent"]
 
     for source in sources:
-        await router.route_signal(
-            OutboundSignal(
-                source_component=source,
-                channel="signal",
-                from_number="+15550000000",
-                to_number="+15551234567",
-                message="hello",
+        await router.route_envelope(
+            RoutingEnvelope(
+                version="1.0.0",
+                signal_type="test.signal",
+                signal_reference=f"{source}-signal",
+                actor="+15550000000",
+                owner="+15551234567",
+                channel_hint="signal",
+                urgency=0.2,
+                channel_cost=0.4,
+                content_type="message",
+                notification=NotificationEnvelope(
+                    version="1.0.0",
+                    source_component=source,
+                    origin_signal=f"{source}-signal",
+                    confidence=0.7,
+                    provenance=[
+                        ProvenanceInput(
+                            input_type="signal",
+                            reference=f"{source}-signal",
+                            description="test",
+                        )
+                    ],
+                ),
             )
         )
 
-    routed = router.routed_signals()
-    assert [item.source_component for item in routed] == sources
+    routed = router.routed_sources()
+    assert routed == sources
 
 
 @pytest.mark.asyncio
@@ -71,27 +96,43 @@ async def test_direct_notification_is_blocked_and_logged() -> None:
 
 
 @pytest.mark.asyncio
-async def test_router_batch_handles_mixed_sources() -> None:
+async def test_router_batch_handles_mixed_sources(
+    sqlite_session_factory: sessionmaker,
+) -> None:
     """Ensure mixed source batches route through the router."""
-    router = AttentionRouter(signal_client=FakeSignalClient())
-    signals = [
-        OutboundSignal(
-            source_component="scheduled_task",
-            channel="signal",
-            from_number="+15550000000",
-            to_number="+15551230000",
-            message="one",
-        ),
-        OutboundSignal(
-            source_component="skill",
-            channel="signal",
-            from_number="+15550000000",
-            to_number="+15551230001",
-            message="two",
-        ),
-    ]
+    session_factory = sqlite_session_factory
+    router = AttentionRouter(
+        signal_client=FakeSignalClient(),
+        session_factory=session_factory,
+    )
+    signals = ["scheduled_task", "skill"]
 
-    for signal in signals:
-        await router.route_signal(signal)
+    for source in signals:
+        await router.route_envelope(
+            RoutingEnvelope(
+                version="1.0.0",
+                signal_type="test.signal",
+                signal_reference=f"{source}-signal",
+                actor="+15550000000",
+                owner="+15551234567",
+                channel_hint="signal",
+                urgency=0.2,
+                channel_cost=0.4,
+                content_type="message",
+                notification=NotificationEnvelope(
+                    version="1.0.0",
+                    source_component=source,
+                    origin_signal=f"{source}-signal",
+                    confidence=0.7,
+                    provenance=[
+                        ProvenanceInput(
+                            input_type="signal",
+                            reference=f"{source}-signal",
+                            description="test",
+                        )
+                    ],
+                ),
+            )
+        )
 
     assert len(router.routed_signals()) == 2

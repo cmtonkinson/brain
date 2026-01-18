@@ -30,6 +30,7 @@ def _policy_inputs() -> PolicyInputs:
         urgency_level="high",
         urgency_score=0.9,
         confidence=0.8,
+        channel_cost=0.4,
         preferences={"quiet_hours": False},
         timestamp=datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc),
     )

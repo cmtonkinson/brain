@@ -24,6 +24,11 @@ from services.database import init_db, get_session, log_action
 from access_control import is_sender_allowed
 from services.signal import SignalClient
 from attention.router import AttentionRouter, OutboundSignal
+from attention.routing_hooks import (
+    build_approval_router,
+    build_op_routing_hook,
+    build_skill_routing_hook,
+)
 from services.letta import LettaService
 from prompts import render_prompt
 from tools.obsidian import ObsidianClient
@@ -395,6 +400,10 @@ async def _execute_skill(
         max_autonomy=AutonomyLevel.L1,
         confirmed=confirmed,
     )
+    router = AttentionRouter(signal_client=SignalClient())
+    skill_routing_hook = build_skill_routing_hook(router)
+    op_routing_hook = build_op_routing_hook(router)
+    approval_router = build_approval_router(router)
     runtime = SkillRuntime(
         registry=registry,
         policy=policy,
@@ -408,7 +417,11 @@ async def _execute_skill(
                 "native": NativeOpAdapter(),
                 "mcp": MCPOpAdapter(deps.code_mode),
             },
+            routing_hook=op_routing_hook,
+            approval_router=approval_router,
         ),
+        routing_hook=skill_routing_hook,
+        approval_router=approval_router,
     )
     set_services(
         SkillServices(
