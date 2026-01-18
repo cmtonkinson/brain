@@ -163,7 +163,47 @@ def test_legacy_llm_yaml_is_mapped(monkeypatch, tmp_path):
             "OBSIDIAN_VAULT_PATH",
             "ALLOWED_SENDERS",
             "ALLOWED_SENDERS_BY_CHANNEL",
+            "LLM_EMBED_BASE_URL",
+            "LLM_BASE_URL",
+            "OLLAMA_URL",
         ],
+    )
+
+    source = config_module._yaml_settings_source([defaults])
+    settings = config_module.Settings(**source())
+
+    assert settings.llm.model == "claude-sonnet-4-20250514"
+    assert settings.llm.base_url == "http://llm.local"
+    assert settings.llm.timeout == 123
+    assert settings.llm.embed_base_url == "http://embeddings.local"
+    assert settings.llm.embed_model == "mxbai-embed-large"
+
+
+def test_allowed_senders_by_channel_from_env(monkeypatch, tmp_path):
+    """Allowed senders by channel can be set via environment JSON."""
+    defaults = tmp_path / "defaults.yml"
+    defaults.write_text(
+        "\n".join(
+            [
+                "obsidian:",
+                "  api_key: default-key",
+                "  vault_path: /vault",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    _clear_env(
+        monkeypatch,
+        [
+            "ALLOWED_SENDERS_BY_CHANNEL",
+            "OBSIDIAN_API_KEY",
+            "OBSIDIAN_VAULT_PATH",
+        ],
+    )
+    monkeypatch.setenv(
+        "ALLOWED_SENDERS_BY_CHANNEL",
+        '{"signal": ["+15551234567"], "email": ["user@example.com"]}',
     )
 
     monkeypatch.setattr(config_module, "_DEFAULT_CONFIG_PATH", defaults)
@@ -172,8 +212,7 @@ def test_legacy_llm_yaml_is_mapped(monkeypatch, tmp_path):
 
     settings = config_module.Settings()
 
-    assert settings.llm.model == "claude-sonnet-4-20250514"
-    assert settings.llm.base_url == "http://llm.local"
-    assert settings.llm.timeout == 123
-    assert settings.llm.embed_base_url == "http://embeddings.local"
-    assert settings.llm.embed_model == "mxbai-embed-large"
+    assert settings.signal.allowed_senders_by_channel == {
+        "signal": ["+15551234567"],
+        "email": ["user@example.com"],
+    }

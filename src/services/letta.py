@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from typing import Any
 
 import httpx
@@ -63,78 +62,6 @@ class LettaService:
                 return self._agent_id
 
         raise ValueError(f"Letta agent not found: {self.agent_name}")
-
-    def _post_message_http(self, agent_id: str, message: str) -> str:
-        """Send a raw message to a Letta agent via HTTP."""
-        url = f"{self.base_url}/v1/agents/{agent_id}/messages"
-        payload = {"input": message, "streaming": False}
-        response = httpx.post(
-            url,
-            headers=self._headers(),
-            json=payload,
-            timeout=settings.llm.timeout,
-            follow_redirects=True,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return self._extract_response_text(data)
-
-    def _extract_response_text(self, data: Any) -> str:
-        """Extract assistant text from a Letta response payload."""
-
-        def _content_to_text(content: Any) -> str | None:
-            if isinstance(content, str):
-                return content
-            if isinstance(content, list):
-                parts = []
-                for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        text = item.get("text")
-                        if isinstance(text, str):
-                            parts.append(text)
-                return "\n".join(parts).strip() if parts else None
-            return None
-
-        if isinstance(data, dict):
-            for key in ("message", "text", "content", "response"):
-                value = data.get(key)
-                text_value = _content_to_text(value)
-                if text_value:
-                    return text_value
-            for key in ("messages", "data", "items"):
-                value = data.get(key)
-                if isinstance(value, list):
-                    return self._extract_response_text(value)
-        if isinstance(data, list):
-            for item in reversed(data):
-                if not isinstance(item, dict):
-                    continue
-                if item.get("role") == "assistant":
-                    content = item.get("content") or item.get("message") or item.get("text")
-                    text_value = _content_to_text(content)
-                    if text_value:
-                        return text_value
-                if item.get("message_type") == "assistant_message":
-                    content = item.get("content") or item.get("message")
-                    text_value = _content_to_text(content)
-                    if text_value:
-                        return text_value
-        raise ValueError("Letta response did not include assistant content.")
-
-    def send_message(self, message: str) -> str:
-        """Send a message to the Letta agent runtime (deprecated)."""
-        warnings.warn(
-            "LettaService.send_message is deprecated; use archival memory methods instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if not self.enabled:
-            raise RuntimeError("Letta is not configured.")
-        agent_id = self._get_agent_id()
-        logger.info("Letta request: agent=%s chars=%s", self.agent_name, len(message))
-        response = self._post_message_http(agent_id, message)
-        logger.info("Letta response: agent=%s chars=%s", self.agent_name, len(response))
-        return response
 
     def _post_with_fallbacks(
         self,

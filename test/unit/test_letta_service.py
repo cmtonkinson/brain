@@ -21,40 +21,6 @@ def _build_response(
     return httpx.Response(status_code=status_code, json=json_data, content=content, request=request)
 
 
-def test_extract_response_text_prefers_text_fields() -> None:
-    """Extract response text from simple dictionary payloads."""
-    service = LettaService()
-    payload = {"message": "hello"}
-
-    assert service._extract_response_text(payload) == "hello"
-
-
-def test_extract_response_text_reads_assistant_list() -> None:
-    """Extract response text from assistant messages in list payloads."""
-    service = LettaService()
-    payload = [
-        {"role": "user", "content": "ignore"},
-        {
-            "role": "assistant",
-            "content": [
-                {"type": "text", "text": "first"},
-                {"type": "text", "text": "second"},
-            ],
-        },
-    ]
-
-    assert service._extract_response_text(payload) == "first\nsecond"
-
-
-def test_extract_response_text_raises_on_missing_content() -> None:
-    """Extract response text raises when no assistant content exists."""
-    service = LettaService()
-    payload = {"unexpected": "shape"}
-
-    with pytest.raises(ValueError, match="did not include assistant content"):
-        service._extract_response_text(payload)
-
-
 def test_post_with_fallbacks_skips_unavailable(monkeypatch) -> None:
     """POST fallback continues after 404/422 and returns first valid JSON."""
     service = LettaService()

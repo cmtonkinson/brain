@@ -150,6 +150,25 @@ async def test_runtime_validates_inputs(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_runtime_executes_successfully(tmp_path):
+    """Ensure enabled skills execute and return outputs."""
+    loader = _setup_registry(
+        tmp_path,
+        {"type": "object", "required": ["results"], "properties": {"results": {"type": "array"}}},
+    )
+    runtime = SkillRuntime(
+        registry=loader,
+        policy=DefaultPolicy(),
+        adapters={"python": DummyAdapter({"results": []})},
+    )
+    context = SkillContext(allowed_capabilities={"obsidian.read"}, confirmed=True)
+
+    result = await runtime.execute("search_notes", {"query": "hi"}, context)
+
+    assert result.output == {"results": []}
+
+
+@pytest.mark.asyncio
 async def test_runtime_validates_outputs(tmp_path):
     """Ensure output schema validation rejects invalid types."""
     loader = _setup_registry(

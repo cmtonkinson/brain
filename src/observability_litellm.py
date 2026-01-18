@@ -21,7 +21,7 @@ from litellm.integrations.custom_logger import CustomLogger
 from opentelemetry import trace
 
 if TYPE_CHECKING:
-    from src.observability import BrainMetrics
+    from observability import BrainMetrics
 
 logger = logging.getLogger(__name__)
 

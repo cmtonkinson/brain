@@ -41,6 +41,7 @@ redis:
 user:
   name: "user"
   home_dir: "/Users/you"
+  timezone: "America/New_York"
   test_calendar_name: null
   test_reminder_list_name: null
 

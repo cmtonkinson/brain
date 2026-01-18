@@ -6,6 +6,7 @@ from datetime import datetime
 
 from config import settings
 from models import ConversationMessage
+from time_utils import local_now, to_local
 from tools.obsidian import ObsidianClient
 
 logger = logging.getLogger(__name__)
@@ -28,11 +29,12 @@ def get_conversation_path(date: datetime, sender: str, channel: str | None = Non
     Returns:
         Path like "Brain/Conversations/2026/01/signal-2026-01-12-a3f2.md"
     """
+    local_date = to_local(date)
     # Create a short hash from sender for privacy
     sender_hash = hashlib.sha256(sender.encode()).hexdigest()[:4]
-    date_str = date.strftime("%Y-%m-%d")
-    year = date.strftime("%Y")
-    month = date.strftime("%m")
+    date_str = local_date.strftime("%Y-%m-%d")
+    year = local_date.strftime("%Y")
+    month = local_date.strftime("%m")
     channel_slug = _normalize_channel(channel)
 
     folder = settings.conversation.folder
@@ -41,11 +43,12 @@ def get_conversation_path(date: datetime, sender: str, channel: str | None = Non
 
 def get_summary_path(date: datetime, sender: str, channel: str | None = None) -> str:
     """Generate the Obsidian path for a summary note."""
+    local_date = to_local(date)
     sender_hash = hashlib.sha256(sender.encode()).hexdigest()[:4]
-    date_str = date.strftime("%Y-%m-%d")
-    time_str = date.strftime("%H%M%S")
-    year = date.strftime("%Y")
-    month = date.strftime("%m")
+    date_str = local_date.strftime("%Y-%m-%d")
+    time_str = local_date.strftime("%H%M%S")
+    year = local_date.strftime("%Y")
+    month = local_date.strftime("%m")
     channel_slug = _normalize_channel(channel)
 
     folder = settings.conversation.folder
@@ -59,11 +62,12 @@ def create_summary_frontmatter(
     sender: str, timestamp: datetime, conversation_path: str, channel: str | None = None
 ) -> str:
     """Create YAML frontmatter for a summary note."""
+    local_timestamp = to_local(timestamp)
     channel_slug = _normalize_channel(channel)
     return f"""---
 type: conversation_summary
 channel: {channel_slug}
-created: {timestamp.isoformat()}
+created: {local_timestamp.isoformat()}
 conversation: {conversation_path}
 participants:
   - {sender}
@@ -72,7 +76,7 @@ tags:
   - summary
 ---
 
-# Summary: {timestamp.strftime("%Y-%m-%d %H:%M")}
+# Summary: {local_timestamp.strftime("%Y-%m-%d %H:%M")}
 
 """
 
@@ -90,11 +94,12 @@ def create_conversation_frontmatter(
     Returns:
         YAML frontmatter string
     """
+    local_timestamp = to_local(timestamp)
     channel_slug = _normalize_channel(channel)
     return f"""---
 type: conversation
 channel: {channel_slug}
-started: {timestamp.isoformat()}
+started: {local_timestamp.isoformat()}
 participants:
   - {sender}
 tags:
@@ -102,7 +107,7 @@ tags:
   - brain
 ---
 
-# Conversation: {timestamp.strftime("%Y-%m-%d")}
+# Conversation: {local_timestamp.strftime("%Y-%m-%d")}
 
 """
 
@@ -133,7 +138,7 @@ class ConversationMemory:
         Returns:
             Path to the conversation note in Obsidian
         """
-        timestamp = timestamp or datetime.now()
+        timestamp = timestamp or local_now()
         path = get_conversation_path(timestamp, sender, channel)
         cache_key = self._cache_key(sender, channel)
 
@@ -177,7 +182,7 @@ class ConversationMemory:
             timestamp: Optional timestamp (defaults to now)
             channel: Message channel identifier (defaults to configured default)
         """
-        timestamp = timestamp or datetime.now()
+        timestamp = timestamp or local_now()
         path = await self.get_or_create_conversation(sender, timestamp, channel)
 
         message = ConversationMessage(
@@ -209,7 +214,7 @@ class ConversationMemory:
         Returns:
             Recent conversation content, or None if no conversation exists
         """
-        timestamp = datetime.now()
+        timestamp = local_now()
         path = get_conversation_path(timestamp, sender, channel)
 
         try:

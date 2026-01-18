@@ -162,7 +162,29 @@ class OpRuntime:
             max_autonomy=context.max_autonomy,
             confirmed=context.confirmed,
         )
-        decision = self._policy.evaluate(op_entry, policy_context)
+        try:
+            decision = self._policy.evaluate(op_entry, policy_context)
+        except Exception as exc:
+            logger.exception(
+                "policy evaluation failed",
+                extra={"op": op_entry.definition.name, "version": op_entry.definition.version},
+            )
+            reasons = ["policy_error"]
+            self._audit.record(
+                op_entry,
+                context,
+                status="denied",
+                duration_ms=None,
+                inputs=inputs,
+                error=str(exc),
+                policy_reasons=reasons,
+                policy_metadata={"error": str(exc)},
+            )
+            raise OpPolicyError(
+                "policy_error",
+                "Op invocation denied due to policy evaluation error.",
+                {"error": str(exc)},
+            ) from exc
         if not decision.allowed:
             self._audit.record(
                 op_entry,

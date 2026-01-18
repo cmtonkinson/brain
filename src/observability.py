@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
@@ -64,7 +64,7 @@ class BrainJsonFormatter(JsonFormatter):
             pass  # Never let trace context issues break logging
 
         # Standardize timestamp
-        log_record["timestamp"] = datetime.utcnow().isoformat()
+        log_record["timestamp"] = datetime.now(timezone.utc).isoformat()
         log_record["service"] = "brain-agent"
 
         # Map level name

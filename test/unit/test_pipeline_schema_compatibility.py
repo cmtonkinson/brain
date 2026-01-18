@@ -186,3 +186,65 @@ def test_pipeline_validation_rejects_incompatible_output_types() -> None:
     errors, _ = validate_pipeline_skill(pipeline, context)
 
     assert any("incompatible" in error for error in errors)
+
+
+def test_pipeline_validation_accepts_compatible_schema() -> None:
+    """Ensure pipeline validation accepts compatible input/output mappings."""
+    pipeline = PipelineSkillDefinition(
+        name="pipeline_test",
+        version="1.0.0",
+        status=SkillStatus.enabled,
+        description="Pipeline test",
+        kind=SkillKind.pipeline,
+        inputs_schema={
+            "type": "object",
+            "required": ["count"],
+            "properties": {"count": {"type": "integer"}},
+        },
+        outputs_schema={
+            "type": "object",
+            "required": ["summary"],
+            "properties": {"summary": {"type": "string"}},
+        },
+        capabilities=[],
+        side_effects=[],
+        autonomy=AutonomyLevel.L1,
+        steps=[
+            {
+                "id": "step1",
+                "target": {"kind": "op", "name": "test_op", "version": "1.0.0"},
+                "inputs": {"count": "$inputs.count"},
+                "outputs": {"summary": "$outputs.summary"},
+            }
+        ],
+        failure_modes=[
+            {
+                "code": "pipeline_failed",
+                "description": "Pipeline failed.",
+                "retryable": False,
+            }
+        ],
+    )
+    op = _make_op(
+        "test_op",
+        inputs_schema={
+            "type": "object",
+            "required": ["count"],
+            "properties": {"count": {"type": "integer"}},
+        },
+        outputs_schema={
+            "type": "object",
+            "required": ["summary"],
+            "properties": {"summary": {"type": "string"}},
+        },
+    )
+
+    context = PipelineValidationContext(
+        skills_by_key={("logic_test", "1.0.0"): _make_logic_skill("logic_test")},
+        ops_by_key={(op.name, op.version): op},
+    )
+
+    errors, capabilities = validate_pipeline_skill(pipeline, context)
+
+    assert errors == []
+    assert capabilities == {"obsidian.read"}

@@ -6,6 +6,16 @@ An exocortex for attention, memory, and action. Brain is a local-first AI system
 durable knowledge; "cognitive infrastructure" that prioritizes context, directs intent deliberately, and closes loops.
 
 ## Overview
+Conceptually, Brain has three parts.
+
+1. A **personal knowledge base**: durable, human-readable, locally-stored memory. At its simplest, this could be a
+   single (if very large) file.
+2. A **reasoning engine**: an LLM used to interpret context, propose actions, explain decisions, and interact with you.
+3. A **capability layer**: governed operations that interact with the real world (files, calendars, messaging, etc.) via
+   native APIs and MCP tools.
+
+Brain’s agent exists to coordinate these three concerns while keeping them separate, inspectable, and under your
+control.
 
 Brain currently provides:
 - **Obsidian as canonical memory** via the Local REST API (read/write notes) and a file-based indexer.

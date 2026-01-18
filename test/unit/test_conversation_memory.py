@@ -113,6 +113,22 @@ async def test_get_recent_context_missing_note_returns_none(monkeypatch) -> None
     assert result is None
 
 
+@pytest.mark.asyncio
+async def test_log_summary_marker_appends_link(monkeypatch) -> None:
+    """log_summary_marker appends a link to the summary note."""
+    monkeypatch.setattr(settings.conversation, "folder", "Brain/Conversations", raising=False)
+    obsidian = FakeObsidianClient()
+    memory = ConversationMemory(obsidian)
+    timestamp = datetime(2026, 1, 12, 11, 0, 0)
+    summary_path = "Brain/Conversations/Summaries/summary.md"
+
+    await memory.log_summary_marker("sender", summary_path, timestamp=timestamp, channel="signal")
+
+    conversation_path = get_conversation_path(timestamp, "sender", channel="signal")
+    appended = obsidian.notes[conversation_path]
+    assert f"> Summary saved: [[{summary_path}]]" in appended
+
+
 def test_should_write_summary_interval() -> None:
     """should_write_summary returns True on the configured interval."""
     obsidian = FakeObsidianClient()

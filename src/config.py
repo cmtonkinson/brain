@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -103,6 +104,7 @@ def _env_settings_source():
         "OLLAMA_EMBED_MODEL": ("llm.embed_model", "str"),
         "USER": ("user.name", "str"),
         "HOME_DIR": ("user.home_dir", "str"),
+        "USER_TIMEZONE": ("user.timezone", "str"),
         "CONVERSATION_FOLDER": ("conversation.folder", "str"),
         "CONVERSATION_DEFAULT_CHANNEL": ("conversation.default_channel", "str"),
         "SUMMARY_EVERY_TURNS": ("conversation.summary_every_turns", "int"),
@@ -258,8 +260,18 @@ class UserConfig(BaseModel):
 
     name: str = "user"
     home_dir: str = str(Path.home())
+    timezone: str = "America/New_York"
     test_calendar_name: str | None = None
     test_reminder_list_name: str | None = None
+
+    @model_validator(mode="after")
+    def validate_timezone(self) -> "UserConfig":
+        """Ensure the configured timezone is valid."""
+        try:
+            ZoneInfo(self.timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"Invalid timezone: {self.timezone}") from exc
+        return self
 
 
 class Settings(BaseSettings):

@@ -6,7 +6,7 @@ import logging
 import sys
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator
 
@@ -529,8 +529,8 @@ def index_vault(
                 ensure_collection(qdrant, collection, vector_size=len(points[0].vector))
                 qdrant.upsert(collection_name=collection, points=points)
 
-                modified_at = datetime.utcfromtimestamp(path.stat().st_mtime)
-                now = datetime.utcnow()
+                modified_at = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+                now = datetime.now(timezone.utc)
                 if note:
                     note.content_hash = current_hash
                     note.modified_at = modified_at

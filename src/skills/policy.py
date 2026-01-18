@@ -30,6 +30,7 @@ class PolicyContext:
     allowed_capabilities: set[str] | None = None
     max_autonomy: AutonomyLevel | None = None
     confirmed: bool = False
+    dry_run: bool = False
 
 
 @dataclass(frozen=True)
@@ -95,11 +96,33 @@ class DefaultPolicy:
         self, skill: SkillRuntimeEntry | OpRuntimeEntry, context: PolicyContext
     ) -> PolicyDecision:
         """Evaluate a skill against the default policy checks."""
+
+        def _join(values: set[str] | None) -> str:
+            """Return a stable comma-delimited string for metadata fields."""
+            if not values:
+                return ""
+            return ",".join(sorted(values))
+
         reasons: list[str] = []
         metadata = {
-            "actor": context.actor or "",
-            "channel": context.channel or "",
+            "policy.context.actor": context.actor or "",
+            "policy.context.channel": context.channel or "",
+            "policy.context.max_autonomy": (
+                context.max_autonomy.value if context.max_autonomy else ""
+            ),
+            "policy.context.confirmed": str(context.confirmed).lower(),
+            "policy.context.dry_run": str(context.dry_run).lower(),
+            "policy.entry.autonomy": skill.autonomy.value,
+            "policy.entry.tags": ",".join(sorted(skill.definition.policy_tags)),
         }
+        if skill.rate_limit is not None:
+            metadata["policy.rate_limit.max_per_minute"] = str(skill.rate_limit.max_per_minute)
+        if skill.channels is not None:
+            metadata["policy.channels.allow"] = _join(skill.channels.allow)
+            metadata["policy.channels.deny"] = _join(skill.channels.deny)
+        if skill.actors is not None:
+            metadata["policy.actors.allow"] = _join(skill.actors.allow)
+            metadata["policy.actors.deny"] = _join(skill.actors.deny)
 
         if skill.channels is not None:
             channel = context.channel

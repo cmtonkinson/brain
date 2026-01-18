@@ -5,7 +5,7 @@ The harness allows running skills with mocks, without the agent or external serv
 ## Usage
 
 - Instantiate `SkillTestHarness` with registry and capabilities paths.
-- Provide adapters (e.g., `PythonSkillAdapter`, `MCPSkillAdapter`) or mocks.
+- Provide adapters (e.g., `PythonSkillAdapter`) or mocks.
 - Use `dry_run=True` to skip execution for side-effecting skills.
 
 ## Dry-Run Contract

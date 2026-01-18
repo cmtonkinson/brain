@@ -145,7 +145,29 @@ class SkillRuntime:
             max_autonomy=context.max_autonomy,
             confirmed=context.confirmed,
         )
-        decision = self._policy.evaluate(skill, policy_context)
+        try:
+            decision = self._policy.evaluate(skill, policy_context)
+        except Exception as exc:
+            logger.exception(
+                "policy evaluation failed",
+                extra={"skill": skill.definition.name, "version": skill.definition.version},
+            )
+            reasons = ["policy_error"]
+            self._audit.record(
+                skill,
+                context,
+                status="denied",
+                duration_ms=None,
+                inputs=inputs,
+                error=str(exc),
+                policy_reasons=reasons,
+                policy_metadata={"error": str(exc)},
+            )
+            raise SkillPolicyError(
+                "policy_error",
+                "Skill invocation denied due to policy evaluation error.",
+                {"error": str(exc)},
+            ) from exc
         if not decision.allowed:
             self._audit.record(
                 skill,
