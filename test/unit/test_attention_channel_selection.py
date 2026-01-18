@@ -22,7 +22,7 @@ def test_urgent_failure_selects_signal() -> None:
 
 
 def test_long_form_analysis_selects_obsidian() -> None:
-    """Ensure long-form analysis selects Obsidian as the primary channel."""
+    """Ensure long-form analysis defaults to Signal while other channels are unavailable."""
     result = select_channel(
         ChannelSelectionInputs(
             decision="NOTIFY",
@@ -33,8 +33,8 @@ def test_long_form_analysis_selects_obsidian() -> None:
         )
     )
 
-    assert result.primary_channel == "obsidian"
-    assert result.final_decision == "NOTIFY:obsidian"
+    assert result.primary_channel == "signal"
+    assert result.final_decision == "NOTIFY:signal"
 
 
 def test_unknown_channel_falls_back_to_log_only() -> None:

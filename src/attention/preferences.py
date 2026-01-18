@@ -21,7 +21,7 @@ from models import (
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_CHANNELS = {"signal", "obsidian", "web", "digest"}
+ALLOWED_CHANNELS = {"signal"}
 
 
 class ChannelPreferenceLevel(str, Enum):

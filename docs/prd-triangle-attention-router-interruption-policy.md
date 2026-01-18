@@ -87,13 +87,8 @@ Interruption is optional and policy-driven.
 ### 5.3 Channel
 A delivery medium with implicit cost and semantics.
 
-Typical channels:
-- Signal (high urgency, conversational)
-- Obsidian note (low urgency, durable)
-- Web UI (pull-based, exploratory)
-- Digest (batched, scheduled)
-
-Channels are not interchangeable.
+**Current scope:** Signal is the only implemented output channel, but the architecture must
+support multiple channels for future phases (voice, web, etc.).
 
 ---
 
@@ -164,13 +159,10 @@ Decision inputs:
 
 If notifying, the router selects:
 - primary channel
-- optional secondary record (e.g. Obsidian log)
+- optional secondary record (for durable logging)
 
-Examples:
-- urgent failure → Signal
-- routine update → digest
-- long-form analysis → Obsidian
-- exploration → Web UI only
+**Current scope:** Signal is the only valid primary channel. The selection logic must still
+accept an explicit channel to preserve forward compatibility.
 
 ---
 
@@ -192,7 +184,8 @@ The system must support:
 - weekly reviews
 - topic-based batching
 
-Batched signals are summarized and ranked.
+Digest is a **notification type**, not a channel.
+Batched signals are summarized and ranked before delivery via the selected channel.
 
 ---
 
@@ -259,7 +252,6 @@ Outcomes must be explainable.
 Users may define:
 - quiet hours
 - do-not-disturb windows
-- channel preferences
 - escalation thresholds
 - “always notify” exceptions
 

@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from attention.assessment_engine import HIGH_URGENCY
-
-ALLOWED_CHANNELS = {"signal", "obsidian", "digest", "web"}
+ALLOWED_CHANNELS = {"signal"}
 
 
 @dataclass(frozen=True)
@@ -73,10 +71,5 @@ def _parse_decision(decision: str) -> tuple[str, str | None]:
 
 def _select_primary(inputs: ChannelSelectionInputs) -> str:
     """Select a primary channel based on urgency and content semantics."""
-    if inputs.content_type == "analysis":
-        return "obsidian"
-    if inputs.signal_type.endswith("failed") or inputs.urgency_score >= HIGH_URGENCY:
-        return "signal"
-    if inputs.channel_cost >= 0.7:
-        return "digest"
-    return "web"
+    # Extend selection logic here when additional output channels are introduced.
+    return "signal"

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from contextlib import closing
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Iterable
 from uuid import uuid4
 
@@ -39,12 +40,15 @@ from attention.preference_application import (
 from attention.rate_limiter import RateLimitConfig, RateLimitInput, evaluate_rate_limit
 from attention.router_gate import activate_router_context, deactivate_router_context
 from attention.storage import record_notification_history
+from models import AttentionFailClosedQueue
 from models import NotificationEnvelope as NotificationEnvelopeRecord
 from models import NotificationProvenanceInput
 from services.database import get_sync_session
 from services.signal import SignalClient
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_FAIL_CLOSED_RETRY = timedelta(minutes=15)
 
 
 @dataclass(frozen=True)
@@ -236,6 +240,21 @@ class AttentionRouter:
                 )
             except Exception as exc:
                 session.rollback()
+                try:
+                    audit_logger.log_fail_closed(
+                        source_component=envelope.notification.source_component,
+                        signal_reference=envelope.signal_reference,
+                        base_assessment="LOG_ONLY",
+                        reason="routing_exception",
+                    )
+                    _queue_fail_closed_signal(session, envelope, reason="routing_exception")
+                    session.commit()
+                except Exception:
+                    session.rollback()
+                    logger.exception(
+                        "Fail-closed queueing failed for signal=%s.",
+                        envelope.signal_reference,
+                    )
                 logger.exception("Routing failed for signal=%s.", envelope.signal_reference)
                 return RoutingResult(
                     decision="LOG_ONLY",
@@ -258,38 +277,70 @@ class AttentionRouter:
         """Return routed source component labels for inspection."""
         return [envelope.notification.source_component for envelope in self._routed]
 
-    def _record_log_only(self, envelope: RoutingEnvelope) -> RoutingResult:
-        """Persist a log-only decision for routing requests."""
-        with closing(self._session_factory()) as session:
-            audit_logger = AttentionAuditLogger(session)
-            envelope_id = _persist_notification_envelope(session, envelope.notification)
-            record = persist_decision_record(
-                session,
-                DecisionRecordInput(
-                    signal_reference=envelope.signal_reference,
-                    channel=None,
-                    base_assessment=BaseAssessmentOutcome.SUPPRESS.value,
-                    policy_outcome="log_only",
-                    final_decision="LOG_ONLY",
-                    explanation="routing_intent_log_only",
-                ),
-                audit_logger=audit_logger,
-            )
-            record_notification_history(
-                session,
-                owner=envelope.owner,
+
+def _record_log_only(self, envelope: RoutingEnvelope) -> RoutingResult:
+    """Persist a log-only decision for routing requests."""
+    with closing(self._session_factory()) as session:
+        audit_logger = AttentionAuditLogger(session)
+        envelope_id = _persist_notification_envelope(session, envelope.notification)
+        record = persist_decision_record(
+            session,
+            DecisionRecordInput(
                 signal_reference=envelope.signal_reference,
-                outcome="LOG_ONLY",
                 channel=None,
-                decided_at=envelope.timestamp,
-            )
-            session.commit()
-            return RoutingResult(
-                decision="LOG_ONLY",
-                channel=None,
-                envelope_id=envelope_id,
-                decision_record_id=record.record_id,
-            )
+                base_assessment=BaseAssessmentOutcome.SUPPRESS.value,
+                policy_outcome="log_only",
+                final_decision="LOG_ONLY",
+                explanation="routing_intent_log_only",
+            ),
+            audit_logger=audit_logger,
+        )
+        record_notification_history(
+            session,
+            owner=envelope.owner,
+            signal_reference=envelope.signal_reference,
+            outcome="LOG_ONLY",
+            channel=None,
+            decided_at=envelope.timestamp,
+        )
+        session.commit()
+        return RoutingResult(
+            decision="LOG_ONLY",
+            channel=None,
+            envelope_id=envelope_id,
+            decision_record_id=record.record_id,
+        )
+
+
+def _queue_fail_closed_signal(
+    session: Session,
+    envelope: RoutingEnvelope,
+    *,
+    reason: str,
+    now: datetime | None = None,
+) -> None:
+    """Queue a Signal payload for retry when routing fails."""
+    payload = envelope.signal_payload
+    if payload is None:
+        logger.warning(
+            "Fail-closed queue skipped; missing signal payload for %s.",
+            envelope.signal_reference,
+        )
+        return
+    queued_at = now or datetime.now(timezone.utc)
+    session.add(
+        AttentionFailClosedQueue(
+            owner=envelope.owner,
+            source_component=envelope.notification.source_component,
+            from_number=payload.from_number,
+            to_number=payload.to_number,
+            channel=envelope.channel_hint or "signal",
+            message=payload.message,
+            reason=reason,
+            queued_at=queued_at,
+            retry_at=queued_at + DEFAULT_FAIL_CLOSED_RETRY,
+        )
+    )
 
 
 def _persist_notification_envelope(session: Session, envelope: NotificationEnvelope) -> int | None:

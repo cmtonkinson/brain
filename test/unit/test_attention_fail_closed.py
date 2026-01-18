@@ -148,3 +148,36 @@ async def test_recovery_reprocesses_queued_signals(
     assert processed == 1
     assert len(signal_client.sent) == 1
     assert signal_client.sent[0].startswith("hello")
+
+
+@pytest.mark.asyncio
+async def test_router_pipeline_failure_queues_signal(
+    sqlite_session_factory: sessionmaker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ensure router pipeline failures queue signals for retry."""
+    session_factory = sqlite_session_factory
+
+    def _raise_assessment(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("attention.router.assess_base_signal", _raise_assessment)
+
+    router = AttentionRouter(
+        signal_client=FakeSignalClient(),
+        session_factory=session_factory,
+    )
+    signal = OutboundSignal(
+        source_component="agent",
+        channel="signal",
+        from_number="+15550000000",
+        to_number="+15551234567",
+        message="hello",
+    )
+
+    result = await router.route_signal(signal)
+    with closing(session_factory()) as session:
+        queued = session.query(AttentionFailClosedQueue).all()
+
+    assert result.decision == "LOG_ONLY"
+    assert len(queued) == 1
