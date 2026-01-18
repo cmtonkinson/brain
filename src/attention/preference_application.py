@@ -28,6 +28,7 @@ class PreferenceApplicationInputs:
 
     owner: str
     signal_reference: str
+    signal_type: str
     source_component: str
     urgency_score: float
     channel: str
@@ -121,6 +122,28 @@ def apply_preferences(
             audit_logger,
         )
 
+    channel_pref = _match_channel_preference(channel_prefs, inputs.channel)
+    if channel_pref and channel_pref.preference == "deny":
+        final_decision = "LOG_ONLY"
+        preference_reference = f"channel_preference:{channel_pref.id}"
+        return _record_preference(
+            inputs,
+            base_assessment,
+            final_decision,
+            preference_reference,
+            audit_logger,
+        )
+    if channel_pref and channel_pref.preference == "allow":
+        final_decision = _format_base_decision(base_assessment, inputs.channel)
+        preference_reference = f"channel_preference:{channel_pref.id}"
+        return _record_preference(
+            inputs,
+            base_assessment,
+            final_decision,
+            preference_reference,
+            audit_logger,
+        )
+
     if preferred_channel_name and base_assessment == BaseAssessmentOutcome.NOTIFY:
         final_decision = _format_base_decision(base_assessment, preferred_channel_name)
         preference_reference = f"channel_preference:{preferred_channel_id}"
@@ -180,13 +203,24 @@ def _preferred_channel(
     return None
 
 
+def _match_channel_preference(
+    preferences: Iterable[AttentionChannelPreference],
+    channel: str,
+) -> AttentionChannelPreference | None:
+    """Return the channel preference entry for the given channel."""
+    for pref in preferences:
+        if pref.channel == channel:
+            return pref
+    return None
+
+
 def _match_always_notify(
     records: Iterable[AttentionAlwaysNotify],
     inputs: PreferenceApplicationInputs,
 ) -> AttentionAlwaysNotify | None:
     """Return the first always-notify match for the inputs."""
     for record in records:
-        if record.signal_type != inputs.signal_reference:
+        if record.signal_type != inputs.signal_type:
             continue
         if record.source_component and record.source_component != inputs.source_component:
             continue

@@ -25,6 +25,7 @@ from models import AttentionAuditLog
 def _policy_inputs() -> PolicyInputs:
     """Build a baseline policy input payload."""
     return PolicyInputs(
+        signal_reference="signal-1-reference",
         signal_type="signal-1",
         source_component="scheduler",
         urgency_level="high",
@@ -116,5 +117,6 @@ def test_routing_log_includes_assessment_policy_and_decision(
     assert decision.final_decision == "LOG_ONLY"
     assert record is not None
     assert record.base_assessment == BaseAssessmentOutcome.NOTIFY.value
+    assert record.signal_reference == "signal-1-reference"
     assert record.policy_outcome == "LOG_ONLY"
     assert record.final_decision == "LOG_ONLY"

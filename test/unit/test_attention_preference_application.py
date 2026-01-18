@@ -14,7 +14,12 @@ from attention.preference_application import (
     PreferenceApplicationInputs,
     apply_preferences,
 )
-from models import AttentionAlwaysNotify, AttentionAuditLog, AttentionQuietHours
+from models import (
+    AttentionAlwaysNotify,
+    AttentionAuditLog,
+    AttentionChannelPreference,
+    AttentionQuietHours,
+)
 
 
 def test_quiet_hours_defers_low_urgency_signal(
@@ -40,6 +45,7 @@ def test_quiet_hours_defers_low_urgency_signal(
             PreferenceApplicationInputs(
                 owner="user",
                 signal_reference="signal-1",
+                signal_type="signal-1",
                 source_component="scheduler",
                 urgency_score=0.2,
                 channel="signal",
@@ -87,6 +93,7 @@ def test_always_notify_overrides_quiet_hours(
             PreferenceApplicationInputs(
                 owner="user",
                 signal_reference="signal-2",
+                signal_type="signal-2",
                 source_component="scheduler",
                 urgency_score=0.1,
                 channel="signal",
@@ -112,6 +119,7 @@ def test_missing_preferences_use_default_behavior(
             PreferenceApplicationInputs(
                 owner="user",
                 signal_reference="signal-3",
+                signal_type="signal-3",
                 source_component="scheduler",
                 urgency_score=0.5,
                 channel="signal",
@@ -122,3 +130,71 @@ def test_missing_preferences_use_default_behavior(
 
     assert result.final_decision == "NOTIFY:signal"
     assert any(record.levelname == "WARNING" for record in caplog.records)
+
+
+def test_channel_preference_deny_blocks_notifications(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure channel deny preferences suppress notifications."""
+    session_factory = sqlite_session_factory
+    now = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+    with closing(session_factory()) as session:
+        session.add(
+            AttentionChannelPreference(
+                owner="user",
+                channel="signal",
+                preference="deny",
+            )
+        )
+        session.commit()
+
+        result = apply_preferences(
+            session,
+            PreferenceApplicationInputs(
+                owner="user",
+                signal_reference="signal-4",
+                signal_type="signal-4",
+                source_component="scheduler",
+                urgency_score=0.8,
+                channel="signal",
+                timestamp=now,
+            ),
+            BaseAssessmentOutcome.NOTIFY,
+        )
+
+    assert result.final_decision == "LOG_ONLY"
+    assert result.preference_reference is not None
+
+
+def test_channel_preference_allow_is_recorded(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure channel allow preferences are recorded."""
+    session_factory = sqlite_session_factory
+    now = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+    with closing(session_factory()) as session:
+        session.add(
+            AttentionChannelPreference(
+                owner="user",
+                channel="signal",
+                preference="allow",
+            )
+        )
+        session.commit()
+
+        result = apply_preferences(
+            session,
+            PreferenceApplicationInputs(
+                owner="user",
+                signal_reference="signal-5",
+                signal_type="signal-5",
+                source_component="scheduler",
+                urgency_score=0.8,
+                channel="signal",
+                timestamp=now,
+            ),
+            BaseAssessmentOutcome.NOTIFY,
+        )
+
+    assert result.final_decision == "NOTIFY:signal"
+    assert result.preference_reference is not None

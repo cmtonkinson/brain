@@ -33,6 +33,7 @@ class AuthorizationContext:
 class PolicyInputs:
     """Inputs used to evaluate a policy."""
 
+    signal_reference: str
     signal_type: str
     source_component: str
     urgency_level: str
@@ -82,7 +83,7 @@ def apply_policies(
         if audit_logger:
             audit_logger.log_routing(
                 source_component=inputs.source_component,
-                signal_reference=inputs.signal_type,
+                signal_reference=inputs.signal_reference,
                 base_assessment=base_assessment.value,
                 policy_outcome=policy_outcome,
                 final_decision=decision.final_decision,

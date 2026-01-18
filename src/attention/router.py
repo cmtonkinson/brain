@@ -29,6 +29,12 @@ from attention.envelope_schema import (
     RoutingIntent,
     SignalPayload,
 )
+from attention.escalation import (
+    EscalationInput,
+    EscalationLevel,
+    evaluate_escalation,
+    record_escalation_decision,
+)
 from attention.policy_defaults import default_attention_policies
 from attention.policy_engine import AuthorizationContext, PolicyInputs, apply_policies
 from attention.policy_schema import AttentionPolicy
@@ -39,8 +45,11 @@ from attention.preference_application import (
 )
 from attention.rate_limiter import RateLimitConfig, RateLimitInput, evaluate_rate_limit
 from attention.router_gate import activate_router_context, deactivate_router_context
-from attention.storage import record_notification_history
-from models import AttentionFailClosedQueue
+from attention.storage import (
+    get_notification_history_count_for_signal,
+    record_notification_history,
+)
+from models import AttentionEscalationThreshold, AttentionFailClosedQueue
 from models import NotificationEnvelope as NotificationEnvelopeRecord
 from models import NotificationProvenanceInput
 from services.database import get_sync_session
@@ -49,6 +58,7 @@ from services.signal import SignalClient
 logger = logging.getLogger(__name__)
 
 DEFAULT_FAIL_CLOSED_RETRY = timedelta(minutes=15)
+IGNORED_ESCALATION_THRESHOLD = 2
 
 
 @dataclass(frozen=True)
@@ -102,7 +112,7 @@ class AttentionRouter:
         """Route a normalized attention envelope through policy and delivery."""
         self._routed.append(envelope)
         if envelope.routing_intent == RoutingIntent.LOG_ONLY:
-            return self._record_log_only(envelope)
+            return _record_log_only(self, envelope)
 
         with closing(self._session_factory()) as session:
             audit_logger = AttentionAuditLogger(session)
@@ -129,6 +139,7 @@ class AttentionRouter:
                     PreferenceApplicationInputs(
                         owner=envelope.owner,
                         signal_reference=envelope.signal_reference,
+                        signal_type=envelope.signal_type,
                         source_component=envelope.notification.source_component,
                         urgency_score=envelope.urgency,
                         channel=envelope.channel_hint or self._config.default_channel,
@@ -141,6 +152,7 @@ class AttentionRouter:
                     session, envelope.owner, envelope.timestamp
                 )
                 policy_inputs = PolicyInputs(
+                    signal_reference=envelope.signal_reference,
                     signal_type=envelope.signal_type,
                     source_component=envelope.notification.source_component,
                     urgency_level=_urgency_level(envelope.urgency),
@@ -162,6 +174,12 @@ class AttentionRouter:
                     decision = policy_decision.final_decision
                 elif policy_decision.policy_explanation == "invalid_policy_outcome":
                     decision = policy_decision.final_decision
+                decision = _apply_ignored_escalation(
+                    session,
+                    envelope,
+                    decision,
+                    default_channel=self._config.default_channel,
+                )
                 channel_result = select_channel(
                     ChannelSelectionInputs(
                         decision=decision,
@@ -200,6 +218,14 @@ class AttentionRouter:
                 if not delivered and primary_channel:
                     final_decision = "LOG_ONLY"
                     primary_channel = None
+
+                audit_logger.log_signal(
+                    source_component=envelope.notification.source_component,
+                    signal_reference=envelope.signal_reference,
+                    base_assessment=base_assessment.outcome.value,
+                    policy_outcome=policy_decision.policy_outcome,
+                    final_decision=final_decision,
+                )
 
                 if policy_decision.policy_outcome is None:
                     audit_logger.log_routing(
@@ -277,12 +303,23 @@ class AttentionRouter:
         """Return routed source component labels for inspection."""
         return [envelope.notification.source_component for envelope in self._routed]
 
+    def policies_available(self) -> bool:
+        """Return True when routing policies are available."""
+        return bool(self._config.policies)
 
-def _record_log_only(self, envelope: RoutingEnvelope) -> RoutingResult:
+
+def _record_log_only(router: AttentionRouter, envelope: RoutingEnvelope) -> RoutingResult:
     """Persist a log-only decision for routing requests."""
-    with closing(self._session_factory()) as session:
+    with closing(router._session_factory()) as session:
         audit_logger = AttentionAuditLogger(session)
         envelope_id = _persist_notification_envelope(session, envelope.notification)
+        audit_logger.log_signal(
+            source_component=envelope.notification.source_component,
+            signal_reference=envelope.signal_reference,
+            base_assessment=BaseAssessmentOutcome.SUPPRESS.value,
+            policy_outcome="log_only",
+            final_decision="LOG_ONLY",
+        )
         record = persist_decision_record(
             session,
             DecisionRecordInput(
@@ -507,3 +544,49 @@ def _build_legacy_envelope(signal: OutboundSignal) -> RoutingEnvelope:
         ),
         notification=notification,
     )
+
+
+def _apply_ignored_escalation(
+    session: Session,
+    envelope: RoutingEnvelope,
+    decision: str,
+    *,
+    default_channel: str,
+) -> str:
+    """Escalate signals that have been ignored repeatedly."""
+    decision_type = decision.split(":", 1)[0]
+    if decision_type in {"NOTIFY", "ESCALATE"}:
+        return decision
+
+    ignored_count = get_notification_history_count_for_signal(
+        session,
+        owner=envelope.owner,
+        signal_reference=envelope.signal_reference,
+        outcomes={"LOG_ONLY", "SUPPRESS", "DROP"},
+    )
+    if ignored_count < IGNORED_ESCALATION_THRESHOLD:
+        return decision
+
+    threshold_record = (
+        session.query(AttentionEscalationThreshold)
+        .filter_by(owner=envelope.owner, signal_type=envelope.signal_type)
+        .order_by(AttentionEscalationThreshold.created_at.desc())
+        .first()
+    )
+    ignore_threshold = (
+        threshold_record.threshold if threshold_record else IGNORED_ESCALATION_THRESHOLD
+    )
+    inputs = EscalationInput(
+        owner=envelope.owner,
+        signal_reference=envelope.signal_reference,
+        current_level=EscalationLevel.NONE,
+        ignored_count=ignored_count,
+        ignore_threshold=ignore_threshold,
+        timestamp=envelope.timestamp,
+    )
+    escalation = evaluate_escalation(inputs)
+    if not escalation.escalated:
+        return decision
+
+    record_escalation_decision(session, inputs, escalation)
+    return f"ESCALATE:{default_channel}"

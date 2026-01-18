@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from contextlib import closing
+
 import pytest
 from sqlalchemy.orm import sessionmaker
 
 from attention.envelope_schema import NotificationEnvelope, ProvenanceInput, RoutingEnvelope
+from attention.envelope_schema import RoutingIntent
 from attention.router import AttentionRouter
 from attention.router_gate import RouterViolationError, get_violation_recorder
+from models import AttentionAuditLog
 from services.signal import SignalClient
 
 
@@ -136,3 +140,93 @@ async def test_router_batch_handles_mixed_sources(
         )
 
     assert len(router.routed_signals()) == 2
+
+
+@pytest.mark.asyncio
+async def test_log_only_intent_records_decision(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure log-only routing intent persists without delivery."""
+    session_factory = sqlite_session_factory
+    router = AttentionRouter(
+        signal_client=FakeSignalClient(),
+        session_factory=session_factory,
+    )
+    envelope = RoutingEnvelope(
+        version="1.0.0",
+        signal_type="test.signal",
+        signal_reference="log-only-signal",
+        actor="+15550000000",
+        owner="+15551234567",
+        channel_hint="signal",
+        urgency=0.2,
+        channel_cost=0.4,
+        content_type="message",
+        routing_intent=RoutingIntent.LOG_ONLY,
+        notification=NotificationEnvelope(
+            version="1.0.0",
+            source_component="scheduler",
+            origin_signal="log-only-signal",
+            confidence=0.7,
+            provenance=[
+                ProvenanceInput(
+                    input_type="signal",
+                    reference="log-only-signal",
+                    description="test",
+                )
+            ],
+        ),
+    )
+
+    result = await router.route_envelope(envelope)
+
+    assert result.decision == "LOG_ONLY"
+    assert result.channel is None
+
+
+@pytest.mark.asyncio
+async def test_router_emits_signal_audit_log(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure routed signals create audit log entries."""
+    session_factory = sqlite_session_factory
+    router = AttentionRouter(
+        signal_client=FakeSignalClient(),
+        session_factory=session_factory,
+    )
+
+    await router.route_envelope(
+        RoutingEnvelope(
+            version="1.0.0",
+            signal_type="test.signal",
+            signal_reference="signal-audit",
+            actor="+15550000000",
+            owner="+15551234567",
+            channel_hint="signal",
+            urgency=0.9,
+            channel_cost=0.1,
+            content_type="message",
+            notification=NotificationEnvelope(
+                version="1.0.0",
+                source_component="scheduler",
+                origin_signal="signal-audit",
+                confidence=0.9,
+                provenance=[
+                    ProvenanceInput(
+                        input_type="signal",
+                        reference="signal-audit",
+                        description="test",
+                    )
+                ],
+            ),
+        )
+    )
+
+    with closing(session_factory()) as session:
+        count = (
+            session.query(AttentionAuditLog)
+            .filter(AttentionAuditLog.event_type == "SIGNAL")
+            .count()
+        )
+
+    assert count == 1

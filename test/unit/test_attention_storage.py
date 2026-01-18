@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy.orm import sessionmaker
 
+from config import settings
 from attention.storage import (
     create_attention_context_window,
     get_attention_context_for_timestamp,
@@ -47,16 +48,18 @@ def test_attention_context_query_returns_expected_window(
 def test_missing_attention_context_returns_default(
     caplog: pytest.LogCaptureFixture,
     sqlite_session_factory: sessionmaker,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Ensure missing attention context returns a safe default and logs a warning."""
+    """Ensure missing attention context returns a default window and logs a warning."""
     session_factory = sqlite_session_factory
     timestamp = datetime(2025, 1, 1, 10, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(settings.user, "timezone", "UTC", raising=False)
 
     with closing(session_factory()) as session:
         snapshot = get_attention_context_for_timestamp(session, "user", timestamp)
 
-    assert snapshot.interruptible is False
-    assert snapshot.source == "default"
+    assert snapshot.interruptible is True
+    assert snapshot.source == "default_daytime"
     assert any(record.levelname == "WARNING" for record in caplog.records)
 
 
