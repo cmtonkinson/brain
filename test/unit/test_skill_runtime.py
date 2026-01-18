@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from skills.approvals import InMemoryApprovalRecorder
 from skills.context import SkillContext
 from skills.errors import SkillPolicyError, SkillValidationError
 from skills.policy import DefaultPolicy
@@ -143,7 +144,11 @@ async def test_runtime_validates_inputs(tmp_path):
         policy=DefaultPolicy(),
         adapters={"python": DummyAdapter({"results": []})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"})
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
 
     with pytest.raises(SkillValidationError):
         await runtime.execute("search_notes", {}, context)
@@ -161,7 +166,12 @@ async def test_runtime_executes_successfully(tmp_path):
         policy=DefaultPolicy(),
         adapters={"python": DummyAdapter({"results": []})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"}, confirmed=True)
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        confirmed=True,
+        actor="user",
+        channel="cli",
+    )
 
     result = await runtime.execute("search_notes", {"query": "hi"}, context)
 
@@ -180,7 +190,12 @@ async def test_runtime_validates_outputs(tmp_path):
         policy=DefaultPolicy(),
         adapters={"python": DummyAdapter({"results": "oops"})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"}, confirmed=True)
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        confirmed=True,
+        actor="user",
+        channel="cli",
+    )
 
     with pytest.raises(SkillValidationError):
         await runtime.execute("search_notes", {"query": "hi"}, context)
@@ -198,7 +213,11 @@ async def test_runtime_denies_policy(tmp_path):
         policy=DefaultPolicy(),
         adapters={"python": DummyAdapter({"results": []})},
     )
-    context = SkillContext(allowed_capabilities=set())
+    context = SkillContext(
+        allowed_capabilities=set(),
+        actor="user",
+        channel="cli",
+    )
 
     with pytest.raises(SkillPolicyError):
         await runtime.execute("search_notes", {"query": "hi"}, context)
@@ -217,7 +236,11 @@ async def test_runtime_denies_disabled_skill(tmp_path):
         policy=DefaultPolicy(),
         adapters={"python": DummyAdapter({"results": []})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"})
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
 
     with pytest.raises(SkillPolicyError):
         await runtime.execute("search_notes", {"query": "hi"}, context)
@@ -254,7 +277,11 @@ overrides:
         policy=DefaultPolicy(),
         adapters={"python": DummyAdapter({"results": []})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"}, channel="signal")
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        channel="signal",
+        actor="user",
+    )
 
     with pytest.raises(SkillPolicyError):
         await runtime.execute("search_notes", {"query": "hi"}, context)
@@ -276,6 +303,8 @@ async def test_runtime_enforces_autonomy_limit(tmp_path):
     context = SkillContext(
         allowed_capabilities={"obsidian.read"},
         max_autonomy=AutonomyLevel.L1,
+        actor="user",
+        channel="cli",
     )
 
     with pytest.raises(SkillPolicyError):
@@ -299,7 +328,11 @@ async def test_runtime_validates_format(tmp_path):
         policy=DefaultPolicy(),
         adapters={"python": DummyAdapter({"results": []})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"})
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
 
     with pytest.raises(SkillValidationError):
         await runtime.execute("search_notes", {"url": "not-a-url"}, context)
@@ -322,7 +355,46 @@ async def test_runtime_rejects_unknown_fields(tmp_path):
         policy=DefaultPolicy(),
         adapters={"python": DummyAdapter({"results": []})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"})
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
 
     with pytest.raises(SkillValidationError):
         await runtime.execute("search_notes", {"query": "hi", "extra": "nope"}, context)
+
+
+@pytest.mark.asyncio
+async def test_runtime_records_approval_proposal(tmp_path):
+    """Ensure approval-required denials generate proposals."""
+    loader = _setup_registry(
+        tmp_path,
+        {"type": "object", "required": ["results"], "properties": {"results": {"type": "array"}}},
+    )
+    proposals: list[str] = []
+
+    async def _capture(proposal, context):
+        """Collect proposal identifiers for assertions."""
+        proposals.append(proposal.proposal_id)
+        return None
+
+    recorder = InMemoryApprovalRecorder()
+    runtime = SkillRuntime(
+        registry=loader,
+        policy=DefaultPolicy(),
+        adapters={"python": DummyAdapter({"results": []})},
+        approval_router=_capture,
+        approval_recorder=recorder,
+    )
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
+
+    with pytest.raises(SkillPolicyError):
+        await runtime.execute("search_notes", {"query": "hi"}, context)
+
+    assert recorder.proposals
+    assert proposals

@@ -40,6 +40,7 @@ from self_diagnostic_utils import (
 )
 from skills.adapters.op_adapter import MCPOpAdapter, NativeOpAdapter
 from skills.adapters.python_adapter import PythonSkillAdapter
+from entrypoints import EntrypointContext, require_entrypoint_context
 from skills.context import SkillContext
 from skills.op_runtime import OpRuntime
 from skills.policy import DefaultPolicy
@@ -379,6 +380,13 @@ async def _execute_skill(
     allowed = set(_DEFAULT_ALLOWED_CAPABILITIES)
     if allow_capabilities and confirmed:
         allowed.update(allow_capabilities)
+    require_entrypoint_context(
+        EntrypointContext(
+            entrypoint="agent",
+            actor=deps.signal_sender,
+            channel=deps.channel,
+        )
+    )
     context = SkillContext(
         allowed_capabilities=allowed,
         actor=deps.signal_sender,

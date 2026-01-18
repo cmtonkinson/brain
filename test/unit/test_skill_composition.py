@@ -138,7 +138,11 @@ async def test_child_skill_inherits_capability_limits(tmp_path):
     )
     composer = SkillComposer(runtime)
 
-    parent_context = SkillContext({"obsidian.read"})
+    parent_context = SkillContext(
+        {"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
     parent_skill = registry.get_skill("parent_skill")
 
     with pytest.raises(SkillPolicyError):
@@ -276,7 +280,11 @@ async def test_composer_rejects_undeclared_targets(tmp_path):
     )
     composer = SkillComposer(runtime)
 
-    parent_context = SkillContext({"obsidian.read"})
+    parent_context = SkillContext(
+        {"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
     parent_skill = registry.get_skill("parent_skill")
 
     with pytest.raises(SkillRuntimeError):

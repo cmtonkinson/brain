@@ -200,7 +200,12 @@ async def test_pipeline_runtime_executes_steps(tmp_path):
     result = await runtime.execute(
         "summarize_note_pipeline",
         {"path": "Notes/Test.md"},
-        SkillContext({"obsidian.read", "memory.propose"}, confirmed=True),
+        SkillContext(
+            {"obsidian.read", "memory.propose"},
+            confirmed=True,
+            actor="user",
+            channel="cli",
+        ),
     )
 
     assert result.output == {"summary": "hi"}
@@ -336,5 +341,10 @@ async def test_pipeline_runtime_missing_output_raises(tmp_path):
         await runtime.execute(
             "summarize_note_pipeline",
             {"path": "Notes/Test.md"},
-            SkillContext({"obsidian.read"}, confirmed=True),
+            SkillContext(
+                {"obsidian.read"},
+                confirmed=True,
+                actor="user",
+                channel="cli",
+            ),
         )

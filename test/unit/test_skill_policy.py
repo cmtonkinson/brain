@@ -1,5 +1,7 @@
 """Unit tests for default skill policy evaluation."""
 
+from skills.approvals import InMemoryApprovalTokenStore, build_proposal_id
+from skills.context import SkillContext
 from skills.policy import DefaultPolicy, PolicyContext
 from skills.registry import SkillRuntimeEntry, ActorPolicy
 from skills.registry_schema import (
@@ -55,7 +57,11 @@ def test_policy_denies_missing_capabilities():
     """Ensure missing capabilities deny policy evaluation."""
     policy = DefaultPolicy()
     skill = _make_skill(["obsidian.read", "vault.search"])
-    context = PolicyContext(allowed_capabilities={"obsidian.read"})
+    context = PolicyContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
 
     decision = policy.evaluate(skill, context)
 
@@ -67,7 +73,12 @@ def test_policy_denies_autonomy_exceeding_limit():
     """Ensure autonomy limits are enforced by policy."""
     policy = DefaultPolicy()
     skill = _make_skill(["obsidian.read"], autonomy=AutonomyLevel.L2)
-    context = PolicyContext(allowed_capabilities={"obsidian.read"}, max_autonomy=AutonomyLevel.L1)
+    context = PolicyContext(
+        allowed_capabilities={"obsidian.read"},
+        max_autonomy=AutonomyLevel.L1,
+        actor="user",
+        channel="cli",
+    )
 
     decision = policy.evaluate(skill, context)
 
@@ -79,7 +90,12 @@ def test_policy_enforces_rate_limits():
     """Ensure rate limiting blocks excess invocations."""
     policy = DefaultPolicy()
     skill = _make_skill(["obsidian.read"], rate_limit=RateLimit(max_per_minute=1))
-    context = PolicyContext(allowed_capabilities={"obsidian.read"}, confirmed=True)
+    context = PolicyContext(
+        allowed_capabilities={"obsidian.read"},
+        confirmed=True,
+        actor="user",
+        channel="cli",
+    )
 
     first = policy.evaluate(skill, context)
     second = policy.evaluate(skill, context)
@@ -93,7 +109,11 @@ def test_policy_requires_review_tag():
     """Ensure review-required tags block unconfirmed execution."""
     policy = DefaultPolicy()
     skill = _make_skill(["obsidian.read"], policy_tags=["requires_review"])
-    context = PolicyContext(allowed_capabilities={"obsidian.read"})
+    context = PolicyContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
 
     decision = policy.evaluate(skill, context)
 
@@ -105,7 +125,12 @@ def test_policy_allows_confirmed_review_tag():
     """Ensure confirmed review tags permit execution."""
     policy = DefaultPolicy()
     skill = _make_skill(["obsidian.read"], policy_tags=["requires_review"])
-    context = PolicyContext(allowed_capabilities={"obsidian.read"}, confirmed=True)
+    context = PolicyContext(
+        allowed_capabilities={"obsidian.read"},
+        confirmed=True,
+        actor="user",
+        channel="cli",
+    )
 
     decision = policy.evaluate(skill, context)
 
@@ -119,9 +144,54 @@ def test_policy_denies_actor_override():
         ["obsidian.read"],
         actors=ActorPolicy(allow={"brain"}, deny=set()),
     )
-    context = PolicyContext(allowed_capabilities={"obsidian.read"}, actor="user")
+    context = PolicyContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
 
     decision = policy.evaluate(skill, context)
 
     assert not decision.allowed
     assert "actor_not_allowed" in decision.reasons
+
+
+def test_policy_denies_missing_context():
+    """Ensure missing actor or channel context denies evaluation."""
+    policy = DefaultPolicy()
+    skill = _make_skill(["obsidian.read"])
+    context = PolicyContext(
+        allowed_capabilities={"obsidian.read"},
+        actor=None,
+        channel="cli",
+    )
+
+    decision = policy.evaluate(skill, context)
+
+    assert not decision.allowed
+    assert "missing_actor_context" in decision.reasons
+
+
+def test_policy_allows_valid_approval_token():
+    """Ensure valid approval tokens allow L1 actions without confirmation."""
+    token_store = InMemoryApprovalTokenStore()
+    policy = DefaultPolicy(approval_validator=token_store)
+    skill = _make_skill(["obsidian.read"])
+    skill_context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
+    proposal_id = build_proposal_id(skill, skill_context, {"path": "note.md"})
+    token = token_store.issue(actor="user", proposal_id=proposal_id)
+    policy_context = PolicyContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+        proposal_id=proposal_id,
+        approval_token=token,
+    )
+
+    decision = policy.evaluate(skill, policy_context)
+
+    assert decision.allowed

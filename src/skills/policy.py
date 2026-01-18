@@ -7,6 +7,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from .approvals import (
+    ApprovalTokenValidation,
+    ApprovalTokenValidator,
+    NullApprovalTokenValidator,
+    approval_token_reason_label,
+)
 from .registry_schema import AutonomyLevel
 from .registry import OpRuntimeEntry, SkillRuntimeEntry
 
@@ -31,6 +37,8 @@ class PolicyContext:
     max_autonomy: AutonomyLevel | None = None
     confirmed: bool = False
     dry_run: bool = False
+    proposal_id: str | None = None
+    approval_token: str | None = None
 
 
 @dataclass(frozen=True)
@@ -85,44 +93,63 @@ class RateLimiter:
         return True
 
 
+def _has_context_value(value: str | None) -> bool:
+    """Return True when a context value is present and non-empty."""
+    return value is not None and value.strip() != ""
+
+
+def build_policy_metadata(
+    skill: SkillRuntimeEntry | OpRuntimeEntry, context: PolicyContext
+) -> dict[str, str]:
+    """Build normalized policy metadata fields for logging and audit."""
+
+    def _join(values: set[str] | None) -> str:
+        """Return a stable comma-delimited string for metadata fields."""
+        if not values:
+            return ""
+        return ",".join(sorted(values))
+
+    metadata = {
+        "policy.context.actor": context.actor or "",
+        "policy.context.channel": context.channel or "",
+        "policy.context.max_autonomy": context.max_autonomy.value if context.max_autonomy else "",
+        "policy.context.confirmed": str(context.confirmed).lower(),
+        "policy.context.dry_run": str(context.dry_run).lower(),
+        "policy.context.proposal_id": context.proposal_id or "",
+        "policy.context.approval_token_present": str(bool(context.approval_token)).lower(),
+        "policy.entry.autonomy": skill.autonomy.value,
+        "policy.entry.tags": ",".join(sorted(skill.definition.policy_tags)),
+    }
+    if skill.rate_limit is not None:
+        metadata["policy.rate_limit.max_per_minute"] = str(skill.rate_limit.max_per_minute)
+    if skill.channels is not None:
+        metadata["policy.channels.allow"] = _join(skill.channels.allow)
+        metadata["policy.channels.deny"] = _join(skill.channels.deny)
+    if skill.actors is not None:
+        metadata["policy.actors.allow"] = _join(skill.actors.allow)
+        metadata["policy.actors.deny"] = _join(skill.actors.deny)
+    return metadata
+
+
 class DefaultPolicy:
     """Default policy implementation for skills and ops."""
 
-    def __init__(self) -> None:
+    def __init__(self, approval_validator: ApprovalTokenValidator | None = None) -> None:
         """Initialize the default policy evaluator."""
         self._rate_limiter = RateLimiter()
+        self._approval_validator = approval_validator or NullApprovalTokenValidator()
 
     def evaluate(
         self, skill: SkillRuntimeEntry | OpRuntimeEntry, context: PolicyContext
     ) -> PolicyDecision:
         """Evaluate a skill against the default policy checks."""
-
-        def _join(values: set[str] | None) -> str:
-            """Return a stable comma-delimited string for metadata fields."""
-            if not values:
-                return ""
-            return ",".join(sorted(values))
-
         reasons: list[str] = []
-        metadata = {
-            "policy.context.actor": context.actor or "",
-            "policy.context.channel": context.channel or "",
-            "policy.context.max_autonomy": (
-                context.max_autonomy.value if context.max_autonomy else ""
-            ),
-            "policy.context.confirmed": str(context.confirmed).lower(),
-            "policy.context.dry_run": str(context.dry_run).lower(),
-            "policy.entry.autonomy": skill.autonomy.value,
-            "policy.entry.tags": ",".join(sorted(skill.definition.policy_tags)),
-        }
-        if skill.rate_limit is not None:
-            metadata["policy.rate_limit.max_per_minute"] = str(skill.rate_limit.max_per_minute)
-        if skill.channels is not None:
-            metadata["policy.channels.allow"] = _join(skill.channels.allow)
-            metadata["policy.channels.deny"] = _join(skill.channels.deny)
-        if skill.actors is not None:
-            metadata["policy.actors.allow"] = _join(skill.actors.allow)
-            metadata["policy.actors.deny"] = _join(skill.actors.deny)
+        metadata = build_policy_metadata(skill, context)
+
+        if not _has_context_value(context.actor):
+            reasons.append("missing_actor_context")
+        if not _has_context_value(context.channel):
+            reasons.append("missing_channel_context")
 
         if skill.channels is not None:
             channel = context.channel
@@ -153,11 +180,29 @@ class DefaultPolicy:
 
         if skill.autonomy == AutonomyLevel.L0:
             reasons.append("autonomy_suggest_only")
-        if skill.autonomy == AutonomyLevel.L1 and not context.confirmed:
-            reasons.append("approval_required")
-
-        if "requires_review" in skill.definition.policy_tags and not context.confirmed:
-            reasons.append("review_required")
+        approval_needed = skill.autonomy == AutonomyLevel.L1
+        review_needed = "requires_review" in skill.definition.policy_tags
+        token_validation: ApprovalTokenValidation | None = None
+        if (approval_needed or review_needed) and not context.confirmed:
+            if context.approval_token and context.proposal_id and context.actor:
+                token_validation = self._approval_validator.validate(
+                    context.approval_token,
+                    context.actor,
+                    context.proposal_id,
+                )
+            token_reason = token_validation.reason if token_validation else "unknown"
+            metadata["policy.approval.token_valid"] = str(
+                token_validation.valid if token_validation else False
+            ).lower()
+            metadata["policy.approval.token_reason"] = token_reason
+            metadata["policy.approval.token_status"] = approval_token_reason_label(token_reason)
+            if token_validation and not token_validation.valid:
+                reasons.append(f"approval_token_{token_validation.reason or 'invalid'}")
+            if not token_validation or not token_validation.valid:
+                if approval_needed:
+                    reasons.append("approval_required")
+                if review_needed:
+                    reasons.append("review_required")
 
         if skill.rate_limit is not None:
             key = f"{skill.definition.name}@{skill.definition.version}"

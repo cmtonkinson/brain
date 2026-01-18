@@ -18,6 +18,7 @@ class SkillContext:
     channel: str | None = None
     max_autonomy: AutonomyLevel | None = None
     confirmed: bool = False
+    approval_token: str | None = None
     trace_id: str = field(default_factory=lambda: uuid4().hex)
     invocation_id: str = field(default_factory=lambda: uuid4().hex)
     parent_invocation_id: str | None = None
@@ -32,6 +33,7 @@ class SkillContext:
             channel=self.channel,
             max_autonomy=self.max_autonomy,
             confirmed=self.confirmed,
+            approval_token=self.approval_token,
             trace_id=self.trace_id,
             parent_invocation_id=self.invocation_id,
         )

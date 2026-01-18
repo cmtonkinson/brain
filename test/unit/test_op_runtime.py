@@ -106,7 +106,11 @@ async def test_op_runtime_validates_inputs(tmp_path):
         policy=DefaultPolicy(),
         adapters={"native": DummyAdapter({"results": []})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"})
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
 
     with pytest.raises(OpValidationError):
         await runtime.execute("obsidian_search", {}, context)
@@ -124,7 +128,12 @@ async def test_op_runtime_executes_successfully(tmp_path):
         policy=DefaultPolicy(),
         adapters={"native": DummyAdapter({"results": []})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"}, confirmed=True)
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        confirmed=True,
+        actor="user",
+        channel="cli",
+    )
 
     result = await runtime.execute("obsidian_search", {"query": "hi"}, context)
 
@@ -143,7 +152,12 @@ async def test_op_runtime_validates_outputs(tmp_path):
         policy=DefaultPolicy(),
         adapters={"native": DummyAdapter({"results": "oops"})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"}, confirmed=True)
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        confirmed=True,
+        actor="user",
+        channel="cli",
+    )
 
     with pytest.raises(OpValidationError):
         await runtime.execute("obsidian_search", {"query": "hi"}, context)
@@ -161,7 +175,11 @@ async def test_op_runtime_denies_policy(tmp_path):
         policy=DefaultPolicy(),
         adapters={"native": DummyAdapter({"results": []})},
     )
-    context = SkillContext(allowed_capabilities=set())
+    context = SkillContext(
+        allowed_capabilities=set(),
+        actor="user",
+        channel="cli",
+    )
 
     with pytest.raises(OpPolicyError):
         await runtime.execute("obsidian_search", {"query": "hi"}, context)
@@ -180,7 +198,11 @@ async def test_op_runtime_denies_disabled_op(tmp_path):
         policy=DefaultPolicy(),
         adapters={"native": DummyAdapter({"results": []})},
     )
-    context = SkillContext(allowed_capabilities={"obsidian.read"})
+    context = SkillContext(
+        allowed_capabilities={"obsidian.read"},
+        actor="user",
+        channel="cli",
+    )
 
     with pytest.raises(OpPolicyError):
         await runtime.execute("obsidian_search", {"query": "hi"}, context)

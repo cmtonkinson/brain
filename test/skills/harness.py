@@ -57,7 +57,11 @@ class SkillTestHarness:
         pipeline_step_results: dict[str, dict[str, Any]] | None = None,
     ) -> ExecutionResult | DryRunResult:
         """Run a skill or simulate its pipeline wiring in dry-run mode."""
-        context = SkillContext(allowed_capabilities=allow_capabilities)
+        context = SkillContext(
+            allowed_capabilities=allow_capabilities,
+            actor="test",
+            channel="test",
+        )
         runtime = SkillRuntime(
             registry=self.registry,
             policy=self.policy,

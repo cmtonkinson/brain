@@ -7,11 +7,22 @@ import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Protocol
 from urllib.parse import urlparse
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .context import SkillContext
+from .approvals import (
+    ApprovalDecision,
+    ApprovalProposal,
+    ApprovalRecorder,
+    InMemoryApprovalRecorder,
+    approval_denial_reason,
+    approval_required,
+    approval_token_reason_label,
+    build_proposal,
+    build_proposal_id,
+)
 from .op_audit import OpAuditLogger
-from .policy import PolicyContext, PolicyEvaluator
+from .policy import PolicyContext, PolicyEvaluator, build_policy_metadata
 from .registry import OpRegistryLoader, OpRuntimeEntry
 from .registry_schema import SkillStatus
 
@@ -71,6 +82,7 @@ class OpExecutionResult:
 
 
 RoutingHook = Callable[[OpRuntimeEntry, SkillContext, dict[str, Any]], Awaitable[None]]
+ApprovalRoutingHook = Callable[[ApprovalProposal, SkillContext], Awaitable[None]]
 
 
 async def _noop_routing_hook(
@@ -89,6 +101,21 @@ async def _noop_routing_hook(
     return None
 
 
+async def _noop_approval_router(proposal: ApprovalProposal, context: SkillContext) -> None:
+    """Stub attention router hook for approval proposals."""
+    logger.info(
+        "approval routing stub",
+        extra={
+            "proposal_id": proposal.proposal_id,
+            "op": proposal.action_name,
+            "version": proposal.action_version,
+            "actor": context.actor or "",
+            "channel": context.channel or "",
+        },
+    )
+    return None
+
+
 class OpRuntime:
     """Execute ops with schema validation, policy checks, and auditing."""
 
@@ -98,6 +125,8 @@ class OpRuntime:
         policy: PolicyEvaluator,
         adapters: dict[str, OpAdapter],
         routing_hook: RoutingHook | None = None,
+        approval_router: ApprovalRoutingHook | None = None,
+        approval_recorder: ApprovalRecorder | None = None,
         audit_logger: OpAuditLogger | None = None,
     ) -> None:
         """Initialize the op runtime with registry, policy, and adapter bindings."""
@@ -105,6 +134,8 @@ class OpRuntime:
         self._policy = policy
         self._adapters = adapters
         self._routing_hook = routing_hook or _noop_routing_hook
+        self._approval_router = approval_router or _noop_approval_router
+        self._approval_recorder = approval_recorder or InMemoryApprovalRecorder()
         self._audit = audit_logger or OpAuditLogger()
 
     async def execute(
@@ -155,12 +186,15 @@ class OpRuntime:
 
         await self._routing_hook(op_entry, context, inputs)
 
+        proposal_id = build_proposal_id(op_entry, context, inputs)
         policy_context = PolicyContext(
             actor=context.actor,
             channel=context.channel,
             allowed_capabilities=context.allowed_capabilities,
             max_autonomy=context.max_autonomy,
             confirmed=context.confirmed,
+            proposal_id=proposal_id,
+            approval_token=context.approval_token,
         )
         try:
             decision = self._policy.evaluate(op_entry, policy_context)
@@ -169,6 +203,8 @@ class OpRuntime:
                 "policy evaluation failed",
                 extra={"op": op_entry.definition.name, "version": op_entry.definition.version},
             )
+            metadata = build_policy_metadata(op_entry, policy_context)
+            metadata["policy.error"] = str(exc)
             reasons = ["policy_error"]
             self._audit.record(
                 op_entry,
@@ -178,7 +214,7 @@ class OpRuntime:
                 inputs=inputs,
                 error=str(exc),
                 policy_reasons=reasons,
-                policy_metadata={"error": str(exc)},
+                policy_metadata=metadata,
             )
             raise OpPolicyError(
                 "policy_error",
@@ -186,6 +222,8 @@ class OpRuntime:
                 {"error": str(exc)},
             ) from exc
         if not decision.allowed:
+            await self._handle_approval_denial(op_entry, context, inputs, decision)
+            await self._record_approval_decision(op_entry, context, decision)
             self._audit.record(
                 op_entry,
                 context,
@@ -201,6 +239,7 @@ class OpRuntime:
                 "Op invocation denied by policy.",
                 {"reasons": decision.reasons},
             )
+        await self._record_approval_decision(op_entry, context, decision)
 
         runtime_key = op_entry.definition.runtime.value
         adapter = self._adapters.get(runtime_key)
@@ -277,6 +316,70 @@ class OpRuntime:
             },
         )
         return OpExecutionResult(output=output, duration_ms=duration_ms)
+
+    async def _handle_approval_denial(
+        self,
+        op_entry: OpRuntimeEntry,
+        context: SkillContext,
+        inputs: dict[str, Any],
+        decision: Any,
+    ) -> None:
+        """Generate and route approval proposals for approval-gated denials."""
+        if not approval_required(op_entry):
+            return
+        reason = approval_denial_reason(decision.reasons)
+        if reason is None:
+            return
+        extra_reasons = [
+            r
+            for r in decision.reasons
+            if r not in {"approval_required", "review_required"}
+            and not r.startswith("approval_token_")
+        ]
+        if extra_reasons:
+            return
+        proposal = build_proposal(op_entry, context, inputs, reason)
+        self._approval_recorder.record_proposal(proposal)
+        await self._approval_router(proposal, context)
+
+    async def _record_approval_decision(
+        self,
+        op_entry: OpRuntimeEntry,
+        context: SkillContext,
+        decision: Any,
+    ) -> None:
+        """Record approvals or token rejections tied to op execution."""
+        if not approval_required(op_entry):
+            return
+        proposal_id = decision.metadata.get("policy.context.proposal_id", "")
+        if not proposal_id or not context.actor:
+            return
+        token_valid = decision.metadata.get("policy.approval.token_valid") == "true"
+        token_reason = decision.metadata.get("policy.approval.token_reason", "")
+        token_status = decision.metadata.get("policy.approval.token_status", "")
+        if token_valid or context.confirmed:
+            reason = "approval_token" if token_valid else "confirmed"
+            decision_record = ApprovalDecision(
+                proposal_id=proposal_id,
+                actor=context.actor,
+                decision="approved",
+                decided_at=datetime.now(timezone.utc).isoformat(),
+                reason=reason,
+                token_used=token_valid,
+            )
+            self._approval_recorder.record_decision(decision_record)
+            return
+        if any(reason.startswith("approval_token_") for reason in decision.reasons):
+            label = token_status or approval_token_reason_label(token_reason)
+            decision_record = ApprovalDecision(
+                proposal_id=proposal_id,
+                actor=context.actor,
+                decision="expired" if label == "expired" else "rejected",
+                decided_at=datetime.now(timezone.utc).isoformat(),
+                reason=token_reason,
+                token_used=True,
+            )
+            self._approval_recorder.record_decision(decision_record)
 
     def _validate_schema(self, payload: Any, schema: dict[str, Any], label: str) -> None:
         """Validate a payload against a constrained JSON Schema subset."""
