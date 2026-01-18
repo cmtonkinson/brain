@@ -9,6 +9,7 @@ import pytest
 
 from config import settings
 from services.signal import SignalClient
+from attention.router_gate import activate_router_context, deactivate_router_context
 
 
 def _build_response(
@@ -119,6 +120,15 @@ async def test_send_message_returns_false_on_error(monkeypatch) -> None:
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: StubAsyncClient(post=response))
 
     client = SignalClient(api_url="http://signal.test")
-    ok = await client.send_message("+15550001111", "+15550002222", "hi")
+    token = activate_router_context()
+    try:
+        ok = await client.send_message(
+            "+15550001111",
+            "+15550002222",
+            "hi",
+            source_component="test",
+        )
+    finally:
+        deactivate_router_context(token)
 
     assert ok is False

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from dataclasses import dataclass
 from pathlib import Path
 
-from dataclasses import dataclass
-
+import pytest
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
 
@@ -61,12 +62,15 @@ def _write_note(vault: Path, name: str, content: str) -> None:
     note_path.write_text(content, encoding="utf-8")
 
 
-def _configure_sqlite(tmp_path: Path) -> sessionmaker:
-    """Create a sqlite database and return its session factory."""
+@pytest.fixture()
+def sqlite_session_factory(tmp_path: Path) -> Generator[sessionmaker, None, None]:
+    """Provide a sqlite session factory backed by a temp file."""
     db_path = tmp_path / "indexer.db"
     engine = create_engine(f"sqlite:///{db_path}")
     Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine)
+    factory = sessionmaker(bind=engine)
+    yield factory
+    engine.dispose()
 
 
 def _patch_indexer(monkeypatch, session_factory: sessionmaker, qdrant: StubQdrantClient) -> None:
@@ -76,14 +80,18 @@ def _patch_indexer(monkeypatch, session_factory: sessionmaker, qdrant: StubQdran
     monkeypatch.setattr("indexer.embed_text", lambda client, text, model: [0.1, 0.2, 0.3])
 
 
-def test_indexer_indexes_notes_and_chunks(tmp_path: Path, monkeypatch) -> None:
+def test_indexer_indexes_notes_and_chunks(
+    tmp_path: Path,
+    monkeypatch,
+    sqlite_session_factory: sessionmaker,
+) -> None:
     """Indexing writes Qdrant points and DB metadata for a note."""
     vault = tmp_path / "vault"
     vault.mkdir()
     content = "# Title\n\nParagraph one.\n\nParagraph two."
     _write_note(vault, "Note.md", content)
 
-    session_factory = _configure_sqlite(tmp_path)
+    session_factory = sqlite_session_factory
     qdrant = StubQdrantClient()
     _patch_indexer(monkeypatch, session_factory, qdrant)
 
@@ -119,14 +127,18 @@ def test_indexer_indexes_notes_and_chunks(tmp_path: Path, monkeypatch) -> None:
         session.close()
 
 
-def test_indexer_skips_unchanged_notes(tmp_path: Path, monkeypatch) -> None:
+def test_indexer_skips_unchanged_notes(
+    tmp_path: Path,
+    monkeypatch,
+    sqlite_session_factory: sessionmaker,
+) -> None:
     """Reindexing unchanged content avoids additional upserts."""
     vault = tmp_path / "vault"
     vault.mkdir()
     content = "# Title\n\nSame content."
     _write_note(vault, "Note.md", content)
 
-    session_factory = _configure_sqlite(tmp_path)
+    session_factory = sqlite_session_factory
     qdrant = StubQdrantClient()
     _patch_indexer(monkeypatch, session_factory, qdrant)
 
@@ -150,13 +162,17 @@ def test_indexer_skips_unchanged_notes(tmp_path: Path, monkeypatch) -> None:
     assert len(qdrant.upserts) == 1
 
 
-def test_indexer_full_reindex_deletes_collection(tmp_path: Path, monkeypatch) -> None:
+def test_indexer_full_reindex_deletes_collection(
+    tmp_path: Path,
+    monkeypatch,
+    sqlite_session_factory: sessionmaker,
+) -> None:
     """Full reindex deletes the existing collection before rebuilding."""
     vault = tmp_path / "vault"
     vault.mkdir()
     _write_note(vault, "Note.md", "# Title\n\nContent.")
 
-    session_factory = _configure_sqlite(tmp_path)
+    session_factory = sqlite_session_factory
     qdrant = StubQdrantClient()
     _patch_indexer(monkeypatch, session_factory, qdrant)
 

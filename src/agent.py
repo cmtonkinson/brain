@@ -23,6 +23,7 @@ from services.code_mode import CodeModeManager, create_code_mode_manager
 from services.database import init_db, get_session, log_action
 from access_control import is_sender_allowed
 from services.signal import SignalClient
+from attention.router import AttentionRouter, OutboundSignal
 from services.letta import LettaService
 from prompts import render_prompt
 from tools.obsidian import ObsidianClient
@@ -1023,7 +1024,7 @@ async def handle_signal_message(
     obsidian: ObsidianClient,
     memory: ConversationMemory,
     code_mode: CodeModeManager,
-    signal_client: SignalClient,
+    router: AttentionRouter,
     phone_number: str,
 ) -> None:
     """Handle an incoming Signal message.
@@ -1033,7 +1034,7 @@ async def handle_signal_message(
         signal_msg: The incoming Signal message
         obsidian: Obsidian client
         memory: Conversation memory manager
-        signal_client: Signal client for sending replies
+        router: Attention router for outbound replies
         phone_number: The agent's phone number
     """
     sender = signal_msg.sender
@@ -1107,9 +1108,17 @@ async def handle_signal_message(
         )
         logger.info("Outgoing message to %s: %s", sender, _preview(response))
 
-        # Send reply via Signal
+        # Send reply via Attention Router
         send_start = time.perf_counter()
-        await signal_client.send_message(phone_number, sender, _render_signal_message(response))
+        await router.route_signal(
+            OutboundSignal(
+                source_component="agent",
+                channel="signal",
+                from_number=phone_number,
+                to_number=sender,
+                message=_render_signal_message(response),
+            )
+        )
 
         if _brain_metrics:
             send_duration = (time.perf_counter() - send_start) * 1000
@@ -1153,6 +1162,7 @@ async def run_signal_loop(
         return
 
     signal_client = SignalClient()
+    router = AttentionRouter(signal_client)
 
     # Check Signal API connection
     if not await signal_client.check_connection():
@@ -1177,7 +1187,7 @@ async def run_signal_loop(
 
             for msg in messages:
                 await handle_signal_message(
-                    agent, msg, obsidian, memory, code_mode, signal_client, phone_number
+                    agent, msg, obsidian, memory, code_mode, router, phone_number
                 )
 
         except Exception as e:

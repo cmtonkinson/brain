@@ -10,6 +10,7 @@ import respx
 
 from config import settings
 from services.signal import SignalClient
+from attention.router_gate import activate_router_context, deactivate_router_context
 
 
 @pytest.mark.asyncio
@@ -47,7 +48,16 @@ async def test_send_message_contract(monkeypatch) -> None:
         route = router.post("http://signal.test/v2/send").respond(200, json={"ok": True})
 
         client = SignalClient(api_url="http://signal.test")
-        ok = await client.send_message("+15550001111", "+15550002222", "hi")
+        token = activate_router_context()
+        try:
+            ok = await client.send_message(
+                "+15550001111",
+                "+15550002222",
+                "hi",
+                source_component="test",
+            )
+        finally:
+            deactivate_router_context(token)
 
     assert ok is True
     assert route.called
@@ -70,7 +80,16 @@ async def test_send_message_contract_handles_error(monkeypatch) -> None:
         route = router.post("http://signal.test/v2/send").respond(500, json={"error": "fail"})
 
         client = SignalClient(api_url="http://signal.test")
-        ok = await client.send_message("+15550001111", "+15550002222", "hi")
+        token = activate_router_context()
+        try:
+            ok = await client.send_message(
+                "+15550001111",
+                "+15550002222",
+                "hi",
+                source_component="test",
+            )
+        finally:
+            deactivate_router_context(token)
 
     assert ok is False
     assert route.called

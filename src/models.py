@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, Time
 from sqlalchemy.orm import declarative_base
 
 from config import settings
@@ -76,6 +76,271 @@ class IndexedChunk(Base):
     chunk_index = Column(Integer, nullable=False)
     qdrant_id = Column(String(64), nullable=False)
     chunk_chars = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class NotificationEnvelope(Base):
+    """Notification metadata wrapper with provenance and confidence."""
+
+    __tablename__ = "notification_envelopes"
+
+    id = Column(Integer, primary_key=True)
+    version = Column(String(50), nullable=False)
+    source_component = Column(String(200), nullable=False)
+    origin_signal = Column(String(200), nullable=False)
+    confidence = Column(Float, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class NotificationProvenanceInput(Base):
+    """Normalized provenance input linked to a notification envelope."""
+
+    __tablename__ = "notification_provenance_inputs"
+
+    id = Column(Integer, primary_key=True)
+    envelope_id = Column(Integer, ForeignKey("notification_envelopes.id"), nullable=False)
+    input_type = Column(String(200), nullable=False)
+    reference = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionContextWindow(Base):
+    """Stored attention context window for a given owner."""
+
+    __tablename__ = "attention_context_windows"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    source = Column(String(200), nullable=False)
+    start_at = Column(DateTime(timezone=True), nullable=False)
+    end_at = Column(DateTime(timezone=True), nullable=False)
+    interruptible = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class NotificationHistoryEntry(Base):
+    """History record for a routed notification decision."""
+
+    __tablename__ = "notification_history"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    signal_reference = Column(String(500), nullable=False)
+    outcome = Column(String(50), nullable=False)
+    channel = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionAuditLog(Base):
+    """Audit log entry for attention routing events."""
+
+    __tablename__ = "attention_audit_logs"
+
+    id = Column(Integer, primary_key=True)
+    event_type = Column(String(50), nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    source_component = Column(String(200), nullable=False)
+    signal_reference = Column(String(500), nullable=False)
+    base_assessment = Column(String(50), nullable=False)
+    policy_outcome = Column(String(100), nullable=True)
+    final_decision = Column(String(100), nullable=False)
+    envelope_id = Column(Integer, ForeignKey("notification_envelopes.id"), nullable=True)
+    preference_reference = Column(String(100), nullable=True)
+
+
+class DeferredSignal(Base):
+    """Deferred signal awaiting re-evaluation."""
+
+    __tablename__ = "attention_deferred_signals"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    signal_reference = Column(String(500), nullable=False)
+    source_component = Column(String(200), nullable=False)
+    reason = Column(Text, nullable=False)
+    reevaluate_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class BatchedSignal(Base):
+    """Batched signal awaiting digest generation."""
+
+    __tablename__ = "attention_batched_signals"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    signal_reference = Column(String(500), nullable=False)
+    source_component = Column(String(200), nullable=False)
+    topic = Column(String(200), nullable=False)
+    category = Column(String(200), nullable=False)
+    batch_id = Column(Integer, ForeignKey("attention_batches.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionQuietHours(Base):
+    """Stored quiet hours window for an owner."""
+
+    __tablename__ = "attention_quiet_hours"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    timezone = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionDoNotDisturb(Base):
+    """Stored do-not-disturb window for an owner."""
+
+    __tablename__ = "attention_do_not_disturb"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    timezone = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionChannelPreference(Base):
+    """Stored channel preference for an owner."""
+
+    __tablename__ = "attention_channel_preferences"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    channel = Column(String(50), nullable=False)
+    preference = Column(String(50), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionEscalationThreshold(Base):
+    """Stored escalation threshold for an owner."""
+
+    __tablename__ = "attention_escalation_thresholds"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    signal_type = Column(String(200), nullable=False)
+    threshold = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionAlwaysNotify(Base):
+    """Stored always-notify exception for an owner."""
+
+    __tablename__ = "attention_always_notify"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    signal_type = Column(String(200), nullable=False)
+    source_component = Column(String(200), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionEscalationLog(Base):
+    """Logged escalation decision with triggering condition."""
+
+    __tablename__ = "attention_escalation_logs"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    signal_reference = Column(String(500), nullable=False)
+    trigger = Column(String(200), nullable=False)
+    level = Column(Integer, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionBatch(Base):
+    """Scheduled batch record for grouped signals."""
+
+    __tablename__ = "attention_batches"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    batch_type = Column(String(50), nullable=False)
+    scheduled_for = Column(DateTime(timezone=True), nullable=False)
+    topic = Column(String(200), nullable=True)
+    category = Column(String(200), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionBatchLog(Base):
+    """Logged batch creation event."""
+
+    __tablename__ = "attention_batch_logs"
+
+    id = Column(Integer, primary_key=True)
+    batch_id = Column(Integer, ForeignKey("attention_batches.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionBatchSummary(Base):
+    """Stored summary for a batch."""
+
+    __tablename__ = "attention_batch_summaries"
+
+    id = Column(Integer, primary_key=True)
+    batch_id = Column(Integer, ForeignKey("attention_batches.id"), nullable=False)
+    summary = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionBatchItem(Base):
+    """Stored ranked item for a batch."""
+
+    __tablename__ = "attention_batch_items"
+
+    id = Column(Integer, primary_key=True)
+    batch_id = Column(Integer, ForeignKey("attention_batches.id"), nullable=False)
+    signal_reference = Column(String(500), nullable=False)
+    rank = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionReviewLog(Base):
+    """Audit log for suppressed signal reviews."""
+
+    __tablename__ = "attention_review_logs"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    signal_reference = Column(String(500), nullable=True)
+    action = Column(String(100), nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AttentionFailClosedQueue(Base):
+    """Queued signal for fail-closed routing recovery."""
+
+    __tablename__ = "attention_fail_closed_queue"
+
+    id = Column(Integer, primary_key=True)
+    owner = Column(String(200), nullable=False)
+    source_component = Column(String(200), nullable=False)
+    from_number = Column(String(200), nullable=False)
+    to_number = Column(String(200), nullable=False)
+    channel = Column(String(50), nullable=False)
+    message = Column(Text, nullable=False)
+    reason = Column(String(200), nullable=False)
+    queued_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    retry_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class AttentionDecisionRecord(Base):
+    """Persisted attention routing decision."""
+
+    __tablename__ = "attention_decision_records"
+
+    id = Column(Integer, primary_key=True)
+    signal_reference = Column(String(500), nullable=False)
+    channel = Column(String(100), nullable=True)
+    base_assessment = Column(String(50), nullable=False)
+    policy_outcome = Column(String(100), nullable=True)
+    final_decision = Column(String(100), nullable=False)
+    explanation = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from agent import AgentDeps, handle_signal_message
+from attention.router import OutboundSignal, RoutingResult
 from models import SignalMessage
 from tools.memory import ConversationMemory
 
@@ -50,14 +51,15 @@ class FakeObsidianClient:
 
 
 @dataclass
-class FakeSignalClient:
-    """Capture outbound Signal messages for inspection."""
+class FakeRouter:
+    """Capture outbound router signals for inspection."""
 
-    sent: list[tuple[str, str, str]] = field(default_factory=list)
+    sent: list[OutboundSignal] = field(default_factory=list)
 
-    async def send_message(self, sender: str, recipient: str, message: str) -> None:
-        """Record the outgoing Signal message payload."""
-        self.sent.append((sender, recipient, message))
+    async def route_signal(self, signal: OutboundSignal) -> RoutingResult:
+        """Record the outbound signal routing request."""
+        self.sent.append(signal)
+        return RoutingResult(decision="DELIVERED", channel=signal.channel)
 
 
 @dataclass
@@ -88,7 +90,7 @@ async def test_agent_flow_smoke_logs_and_formats_signal(monkeypatch) -> None:
     obsidian = FakeObsidianClient()
     memory = ConversationMemory(obsidian)
     code_mode = FakeCodeModeManager()
-    signal_client = FakeSignalClient()
+    router = FakeRouter()
     agent = FakeAgent(response="# Greeting\nSee [link](https://example.com) and _italic_.")
 
     async def _fake_log_action(*args, **kwargs) -> None:
@@ -115,7 +117,7 @@ async def test_agent_flow_smoke_logs_and_formats_signal(monkeypatch) -> None:
         obsidian=obsidian,
         memory=memory,
         code_mode=code_mode,
-        signal_client=signal_client,
+        router=router,
         phone_number="+15550000000",
     )
 
@@ -124,8 +126,8 @@ async def test_agent_flow_smoke_logs_and_formats_signal(monkeypatch) -> None:
     assert "Summarize my note." in note_content
     assert "# Greeting" in note_content
 
-    assert len(signal_client.sent) == 1
-    _, _, rendered = signal_client.sent[0]
+    assert len(router.sent) == 1
+    rendered = router.sent[0].message
     assert "**Greeting**" in rendered
     assert "link (https://example.com)" in rendered
     assert "*italic*" in rendered

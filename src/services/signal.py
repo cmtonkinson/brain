@@ -8,6 +8,7 @@ import httpx
 
 from config import settings
 from models import SignalMessage
+from attention.router_gate import ensure_router_context
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,8 @@ class SignalClient:
         from_number: str,
         to_number: str,
         message: str,
+        *,
+        source_component: str = "unknown",
     ) -> bool:
         """Send a message via Signal.
 
@@ -93,6 +96,7 @@ class SignalClient:
         Returns:
             True if message was sent successfully, False otherwise
         """
+        ensure_router_context(source_component, "signal")
         logger.info("Signal send request: to=%s chars=%s", to_number, len(message))
         try:
             async with httpx.AsyncClient(timeout=settings.llm.timeout) as client:

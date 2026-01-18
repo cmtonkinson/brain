@@ -9,6 +9,19 @@ fi
 container_name=""
 qdrant_container=""
 
+cleanup() {
+  if [[ -n "$container_name" ]]; then
+    echo "Stopping Postgres integration container: ${container_name}"
+    docker stop "$container_name" >/dev/null
+  fi
+  if [[ -n "$qdrant_container" ]]; then
+    echo "Stopping Qdrant integration container: ${qdrant_container}"
+    docker stop "$qdrant_container" >/dev/null
+  fi
+}
+
+trap cleanup EXIT
+
 start_postgres_container() {
   local image="${BRAIN_PG_IMAGE:-postgres:16-alpine}"
   local port
@@ -37,14 +50,6 @@ start_postgres_container() {
   fi
 
   export DATABASE_URL="postgresql://brain:brain@localhost:${port}/brain"
-
-  cleanup() {
-    if [[ -n "$container_name" ]]; then
-      echo "Stopping Postgres integration container: ${container_name}"
-      docker stop "$container_name" >/dev/null
-    fi
-  }
-  trap cleanup EXIT
 
   for _ in {1..30}; do
     if docker exec "$container_name" pg_isready -U brain -d brain >/dev/null 2>&1; then
@@ -82,14 +87,6 @@ start_qdrant_container() {
   fi
 
   export QDRANT_URL="http://localhost:${port}"
-
-  cleanup_qdrant() {
-    if [[ -n "$qdrant_container" ]]; then
-      echo "Stopping Qdrant integration container: ${qdrant_container}"
-      docker stop "$qdrant_container" >/dev/null
-    fi
-  }
-  trap cleanup_qdrant EXIT
 
   for _ in {1..30}; do
     if curl -fsS "http://localhost:${port}/collections" >/dev/null 2>&1; then
