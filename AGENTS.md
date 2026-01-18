@@ -5,6 +5,10 @@ Instructions for working in this repo:
 - Read `docs/security-trust-boundary-model.md`.
 - Never modify `docs/manifesto.md`; if you think you need to, raise it as a question/suggestion for user modification.
 - Ask clarifying questions when needed.
+- Never create JSONB fields in the database without:
+  - A very good rationale.
+  - Clearly and explicitly explaining why you believe it is justfied.
+  - Explicit user approval.
 
 When modifying code:
 - Write code that is concise, readable, maintainable, and idiomatic.

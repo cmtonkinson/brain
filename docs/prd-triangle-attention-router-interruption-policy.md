@@ -123,6 +123,11 @@ All outbound communication initiated by:
 
 No component may bypass this layer.
 
+If the router or its policy engine is unavailable, it must **fail closed**:
+- default to `LOG_ONLY`
+- queue signals for later review/delivery
+- avoid direct notification
+
 ---
 
 ### 6.2 Interruption Decision
@@ -175,6 +180,17 @@ The system must support:
 - topic-based batching
 
 Batched signals are summarized and ranked.
+
+---
+
+### 6.6 Notification Envelope (Provenance & Confidence)
+
+All notifications must include a wrapper with:
+- source component
+- provenance (originating signal + inputs)
+- confidence level
+
+This metadata is surfaced to the human in a compact form and logged for audit.
 
 ---
 
