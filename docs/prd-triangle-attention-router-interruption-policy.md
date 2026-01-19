@@ -131,11 +131,6 @@ All outbound communication initiated by:
 
 No component may bypass this layer.
 
-If the router or its policy engine is unavailable, it must **fail closed**:
-- default to `LOG_ONLY`
-- queue signals for later review/delivery
-- avoid direct notification
-
 ---
 
 ### 6.2 Interruption Decision

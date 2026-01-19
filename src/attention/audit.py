@@ -23,7 +23,6 @@ class AuditEventType(str, Enum):
     PREFERENCE = "PREFERENCE"
     RATE_LIMIT = "RATE_LIMIT"
     NOTIFICATION = "NOTIFICATION"
-    FAIL_CLOSED = "FAIL_CLOSED"
 
 
 @dataclass(frozen=True)
@@ -189,24 +188,5 @@ class AttentionAuditLogger:
                 base_assessment=base_assessment,
                 policy_outcome=reason,
                 final_decision=final_decision,
-            )
-        )
-
-    def log_fail_closed(
-        self,
-        source_component: str,
-        signal_reference: str,
-        base_assessment: str,
-        reason: str,
-    ) -> bool:
-        """Log a fail-closed routing event."""
-        return self.log(
-            AuditLogRequest(
-                event_type=AuditEventType.FAIL_CLOSED,
-                source_component=source_component,
-                signal_reference=signal_reference,
-                base_assessment=base_assessment,
-                policy_outcome=reason,
-                final_decision="LOG_ONLY",
             )
         )

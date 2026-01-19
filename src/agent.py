@@ -11,7 +11,6 @@ import os
 import re
 import sys
 import time
-from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -21,11 +20,9 @@ from pydantic_ai import Agent, RunContext
 from config import settings
 from models import SignalMessage
 from services.code_mode import CodeModeManager, create_code_mode_manager
-from services.database import init_db, get_session, get_sync_session, log_action
+from services.database import init_db, get_session, log_action
 from access_control import is_sender_allowed
 from services.signal import SignalClient
-from attention.audit import AttentionAuditLogger
-from attention.fail_closed import FailClosedRouter
 from attention.router import AttentionRouter
 from attention.routing_envelope import build_signal_reply_envelope
 from attention.routing_hooks import (
@@ -1133,18 +1130,7 @@ async def handle_signal_message(
             message=_render_signal_message(response),
             source_component="agent",
         )
-        with closing(get_sync_session()) as session:
-            audit_logger = AttentionAuditLogger(session)
-            fail_closed = FailClosedRouter(router, session, audit_logger)
-            policy_available = (
-                router.policies_available() if hasattr(router, "policies_available") else True
-            )
-            await fail_closed.route(
-                outbound,
-                router_available=True,
-                policy_available=policy_available,
-            )
-            session.commit()
+        await router.route_envelope(outbound)
 
         if _brain_metrics:
             send_duration = (time.perf_counter() - send_start) * 1000
@@ -1189,7 +1175,6 @@ async def run_signal_loop(
 
     signal_client = SignalClient()
     router = AttentionRouter(signal_client)
-    # TODO: Schedule fail-closed queue reprocessing once a background job system exists.
 
     # Check Signal API connection
     if not await signal_client.check_connection():

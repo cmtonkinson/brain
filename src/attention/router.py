@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from contextlib import closing
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
 from typing import Callable, Iterable
 
 from sqlalchemy.orm import Session
@@ -25,11 +24,6 @@ from attention.envelope_schema import (
     NotificationEnvelope,
     RoutingEnvelope,
     RoutingIntent,
-)
-from attention.fail_closed_storage import (
-    build_fail_closed_entry,
-    build_policy_tag_records,
-    build_provenance_records,
 )
 from attention.escalation import (
     EscalationInput,
@@ -59,7 +53,6 @@ from services.signal import SignalClient
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FAIL_CLOSED_RETRY = timedelta(minutes=15)
 IGNORED_ESCALATION_THRESHOLD = 2
 
 
@@ -261,21 +254,6 @@ class AttentionRouter:
                 )
             except Exception as exc:
                 session.rollback()
-                try:
-                    audit_logger.log_fail_closed(
-                        source_component=envelope.notification.source_component,
-                        signal_reference=envelope.signal_reference,
-                        base_assessment="LOG_ONLY",
-                        reason="routing_exception",
-                    )
-                    _queue_fail_closed_signal(session, envelope, reason="routing_exception")
-                    session.commit()
-                except Exception:
-                    session.rollback()
-                    logger.exception(
-                        "Fail-closed queueing failed for signal=%s.",
-                        envelope.signal_reference,
-                    )
                 logger.exception("Routing failed for signal=%s.", envelope.signal_reference)
                 return RoutingResult(
                     decision="LOG_ONLY",
@@ -350,35 +328,6 @@ def _record_log_only(router: AttentionRouter, envelope: RoutingEnvelope) -> Rout
                 decision_record_id=None,
                 error=str(exc),
             )
-
-
-def _queue_fail_closed_signal(
-    session: Session,
-    envelope: RoutingEnvelope,
-    *,
-    reason: str,
-    now: datetime | None = None,
-) -> None:
-    """Queue a Signal payload for retry when routing fails."""
-    payload = envelope.signal_payload
-    if payload is None:
-        logger.warning(
-            "Fail-closed queue skipped; missing signal payload for %s.",
-            envelope.signal_reference,
-        )
-        return
-    queued_at = now or datetime.now(timezone.utc)
-    entry = build_fail_closed_entry(
-        envelope,
-        reason=reason,
-        queued_at=queued_at,
-        retry_delay=DEFAULT_FAIL_CLOSED_RETRY,
-    )
-    session.add(entry)
-    session.flush()
-    session.add_all(build_provenance_records(entry.id, envelope.notification.provenance))
-    if envelope.authorization:
-        session.add_all(build_policy_tag_records(entry.id, envelope.authorization.policy_tags))
 
 
 def _persist_notification_envelope(session: Session, envelope: NotificationEnvelope) -> int | None:

@@ -1,7 +1,7 @@
 """Add attention decision records table.
 
 Revision ID: 0014_attention_decision_records
-Revises: 0013_attention_fail_closed_queue
+Revises: 0012_attention_review_logs
 Create Date: 2026-02-01 00:00:00.000000
 """
 
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "0014_attention_decision_records"
-down_revision = "0013_attention_fail_closed_queue"
+down_revision = "0012_attention_review_logs"
 branch_labels = None
 depends_on = None
 

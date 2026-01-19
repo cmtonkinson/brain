@@ -312,65 +312,6 @@ class AttentionReviewLog(Base):
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
-class AttentionFailClosedQueue(Base):
-    """Queued signal for fail-closed routing recovery."""
-
-    __tablename__ = "attention_fail_closed_queue"
-
-    id = Column(Integer, primary_key=True)
-    owner = Column(String(200), nullable=False)
-    source_component = Column(String(200), nullable=False)
-    actor = Column(String(200), nullable=True)
-    from_number = Column(String(200), nullable=False)
-    to_number = Column(String(200), nullable=False)
-    channel = Column(String(50), nullable=False)
-    message = Column(Text, nullable=False)
-    signal_reference = Column(String(500), nullable=True)
-    envelope_version = Column(String(50), nullable=True)
-    signal_type = Column(String(200), nullable=True)
-    urgency = Column(Float, nullable=True)
-    channel_cost = Column(Float, nullable=True)
-    content_type = Column(String(200), nullable=True)
-    correlation_id = Column(String(200), nullable=True)
-    routing_intent = Column(String(50), nullable=True)
-    envelope_timestamp = Column(DateTime(timezone=True), nullable=True)
-    deadline = Column(DateTime(timezone=True), nullable=True)
-    previous_severity = Column(Integer, nullable=True)
-    current_severity = Column(Integer, nullable=True)
-    authorization_autonomy_level = Column(String(50), nullable=True)
-    authorization_approval_status = Column(String(50), nullable=True)
-    notification_version = Column(String(50), nullable=True)
-    notification_origin_signal = Column(String(500), nullable=True)
-    notification_confidence = Column(Float, nullable=True)
-    reason = Column(String(200), nullable=False)
-    queued_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    retry_at = Column(DateTime(timezone=True), nullable=False)
-
-
-class AttentionFailClosedProvenanceInput(Base):
-    """Provenance inputs linked to a fail-closed queue entry."""
-
-    __tablename__ = "attention_fail_closed_provenance_inputs"
-
-    id = Column(Integer, primary_key=True)
-    queue_id = Column(Integer, ForeignKey("attention_fail_closed_queue.id"), nullable=False)
-    input_type = Column(String(200), nullable=False)
-    reference = Column(String(500), nullable=False)
-    description = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
-
-class AttentionFailClosedPolicyTag(Base):
-    """Policy tags linked to a fail-closed queue entry."""
-
-    __tablename__ = "attention_fail_closed_policy_tags"
-
-    id = Column(Integer, primary_key=True)
-    queue_id = Column(Integer, ForeignKey("attention_fail_closed_queue.id"), nullable=False)
-    tag = Column(String(200), nullable=False)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-
-
 class AttentionDecisionRecord(Base):
     """Persisted attention routing decision."""
 
