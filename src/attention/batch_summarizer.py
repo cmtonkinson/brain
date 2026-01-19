@@ -54,7 +54,7 @@ def summarize_batch(session: Session, batch_id: int) -> BatchSummaryResult:
             batch_id=batch_id,
             summary=summary_text,
             ranked_items=ranked_items,
-            delivery_channel="digest",
+            delivery_channel="signal",
         )
     except Exception as exc:
         logger.exception("Batch summarization failed for batch_id=%s", batch_id)

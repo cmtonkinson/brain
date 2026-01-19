@@ -140,7 +140,7 @@ def assess_base_signal(
             topic=inputs.topic or "general",
             category=inputs.category or "unspecified",
         )
-        # TODO: Trigger batch scheduling/digest delivery once a background job system exists.
+        # TODO: Trigger batch scheduling/summary delivery once a background job system exists.
 
     return BaseAssessment(outcome=outcome, explanation=explanation)
 

@@ -53,7 +53,8 @@ def select_channel(inputs: ChannelSelectionInputs) -> ChannelSelectionResult:
             secondary_channel=None,
         )
 
-    secondary = "obsidian" if inputs.record_to_obsidian else None
+    # TODO: Support secondary delivery once a non-Signal output channel exists.
+    secondary = None
     return ChannelSelectionResult(
         final_decision=f"{decision_type}:{primary}",
         primary_channel=primary,

@@ -216,7 +216,7 @@ so child invocations cannot expand their capability set.
 
 Policy decisions may consider:
 - time of day
-- channel (Signal, WebUI)
+- channel (Signal)
 - recent failures
 - confidence levels
 - historical trust

@@ -52,24 +52,6 @@ def test_signal_envelope_renders_compact_metadata(
     assert "prov=signal:task:123" in result.metadata
 
 
-def test_digest_envelope_renders_compact_metadata(
-    sqlite_session_factory: sessionmaker,
-) -> None:
-    """Ensure Digest metadata renders compact envelope information."""
-    session_factory = sqlite_session_factory
-    with closing(session_factory()) as session:
-        envelope_id = _seed_envelope(session)
-        session.commit()
-
-        result = render_envelope_metadata(session, envelope_id, "digest")
-
-    assert result.decision == EnvelopeDecision.ACCEPT.value
-    assert result.metadata is not None
-    assert "src=scheduler" in result.metadata
-    assert "conf=0.85" in result.metadata
-    assert "prov=signal:task:123" in result.metadata
-
-
 def test_rendering_failure_returns_log_only(
     caplog: pytest.LogCaptureFixture,
     sqlite_session_factory: sessionmaker,

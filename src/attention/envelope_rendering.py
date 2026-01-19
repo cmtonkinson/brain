@@ -12,7 +12,7 @@ from models import NotificationEnvelope, NotificationProvenanceInput
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_CHANNELS = {"signal", "digest"}
+SUPPORTED_CHANNELS = {"signal"}
 
 
 @dataclass(frozen=True)

@@ -19,7 +19,7 @@ When modifying code:
 - Before adding new units, search existing code for logic that may be reused/refactored.
 - When modifying existing untis, write/modify tests as appropriate.
 - When creating new units, design them to be tested, and write appropriate tests.
-- Run tests after making changes to validate behavior (`./test.sh`).
+- Run all tests after making changes to validate behavior (e.g. using `./test.sh`).
 - When tests fail, don't just modify the tests to make them pass. First, suspect that the SUT is flawed.
 
 Whenever changes impact config files (`.env`, `config/*.{yml,json}`, etc.):

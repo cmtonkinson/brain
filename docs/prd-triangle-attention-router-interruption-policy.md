@@ -88,7 +88,7 @@ Interruption is optional and policy-driven.
 A delivery medium with implicit cost and semantics.
 
 **Current scope:** Signal is the only implemented output channel, but the architecture must
-support multiple channels for future phases (voice, web, etc.).
+support multiple channels for future phases (TBD).
 
 ---
 

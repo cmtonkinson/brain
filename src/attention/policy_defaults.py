@@ -77,9 +77,9 @@ def default_attention_policies() -> list[AttentionPolicy]:
             outcome=PolicyOutcome(kind=PolicyOutcomeKind.BATCH),
         ),
         AttentionPolicy(
-            policy_id="long-form-analysis-to-obsidian",
+            policy_id="long-form-analysis-signal",
             version="1.0.0",
-            description="Route long-form analysis via Signal while other channels are unavailable.",
+            description="Route long-form analysis via Signal.",
             scope=PolicyScope(
                 signal_types={"analysis.ready", "analysis.summary", "analysis.report"},
             ),

@@ -251,9 +251,7 @@ All outputs flow through an attention routing layer that decides:
 - **how** to notify
 - **how much** to say
 
-Channels (Signal, Web UI, Obsidian notes) are chosen deliberately.
-
-No component may bypass this router.
+Output channels (e.g. Signal) are chosen deliberately. _No component may bypass this router._
 
 ---
 
