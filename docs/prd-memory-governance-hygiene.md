@@ -1,5 +1,5 @@
 # PRD: Memory Governance & Hygiene
-## Deduplication, Conflict Resolution, Drift Control, and Review for Brain OS
+## Deduplication, Conflict Resolution, Drift Control, and Review for Brain
 
 ---
 
@@ -9,7 +9,7 @@
 **Memory Governance & Hygiene**
 
 ### Summary
-Introduce a **memory governance layer** for Brain OS that actively manages the quality, consistency, and relevance of durable memory over time.
+Introduce a **memory governance layer** for Brain that actively manages the quality, consistency, and relevance of durable memory over time.
 
 This feature adds:
 - deduplication
@@ -32,7 +32,7 @@ Without explicit hygiene, memory systems degrade:
 - inferred beliefs lose provenance
 - humans lose trust in the system’s memory
 
-Brain OS treats memory as **curated knowledge**, not an append-only log.  
+Brain treats memory as **curated knowledge**, not an append-only log.  
 This requires ongoing governance, not just careful promotion.
 
 ---
@@ -260,7 +260,7 @@ Mitigation:
 
 ---
 
-## 14. Alignment with Brain OS Manifesto
+## 14. Alignment with Brain Manifesto
 
 - **Memory Is Curated:** hygiene is ongoing
 - **Truth Is Explicit:** conflicts and provenance surfaced

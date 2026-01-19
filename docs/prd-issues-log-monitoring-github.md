@@ -1,5 +1,5 @@
 # PRD: Autonomous Log Monitoring & GitHub Issue Creation
-## Turning Errors and Warnings into Trackable Work for Brain OS
+## Turning Errors and Warnings into Trackable Work for Brain
 
 ---
 
@@ -9,7 +9,7 @@
 **Autonomous Log Monitoring & Issue Creation**
 
 ### Summary
-Enable Brain OS to **monitor its own logs**, detect **errors, warnings, and anomalous behavior**, and automatically **create GitHub issues** with rich context when intervention is required.
+Enable Brain to **monitor its own logs**, detect **errors, warnings, and anomalous behavior**, and automatically **create GitHub issues** with rich context when intervention is required.
 
 This feature establishes the first step toward **self-healing behavior**, converting runtime signals into durable, reviewable work items before any self-modification is attempted.
 
@@ -17,7 +17,7 @@ This feature establishes the first step toward **self-healing behavior**, conver
 
 ## 2. Problem Statement
 
-As Brain OS grows more autonomous and complex:
+As Brain grows more autonomous and complex:
 - errors may occur outside active human attention
 - warnings may accumulate without action
 - failures may repeat without institutional memory
@@ -28,7 +28,7 @@ Without a structured feedback loop:
 - root causes remain unclear
 - trust in autonomy erodes
 
-Brain OS must be able to **notice its own problems and externalize them as work**.
+Brain must be able to **notice its own problems and externalize them as work**.
 
 ---
 
@@ -62,7 +62,7 @@ Brain OS must be able to **notice its own problems and externalize them as work*
 ## 5. Core Concepts
 
 ### 5.1 Log Event
-A structured log entry emitted by any Brain OS component.
+A structured log entry emitted by any Brain component.
 
 Fields may include:
 - timestamp
@@ -238,7 +238,7 @@ Mitigation:
 
 ---
 
-## 14. Alignment with Brain OS Manifesto
+## 14. Alignment with Brain Manifesto
 
 - **Truth Is Explicit:** failures are externalized
 - **Everything Compounds:** issues become institutional memory

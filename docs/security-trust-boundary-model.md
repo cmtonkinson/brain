@@ -1,11 +1,11 @@
-# Brain OS — Security, Trust, and Boundary Model
+# Brain — Security, Trust, and Boundary Model
 ## Threats, Actors, and Containment
 
 ---
 
 ## Purpose
 
-This document defines the **trust boundaries** and **threat model** of Brain OS.
+This document defines the **trust boundaries** and **threat model** of Brain.
 
 The goal is not perfect security, but:
 - clear containment

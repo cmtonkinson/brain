@@ -1,5 +1,5 @@
 # PRD: Universal Ingestion Pipeline
-## Flexible “Ingest Anything” Pipeline for Brain OS
+## Flexible “Ingest Anything” Pipeline for Brain
 
 ---
 
@@ -17,7 +17,7 @@ Design and implement a **flexible, extensible ingestion pipeline** capable of ac
 4. embeddings for semantic search
 5. optional summaries and derivatives
 
-The pipeline establishes a **single canonical path** for all inbound information entering Brain OS.
+The pipeline establishes a **single canonical path** for all inbound information entering Brain.
 
 ---
 
@@ -30,7 +30,7 @@ Without a unified ingestion pipeline, systems accumulate:
 - unclear authority boundaries
 - fragile downstream assumptions
 
-Brain OS must support *many input types* while guaranteeing:
+Brain must support *many input types* while guaranteeing:
 - consistency
 - rebuildability
 - provenance
@@ -240,7 +240,7 @@ Without modifying core stages.
 
 ---
 
-## 13. Alignment with Brain OS Manifesto
+## 13. Alignment with Brain Manifesto
 
 - **Truth Is Explicit:** provenance and stages recorded
 - **Memory Is Curated:** ingestion ≠ memory

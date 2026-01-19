@@ -1,6 +1,6 @@
-# Brain OS Capability Vocabulary
+# Brain Capability Vocabulary
 
-This document defines the canonical capability vocabulary and governance rules for Brain OS.
+This document defines the canonical capability vocabulary and governance rules for Brain.
 Capabilities are stable, composable permission labels that bound what a skill may do.
 
 ## Vocabulary (v1.0.0)

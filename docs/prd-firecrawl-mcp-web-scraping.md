@@ -1,5 +1,5 @@
 # PRD: Firecrawl MCP Server Integration
-## Policy-Governed Web Scraping for Brain OS
+## Policy-Governed Web Scraping for Brain
 
 ---
 
@@ -9,9 +9,9 @@
 **Firecrawl MCP Server (Web Scraping Integration)**
 
 ### Summary
-Integrate **Firecrawl** as an MCP-accessible web scraping capability for Brain OS, enabling the agent to fetch, render, and extract content from the web in a **policy-governed, observable, and ingestion-safe** manner.
+Integrate **Firecrawl** as an MCP-accessible web scraping capability for Brain, enabling the agent to fetch, render, and extract content from the web in a **policy-governed, observable, and ingestion-safe** manner.
 
-This feature allows Brain OS to treat the web as a **structured ingestion source**, not an ad‑hoc side channel, and routes all scraped content through the **Universal Ingestion Pipeline**.
+This feature allows Brain to treat the web as a **structured ingestion source**, not an ad‑hoc side channel, and routes all scraped content through the **Universal Ingestion Pipeline**.
 
 ---
 
@@ -24,7 +24,7 @@ The web is a primary source of information, but naïve scraping introduces:
 - legal / ethical ambiguity
 - uncontrolled data flow into the agent context
 
-Brain OS needs a **single, auditable, bounded mechanism** for web access that:
+Brain needs a **single, auditable, bounded mechanism** for web access that:
 - separates fetching from reasoning
 - respects autonomy and policy constraints
 - preserves raw artifacts for review and rebuild
@@ -204,7 +204,7 @@ Mitigation:
 
 ---
 
-## 13. Alignment with Brain OS Manifesto
+## 13. Alignment with Brain Manifesto
 
 - **Truth Is Explicit:** provenance preserved
 - **Actions Are Bounded:** web access is gated

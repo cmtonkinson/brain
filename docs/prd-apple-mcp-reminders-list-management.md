@@ -1,5 +1,5 @@
 # PRD: Reminders List Management via apple-mcp
-## List/Add/Delete/Rename Reminder Lists for Brain OS
+## List/Add/Delete/Rename Reminder Lists for Brain
 
 ---
 
@@ -16,13 +16,13 @@ Extend the existing Apple Reminders integration (via `apple-mcp` / EventKit MCP 
 - delete reminder lists
 - rename reminder lists
 
-This enables Brain OS to manage organizational structure in Apple Reminders, not just individual reminders.
+This enables Brain to manage organizational structure in Apple Reminders, not just individual reminders.
 
 ---
 
 ## 2. Problem Statement
 
-Brain OS can create and update reminders, but without list management it cannot:
+Brain can create and update reminders, but without list management it cannot:
 
 - organize reminders into project-based lists
 - maintain consistent list taxonomy over time
@@ -101,7 +101,7 @@ Create a new reminder list.
 ```json
 {
   "action": "reminders.lists.create",
-  "name": "Brain OS"
+  "name": "Brain"
 }
 ```
 
@@ -203,7 +203,7 @@ Optional:
 - [ ] Policy gating implemented for writes
 - [ ] Delete requires explicit confirmation
 - [ ] Logging and audit events recorded
-- [ ] Integrated with Brain OS tool schema
+- [ ] Integrated with Brain tool schema
 
 ---
 

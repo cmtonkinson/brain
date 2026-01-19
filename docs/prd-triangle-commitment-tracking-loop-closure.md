@@ -1,5 +1,5 @@
 # PRD: Commitment Tracking & Loop Closure
-## Turning Intent into Outcomes for Brain OS
+## Turning Intent into Outcomes for Brain
 
 ---
 
@@ -11,7 +11,7 @@
 ### Summary
 Introduce a **commitment management layer** that tracks promises, tasks, follow-ups, and obligations over time — ensuring they are **closed, reviewed, or consciously renegotiated**, rather than silently forgotten.
 
-This feature transforms Brain OS from a capture-and-remind system into an **outcome-oriented partner** that helps the human keep commitments to themselves and others.
+This feature transforms Brain from a capture-and-remind system into an **outcome-oriented partner** that helps the human keep commitments to themselves and others.
 
 ---
 
@@ -28,7 +28,7 @@ As a result:
 - users compensate with anxiety or over-checking
 - the system becomes archival, not transformational
 
-Brain OS must **close loops**, not just open them.
+Brain must **close loops**, not just open them.
 
 ---
 
@@ -140,7 +140,7 @@ If a commitment passes its due time without closure:
 
 ### 6.4 Loop Closure Prompts
 
-For missed or long-running commitments, Brain OS may:
+For missed or long-running commitments, Brain may:
 - ask what happened
 - suggest deferral
 - suggest renegotiation
@@ -253,7 +253,7 @@ Mitigation:
 
 ---
 
-## 13. Alignment with Brain OS Manifesto
+## 13. Alignment with Brain Manifesto
 
 - **Everything Compounds:** closed loops create leverage
 - **Attention Is Sacred:** prompts are intentional

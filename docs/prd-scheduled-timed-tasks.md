@@ -1,5 +1,5 @@
 # PRD: Scheduled & Timed Task Execution
-## Dynamic, Policy-Aware Scheduling for Brain OS
+## Dynamic, Policy-Aware Scheduling for Brain
 
 ---
 
@@ -9,9 +9,9 @@
 **Scheduled & Timed Tasks**
 
 ### Summary
-Introduce a **flexible, dynamic scheduling system** that allows Brain OS to execute tasks at specific times, on recurring schedules, or in response to temporal conditions — without hard-coding schedules into the system or binding the design to any specific task framework or queueing technology.
+Introduce a **flexible, dynamic scheduling system** that allows Brain to execute tasks at specific times, on recurring schedules, or in response to temporal conditions — without hard-coding schedules into the system or binding the design to any specific task framework or queueing technology.
 
-This feature enables Brain OS to:
+This feature enables Brain to:
 - wake up on its own
 - execute deferred intentions
 - run periodic reviews and watchers
@@ -23,7 +23,7 @@ All while respecting autonomy, policy, and attention constraints.
 
 ## 2. Problem Statement
 
-Brain OS currently excels at *reactive* behavior — responding to user input and external triggers — but lacks a first-class abstraction for **time**.
+Brain currently excels at *reactive* behavior — responding to user input and external triggers — but lacks a first-class abstraction for **time**.
 
 Without a scheduling layer:
 - reminders are brittle or ad hoc
@@ -31,7 +31,7 @@ Without a scheduling layer:
 - long-running intentions cannot be reliably expressed
 - automation becomes either static (cron files) or overly complex
 
-Brain OS requires a **time-aware execution model** that is:
+Brain requires a **time-aware execution model** that is:
 - dynamic
 - inspectable
 - policy-governed
@@ -44,7 +44,7 @@ Brain OS requires a **time-aware execution model** that is:
 ### Goals
 - Support one-off, recurring, and conditional timed tasks
 - Allow schedules to be created, modified, paused, or canceled at runtime
-- Enable scheduled tasks to invoke the Brain OS agent safely
+- Enable scheduled tasks to invoke the Brain agent safely
 - Persist task intent and state durably
 - Integrate with memory, attention, and policy layers
 
@@ -98,7 +98,7 @@ Schedules must be editable at runtime.
 Represents *what actually runs* at a given time.
 
 Execution:
-- invokes Brain OS with a specific actor context
+- invokes Brain with a specific actor context
 - may succeed, fail, retry, or defer
 - produces observable side effects (notifications, notes, actions)
 
@@ -125,7 +125,7 @@ Schedules are identified by stable IDs.
 
 At execution time:
 - the scheduler triggers a task execution
-- execution calls the Brain OS agent via its public API
+- execution calls the Brain agent via its public API
 - agent receives:
   - task intent
   - actor context (scheduled job)
@@ -212,13 +212,9 @@ Optional:
 
 ## 9. Extensibility
 
-The design must allow:
-- multiple scheduler implementations
-- multiple execution backends
-- horizontal scaling
-- future migration to always-on infrastructure
+The design must employ some sort of e.g. adapter pattern to decouple the specific scheduler implementation from core logic, separating scheduler technology choice from Brain design decisions. No Brain logic should depend on a specific scheduler library.
 
-No Brain OS logic should depend on a specific scheduler library.
+A selection of scheduler tooling should be made however, in line with the existing project structure and norms. For example, scheduler should likely exist inside of a new Docker container(s) and should likely be a "buy" decision: leveraging existing open source package/s.
 
 ---
 
@@ -251,14 +247,14 @@ Mitigation:
 
 - [ ] Schedule and task intent data model defined
 - [ ] Runtime schedule management supported
-- [ ] Execution invokes Brain OS agent
+- [ ] Execution invokes Brain agent
 - [ ] Policy and attention routing enforced
 - [ ] Execution history persisted
 - [ ] Review and inspection mechanisms available
 
 ---
 
-## 13. Alignment with Brain OS Manifesto
+## 13. Alignment with Brain Manifesto
 
 - **Attention Is Sacred:** scheduled actions respect interruption policies
 - **Actions Are Bounded:** background work runs with limited authority

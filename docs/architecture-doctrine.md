@@ -1,11 +1,11 @@
-# Brain OS — Architecture Doctrine
+# Brain — Architecture Doctrine
 ## Authority, Data Classes, and Rebuildability
 
 ---
 
 ## Purpose
 
-This document defines the **architectural doctrine** of Brain OS: the non-negotiable principles governing data authority, system boundaries, and rebuild strategy.
+This document defines the **architectural doctrine** of Brain: the non-negotiable principles governing data authority, system boundaries, and rebuild strategy.
 
 This is not a feature description.  
 It is the **constitution** the system must obey as it evolves.
@@ -16,7 +16,7 @@ It is the **constitution** the system must obey as it evolves.
 
 ### 1. Authority Is Explicit
 
-Every piece of data in Brain OS must have a clear answer to:
+Every piece of data in Brain must have a clear answer to:
 > “Is this authoritative, or can it be rebuilt?”
 
 There is no ambiguous middle ground.

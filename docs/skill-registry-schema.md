@@ -1,6 +1,6 @@
 # Skill Registry Schema (v2)
 
-This document defines the canonical schema for the Brain OS skill registry. The registry
+This document defines the canonical schema for the Brain skill registry. The registry
 is the authoritative inventory of skills, their contracts, and required capabilities.
 Ops are tracked in a separate registry, documented below.
 

@@ -1,5 +1,5 @@
 # PRD: Self-Modifying Agent with Safe Restart & Rollback
-## Autonomous Repair, Controlled Evolution, and Recovery for Brain OS
+## Autonomous Repair, Controlled Evolution, and Recovery for Brain
 
 ---
 
@@ -9,7 +9,7 @@
 **Self-Modifying Agent (Safe Autoupdate & Repair)**
 
 ### Summary
-Enable Brain OS to **inspect, modify, and evolve its own codebase** in a controlled manner by granting the agent the ability to:
+Enable Brain to **inspect, modify, and evolve its own codebase** in a controlled manner by granting the agent the ability to:
 
 1. stop and restart itself
 2. rollback automatically to a last-known-good state on failure
@@ -21,7 +21,7 @@ The initial use case is **autonomous self-repair**: monitoring logs, detecting e
 
 ## 2. Problem Statement
 
-As Brain OS grows in complexity, manual maintenance becomes brittle and slow:
+As Brain grows in complexity, manual maintenance becomes brittle and slow:
 - regressions slip through
 - configuration drift accumulates
 - minor bugs require disruptive human attention
@@ -34,7 +34,7 @@ A system that reasons continuously should be able to **repair itself**, but only
 ## 3. Goals and Non-Goals
 
 ### Goals
-- Allow Brain OS to propose and apply code changes to itself
+- Allow Brain to propose and apply code changes to itself
 - Ensure failed changes are automatically rolled back
 - Keep a last-known-good state always recoverable
 - Allow autonomous fixes for well-scoped, low-risk issues
@@ -216,7 +216,7 @@ Optional:
 
 ---
 
-## 13. Alignment with Brain OS Manifesto
+## 13. Alignment with Brain Manifesto
 
 - **Actions Are Bounded:** self-change is constrained
 - **Truth Is Explicit:** diffs and intent recorded

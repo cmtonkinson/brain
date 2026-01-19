@@ -1,5 +1,5 @@
 # PRD: Object Storage via MinIO
-## Durable Blob Storage for Brain OS Ingestion and Artifacts
+## Durable Blob Storage for Brain Ingestion and Artifacts
 
 ---
 
@@ -9,7 +9,7 @@
 **Object Storage (MinIO Integration)**
 
 ### Summary
-Introduce **MinIO** as a local, S3-compatible object storage layer for Brain OS to store **raw, large, and machine-generated artifacts** ("blobs") such as web captures, documents, audio, images, and intermediate data.
+Introduce **MinIO** as a local, S3-compatible object storage layer for Brain to store **raw, large, and machine-generated artifacts** ("blobs") such as web captures, documents, audio, images, and intermediate data.
 
 This establishes a clean separation between:
 - **Authoritative human knowledge** (Obsidian Markdown)
@@ -20,7 +20,7 @@ This establishes a clean separation between:
 
 ## 2. Problem Statement
 
-Brain OS must ingest and process data that does not belong in a Markdown-based knowledge system:
+Brain must ingest and process data that does not belong in a Markdown-based knowledge system:
 
 - raw HTML from web clipping
 - PDFs and documents
@@ -150,7 +150,7 @@ The agent is responsible for:
 
 - MinIO runs locally and is not publicly exposed
 - Access credentials are managed via environment variables
-- Only Brain OS services may access MinIO
+- Only Brain services may access MinIO
 - UI clients never access object storage directly
 
 ---
@@ -215,7 +215,7 @@ Mitigation:
 
 ---
 
-## 13. Alignment with Brain OS Manifesto
+## 13. Alignment with Brain Manifesto
 
 - **Sovereignty First:** local object storage
 - **Truth Is Explicit:** raw artifacts preserved

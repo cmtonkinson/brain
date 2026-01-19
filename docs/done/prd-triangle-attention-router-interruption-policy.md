@@ -1,5 +1,5 @@
 # PRD: Attention Router & Interruption Policy
-## Intelligent Notification, Escalation, and Silence for Brain OS
+## Intelligent Notification, Escalation, and Silence for Brain
 
 ---
 
@@ -9,7 +9,7 @@
 **Attention Router & Interruption Policy**
 
 ### Summary
-Introduce a centralized **Attention Router** responsible for deciding **if, when, how, and how much** Brain OS communicates with the human.
+Introduce a centralized **Attention Router** responsible for deciding **if, when, how, and how much** Brain communicates with the human.
 
 This feature enforces the principle *Attention Is Sacred* by ensuring that:
 - interruptions are intentional
@@ -30,7 +30,7 @@ Without a unified attention policy, intelligent systems tend to:
 - interrupt at poor times
 - erode trust through noise
 
-Brain OS must operate in an environment of **scarce human attention**.  
+Brain must operate in an environment of **scarce human attention**.  
 The system’s value depends as much on *what it withholds* as on what it delivers.
 
 ---
@@ -305,7 +305,7 @@ Mitigation:
 
 ---
 
-## 13. Alignment with Brain OS Manifesto
+## 13. Alignment with Brain Manifesto
 
 - **Attention Is Sacred:** silence and batching are first-class
 - **Actions Are Bounded:** interruptions are deliberate

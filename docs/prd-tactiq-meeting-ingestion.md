@@ -1,5 +1,5 @@
 # PRD: Tactiq.io Meeting Notes Ingestion
-## Automatic Capture and Processing of Meeting Knowledge for Brain OS
+## Automatic Capture and Processing of Meeting Knowledge for Brain
 
 ---
 
@@ -9,7 +9,7 @@
 **Tactiq Meeting Notes Ingestion**
 
 ### Summary
-Integrate **Tactiq.io** as a first-class ingestion source for Brain OS, enabling automatic capture, processing, and organization of meeting transcripts, summaries, and action items.
+Integrate **Tactiq.io** as a first-class ingestion source for Brain, enabling automatic capture, processing, and organization of meeting transcripts, summaries, and action items.
 
 This feature routes Tactiq outputs through the **Universal Ingestion Pipeline**, ensuring meeting knowledge is preserved as raw artifacts, normalized text, metadata, embeddings, and (optionally) summarized insights — without bypassing governance, memory promotion, or attention policies.
 
@@ -29,7 +29,7 @@ But this information is often:
 - quickly forgotten
 - disconnected from commitments and memory systems
 
-Brain OS needs a reliable way to **turn meetings into durable, structured knowledge** without manual copy-paste or ad-hoc workflows.
+Brain needs a reliable way to **turn meetings into durable, structured knowledge** without manual copy-paste or ad-hoc workflows.
 
 ---
 
@@ -242,7 +242,7 @@ Mitigation:
 
 ---
 
-## 14. Alignment with Brain OS Manifesto
+## 14. Alignment with Brain Manifesto
 
 - **Truth Is Explicit:** transcripts preserved
 - **Memory Is Curated:** meetings propose, not assert

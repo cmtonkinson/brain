@@ -1,5 +1,5 @@
 # PRD: Skill Framework & Capability Registry
-## Bounded, Testable, and Composable Capabilities for Brain OS
+## Bounded, Testable, and Composable Capabilities for Brain
 
 ---
 
@@ -9,9 +9,9 @@
 **Skill Framework & Capability Registry**
 
 ### Summary
-Introduce a **Skill Framework** that defines reusable, bounded, and testable capabilities (“skills”) for Brain OS, along with a **Capability Registry** that governs how those skills are discovered, invoked, authorized, and evolved over time.
+Introduce a **Skill Framework** that defines reusable, bounded, and testable capabilities (“skills”) for Brain, along with a **Capability Registry** that governs how those skills are discovered, invoked, authorized, and evolved over time.
 
-This feature ensures Brain OS scales via **composable skills**, not ad‑hoc prompts or bespoke automation, enabling leverage, safety, and long‑term maintainability.
+This feature ensures Brain scales via **composable skills**, not ad‑hoc prompts or bespoke automation, enabling leverage, safety, and long‑term maintainability.
 
 ---
 
@@ -24,7 +24,7 @@ Without a skill abstraction, agent systems tend to:
 - accumulate fragile, untestable behavior
 - become difficult to audit or evolve
 
-Brain OS requires a **first‑class abstraction for “what it knows how to do.”**
+Brain requires a **first‑class abstraction for “what it knows how to do.”**
 
 ---
 
@@ -254,7 +254,7 @@ Mitigation:
 
 ---
 
-## 14. Alignment with Brain OS Manifesto
+## 14. Alignment with Brain Manifesto
 
 - **Everything Compounds:** skills create leverage
 - **Actions Are Bounded:** capabilities constrain power

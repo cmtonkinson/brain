@@ -1,4 +1,4 @@
-# Brain OS
+# Brain
 ## A Manifesto and Architecture Doctrine for a Personal Cognitive Infrastructure
 
 > This system is not an AI assistant.
@@ -15,7 +15,7 @@ Modern knowledge work suffers from a fundamental asymmetry:
 - Memory is abundant; trust is scarce.
 - Automation is powerful; autonomy is dangerous.
 
-**Brain OS exists to restore balance.**
+**Brain exists to restore balance.**
 
 Its purpose is to:
 - turn *attention* into durable knowledge,
@@ -207,7 +207,7 @@ The system is responsible for:
 
 ## 5. Commitments and Loop Closure
 
-A core responsibility of Brain OS is to help close loops.
+A core responsibility of Brain is to help close loops.
 
 - reminders, tasks, and scheduled actions are **commitments**
 - commitments have owners, deadlines, and provenance

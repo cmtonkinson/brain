@@ -1,5 +1,5 @@
 # PRD: Unified Observability, Traceability & Introspection
-## Seeing, Explaining, and Debugging Agent Behavior in Brain OS
+## Seeing, Explaining, and Debugging Agent Behavior in Brain
 
 ---
 
@@ -9,7 +9,7 @@
 **Unified Observability & Introspection**
 
 ### Summary
-Extend Brain OS with a **first-class observability layer** that makes the system *explainable after the fact*.
+Extend Brain with a **first-class observability layer** that makes the system *explainable after the fact*.
 
 When something goes wrong — technically, logically, or behaviorally — the system must be able to answer, with evidence:
 
@@ -20,13 +20,13 @@ When something goes wrong — technically, logically, or behaviorally — the sy
 - Why did it act that way?
 - What else was happening at the same time?
 
-This feature turns Brain OS from a black box into a **forensic, debuggable system**.
+This feature turns Brain from a black box into a **forensic, debuggable system**.
 
 ---
 
 ## 2. Problem Statement
 
-As Brain OS gains:
+As Brain gains:
 - autonomy
 - scheduling
 - skills
@@ -42,7 +42,7 @@ Without structured observability:
 - trust erodes quickly
 - “why did it do that?” becomes unanswerable
 
-Brain OS must support **post‑hoc explanation**, not just real‑time logging.
+Brain must support **post‑hoc explanation**, not just real‑time logging.
 
 ---
 
@@ -264,7 +264,7 @@ Mitigation:
 
 ---
 
-## 14. Alignment with Brain OS Manifesto
+## 14. Alignment with Brain Manifesto
 
 - **Truth Is Explicit:** actions explain themselves
 - **Actions Are Bounded:** side effects are traceable

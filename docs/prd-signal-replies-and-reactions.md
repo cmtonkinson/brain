@@ -1,5 +1,5 @@
 # PRD: Signal Replies & Reactions
-## Low-Noise, Threaded Acknowledgement for Brain OS
+## Low-Noise, Threaded Acknowledgement for Brain
 
 ---
 
@@ -9,7 +9,7 @@
 **Signal Replies & Reactions**
 
 ### Summary
-Enable Brain OS to **reply to specific Signal messages** (via quoted replies) and **react to messages with emojis** (👍, ✅, ⏳, etc.) using `signal-cli`, exposed through the existing HTTP wrapper and agent tooling.
+Enable Brain to **reply to specific Signal messages** (via quoted replies) and **react to messages with emojis** (👍, ✅, ⏳, etc.) using `signal-cli`, exposed through the existing HTTP wrapper and agent tooling.
 
 This feature enables **low-noise, high-trust communication** by allowing the system to acknowledge, update, and complete requests *in context*, without unnecessary interruption.
 
@@ -33,8 +33,8 @@ Users need:
 ## 3. Goals and Non-Goals
 
 ### Goals
-- Allow Brain OS to **reply to specific Signal messages**
-- Allow Brain OS to **react to specific Signal messages**
+- Allow Brain to **reply to specific Signal messages**
+- Allow Brain to **react to specific Signal messages**
 - Preserve conversational locality via quoted replies
 - Reduce message volume via emoji-based acknowledgements
 - Support delayed and scheduled replies (hours or days later)
@@ -71,7 +71,7 @@ Users need:
 ### 5.1 Reply to Message (Quoted Reply)
 
 #### Description
-Brain OS can send a message that explicitly quotes a prior Signal message, creating a visible “reply” in the Signal UI.
+Brain can send a message that explicitly quotes a prior Signal message, creating a visible “reply” in the Signal UI.
 
 #### Requirements
 - Must reference:
@@ -88,7 +88,7 @@ Brain OS can send a message that explicitly quotes a prior Signal message, creat
 ### 5.2 React to Message
 
 #### Description
-Brain OS can react to a specific Signal message using a single emoji.
+Brain can react to a specific Signal message using a single emoji.
 
 #### Requirements
 - Must support standard emoji (👍 ❤️ 😂 👀 ⏳ ✅ ❌)

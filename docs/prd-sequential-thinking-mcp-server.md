@@ -1,5 +1,5 @@
 # PRD: Sequential Thinking MCP Server
-## Structured, Inspectable Multi‑Step Reasoning for Brain OS
+## Structured, Inspectable Multi‑Step Reasoning for Brain
 
 ---
 
@@ -9,7 +9,7 @@
 **Sequential Thinking MCP Server**
 
 ### Summary
-Introduce a **Sequential Thinking MCP Server** that provides Brain OS with a structured, stepwise reasoning capability, allowing the agent to explicitly plan, track, revise, and evaluate multi-step thinking processes **without exposing raw chain-of-thought**.
+Introduce a **Sequential Thinking MCP Server** that provides Brain with a structured, stepwise reasoning capability, allowing the agent to explicitly plan, track, revise, and evaluate multi-step thinking processes **without exposing raw chain-of-thought**.
 
 This server enables:
 - deliberate reasoning over complex problems
@@ -23,7 +23,7 @@ Sequential Thinking becomes a **first-class cognitive tool**, not an implicit si
 
 ## 2. Problem Statement
 
-As Brain OS handles:
+As Brain handles:
 - multi-step workflows
 - long-running plans
 - policy-constrained decisions
@@ -36,7 +36,7 @@ implicit, monolithic reasoning becomes:
 - difficult to audit
 - impossible to resume or revise
 
-Brain OS needs a way to **reason in stages**, with memory, revision, and accountability — without violating safety constraints around chain-of-thought exposure.
+Brain needs a way to **reason in stages**, with memory, revision, and accountability — without violating safety constraints around chain-of-thought exposure.
 
 ---
 
@@ -240,7 +240,7 @@ The system must answer:
 
 ---
 
-## 14. Alignment with Brain OS Manifesto
+## 14. Alignment with Brain Manifesto
 
 - **Truth Is Explicit:** reasoning is visible
 - **Actions Are Bounded:** decisions are justified

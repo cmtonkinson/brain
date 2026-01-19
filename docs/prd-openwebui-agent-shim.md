@@ -1,5 +1,5 @@
 # PRD: OpenWebUI Integration via OpenAI-Compatible Shim
-## Web Interface Layer for Brain OS
+## Web Interface Layer for Brain
 
 ---
 
@@ -9,15 +9,15 @@
 **OpenWebUI Integration (Agent-Backed)**
 
 ### Summary
-Provide a **web-based user interface** for Brain OS by integrating **OpenWebUI** on top of the agent runtime through a **lightweight OpenAI-compatible HTTP shim**.
+Provide a **web-based user interface** for Brain by integrating **OpenWebUI** on top of the agent runtime through a **lightweight OpenAI-compatible HTTP shim**.
 
-This allows users to interact with the full Brain OS agent (memory, tools, policies, scheduling) via a modern web UI, without exposing internal implementation details or duplicating agent logic.
+This allows users to interact with the full Brain agent (memory, tools, policies, scheduling) via a modern web UI, without exposing internal implementation details or duplicating agent logic.
 
 ---
 
 ## 2. Problem Statement
 
-Brain OS currently exposes interaction primarily via:
+Brain currently exposes interaction primarily via:
 - Messaging interfaces (Signal)
 - Direct API calls / developer tooling
 
@@ -36,9 +36,9 @@ Users need a **low-friction, visual interface** that:
 ## 3. Goals and Non-Goals
 
 ### Goals
-- Provide a full-featured web UI for Brain OS
+- Provide a full-featured web UI for Brain
 - Reuse an existing, high-quality UI (OpenWebUI)
-- Preserve Brain OS as the sole agent of record
+- Preserve Brain as the sole agent of record
 - Avoid duplicating tool orchestration or memory logic
 - Maintain strict separation between UI and agent internals
 
@@ -100,7 +100,7 @@ The shim **must not** expose:
 
 For each incoming request:
 - Extract user intent from messages
-- Invoke the Brain OS agent runtime
+- Invoke the Brain agent runtime
 - Allow the agent to:
   - access memory (Letta)
   - call MCP tools
@@ -152,7 +152,7 @@ The system must log:
 
 ## 10. Success Metrics
 
-- OpenWebUI can fully interact with Brain OS
+- OpenWebUI can fully interact with Brain
 - No divergence between UI and Signal behavior
 - Reduced friction for debugging and exploration
 - No increase in unsafe actions

@@ -1,5 +1,5 @@
 # PRD: Obsidian File Rename & Delete via Agent API
-## Safe, Policy-Gated Vault Refactoring for Brain OS
+## Safe, Policy-Gated Vault Refactoring for Brain
 
 ---
 
@@ -9,7 +9,7 @@
 **Obsidian File Rename/Delete (Agent API)**
 
 ### Summary
-Extend Brain OS’s Obsidian integration (via Obsidian Local REST API) to allow the agent to:
+Extend Brain’s Obsidian integration (via Obsidian Local REST API) to allow the agent to:
 
 - rename/move notes (including folder moves)
 - delete notes
@@ -20,7 +20,7 @@ This enables controlled vault refactoring (cleanup, normalization, organization,
 
 ## 2. Problem Statement
 
-Brain OS can create and update notes, but lacks the ability to manage note lifecycle and structure:
+Brain can create and update notes, but lacks the ability to manage note lifecycle and structure:
 
 - files accumulate in wrong folders
 - naming conventions drift
@@ -28,7 +28,7 @@ Brain OS can create and update notes, but lacks the ability to manage note lifec
 - refactors require manual effort
 - vault structure becomes inconsistent over time
 
-Without rename/delete capabilities, Brain OS cannot:
+Without rename/delete capabilities, Brain cannot:
 - enforce taxonomy
 - keep ingestion anchors organized
 - support large-scale cleanup and migration tasks
@@ -161,7 +161,7 @@ Optional:
 
 ## 9. Safety UX
 
-Before executing destructive changes, Brain OS must support:
+Before executing destructive changes, Brain must support:
 - a preview listing proposed changes
 - a single confirmation step
 - reversible defaults (archive)

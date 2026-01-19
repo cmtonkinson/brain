@@ -1,5 +1,5 @@
 # PRD: Policy Engine & Autonomy Levels
-## Governing Authority, Risk, and Action in Brain OS
+## Governing Authority, Risk, and Action in Brain
 
 ---
 
@@ -9,7 +9,7 @@
 **Policy Engine & Autonomy Levels**
 
 ### Summary
-Introduce a centralized **Policy Engine** that governs *what Brain OS is allowed to do*, *under which conditions*, and *with what level of autonomy*.
+Introduce a centralized **Policy Engine** that governs *what Brain is allowed to do*, *under which conditions*, and *with what level of autonomy*.
 
 This feature formalizes:
 - authority boundaries
@@ -17,13 +17,13 @@ This feature formalizes:
 - approval requirements
 - escalation rules
 
-It ensures Brain OS remains **powerful but predictable**, capable of action without ever becoming unsafe, surprising, or untrustworthy.
+It ensures Brain remains **powerful but predictable**, capable of action without ever becoming unsafe, surprising, or untrustworthy.
 
 ---
 
 ## 2. Problem Statement
 
-As Brain OS gains capabilities (skills, scheduling, messaging, memory, automation), risk grows non-linearly.
+As Brain gains capabilities (skills, scheduling, messaging, memory, automation), risk grows non-linearly.
 
 Without a formal policy layer:
 - autonomy becomes implicit and inconsistent
@@ -31,7 +31,7 @@ Without a formal policy layer:
 - different interfaces behave differently
 - users lose confidence in what the system *might* do
 
-Brain OS requires a **single source of truth for authority and autonomy**.
+Brain requires a **single source of truth for authority and autonomy**.
 
 ---
 
@@ -296,7 +296,7 @@ Mitigation:
 
 ---
 
-## 13. Alignment with Brain OS Manifesto
+## 13. Alignment with Brain Manifesto
 
 - **Actions Are Bounded:** autonomy is explicit
 - **Truth Is Explicit:** policy decisions are explainable

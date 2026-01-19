@@ -1,5 +1,5 @@
 # PRD: Memory Promotion via Letta
-## Controlled Promotion of Durable Memory into Obsidian for Brain OS
+## Controlled Promotion of Durable Memory into Obsidian for Brain
 
 ---
 
@@ -24,7 +24,7 @@ Without explicit memory governance, agent systems tend to:
 - blur the line between transient context and durable truth
 - silently turn internal databases into the only copy of important knowledge
 
-Brain OS requires a **clear doctrine of memory authority** so that:
+Brain requires a **clear doctrine of memory authority** so that:
 - durable memory is intentional
 - humans can audit what the system “knows”
 - loss of agent state does not imply loss of knowledge
@@ -231,7 +231,7 @@ Mitigation:
 
 ---
 
-## 14. Alignment with Brain OS Manifesto
+## 14. Alignment with Brain Manifesto
 
 - **Memory Is Curated:** deliberate promotion only
 - **Truth Is Explicit:** provenance and confidence recorded
