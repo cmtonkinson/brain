@@ -247,6 +247,7 @@ class AttentionEscalationLog(Base):
 
     id = Column(Integer, primary_key=True)
     owner = Column(String(200), nullable=False)
+    signal_type = Column(String(200), nullable=True)
     signal_reference = Column(String(500), nullable=False)
     trigger = Column(String(200), nullable=False)
     level = Column(Integer, nullable=False)

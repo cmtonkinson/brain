@@ -16,6 +16,7 @@ from attention.envelope_schema import (
 )
 from attention.router import AttentionRouter
 from attention.storage import record_notification_history
+from attention.escalation import EscalationLevel
 from models import AttentionEscalationLog
 
 
@@ -217,3 +218,76 @@ async def test_severity_increase_escalates(
         logs = session.query(AttentionEscalationLog).all()
 
     assert len(logs) == 1
+
+
+@pytest.mark.asyncio
+async def test_escalation_level_rolls_forward_across_signals(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure escalation level increments based on prior signal type history."""
+    session_factory = sqlite_session_factory
+    now = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        session.add(
+            AttentionEscalationLog(
+                owner="user",
+                signal_type="status.update",
+                signal_reference="signal:previous",
+                trigger="ignored_repeatedly",
+                level=int(EscalationLevel.LOW),
+                timestamp=now,
+            )
+        )
+        session.commit()
+
+    router = AttentionRouter(
+        signal_client=FakeSignalClient(),
+        session_factory=session_factory,
+    )
+    envelope = RoutingEnvelope(
+        version="1.0.0",
+        signal_type="status.update",
+        signal_reference="signal:new",
+        actor="user",
+        owner="user",
+        channel_hint="signal",
+        urgency=0.1,
+        channel_cost=0.9,
+        content_type="status",
+        timestamp=now + timedelta(minutes=5),
+        deadline=now + timedelta(minutes=30),
+        signal_payload=SignalPayload(
+            from_number="+15550000000",
+            to_number="+15551234567",
+            message="roll-forward",
+        ),
+        notification=NotificationEnvelope(
+            version="1.0.0",
+            source_component="agent",
+            origin_signal="signal:new",
+            confidence=0.4,
+            provenance=[
+                ProvenanceInput(
+                    input_type="test",
+                    reference="roll-forward",
+                    description="roll-forward escalation",
+                )
+            ],
+        ),
+    )
+
+    result = await router.route_envelope(envelope)
+    assert result.decision == "ESCALATE:signal"
+
+    with closing(session_factory()) as session:
+        record = (
+            session.query(AttentionEscalationLog)
+            .filter_by(owner="user", signal_type="status.update")
+            .order_by(AttentionEscalationLog.timestamp.desc())
+            .first()
+        )
+
+    assert record is not None
+    assert record.signal_reference == "signal:new"
+    assert record.level == int(EscalationLevel.MEDIUM)

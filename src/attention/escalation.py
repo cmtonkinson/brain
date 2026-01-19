@@ -31,6 +31,7 @@ class EscalationInput:
     """Inputs required to evaluate escalation."""
 
     owner: str
+    signal_type: str | None
     signal_reference: str
     current_level: EscalationLevel | None
     ignored_count: int | None = None
@@ -87,6 +88,7 @@ def record_escalation_decision(
         return None
     entry = AttentionEscalationLog(
         owner=inputs.owner,
+        signal_type=inputs.signal_type,
         signal_reference=inputs.signal_reference,
         trigger=decision.trigger,
         level=int(decision.level),
@@ -113,3 +115,28 @@ def _determine_trigger(inputs: EscalationInput) -> str | None:
     if inputs.ignored_count is None and inputs.deadline is None and inputs.current_severity is None:
         logger.warning("Missing escalation metadata for signal=%s.", inputs.signal_reference)
     return None
+
+
+def get_latest_escalation_level(
+    session: Session,
+    owner: str,
+    signal_type: str,
+) -> EscalationLevel:
+    """Return the latest escalation level for an owner and signal type."""
+    record = (
+        session.query(AttentionEscalationLog)
+        .filter_by(owner=owner, signal_type=signal_type)
+        .order_by(AttentionEscalationLog.timestamp.desc())
+        .first()
+    )
+    if record is None:
+        return EscalationLevel.NONE
+    try:
+        return EscalationLevel(record.level)
+    except ValueError:
+        logger.warning(
+            "Invalid escalation level=%s for signal_type=%s; defaulting to NONE.",
+            record.level,
+            signal_type,
+        )
+        return EscalationLevel.NONE

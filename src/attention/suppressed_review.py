@@ -105,6 +105,7 @@ def apply_review_action(
     if action == "escalate":
         inputs = EscalationInput(
             owner=owner,
+            signal_type=None,
             signal_reference=signal_reference,
             current_level=current_level,
             ignored_count=None,

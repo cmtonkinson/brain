@@ -27,8 +27,8 @@ from attention.envelope_schema import (
 )
 from attention.escalation import (
     EscalationInput,
-    EscalationLevel,
     evaluate_escalation,
+    get_latest_escalation_level,
     record_escalation_decision,
 )
 from attention.policy_defaults import default_attention_policies
@@ -477,6 +477,11 @@ def _apply_ignored_escalation(
         signal_reference=envelope.signal_reference,
         outcomes={"LOG_ONLY", "SUPPRESS", "DROP"},
     )
+    current_level = get_latest_escalation_level(
+        session,
+        owner=envelope.owner,
+        signal_type=envelope.signal_type,
+    )
     threshold_record = (
         session.query(AttentionEscalationThreshold)
         .filter_by(owner=envelope.owner, signal_type=envelope.signal_type)
@@ -488,8 +493,9 @@ def _apply_ignored_escalation(
     )
     inputs = EscalationInput(
         owner=envelope.owner,
+        signal_type=envelope.signal_type,
         signal_reference=envelope.signal_reference,
-        current_level=EscalationLevel.NONE,
+        current_level=current_level,
         ignored_count=ignored_count,
         ignore_threshold=ignore_threshold,
         deadline=envelope.deadline,

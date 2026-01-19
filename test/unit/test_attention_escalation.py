@@ -22,6 +22,7 @@ def test_repeated_ignores_trigger_escalation() -> None:
     """Ensure repeated ignores trigger escalation step-up."""
     inputs = EscalationInput(
         owner="user",
+        signal_type="status.update",
         signal_reference="signal-1",
         current_level=EscalationLevel.LOW,
         ignored_count=3,
@@ -39,6 +40,7 @@ def test_approaching_deadline_triggers_escalation() -> None:
     now = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
     inputs = EscalationInput(
         owner="user",
+        signal_type="status.update",
         signal_reference="signal-2",
         current_level=EscalationLevel.LOW,
         deadline=now + timedelta(minutes=30),
@@ -58,6 +60,7 @@ def test_missing_metadata_prevents_escalation(
     """Ensure missing escalation metadata prevents escalation."""
     inputs = EscalationInput(
         owner="user",
+        signal_type="status.update",
         signal_reference="signal-3",
         current_level=EscalationLevel.LOW,
     )
@@ -75,6 +78,7 @@ def test_escalation_log_includes_trigger_and_timestamp(
     now = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
     inputs = EscalationInput(
         owner="user",
+        signal_type="status.update",
         signal_reference="signal-4",
         current_level=EscalationLevel.LOW,
         ignored_count=5,
