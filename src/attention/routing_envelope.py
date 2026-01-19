@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import uuid4
 from typing import Any
 
 from attention.envelope_schema import (
@@ -19,6 +20,7 @@ from skills.context import SkillContext
 from skills.registry import OpRuntimeEntry, SkillRuntimeEntry
 
 DEFAULT_ROUTING_VERSION = "1.0.0"
+DEFAULT_SIGNAL_CONFIDENCE = 0.9
 
 
 def build_skill_invocation_envelope(
@@ -98,6 +100,50 @@ def build_approval_envelope(
             policy_tags=list(proposal.policy_tags),
         ),
         signal_payload=signal_payload,
+        notification=notification,
+    )
+
+
+def build_signal_reply_envelope(
+    *,
+    from_number: str,
+    to_number: str,
+    message: str,
+    source_component: str = "agent",
+    correlation_id: str | None = None,
+) -> RoutingEnvelope:
+    """Build a routing envelope for direct Signal replies."""
+    reference = f"signal.reply:{uuid4().hex}"
+    notification = NotificationEnvelope(
+        version=DEFAULT_ROUTING_VERSION,
+        source_component=source_component,
+        origin_signal=reference,
+        confidence=DEFAULT_SIGNAL_CONFIDENCE,
+        provenance=[
+            ProvenanceInput(
+                input_type="signal_reply",
+                reference=reference,
+                description="Direct Signal reply.",
+            )
+        ],
+    )
+    return RoutingEnvelope(
+        version=DEFAULT_ROUTING_VERSION,
+        signal_type="signal.reply",
+        signal_reference=reference,
+        actor=source_component,
+        owner=to_number,
+        channel_hint="signal",
+        urgency=0.9,
+        channel_cost=0.1,
+        content_type="message",
+        correlation_id=correlation_id or uuid4().hex,
+        timestamp=datetime.now(timezone.utc),
+        signal_payload=SignalPayload(
+            from_number=from_number,
+            to_number=to_number,
+            message=message,
+        ),
         notification=notification,
     )
 

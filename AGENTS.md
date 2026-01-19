@@ -5,7 +5,7 @@ Instructions for working in this repo:
 - Read `docs/security-trust-boundary-model.md`.
 - Never modify `docs/manifesto.md`; if you think you need to, raise it as a question/suggestion for user modification.
 - Ask clarifying questions when needed.
-- Never create JSONB fields in the database without:
+- Never create JSONB fields, or string/text fields meant to hold JSON data, in the database without:
   - A very good rationale.
   - Clearly and explicitly explaining why you believe it is justfied.
   - Explicit user approval.
@@ -14,6 +14,7 @@ When modifying code:
 - Write code that is concise, readable, maintainable, and idiomatic.
 - Every file/class/unit should have a complete docblock/docstring.
 - Prefer smaller composable units over larger monolithic ones.
+- When designing or implementing functionality, consider how 3rd party dependencies (open source packages via gems, npm, pip, etc) may reduce effort and save time.
 - Code defensively; assume failure; assume invalid input.
 - Before adding new units, search existing code for logic that may be reused/refactored.
 - When modifying existing untis, write/modify tests as appropriate.

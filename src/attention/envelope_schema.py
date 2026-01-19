@@ -140,6 +140,9 @@ class RoutingEnvelope(BaseModel):
     content_type: str = Field(..., min_length=1)
     correlation_id: str = Field(default_factory=lambda: uuid4().hex, min_length=1)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    deadline: datetime | None = None
+    previous_severity: int | None = Field(default=None, ge=0)
+    current_severity: int | None = Field(default=None, ge=0)
     topic: str | None = None
     category: str | None = None
     routing_intent: RoutingIntent = RoutingIntent.DELIVER
@@ -176,10 +179,12 @@ class RoutingEnvelope(BaseModel):
             raise ValueError("correlation_id must be non-empty.")
         return normalized
 
-    @field_validator("timestamp")
+    @field_validator("timestamp", "deadline")
     @classmethod
-    def _ensure_timezone(cls, value: datetime) -> datetime:
+    def _ensure_timezone(cls, value: datetime | None) -> datetime | None:
         """Ensure routing timestamps are timezone-aware."""
+        if value is None:
+            return None
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
         return value

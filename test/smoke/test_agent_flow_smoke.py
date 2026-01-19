@@ -9,7 +9,8 @@ from types import SimpleNamespace
 import pytest
 
 from agent import AgentDeps, handle_signal_message
-from attention.router import OutboundSignal, RoutingResult
+from attention.envelope_schema import RoutingEnvelope
+from attention.router import RoutingResult
 from models import SignalMessage
 from tools.memory import ConversationMemory
 
@@ -54,12 +55,12 @@ class FakeObsidianClient:
 class FakeRouter:
     """Capture outbound router signals for inspection."""
 
-    sent: list[OutboundSignal] = field(default_factory=list)
+    sent: list[RoutingEnvelope] = field(default_factory=list)
 
-    async def route_signal(self, signal: OutboundSignal) -> RoutingResult:
-        """Record the outbound signal routing request."""
-        self.sent.append(signal)
-        return RoutingResult(decision="DELIVERED", channel=signal.channel)
+    async def route_envelope(self, envelope: RoutingEnvelope) -> RoutingResult:
+        """Record the outbound routing request."""
+        self.sent.append(envelope)
+        return RoutingResult(decision="DELIVERED", channel=envelope.channel_hint)
 
 
 @dataclass
@@ -142,7 +143,9 @@ async def test_agent_flow_smoke_logs_and_formats_signal(monkeypatch) -> None:
     assert "# Greeting" in note_content
 
     assert len(router.sent) == 1
-    rendered = router.sent[0].message
+    payload = router.sent[0].signal_payload
+    assert payload is not None
+    rendered = payload.message
     assert "**Greeting**" in rendered
     assert "link (https://example.com)" in rendered
     assert "*italic*" in rendered
@@ -174,7 +177,7 @@ async def test_agent_flow_uses_fail_closed_router(monkeypatch) -> None:
 
         async def route(
             self,
-            signal: OutboundSignal,
+            envelope: RoutingEnvelope,
             *,
             router_available: bool,
             policy_available: bool,
@@ -183,12 +186,12 @@ async def test_agent_flow_uses_fail_closed_router(monkeypatch) -> None:
             """Record the call and forward to the router."""
             calls.append(
                 {
-                    "signal": signal,
+                    "envelope": envelope,
                     "router_available": router_available,
                     "policy_available": policy_available,
                 }
             )
-            return await self._router.route_signal(signal)
+            return await self._router.route_envelope(envelope)
 
     async def _fake_log_action(*args, **kwargs) -> None:
         """Stub database log action handler."""

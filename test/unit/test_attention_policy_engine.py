@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import closing
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
@@ -16,6 +17,7 @@ from attention.policy_schema import (
     PolicyOutcome,
     PolicyOutcomeKind,
     PolicyScope,
+    PreferenceCondition,
     ScoreRange,
     UrgencyConstraint,
 )
@@ -86,6 +88,25 @@ def test_no_policy_match_falls_back_to_base() -> None:
 
     assert decision.final_decision == BaseAssessmentOutcome.BATCH.value
     assert decision.policy_outcome is None
+
+
+def test_preference_flag_matches_policy() -> None:
+    """Ensure preference flags can trigger policy outcomes."""
+    policy = AttentionPolicy(
+        policy_id="always-notify",
+        version="1.0.0",
+        scope=PolicyScope(preferences=[PreferenceCondition(key="always_notify", value=True)]),
+        outcome=PolicyOutcome(kind=PolicyOutcomeKind.NOTIFY, channel="signal"),
+    )
+    inputs = replace(
+        _policy_inputs(),
+        preferences={"quiet_hours": False, "always_notify": True},
+    )
+
+    decision = apply_policies([policy], inputs, BaseAssessmentOutcome.DEFER)
+
+    assert decision.final_decision == "NOTIFY:signal"
+    assert decision.policy_outcome == "NOTIFY:signal"
 
 
 def test_routing_log_includes_assessment_policy_and_decision(

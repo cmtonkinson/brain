@@ -26,7 +26,8 @@ from access_control import is_sender_allowed
 from services.signal import SignalClient
 from attention.audit import AttentionAuditLogger
 from attention.fail_closed import FailClosedRouter
-from attention.router import AttentionRouter, OutboundSignal
+from attention.router import AttentionRouter
+from attention.routing_envelope import build_signal_reply_envelope
 from attention.routing_hooks import (
     build_approval_router,
     build_op_routing_hook,
@@ -1126,12 +1127,11 @@ async def handle_signal_message(
 
         # Send reply via Attention Router
         send_start = time.perf_counter()
-        outbound = OutboundSignal(
-            source_component="agent",
-            channel="signal",
+        outbound = build_signal_reply_envelope(
             from_number=phone_number,
             to_number=sender,
             message=_render_signal_message(response),
+            source_component="agent",
         )
         with closing(get_sync_session()) as session:
             audit_logger = AttentionAuditLogger(session)
@@ -1189,6 +1189,7 @@ async def run_signal_loop(
 
     signal_client = SignalClient()
     router = AttentionRouter(signal_client)
+    # TODO: Schedule fail-closed queue reprocessing once a background job system exists.
 
     # Check Signal API connection
     if not await signal_client.check_connection():

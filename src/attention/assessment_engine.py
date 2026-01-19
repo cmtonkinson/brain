@@ -130,6 +130,7 @@ def assess_base_signal(
             reason=explanation,
             reevaluate_at=inputs.timestamp + reevaluate_after,
         )
+        # TODO: Trigger deferred-signal reprocessing once a background job system exists.
     elif outcome == BaseAssessmentOutcome.BATCH:
         record_batched_signal(
             session,
@@ -139,6 +140,7 @@ def assess_base_signal(
             topic=inputs.topic or "general",
             category=inputs.category or "unspecified",
         )
+        # TODO: Trigger batch scheduling/digest delivery once a background job system exists.
 
     return BaseAssessment(outcome=outcome, explanation=explanation)
 

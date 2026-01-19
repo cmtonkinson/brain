@@ -9,8 +9,14 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 
 from attention.audit import AttentionAuditLogger
+from attention.envelope_schema import (
+    NotificationEnvelope,
+    ProvenanceInput,
+    RoutingEnvelope,
+    SignalPayload,
+)
 from attention.fail_closed import FailClosedConfig, FailClosedRouter
-from attention.router import AttentionRouter, OutboundSignal
+from attention.router import AttentionRouter
 from models import AttentionFailClosedQueue
 
 
@@ -34,6 +40,40 @@ class FakeSignalClient:
         return True
 
 
+def _build_envelope(signal_reference: str, now: datetime) -> RoutingEnvelope:
+    """Build a routing envelope for fail-closed tests."""
+    return RoutingEnvelope(
+        version="1.0.0",
+        signal_type="signal.reply",
+        signal_reference=signal_reference,
+        actor="agent",
+        owner="+15551234567",
+        channel_hint="signal",
+        urgency=0.9,
+        channel_cost=0.1,
+        content_type="message",
+        timestamp=now,
+        signal_payload=SignalPayload(
+            from_number="+15550000000",
+            to_number="+15551234567",
+            message="hello",
+        ),
+        notification=NotificationEnvelope(
+            version="1.0.0",
+            source_component="agent",
+            origin_signal=signal_reference,
+            confidence=0.9,
+            provenance=[
+                ProvenanceInput(
+                    input_type="test",
+                    reference=signal_reference,
+                    description="fail-closed test",
+                )
+            ],
+        ),
+    )
+
+
 @pytest.mark.asyncio
 async def test_router_unavailable_queues_signal(
     sqlite_session_factory: sessionmaker,
@@ -48,16 +88,10 @@ async def test_router_unavailable_queues_signal(
             session_factory=session_factory,
         )
         fail_closed = FailClosedRouter(router, session, audit_logger)
-        signal = OutboundSignal(
-            source_component="agent",
-            channel="signal",
-            from_number="+15550000000",
-            to_number="+15551234567",
-            message="hello",
-        )
+        envelope = _build_envelope("signal:router-unavailable", now)
 
         result = await fail_closed.route(
-            signal,
+            envelope,
             router_available=False,
             policy_available=True,
             now=now,
@@ -84,16 +118,10 @@ async def test_policy_unavailable_queues_signal(
             session_factory=session_factory,
         )
         fail_closed = FailClosedRouter(router, session, audit_logger)
-        signal = OutboundSignal(
-            source_component="agent",
-            channel="signal",
-            from_number="+15550000000",
-            to_number="+15551234567",
-            message="hello",
-        )
+        envelope = _build_envelope("signal:policy-unavailable", now)
 
         result = await fail_closed.route(
-            signal,
+            envelope,
             router_available=True,
             policy_available=False,
             now=now,
@@ -126,16 +154,10 @@ async def test_recovery_reprocesses_queued_signals(
             audit_logger,
             config=FailClosedConfig(retry_delay=timedelta(minutes=1)),
         )
-        signal = OutboundSignal(
-            source_component="agent",
-            channel="signal",
-            from_number="+15550000000",
-            to_number="+15551234567",
-            message="hello",
-        )
+        envelope = _build_envelope("signal:recovery", now)
 
         await fail_closed.route(
-            signal,
+            envelope,
             router_available=False,
             policy_available=True,
             now=now,
@@ -167,15 +189,9 @@ async def test_router_pipeline_failure_queues_signal(
         signal_client=FakeSignalClient(),
         session_factory=session_factory,
     )
-    signal = OutboundSignal(
-        source_component="agent",
-        channel="signal",
-        from_number="+15550000000",
-        to_number="+15551234567",
-        message="hello",
-    )
+    envelope = _build_envelope("signal:pipeline-failure", datetime.now(timezone.utc))
 
-    result = await router.route_signal(signal)
+    result = await router.route_envelope(envelope)
     with closing(session_factory()) as session:
         queued = session.query(AttentionFailClosedQueue).all()
 

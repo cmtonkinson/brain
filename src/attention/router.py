@@ -7,7 +7,6 @@ from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Iterable
-from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -24,10 +23,13 @@ from attention.envelope_rendering import render_envelope_metadata
 from attention.envelope_schema import (
     EnvelopeDecision,
     NotificationEnvelope,
-    ProvenanceInput,
     RoutingEnvelope,
     RoutingIntent,
-    SignalPayload,
+)
+from attention.fail_closed_storage import (
+    build_fail_closed_entry,
+    build_policy_tag_records,
+    build_provenance_records,
 )
 from attention.escalation import (
     EscalationInput,
@@ -49,7 +51,7 @@ from attention.storage import (
     get_notification_history_count_for_signal,
     record_notification_history,
 )
-from models import AttentionEscalationThreshold, AttentionFailClosedQueue
+from models import AttentionEscalationThreshold
 from models import NotificationEnvelope as NotificationEnvelopeRecord
 from models import NotificationProvenanceInput
 from services.database import get_sync_session
@@ -59,17 +61,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_FAIL_CLOSED_RETRY = timedelta(minutes=15)
 IGNORED_ESCALATION_THRESHOLD = 2
-
-
-@dataclass(frozen=True)
-class OutboundSignal:
-    """Outbound signal payload for legacy routing."""
-
-    source_component: str
-    channel: str
-    from_number: str
-    to_number: str
-    message: str
 
 
 @dataclass(frozen=True)
@@ -149,7 +140,11 @@ class AttentionRouter:
                     audit_logger=audit_logger,
                 )
                 preference_flags = resolve_preference_flags(
-                    session, envelope.owner, envelope.timestamp
+                    session,
+                    envelope.owner,
+                    envelope.timestamp,
+                    signal_type=envelope.signal_type,
+                    source_component=envelope.notification.source_component,
                 )
                 policy_inputs = PolicyInputs(
                     signal_reference=envelope.signal_reference,
@@ -290,11 +285,6 @@ class AttentionRouter:
                     error=str(exc),
                 )
 
-    async def route_signal(self, signal: OutboundSignal) -> RoutingResult:
-        """Route a legacy outbound signal through the attention router."""
-        envelope = _build_legacy_envelope(signal)
-        return await self.route_envelope(envelope)
-
     def routed_signals(self) -> list[RoutingEnvelope]:
         """Return routed envelopes for testing and inspection."""
         return list(self._routed)
@@ -312,41 +302,54 @@ def _record_log_only(router: AttentionRouter, envelope: RoutingEnvelope) -> Rout
     """Persist a log-only decision for routing requests."""
     with closing(router._session_factory()) as session:
         audit_logger = AttentionAuditLogger(session)
-        envelope_id = _persist_notification_envelope(session, envelope.notification)
-        audit_logger.log_signal(
-            source_component=envelope.notification.source_component,
-            signal_reference=envelope.signal_reference,
-            base_assessment=BaseAssessmentOutcome.SUPPRESS.value,
-            policy_outcome="log_only",
-            final_decision="LOG_ONLY",
-        )
-        record = persist_decision_record(
-            session,
-            DecisionRecordInput(
+        try:
+            envelope_id = _persist_notification_envelope(session, envelope.notification)
+            audit_logger.log_signal(
+                source_component=envelope.notification.source_component,
                 signal_reference=envelope.signal_reference,
-                channel=None,
                 base_assessment=BaseAssessmentOutcome.SUPPRESS.value,
                 policy_outcome="log_only",
                 final_decision="LOG_ONLY",
-                explanation="routing_intent_log_only",
-            ),
-            audit_logger=audit_logger,
-        )
-        record_notification_history(
-            session,
-            owner=envelope.owner,
-            signal_reference=envelope.signal_reference,
-            outcome="LOG_ONLY",
-            channel=None,
-            decided_at=envelope.timestamp,
-        )
-        session.commit()
-        return RoutingResult(
-            decision="LOG_ONLY",
-            channel=None,
-            envelope_id=envelope_id,
-            decision_record_id=record.record_id,
-        )
+            )
+            record = persist_decision_record(
+                session,
+                DecisionRecordInput(
+                    signal_reference=envelope.signal_reference,
+                    channel=None,
+                    base_assessment=BaseAssessmentOutcome.SUPPRESS.value,
+                    policy_outcome="log_only",
+                    final_decision="LOG_ONLY",
+                    explanation="routing_intent_log_only",
+                ),
+                audit_logger=audit_logger,
+            )
+            record_notification_history(
+                session,
+                owner=envelope.owner,
+                signal_reference=envelope.signal_reference,
+                outcome="LOG_ONLY",
+                channel=None,
+                decided_at=envelope.timestamp,
+            )
+            session.commit()
+            return RoutingResult(
+                decision="LOG_ONLY",
+                channel=None,
+                envelope_id=envelope_id,
+                decision_record_id=record.record_id,
+            )
+        except Exception as exc:
+            session.rollback()
+            logger.exception(
+                "Log-only routing persistence failed for %s.", envelope.signal_reference
+            )
+            return RoutingResult(
+                decision="LOG_ONLY",
+                channel=None,
+                envelope_id=None,
+                decision_record_id=None,
+                error=str(exc),
+            )
 
 
 def _queue_fail_closed_signal(
@@ -365,19 +368,17 @@ def _queue_fail_closed_signal(
         )
         return
     queued_at = now or datetime.now(timezone.utc)
-    session.add(
-        AttentionFailClosedQueue(
-            owner=envelope.owner,
-            source_component=envelope.notification.source_component,
-            from_number=payload.from_number,
-            to_number=payload.to_number,
-            channel=envelope.channel_hint or "signal",
-            message=payload.message,
-            reason=reason,
-            queued_at=queued_at,
-            retry_at=queued_at + DEFAULT_FAIL_CLOSED_RETRY,
-        )
+    entry = build_fail_closed_entry(
+        envelope,
+        reason=reason,
+        queued_at=queued_at,
+        retry_delay=DEFAULT_FAIL_CLOSED_RETRY,
     )
+    session.add(entry)
+    session.flush()
+    session.add_all(build_provenance_records(entry.id, envelope.notification.provenance))
+    if envelope.authorization:
+        session.add_all(build_policy_tag_records(entry.id, envelope.authorization.policy_tags))
 
 
 def _persist_notification_envelope(session: Session, envelope: NotificationEnvelope) -> int | None:
@@ -509,43 +510,6 @@ def _build_authorization_context(envelope: RoutingEnvelope) -> AuthorizationCont
     )
 
 
-def _build_legacy_envelope(signal: OutboundSignal) -> RoutingEnvelope:
-    """Build a routing envelope from a legacy outbound signal."""
-    reference = f"legacy:{uuid4().hex}"
-    notification = NotificationEnvelope(
-        version="1.0.0",
-        source_component=signal.source_component,
-        origin_signal=reference,
-        confidence=0.9,
-        provenance=[
-            ProvenanceInput(
-                input_type="legacy_signal",
-                reference=reference,
-                description="Legacy outbound signal.",
-            )
-        ],
-    )
-    return RoutingEnvelope(
-        version="1.0.0",
-        signal_type="legacy.signal",
-        signal_reference=reference,
-        actor=signal.from_number,
-        owner=signal.to_number,
-        channel_hint=signal.channel,
-        urgency=0.9,
-        channel_cost=0.1,
-        content_type="message",
-        correlation_id=uuid4().hex,
-        routing_intent=RoutingIntent.DELIVER,
-        signal_payload=SignalPayload(
-            from_number=signal.from_number,
-            to_number=signal.to_number,
-            message=signal.message,
-        ),
-        notification=notification,
-    )
-
-
 def _apply_ignored_escalation(
     session: Session,
     envelope: RoutingEnvelope,
@@ -553,7 +517,7 @@ def _apply_ignored_escalation(
     *,
     default_channel: str,
 ) -> str:
-    """Escalate signals that have been ignored repeatedly."""
+    """Escalate signals that have been ignored or have urgency metadata."""
     decision_type = decision.split(":", 1)[0]
     if decision_type in {"NOTIFY", "ESCALATE"}:
         return decision
@@ -564,9 +528,6 @@ def _apply_ignored_escalation(
         signal_reference=envelope.signal_reference,
         outcomes={"LOG_ONLY", "SUPPRESS", "DROP"},
     )
-    if ignored_count < IGNORED_ESCALATION_THRESHOLD:
-        return decision
-
     threshold_record = (
         session.query(AttentionEscalationThreshold)
         .filter_by(owner=envelope.owner, signal_type=envelope.signal_type)
@@ -582,6 +543,9 @@ def _apply_ignored_escalation(
         current_level=EscalationLevel.NONE,
         ignored_count=ignored_count,
         ignore_threshold=ignore_threshold,
+        deadline=envelope.deadline,
+        previous_severity=envelope.previous_severity,
+        current_severity=envelope.current_severity,
         timestamp=envelope.timestamp,
     )
     escalation = evaluate_escalation(inputs)

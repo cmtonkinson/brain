@@ -18,6 +18,15 @@ def default_attention_policies() -> list[AttentionPolicy]:
     """Return the baseline attention policies for routing."""
     return [
         AttentionPolicy(
+            policy_id="always-notify-override",
+            version="1.0.0",
+            description="Always notify when an always-notify preference is set.",
+            scope=PolicyScope(
+                preferences=[PreferenceCondition(key="always_notify", value=True)],
+            ),
+            outcome=PolicyOutcome(kind=PolicyOutcomeKind.NOTIFY, channel="signal"),
+        ),
+        AttentionPolicy(
             policy_id="approval-requests-signal",
             version="1.0.0",
             description="Route approval requests via Signal by default.",

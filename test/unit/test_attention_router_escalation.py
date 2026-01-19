@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy.orm import sessionmaker
@@ -97,6 +97,114 @@ async def test_ignored_twice_escalates_to_signal(
                     input_type="test",
                     reference="ignored",
                     description="ignored signal",
+                )
+            ],
+        ),
+    )
+
+    result = await router.route_envelope(envelope)
+    assert result.decision == "ESCALATE:signal"
+
+    with closing(session_factory()) as session:
+        logs = session.query(AttentionEscalationLog).all()
+
+    assert len(logs) == 1
+
+
+@pytest.mark.asyncio
+async def test_deadline_escalates_when_window_is_reached(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure approaching deadlines trigger escalation."""
+    session_factory = sqlite_session_factory
+    now = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+    deadline = now + timedelta(minutes=30)
+
+    router = AttentionRouter(
+        signal_client=FakeSignalClient(),
+        session_factory=session_factory,
+    )
+    envelope = RoutingEnvelope(
+        version="1.0.0",
+        signal_type="status.update",
+        signal_reference="signal:deadline",
+        actor="user",
+        owner="user",
+        channel_hint="signal",
+        urgency=0.1,
+        channel_cost=0.9,
+        content_type="status",
+        timestamp=now,
+        deadline=deadline,
+        signal_payload=SignalPayload(
+            from_number="+15550000000",
+            to_number="+15551234567",
+            message="deadline",
+        ),
+        notification=NotificationEnvelope(
+            version="1.0.0",
+            source_component="agent",
+            origin_signal="signal:deadline",
+            confidence=0.4,
+            provenance=[
+                ProvenanceInput(
+                    input_type="test",
+                    reference="deadline",
+                    description="deadline signal",
+                )
+            ],
+        ),
+    )
+
+    result = await router.route_envelope(envelope)
+    assert result.decision == "ESCALATE:signal"
+
+    with closing(session_factory()) as session:
+        logs = session.query(AttentionEscalationLog).all()
+
+    assert len(logs) == 1
+
+
+@pytest.mark.asyncio
+async def test_severity_increase_escalates(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure increasing severity triggers escalation."""
+    session_factory = sqlite_session_factory
+    now = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+    router = AttentionRouter(
+        signal_client=FakeSignalClient(),
+        session_factory=session_factory,
+    )
+    envelope = RoutingEnvelope(
+        version="1.0.0",
+        signal_type="status.update",
+        signal_reference="signal:severity",
+        actor="user",
+        owner="user",
+        channel_hint="signal",
+        urgency=0.1,
+        channel_cost=0.9,
+        content_type="status",
+        timestamp=now,
+        previous_severity=1,
+        current_severity=2,
+        signal_payload=SignalPayload(
+            from_number="+15550000000",
+            to_number="+15551234567",
+            message="severity",
+        ),
+        notification=NotificationEnvelope(
+            version="1.0.0",
+            source_component="agent",
+            origin_signal="signal:severity",
+            confidence=0.4,
+            provenance=[
+                ProvenanceInput(
+                    input_type="test",
+                    reference="severity",
+                    description="severity signal",
                 )
             ],
         ),

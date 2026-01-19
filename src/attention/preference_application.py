@@ -48,15 +48,21 @@ def resolve_preference_flags(
     session: Session,
     owner: str,
     timestamp: datetime,
+    *,
+    signal_type: str | None = None,
+    source_component: str | None = None,
 ) -> dict[str, bool]:
     """Resolve preference flags for policy input evaluation."""
     quiet_hours = session.query(AttentionQuietHours).filter_by(owner=owner).all()
     dnd_windows = session.query(AttentionDoNotDisturb).filter_by(owner=owner).all()
+    always_notify = session.query(AttentionAlwaysNotify).filter_by(owner=owner).all()
     quiet_match = _match_time_window(quiet_hours, timestamp)
     dnd_match = _match_time_window(dnd_windows, timestamp)
+    always_notify_match = _match_always_notify_records(always_notify, signal_type, source_component)
     return {
         "quiet_hours": bool(quiet_match),
         "do_not_disturb": bool(dnd_match),
+        "always_notify": bool(always_notify_match),
     }
 
 
@@ -83,7 +89,9 @@ def apply_preferences(
     preferred_channel = _preferred_channel(channel_prefs)
     preferred_channel_name = preferred_channel[0] if preferred_channel else None
     preferred_channel_id = preferred_channel[1] if preferred_channel else None
-    always_notify_match = _match_always_notify(always_notify, inputs)
+    always_notify_match = _match_always_notify_records(
+        always_notify, inputs.signal_type, inputs.source_component
+    )
 
     if always_notify_match:
         final_decision = _format_base_decision(
@@ -214,15 +222,18 @@ def _match_channel_preference(
     return None
 
 
-def _match_always_notify(
+def _match_always_notify_records(
     records: Iterable[AttentionAlwaysNotify],
-    inputs: PreferenceApplicationInputs,
+    signal_type: str | None,
+    source_component: str | None,
 ) -> AttentionAlwaysNotify | None:
-    """Return the first always-notify match for the inputs."""
+    """Return the first always-notify match for the given signal metadata."""
+    if signal_type is None:
+        return None
     for record in records:
-        if record.signal_type != inputs.signal_type:
+        if record.signal_type != signal_type:
             continue
-        if record.source_component and record.source_component != inputs.source_component:
+        if record.source_component and record.source_component != source_component:
             continue
         return record
     return None
