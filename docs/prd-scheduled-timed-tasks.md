@@ -87,7 +87,7 @@ Defines *when* execution should occur.
 Supported schedule types:
 - one-time (at timestamp)
 - interval-based (every N minutes/hours/days)
-- calendar-based (cron-like expressions)
+- calendar-based (rule-based recurrence patterns)
 - conditional (run when predicate becomes true)
 
 Schedules must be editable at runtime.
