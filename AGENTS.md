@@ -1,4 +1,4 @@
-Instructions for working in this repo:
+When working in this repo:
 - Read `README.md`.
 - Read `docs/manifesto.md`.
 - Read `docs/architecture-doctrine.md`.
@@ -8,10 +8,12 @@ Instructions for working in this repo:
   - A very good rationale.
   - Clearly and explicitly explaining why you believe it is justfied.
   - Explicit user approval.
-- Directories named `work-*/` are transient agent/task management workspaces, not permanent project directories. No work
-  outputs should be stored there; they will not be committed nor preserved.
-- With the possible exception of the task `index.md` file, do not make any changes within that directory at all unless
-  explicitly instructe to do so.
+- `'work-*/` directories:
+  - These are transient agent/task management workspaces.
+  - These are not permanent project directories.
+  - No work output should be stored in these directories.
+  - Do not modify the contents of these directories (with the exception of `index.md`) unless explicitly instructed to
+    do so.
 
 When modifying code:
 - Write code that is concise, readable, maintainable, and idiomatic.
