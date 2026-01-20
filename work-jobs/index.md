@@ -18,7 +18,7 @@ Docblock:
 10. [closed] work-jobs/task-10-scheduler-audit-schema.md (epic 03, milestone 02)
 11. [closed] work-jobs/task-38-predicate-evaluation-audit-schema.md (epic 06, milestone 03)
 12. [closed] work-jobs/task-11-scheduler-data-access-layer.md (epic 03, milestone 02)
-13. [open] work-jobs/task-49-schedule-service-interface-module.md (epic 04, milestone 02)
+13. [closed] work-jobs/task-49-schedule-service-interface-module.md (epic 04, milestone 02)
 14. [open] work-jobs/task-46-task-intent-creation-path.md (epic 04, milestone 02)
 15. [open] work-jobs/task-13-schedule-validation-layer.md (epic 04, milestone 02)
 16. [open] work-jobs/task-12-schedule-api-routing-and-handlers.md (epic 04, milestone 02)
