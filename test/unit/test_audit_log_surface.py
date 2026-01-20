@@ -1638,3 +1638,517 @@ def test_predicate_evaluation_audit_query_performance(
 
     # Performance check
     assert elapsed_time < 5.0, f"Queries took {elapsed_time:.2f}s, expected < 5s"
+
+
+# ============================================================================
+# Predicate Evaluation Visibility Integration Tests (Task 25)
+# ============================================================================
+
+
+class TestPredicateEvaluationVisibilityIntegration:
+    """Integration tests for predicate evaluation visibility (Task 25).
+
+    These tests verify the complete chain from schedules to executions to
+    predicate evaluation outcomes, ensuring visibility and linkage consistency.
+    """
+
+    def test_predicate_evaluation_linked_to_schedule_and_execution(
+        self,
+        sqlite_session_factory: sessionmaker,
+    ) -> None:
+        """Verify predicate evaluation outcomes are linked to both schedule and execution.
+
+        This integration test ensures:
+        1. Schedule is created for conditional type
+        2. Execution is linked to the schedule
+        3. Predicate evaluation audit is linked to both schedule and execution
+        4. All entities can be queried and linked through the inspection API
+        """
+        actor = _actor_context()
+        execution_actor = _execution_actor_context()
+        now = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
+
+        with closing(sqlite_session_factory()) as session:
+            # Create task intent for conditional schedule
+            intent = create_task_intent(
+                session,
+                TaskIntentInput(
+                    summary="Watch for service availability",
+                    details="Trigger when external service becomes available",
+                    origin_reference="signal:watch-001",
+                ),
+                actor,
+            )
+
+            # Create conditional schedule with predicate
+            schedule = create_schedule(
+                session,
+                ScheduleCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_type="conditional",
+                    timezone="UTC",
+                    definition=ScheduleDefinitionInput(
+                        predicate_subject="external.service.status",
+                        predicate_operator="eq",
+                        predicate_value="available",
+                        evaluation_interval_count=5,
+                        evaluation_interval_unit="minute",
+                    ),
+                ),
+                actor,
+                now=now,
+            )
+
+            # Create execution linked to schedule (simulating a triggered run)
+            execution = create_execution(
+                session,
+                ExecutionCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_id=schedule.id,
+                    scheduled_for=now + timedelta(minutes=5),
+                    status="queued",
+                ),
+                execution_actor,
+            )
+
+            # Create predicate evaluation audit linked to BOTH schedule and execution
+            _create_predicate_evaluation_audit(
+                session,
+                schedule.id,
+                intent.id,
+                "eval-integration-001",
+                now + timedelta(minutes=5),
+                status="true",
+                execution_id=execution.id,
+            )
+
+            session.commit()
+            schedule_id = schedule.id
+            intent_id = intent.id
+            execution_id = execution.id
+
+        # Verify through query service that all links are visible
+        service = ScheduleQueryServiceImpl(sqlite_session_factory)
+
+        # Verify schedule view has predicate definition
+        schedule_result = service.get_schedule(
+            ScheduleGetRequest(schedule_id=schedule_id)
+        )
+        assert schedule_result.schedule.schedule_type == "conditional"
+        assert schedule_result.schedule.definition.predicate_subject == "external.service.status"
+        assert schedule_result.schedule.definition.predicate_operator == "eq"
+        assert schedule_result.schedule.definition.predicate_value == "available"
+        assert schedule_result.task_intent.summary == "Watch for service availability"
+
+        # Verify execution is linked
+        execution_result = service.get_execution(
+            ExecutionGetRequest(execution_id=execution_id)
+        )
+        assert execution_result.execution.schedule_id == schedule_id
+        assert execution_result.execution.task_intent_id == intent_id
+
+        # Verify predicate evaluation audit is linked to both schedule and execution
+        eval_result = service.list_predicate_evaluation_audits(
+            PredicateEvaluationAuditListRequest(schedule_id=schedule_id)
+        )
+        assert len(eval_result.audit_logs) == 1
+        assert eval_result.audit_logs[0].schedule_id == schedule_id
+        assert eval_result.audit_logs[0].execution_id == execution_id
+        assert eval_result.audit_logs[0].task_intent_id == intent_id
+        assert eval_result.audit_logs[0].status == "true"
+        assert eval_result.audit_logs[0].predicate_subject == "skill.health"  # from helper
+
+        # Also verify can filter by execution_id
+        by_execution = service.list_predicate_evaluation_audits(
+            PredicateEvaluationAuditListRequest(execution_id=execution_id)
+        )
+        assert len(by_execution.audit_logs) == 1
+        assert by_execution.audit_logs[0].evaluation_id == "eval-integration-001"
+
+    def test_predicate_evaluation_outcomes_filterable_by_result(
+        self,
+        sqlite_session_factory: sessionmaker,
+    ) -> None:
+        """Verify predicate evaluation outcomes can be filtered by result status.
+
+        Ensures the 'result' filter requirement from Task 25 is satisfied,
+        mapping to the 'status' field in audit records.
+        """
+        actor = _actor_context()
+        now = datetime(2025, 3, 2, 10, 0, tzinfo=timezone.utc)
+
+        with closing(sqlite_session_factory()) as session:
+            intent = create_task_intent(
+                session, TaskIntentInput(summary="Result filter test"), actor
+            )
+            schedule = create_schedule(
+                session,
+                ScheduleCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_type="conditional",
+                    timezone="UTC",
+                    definition=ScheduleDefinitionInput(
+                        predicate_subject="health.check",
+                        predicate_operator="eq",
+                        predicate_value="ok",
+                        evaluation_interval_count=1,
+                        evaluation_interval_unit="hour",
+                    ),
+                ),
+                actor,
+                now=now,
+            )
+
+            # Create evaluations with different result statuses
+            _create_predicate_evaluation_audit(
+                session, schedule.id, intent.id, "eval-true-1", now, status="true"
+            )
+            _create_predicate_evaluation_audit(
+                session, schedule.id, intent.id, "eval-true-2",
+                now + timedelta(hours=1), status="true"
+            )
+            _create_predicate_evaluation_audit(
+                session, schedule.id, intent.id, "eval-false-1",
+                now + timedelta(hours=2), status="false"
+            )
+            _create_predicate_evaluation_audit(
+                session, schedule.id, intent.id, "eval-error-1",
+                now + timedelta(hours=3), status="error"
+            )
+            session.commit()
+            schedule_id = schedule.id
+
+        service = ScheduleQueryServiceImpl(sqlite_session_factory)
+
+        # Filter by "true" result
+        true_results = service.list_predicate_evaluation_audits(
+            PredicateEvaluationAuditListRequest(
+                schedule_id=schedule_id,
+                status="true",
+            )
+        )
+        assert len(true_results.audit_logs) == 2
+        assert all(a.status == "true" for a in true_results.audit_logs)
+
+        # Filter by "false" result
+        false_results = service.list_predicate_evaluation_audits(
+            PredicateEvaluationAuditListRequest(
+                schedule_id=schedule_id,
+                status="false",
+            )
+        )
+        assert len(false_results.audit_logs) == 1
+        assert false_results.audit_logs[0].status == "false"
+
+        # Filter by "error" result
+        error_results = service.list_predicate_evaluation_audits(
+            PredicateEvaluationAuditListRequest(
+                schedule_id=schedule_id,
+                status="error",
+            )
+        )
+        assert len(error_results.audit_logs) == 1
+        assert error_results.audit_logs[0].status == "error"
+
+    def test_evaluation_outcome_view_includes_all_required_fields(
+        self,
+        sqlite_session_factory: sessionmaker,
+    ) -> None:
+        """Verify evaluation outcome view includes result, timing, errors, and actor context.
+
+        This test ensures the Task 25 requirement that responses include:
+        - Evaluation result (status, result_code, observed_value)
+        - Timing (evaluation_time, evaluated_at)
+        - Errors (error_code, error_message)
+        - Actor context (actor_type, actor_id, actor_channel, etc.)
+        """
+        actor = _actor_context()
+        now = datetime(2025, 3, 3, 10, 0, tzinfo=timezone.utc)
+
+        with closing(sqlite_session_factory()) as session:
+            intent = create_task_intent(
+                session, TaskIntentInput(summary="Field visibility test"), actor
+            )
+            schedule = create_schedule(
+                session,
+                ScheduleCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_type="conditional",
+                    timezone="UTC",
+                    definition=ScheduleDefinitionInput(
+                        predicate_subject="system.load",
+                        predicate_operator="lt",
+                        predicate_value="80",
+                        evaluation_interval_count=15,
+                        evaluation_interval_unit="minute",
+                    ),
+                ),
+                actor,
+                now=now,
+            )
+
+            # Create an evaluation with all fields populated
+            record_predicate_evaluation_audit(
+                session,
+                PredicateEvaluationAuditInput(
+                    evaluation_id="eval-fields-test",
+                    schedule_id=schedule.id,
+                    execution_id=None,
+                    task_intent_id=intent.id,
+                    actor_type="scheduled",
+                    actor_id="scheduler-worker-1",
+                    actor_channel="scheduled",
+                    actor_privilege_level="standard",
+                    actor_autonomy_level="limited",
+                    trace_id="trace-fields-test",
+                    request_id="req-fields-test",
+                    predicate_subject="system.load",
+                    predicate_operator="lt",
+                    predicate_value="80",
+                    predicate_value_type="number",
+                    evaluation_time=now + timedelta(minutes=15),
+                    evaluated_at=now + timedelta(minutes=15, seconds=1),
+                    status="true",
+                    result_code="PREDICATE_MATCHED",
+                    message="System load is below threshold",
+                    observed_value="65",
+                    error_code=None,
+                    error_message=None,
+                    authorization_decision="allow",
+                    authorization_reason_code="policy_passed",
+                    authorization_reason_message="Scheduled actor has read-only capability",
+                    authorization_policy_name="read_only_gate",
+                    authorization_policy_version="1.0",
+                    provider_name="metrics-provider",
+                    provider_attempt=1,
+                    correlation_id="corr-fields-test",
+                ),
+            )
+            session.commit()
+
+        service = ScheduleQueryServiceImpl(sqlite_session_factory)
+        result = service.get_predicate_evaluation_audit(
+            PredicateEvaluationAuditGetRequest(evaluation_id="eval-fields-test")
+        )
+
+        audit = result.audit_log
+
+        # Verify evaluation result fields
+        assert audit.status == "true"
+        assert audit.result_code == "PREDICATE_MATCHED"
+        assert audit.observed_value == "65"
+        assert audit.message == "System load is below threshold"
+
+        # Verify timing fields
+        assert audit.evaluation_time is not None
+        assert audit.evaluated_at is not None
+        assert audit.created_at is not None
+
+        # Verify error fields are present (even if None)
+        assert audit.error_code is None
+        assert audit.error_message is None
+
+        # Verify actor context fields
+        assert audit.actor_type == "scheduled"
+        assert audit.actor_id == "scheduler-worker-1"
+        assert audit.actor_channel == "scheduled"
+        assert audit.actor_privilege_level == "standard"
+        assert audit.actor_autonomy_level == "limited"
+        assert audit.trace_id == "trace-fields-test"
+        assert audit.request_id == "req-fields-test"
+
+        # Verify predicate definition fields
+        assert audit.predicate_subject == "system.load"
+        assert audit.predicate_operator == "lt"
+        assert audit.predicate_value == "80"
+        assert audit.predicate_value_type == "number"
+
+        # Verify authorization fields
+        assert audit.authorization_decision == "allow"
+        assert audit.authorization_reason_code == "policy_passed"
+        assert audit.authorization_policy_name == "read_only_gate"
+
+        # Verify provider fields
+        assert audit.provider_name == "metrics-provider"
+        assert audit.provider_attempt == 1
+
+    def test_evaluation_audit_linkage_consistent_with_schedule_execution_views(
+        self,
+        sqlite_session_factory: sessionmaker,
+    ) -> None:
+        """Verify audit linkage is visible and consistent with schedule/execution views.
+
+        This integration test ensures that IDs referenced in predicate evaluation
+        audits correspond to actual schedule/execution records that can be fetched.
+        """
+        actor = _actor_context()
+        execution_actor = _execution_actor_context()
+        now = datetime(2025, 3, 4, 10, 0, tzinfo=timezone.utc)
+
+        with closing(sqlite_session_factory()) as session:
+            intent = create_task_intent(
+                session, TaskIntentInput(summary="Linkage consistency test"), actor
+            )
+            schedule = create_schedule(
+                session,
+                ScheduleCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_type="conditional",
+                    timezone="America/New_York",
+                    definition=ScheduleDefinitionInput(
+                        predicate_subject="queue.depth",
+                        predicate_operator="gt",
+                        predicate_value="100",
+                        evaluation_interval_count=10,
+                        evaluation_interval_unit="minute",
+                    ),
+                ),
+                actor,
+                now=now,
+            )
+            execution = create_execution(
+                session,
+                ExecutionCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_id=schedule.id,
+                    scheduled_for=now + timedelta(minutes=10),
+                    status="running",
+                ),
+                execution_actor,
+            )
+            _create_predicate_evaluation_audit(
+                session,
+                schedule.id,
+                intent.id,
+                "eval-linkage-test",
+                now + timedelta(minutes=10),
+                status="true",
+                execution_id=execution.id,
+            )
+            session.commit()
+            schedule_id = schedule.id
+            intent_id = intent.id
+            execution_id = execution.id
+
+        service = ScheduleQueryServiceImpl(sqlite_session_factory)
+
+        # Get the predicate evaluation audit
+        eval_result = service.get_predicate_evaluation_audit(
+            PredicateEvaluationAuditGetRequest(evaluation_id="eval-linkage-test")
+        )
+        audit = eval_result.audit_log
+
+        # Verify the linked IDs match actual records
+        assert audit.schedule_id == schedule_id
+        assert audit.task_intent_id == intent_id
+        assert audit.execution_id == execution_id
+
+        # Verify we can fetch the linked schedule and get consistent data
+        schedule_result = service.get_schedule(
+            ScheduleGetRequest(schedule_id=audit.schedule_id)
+        )
+        assert schedule_result.schedule.id == audit.schedule_id
+        assert schedule_result.schedule.task_intent_id == audit.task_intent_id
+        assert schedule_result.schedule.schedule_type == "conditional"
+
+        # Verify we can fetch the linked task intent
+        intent_result = service.get_task_intent(
+            TaskIntentGetRequest(task_intent_id=audit.task_intent_id)
+        )
+        assert intent_result.task_intent.id == audit.task_intent_id
+        assert intent_result.task_intent.summary == "Linkage consistency test"
+
+        # Verify we can fetch the linked execution
+        execution_result = service.get_execution(
+            ExecutionGetRequest(execution_id=audit.execution_id)
+        )
+        assert execution_result.execution.id == audit.execution_id
+        assert execution_result.execution.schedule_id == audit.schedule_id
+        assert execution_result.execution.task_intent_id == audit.task_intent_id
+
+    def test_multiple_evaluations_for_same_schedule_visible(
+        self,
+        sqlite_session_factory: sessionmaker,
+    ) -> None:
+        """Verify multiple predicate evaluations for the same schedule are all visible.
+
+        This ensures the history of predicate evaluations is retained and queryable,
+        supporting debugging and audit trail requirements.
+        """
+        actor = _actor_context()
+        now = datetime(2025, 3, 5, 10, 0, tzinfo=timezone.utc)
+
+        with closing(sqlite_session_factory()) as session:
+            intent = create_task_intent(
+                session, TaskIntentInput(summary="Multi-eval test"), actor
+            )
+            schedule = create_schedule(
+                session,
+                ScheduleCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_type="conditional",
+                    timezone="UTC",
+                    definition=ScheduleDefinitionInput(
+                        predicate_subject="api.latency",
+                        predicate_operator="lt",
+                        predicate_value="500",
+                        evaluation_interval_count=1,
+                        evaluation_interval_unit="minute",
+                    ),
+                ),
+                actor,
+                now=now,
+            )
+
+            # Create a series of evaluations over time (simulating polling)
+            evaluation_times = [
+                (now, "true"),
+                (now + timedelta(minutes=1), "true"),
+                (now + timedelta(minutes=2), "false"),  # Latency spike
+                (now + timedelta(minutes=3), "false"),
+                (now + timedelta(minutes=4), "true"),  # Recovery
+            ]
+            for i, (eval_time, status) in enumerate(evaluation_times):
+                _create_predicate_evaluation_audit(
+                    session,
+                    schedule.id,
+                    intent.id,
+                    f"eval-multi-{i:03d}",
+                    eval_time,
+                    status=status,
+                )
+            session.commit()
+            schedule_id = schedule.id
+
+        service = ScheduleQueryServiceImpl(sqlite_session_factory)
+
+        # List all evaluations for this schedule
+        all_evals = service.list_predicate_evaluation_audits(
+            PredicateEvaluationAuditListRequest(schedule_id=schedule_id)
+        )
+        assert len(all_evals.audit_logs) == 5
+
+        # Verify ordering (most recent first)
+        assert all_evals.audit_logs[0].evaluation_id == "eval-multi-004"  # Latest
+        assert all_evals.audit_logs[4].evaluation_id == "eval-multi-000"  # Earliest
+
+        # Filter to see just the failures
+        failures = service.list_predicate_evaluation_audits(
+            PredicateEvaluationAuditListRequest(
+                schedule_id=schedule_id,
+                status="false",
+            )
+        )
+        assert len(failures.audit_logs) == 2
+        assert all(a.status == "false" for a in failures.audit_logs)
+
+        # Filter by time range to see evaluations during the spike
+        spike_range = service.list_predicate_evaluation_audits(
+            PredicateEvaluationAuditListRequest(
+                schedule_id=schedule_id,
+                evaluated_after=now + timedelta(minutes=1, seconds=30),
+                evaluated_before=now + timedelta(minutes=3, seconds=30),
+            )
+        )
+        assert len(spike_range.audit_logs) == 2
+        assert all(a.status == "false" for a in spike_range.audit_logs)
