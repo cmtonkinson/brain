@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from models import Execution, Schedule, ScheduleAuditLog, TaskIntent
 from scheduler import data_access
+from scheduler.actor_context import ScheduledActorContext
 from scheduler.schedule_service_interface import (
     ActorContext,
     ExecutionRunNowResult,
@@ -267,16 +268,30 @@ def _to_data_access_actor(actor: ActorContext) -> data_access.ActorContext:
 
 def _to_execution_actor_context(actor: ActorContext) -> data_access.ExecutionActorContext:
     """Map run-now actor context into a scheduled execution actor context."""
+    scheduled_context = ScheduledActorContext()
     correlation_id = actor.request_id or actor.trace_id
     return data_access.ExecutionActorContext(
-        actor_type="scheduled",
+        actor_type=scheduled_context.actor_type,
         actor_id=None,
-        channel="scheduled",
+        channel=scheduled_context.channel,
         trace_id=actor.trace_id,
         request_id=actor.request_id,
-        actor_context=f"run_now:{actor.actor_type}",
+        actor_context=scheduled_context.to_reference(
+            trigger_source="run_now",
+            requested_by=_format_requested_by(actor),
+        ),
         correlation_id=correlation_id,
     )
+
+
+def _format_requested_by(actor: ActorContext) -> str | None:
+    """Return a compact requested-by label for scheduled actor context."""
+    if not actor.actor_type:
+        return None
+    label = actor.actor_type.strip()
+    if actor.channel:
+        label = f"{label}@{actor.channel.strip()}"
+    return label or None
 
 
 def _to_task_intent_input(

@@ -9,7 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -113,6 +113,9 @@ def _env_settings_source():
         "INDEXER_INTERVAL_SECONDS": ("indexer.interval_seconds", "int"),
         "INDEXER_CHUNK_TOKENS": ("indexer.chunk_tokens", "int"),
         "INDEXER_COLLECTION": ("indexer.collection", "str"),
+        "SCHEDULER_DEFAULT_MAX_ATTEMPTS": ("scheduler.default_max_attempts", "int"),
+        "SCHEDULER_DEFAULT_BACKOFF_STRATEGY": ("scheduler.default_backoff_strategy", "str"),
+        "SCHEDULER_BACKOFF_BASE_SECONDS": ("scheduler.backoff_base_seconds", "int"),
     }
 
     def source() -> dict[str, Any]:
@@ -249,6 +252,41 @@ class IndexerConfig(BaseModel):
     collection: str = "obsidian"
 
 
+class SchedulerConfig(BaseModel):
+    """Scheduler retry/backoff configuration defaults."""
+
+    default_max_attempts: int = 3
+    default_backoff_strategy: str = "exponential"
+    backoff_base_seconds: int = 60
+
+    @field_validator("default_max_attempts")
+    @classmethod
+    def validate_max_attempts(cls, value: int) -> int:
+        """Ensure max attempts is positive."""
+        if value < 1:
+            raise ValueError("scheduler.default_max_attempts must be >= 1.")
+        return value
+
+    @field_validator("default_backoff_strategy")
+    @classmethod
+    def validate_backoff_strategy(cls, value: str) -> str:
+        """Ensure backoff strategy is supported."""
+        normalized = value.strip().lower()
+        if normalized not in {"fixed", "exponential", "none"}:
+            raise ValueError(
+                "scheduler.default_backoff_strategy must be fixed, exponential, or none."
+            )
+        return normalized
+
+    @field_validator("backoff_base_seconds")
+    @classmethod
+    def validate_backoff_seconds(cls, value: int) -> int:
+        """Ensure backoff base seconds is non-negative."""
+        if value < 0:
+            raise ValueError("scheduler.backoff_base_seconds must be >= 0.")
+        return value
+
+
 class ServiceConfig(BaseModel):
     """Generic service URL wrapper."""
 
@@ -334,6 +372,9 @@ class Settings(BaseSettings):
 
     # Indexer Configuration
     indexer: IndexerConfig = Field(default_factory=IndexerConfig)
+
+    # Scheduler Configuration
+    scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
 
     @model_validator(mode="after")
     def validate_sender_allowlist(self) -> "Settings":

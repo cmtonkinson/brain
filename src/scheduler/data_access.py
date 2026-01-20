@@ -581,6 +581,25 @@ def list_execution_history(
     )
 
 
+def get_execution_by_correlation_id(
+    session: Session,
+    schedule_id: int,
+    correlation_id: str,
+) -> Execution | None:
+    """Return the latest execution matching a schedule and correlation id."""
+    if not correlation_id.strip():
+        raise ValueError("correlation_id is required.")
+    return (
+        session.query(Execution)
+        .filter(
+            Execution.schedule_id == schedule_id,
+            Execution.correlation_id == correlation_id,
+        )
+        .order_by(Execution.id.desc())
+        .first()
+    )
+
+
 def create_execution(
     session: Session,
     execution_input: ExecutionCreateInput,
@@ -703,6 +722,19 @@ def _record_schedule_audit(
     occurred_at: datetime,
 ) -> ScheduleAuditLog:
     """Persist a schedule audit log entry."""
+    if actor.request_id:
+        existing = (
+            session.query(ScheduleAuditLog)
+            .filter(
+                ScheduleAuditLog.schedule_id == schedule.id,
+                ScheduleAuditLog.event_type == event_type,
+                ScheduleAuditLog.request_id == actor.request_id,
+            )
+            .order_by(ScheduleAuditLog.id.desc())
+            .first()
+        )
+        if existing is not None:
+            return existing
     audit = ScheduleAuditLog(
         schedule_id=schedule.id,
         task_intent_id=schedule.task_intent_id,
@@ -729,6 +761,19 @@ def _record_execution_audit(
     occurred_at: datetime,
 ) -> ExecutionAuditLog:
     """Persist an execution audit log entry."""
+    if actor.request_id:
+        existing = (
+            session.query(ExecutionAuditLog)
+            .filter(
+                ExecutionAuditLog.execution_id == execution.id,
+                ExecutionAuditLog.status == execution.status,
+                ExecutionAuditLog.request_id == actor.request_id,
+            )
+            .order_by(ExecutionAuditLog.id.desc())
+            .first()
+        )
+        if existing is not None:
+            return existing
     audit = ExecutionAuditLog(
         execution_id=execution.id,
         schedule_id=execution.schedule_id,

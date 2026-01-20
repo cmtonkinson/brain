@@ -8,13 +8,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
-from models import Schedule, TaskIntent
+from models import Execution, Schedule, TaskIntent
 from scheduler.schedule_service import ScheduleCommandServiceImpl
 from scheduler.schedule_service_interface import (
     ActorContext,
     ScheduleConflictError,
     ScheduleCreateRequest,
     ScheduleNotFoundError,
+    SchedulePauseRequest,
     ScheduleRunNowRequest,
     ScheduleUpdateRequest,
     ScheduleDefinitionInput,
@@ -146,3 +147,109 @@ def test_run_now_rejects_invalid_state() -> None:
             service.run_now(request, actor)
 
     create_execution.assert_not_called()
+
+
+def test_run_now_builds_scheduled_actor_context() -> None:
+    """Ensure run-now uses a scheduled actor context payload."""
+    now = datetime(2025, 1, 1, 9, 0, tzinfo=timezone.utc)
+    session = MagicMock(spec=Session)
+    session_factory = MagicMock(return_value=session)
+    service = ScheduleCommandServiceImpl(session_factory, now_provider=lambda: now)
+    actor = _actor_context()
+    schedule = _schedule(now)
+    request = ScheduleRunNowRequest(schedule_id=10)
+    execution = Execution(
+        id=77,
+        task_intent_id=schedule.task_intent_id,
+        schedule_id=schedule.id,
+        scheduled_for=now,
+        created_at=now,
+        updated_at=now,
+        actor_type="scheduled",
+        actor_context=None,
+        correlation_id="corr-1",
+        status="queued",
+        attempt_count=0,
+        retry_count=0,
+        max_attempts=1,
+        failure_count=0,
+    )
+
+    with (
+        patch("scheduler.schedule_service._fetch_schedule", return_value=schedule),
+        patch("scheduler.schedule_service.data_access.record_schedule_audit") as record_audit,
+        patch(
+            "scheduler.schedule_service.data_access.create_execution",
+            return_value=execution,
+        ) as create_execution,
+    ):
+        record_audit.return_value.id = 42
+        service.run_now(request, actor)
+
+    execution_actor = create_execution.call_args.args[2]
+    assert execution_actor.actor_type == "scheduled"
+    assert execution_actor.channel == "scheduled"
+    assert "autonomy=limited" in (execution_actor.actor_context or "")
+    assert "privilege=constrained" in (execution_actor.actor_context or "")
+    assert "requested_by=human@signal" in (execution_actor.actor_context or "")
+
+
+def test_pause_schedule_returns_audit_linkage() -> None:
+    """Ensure pause schedule responses include audit linkage."""
+    now = datetime(2025, 1, 1, 9, 0, tzinfo=timezone.utc)
+    session = MagicMock(spec=Session)
+    session_factory = MagicMock(return_value=session)
+    service = ScheduleCommandServiceImpl(session_factory, now_provider=lambda: now)
+    actor = _actor_context()
+    schedule = _schedule(now)
+    intent = _task_intent(now)
+    request = SchedulePauseRequest(schedule_id=10, reason="pause-test")
+
+    with (
+        patch("scheduler.schedule_service.data_access.pause_schedule", return_value=schedule),
+        patch("scheduler.schedule_service._fetch_task_intent", return_value=intent),
+        patch("scheduler.schedule_service._fetch_latest_schedule_audit_id", return_value=55),
+    ):
+        result = service.pause_schedule(request, actor)
+
+    assert result.audit_log_id == 55
+
+
+def test_run_now_returns_audit_linkage() -> None:
+    """Ensure run-now responses include audit linkage."""
+    now = datetime(2025, 1, 1, 9, 0, tzinfo=timezone.utc)
+    session = MagicMock(spec=Session)
+    session_factory = MagicMock(return_value=session)
+    service = ScheduleCommandServiceImpl(session_factory, now_provider=lambda: now)
+    actor = _actor_context()
+    schedule = _schedule(now)
+    request = ScheduleRunNowRequest(schedule_id=10)
+    execution = Execution(
+        id=88,
+        task_intent_id=schedule.task_intent_id,
+        schedule_id=schedule.id,
+        scheduled_for=now,
+        created_at=now,
+        updated_at=now,
+        actor_type="scheduled",
+        actor_context=None,
+        correlation_id="corr-2",
+        status="queued",
+        attempt_count=0,
+        retry_count=0,
+        max_attempts=1,
+        failure_count=0,
+    )
+
+    with (
+        patch("scheduler.schedule_service._fetch_schedule", return_value=schedule),
+        patch(
+            "scheduler.schedule_service.data_access.create_execution",
+            return_value=execution,
+        ),
+        patch("scheduler.schedule_service.data_access.record_schedule_audit") as record_audit,
+    ):
+        record_audit.return_value.id = 77
+        result = service.run_now(request, actor)
+
+    assert result.audit_log_id == 77

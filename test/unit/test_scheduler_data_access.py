@@ -24,6 +24,9 @@ from scheduler.data_access import (
     create_schedule_with_intent,
     create_task_intent,
     list_due_schedules,
+    pause_schedule,
+    delete_schedule,
+    resume_schedule,
     update_execution,
     update_schedule,
     update_task_intent,
@@ -200,6 +203,12 @@ def test_schedule_create_writes_audit_and_due_query(
     assert schedule.id is not None
     assert len(audits) == 1
     assert audits[0].event_type == "create"
+    assert audits[0].actor_type == actor.actor_type
+    assert audits[0].actor_id == actor.actor_id
+    assert audits[0].actor_channel == actor.channel
+    assert audits[0].trace_id == actor.trace_id
+    assert audits[0].request_id == actor.request_id
+    assert audits[0].reason == actor.reason
     assert schedule.id in {entry.id for entry in due}
 
 
@@ -287,6 +296,83 @@ def test_schedule_update_writes_audit(
     assert [audit.event_type for audit in audits] == ["create", "update"]
 
 
+def test_schedule_state_mutations_write_audit_entries(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure pause/resume/delete mutations emit audit records."""
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    now = datetime(2025, 1, 2, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Lifecycle"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=now,
+        )
+        pause_schedule(session, schedule.id, actor, now=now)
+        resume_schedule(session, schedule.id, actor, now=now)
+        delete_schedule(session, schedule.id, actor, now=now)
+        session.commit()
+        audits = (
+            session.query(ScheduleAuditLog)
+            .filter_by(schedule_id=schedule.id)
+            .order_by(ScheduleAuditLog.id.asc())
+            .all()
+        )
+
+    assert [audit.event_type for audit in audits] == [
+        "create",
+        "pause",
+        "resume",
+        "delete",
+    ]
+
+
+def test_schedule_audit_idempotent_by_request_id(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure repeated updates with the same request id avoid duplicate audits."""
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    now = datetime(2025, 1, 2, 12, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Idempotent"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="one_time",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(run_at=now + timedelta(hours=1)),
+            ),
+            actor,
+            now=now,
+        )
+        update_payload = ScheduleUpdateInput(
+            definition=ScheduleDefinitionInput(run_at=now + timedelta(hours=2)),
+        )
+        update_schedule(session, schedule.id, update_payload, actor, now=now)
+        update_schedule(session, schedule.id, update_payload, actor, now=now)
+        session.commit()
+        audits = (
+            session.query(ScheduleAuditLog)
+            .filter_by(schedule_id=schedule.id)
+            .order_by(ScheduleAuditLog.id.asc())
+            .all()
+        )
+
+    assert [audit.event_type for audit in audits] == ["create", "update"]
+
+
 def test_execution_audit_logging_on_create_and_update(
     sqlite_session_factory: sessionmaker,
 ) -> None:
@@ -317,6 +403,82 @@ def test_execution_audit_logging_on_create_and_update(
                 scheduled_for=scheduled_for,
                 status="queued",
                 max_attempts=2,
+            ),
+            execution_actor,
+        )
+        update_execution(
+            session,
+            execution.id,
+            ExecutionUpdateInput(
+                status="failed",
+                failure_count=1,
+                last_error_code="timeout",
+                last_error_message="Task timed out.",
+                finished_at=scheduled_for + timedelta(minutes=5),
+            ),
+            execution_actor,
+        )
+        session.commit()
+        audits = (
+            session.query(ExecutionAuditLog)
+            .filter_by(execution_id=execution.id)
+            .order_by(ExecutionAuditLog.id.asc())
+            .all()
+        )
+
+    assert [audit.status for audit in audits] == ["queued", "failed"]
+
+
+def test_execution_audit_idempotent_by_request_id(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure repeated execution updates with the same request id avoid duplicate audits."""
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = ExecutionActorContext(
+        actor_type="scheduled",
+        actor_id=None,
+        channel="scheduled",
+        trace_id="trace-123",
+        request_id="req-dup",
+        actor_context="scheduled-envelope",
+        correlation_id="corr-dup",
+    )
+    scheduled_for = datetime(2025, 1, 4, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Run task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="one_time",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(run_at=scheduled_for),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        execution = create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=scheduled_for,
+                status="queued",
+                max_attempts=2,
+            ),
+            execution_actor,
+        )
+        update_execution(
+            session,
+            execution.id,
+            ExecutionUpdateInput(
+                status="failed",
+                failure_count=1,
+                last_error_code="timeout",
+                last_error_message="Task timed out.",
+                finished_at=scheduled_for + timedelta(minutes=5),
             ),
             execution_actor,
         )
