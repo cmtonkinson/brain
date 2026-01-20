@@ -1,30 +1,48 @@
 # Brain
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+[![CI Tests](https://github.com/cmtonkinson/brain/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/cmtonkinson/brain/actions/workflows/tests.yml)
 ![Python: 3.13](https://img.shields.io/badge/Python-3.13-blue.svg)
 
-An exocortex for attention, memory, and action. Brain is a local-first AI system grounded in data sovereignty and
-durable knowledge; "cognitive infrastructure" that prioritizes context, directs intent deliberately, and closes loops.
+An exocortex for attention, memory, and action. Brain is a local-first AI system grounded in data
+sovereignty and durable knowledge; "cognitive infrastructure" that prioritizes context, directs
+intent deliberately, and closes loops.
 
 ## Overview
-Conceptually, Brain has three parts.
+_Conceptually_, Brain has three parts.
 
-1. A **personal knowledge base**: durable, human-readable, locally-stored memory. At its simplest, this could be a
-   single (if very large) file.
-2. A **reasoning engine**: an LLM used to interpret context, propose actions, explain decisions, and interact with you.
-3. A **capability layer**: governed operations that interact with the real world (files, calendars, messaging, etc.) via
-   native APIs and MCP tools.
+1. A **personal knowledge base**: durable, human-readable, locally-stored information. At its
+   simplest, this could be a single (if very large) file.
+2. A **reasoning engine**: an LLM used to interpret context, propose actions, explain decisions, and
+   interact with you conversationally.
+3. A **capability layer**: governed operations that interact with the real world (files, calendars,
+   messaging, etc.) via native APIs or MCP Servers.
 
-Brain’s agent exists to coordinate these three concerns while keeping them separate, inspectable, and under your
-control.
+Brain’s **agent** exists to coordinate these three concerns while keeping them separate,
+inspectable, and under your control.
 
-Brain currently provides:
-- **Obsidian as canonical memory** via the Local REST API (read/write notes) and a file-based indexer.
-- **Signal messaging** through `signal-cli-rest-api` with an explicit allowlist.
-- **Semantic search** with Qdrant embeddings generated from your vault.
-- **Pydantic AI over LiteLLM** for model orchestration with pluggable backends.
-- **Letta (MemGPT)** as a memory manager and archival store.
-- **Code-Mode (UTCP)** for MCP tool discovery/execution (filesystem, EventKit, GitHub, etc.).
-- **Optional observability stack** (OpenTelemetry, Prometheus, Loki, Grafana).
+_Operationally_, however, the picture is more complicated. Currently there are an array of sepearate
+services satisfying different needs.
+
+A limited number of processes need to be run directly on your host system:
+- Obsidian, with its various plugings &mdash; _required_
+- Ollama for local chat and embedding &mdash; _optional_
+- any MCP Servers which require host access (e.g. for EventKit on MacOS) &mdash; _optional_
+- the Host MCP Gateway proxy (an HTTP server) &mdash; _optional_
+
+Other services are run out of Docker Compose:
+- Durable working state and application logs are kept in **Postgres**
+- Object storage is provided by **MinIO**
+- Caching and queueing are handled by **Redis**
+- Semantic search for embeddings is powered by **Qdrant**
+- Memory (short- and long-term) is managed by **Letta**
+- Secure chat/messaging is run through **Signal**
+- And the agent process itself, built with **Pydantic AI**, which uses
+  - **LiteLLM** for model orchestration
+  - **UTCP Code-Mode** for MCP tool discovery/execution
+
+There is an optional observability stack (also managed by Docker Compose) which leverages
+**Prometheus**, **Loki**, and **Grafana**; everything is designed to use OpenTelemetry for
+instrumentation.
 
 ## Architecture
 
