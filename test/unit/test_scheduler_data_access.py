@@ -501,3 +501,1051 @@ def test_execution_audit_idempotent_by_request_id(
         )
 
     assert [audit.status for audit in audits] == ["queued", "failed"]
+
+
+# ============================================================================
+# Execution History Querying Tests (Task 24)
+# ============================================================================
+
+
+def test_get_execution_returns_record_by_id(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure get_execution returns the execution by ID."""
+    from scheduler.data_access import get_execution
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 5, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="one_time",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(run_at=scheduled_for),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        execution = create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=scheduled_for,
+                status="queued",
+            ),
+            execution_actor,
+        )
+        session.commit()
+
+        # Store IDs before session closes
+        execution_id = execution.id
+        schedule_id = schedule.id
+
+        result = get_execution(session, execution_id)
+        not_found = get_execution(session, 99999)
+
+        assert result is not None
+        assert result.id == execution_id
+        assert result.schedule_id == schedule_id
+        assert result.status == "queued"
+        assert not_found is None
+
+
+def test_list_executions_no_filters_returns_all(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_executions returns all executions when no filters are applied."""
+    from scheduler.data_access import ExecutionHistoryQuery, list_executions
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 6, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        for i in range(3):
+            create_execution(
+                session,
+                ExecutionCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_id=schedule.id,
+                    scheduled_for=scheduled_for + timedelta(days=i),
+                    status="succeeded",
+                ),
+                execution_actor,
+            )
+        session.commit()
+
+        result = list_executions(session, ExecutionHistoryQuery())
+
+    assert len(result.executions) == 3
+    # Ordered by id desc (most recent first)
+    assert result.executions[0].id > result.executions[1].id
+    assert result.next_cursor is None
+
+
+def test_list_executions_filter_by_schedule_id(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_executions filters by schedule_id."""
+    from scheduler.data_access import ExecutionHistoryQuery, list_executions
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 7, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule1 = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="one_time",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(run_at=scheduled_for),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        schedule2 = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="one_time",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(run_at=scheduled_for + timedelta(hours=1)),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        # Two executions for schedule1
+        create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule1.id,
+                scheduled_for=scheduled_for,
+                status="succeeded",
+            ),
+            execution_actor,
+        )
+        create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule1.id,
+                scheduled_for=scheduled_for + timedelta(minutes=5),
+                status="failed",
+            ),
+            execution_actor,
+        )
+        # One execution for schedule2
+        create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule2.id,
+                scheduled_for=scheduled_for + timedelta(hours=1),
+                status="succeeded",
+            ),
+            execution_actor,
+        )
+        session.commit()
+
+        result1 = list_executions(
+            session, ExecutionHistoryQuery(schedule_id=schedule1.id)
+        )
+        result2 = list_executions(
+            session, ExecutionHistoryQuery(schedule_id=schedule2.id)
+        )
+
+    assert len(result1.executions) == 2
+    assert all(e.schedule_id == schedule1.id for e in result1.executions)
+    assert len(result2.executions) == 1
+    assert result2.executions[0].schedule_id == schedule2.id
+
+
+def test_list_executions_filter_by_status(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_executions filters by status."""
+    from scheduler.data_access import ExecutionHistoryQuery, list_executions
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 8, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        for status in ["succeeded", "succeeded", "failed", "queued"]:
+            create_execution(
+                session,
+                ExecutionCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_id=schedule.id,
+                    scheduled_for=scheduled_for,
+                    status=status,
+                ),
+                execution_actor,
+            )
+        session.commit()
+
+        succeeded = list_executions(
+            session, ExecutionHistoryQuery(status="succeeded")
+        )
+        failed = list_executions(session, ExecutionHistoryQuery(status="failed"))
+        queued = list_executions(session, ExecutionHistoryQuery(status="queued"))
+
+    assert len(succeeded.executions) == 2
+    assert all(e.status == "succeeded" for e in succeeded.executions)
+    assert len(failed.executions) == 1
+    assert failed.executions[0].status == "failed"
+    assert len(queued.executions) == 1
+
+
+def test_list_executions_filter_by_actor_type(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_executions filters by actor_type."""
+    from scheduler.data_access import ExecutionHistoryQuery, list_executions
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    scheduled_for = datetime(2025, 1, 9, 10, 0, tzinfo=timezone.utc)
+
+    scheduled_actor = ExecutionActorContext(
+        actor_type="scheduled",
+        actor_id=None,
+        channel="scheduled",
+        trace_id="trace-sched",
+    )
+    human_actor = ExecutionActorContext(
+        actor_type="human",
+        actor_id="user-1",
+        channel="api",
+        trace_id="trace-human",
+    )
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        # Two scheduled executions
+        create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=scheduled_for,
+                status="succeeded",
+            ),
+            scheduled_actor,
+        )
+        create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=scheduled_for + timedelta(days=1),
+                status="succeeded",
+            ),
+            scheduled_actor,
+        )
+        # One human-triggered execution
+        create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=scheduled_for + timedelta(days=2),
+                status="succeeded",
+            ),
+            human_actor,
+        )
+        session.commit()
+
+        scheduled_result = list_executions(
+            session, ExecutionHistoryQuery(actor_type="scheduled")
+        )
+        human_result = list_executions(
+            session, ExecutionHistoryQuery(actor_type="human")
+        )
+
+    assert len(scheduled_result.executions) == 2
+    assert all(e.actor_type == "scheduled" for e in scheduled_result.executions)
+    assert len(human_result.executions) == 1
+    assert human_result.executions[0].actor_type == "human"
+
+
+def test_list_executions_filter_by_time_range(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_executions filters by created_after and created_before."""
+    from scheduler.data_access import ExecutionHistoryQuery, list_executions
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    base_time = datetime(2025, 1, 10, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=base_time - timedelta(hours=1),
+        )
+        # Create executions at different times
+        times = [
+            base_time,
+            base_time + timedelta(hours=1),
+            base_time + timedelta(hours=2),
+            base_time + timedelta(hours=3),
+        ]
+        for t in times:
+            create_execution(
+                session,
+                ExecutionCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_id=schedule.id,
+                    scheduled_for=t,
+                    status="succeeded",
+                ),
+                execution_actor,
+                now=t,
+            )
+        session.commit()
+
+        # Filter: created after 1 hour mark
+        after_result = list_executions(
+            session,
+            ExecutionHistoryQuery(created_after=base_time + timedelta(hours=1)),
+        )
+        # Filter: created before 2 hour mark
+        before_result = list_executions(
+            session,
+            ExecutionHistoryQuery(created_before=base_time + timedelta(hours=2)),
+        )
+        # Filter: within a time window
+        window_result = list_executions(
+            session,
+            ExecutionHistoryQuery(
+                created_after=base_time + timedelta(hours=1),
+                created_before=base_time + timedelta(hours=2),
+            ),
+        )
+
+    assert len(after_result.executions) == 3  # hours 1, 2, 3
+    assert len(before_result.executions) == 3  # hours 0, 1, 2
+    assert len(window_result.executions) == 2  # hours 1, 2
+
+
+def test_list_executions_pagination_with_cursor(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_executions pagination works with cursor."""
+    from scheduler.data_access import ExecutionHistoryQuery, list_executions
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 11, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        # Create 5 executions
+        for i in range(5):
+            create_execution(
+                session,
+                ExecutionCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_id=schedule.id,
+                    scheduled_for=scheduled_for + timedelta(days=i),
+                    status="succeeded",
+                ),
+                execution_actor,
+            )
+        session.commit()
+
+        # First page: limit 2
+        page1 = list_executions(session, ExecutionHistoryQuery(limit=2))
+        assert len(page1.executions) == 2
+        assert page1.next_cursor is not None
+
+        # Second page: use cursor
+        page2 = list_executions(
+            session, ExecutionHistoryQuery(limit=2, cursor=page1.next_cursor)
+        )
+        assert len(page2.executions) == 2
+        assert page2.next_cursor is not None
+        # Verify no overlap
+        page1_ids = {e.id for e in page1.executions}
+        page2_ids = {e.id for e in page2.executions}
+        assert page1_ids.isdisjoint(page2_ids)
+
+        # Third page: should have 1 record and no next cursor
+        page3 = list_executions(
+            session, ExecutionHistoryQuery(limit=2, cursor=page2.next_cursor)
+        )
+        assert len(page3.executions) == 1
+        assert page3.next_cursor is None
+
+
+def test_list_executions_combined_filters(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_executions supports combining multiple filters."""
+    from scheduler.data_access import ExecutionHistoryQuery, list_executions
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    base_time = datetime(2025, 1, 12, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=base_time - timedelta(hours=1),
+        )
+        # Create varied executions
+        create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=base_time,
+                status="succeeded",
+            ),
+            execution_actor,
+            now=base_time,
+        )
+        create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=base_time + timedelta(hours=1),
+                status="failed",
+            ),
+            execution_actor,
+            now=base_time + timedelta(hours=1),
+        )
+        create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=base_time + timedelta(hours=2),
+                status="succeeded",
+            ),
+            execution_actor,
+            now=base_time + timedelta(hours=2),
+        )
+        session.commit()
+
+        # Combined: schedule_id + status + time range
+        result = list_executions(
+            session,
+            ExecutionHistoryQuery(
+                schedule_id=schedule.id,
+                status="succeeded",
+                created_after=base_time,
+                created_before=base_time + timedelta(hours=3),
+            ),
+        )
+
+    assert len(result.executions) == 2
+    assert all(e.status == "succeeded" for e in result.executions)
+    assert all(e.schedule_id == schedule.id for e in result.executions)
+
+
+def test_list_executions_invalid_status_raises(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_executions raises ValueError for invalid status."""
+    from scheduler.data_access import ExecutionHistoryQuery, list_executions
+
+    session_factory = sqlite_session_factory
+
+    with closing(session_factory()) as session:
+        with pytest.raises(ValueError, match="Invalid execution status"):
+            list_executions(session, ExecutionHistoryQuery(status="invalid_status"))
+
+
+def test_list_executions_order_by_id_desc(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_executions returns results ordered by id descending."""
+    from scheduler.data_access import ExecutionHistoryQuery, list_executions
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 13, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        for i in range(3):
+            create_execution(
+                session,
+                ExecutionCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_id=schedule.id,
+                    scheduled_for=scheduled_for + timedelta(days=i),
+                    status="succeeded",
+                ),
+                execution_actor,
+            )
+        session.commit()
+
+        result = list_executions(session, ExecutionHistoryQuery())
+
+    ids = [e.id for e in result.executions]
+    assert ids == sorted(ids, reverse=True)
+
+
+# ============================================================================
+# Execution Audit History Querying Tests
+# ============================================================================
+
+
+def test_get_execution_audit_returns_record_by_id(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure get_execution_audit returns the audit record by ID."""
+    from scheduler.data_access import get_execution_audit
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 14, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="one_time",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(run_at=scheduled_for),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        execution = create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=scheduled_for,
+                status="queued",
+            ),
+            execution_actor,
+        )
+        session.commit()
+
+        audits = (
+            session.query(ExecutionAuditLog)
+            .filter_by(execution_id=execution.id)
+            .all()
+        )
+        audit_id = audits[0].id
+
+        result = get_execution_audit(session, audit_id)
+        not_found = get_execution_audit(session, 99999)
+
+    assert result is not None
+    assert result.id == audit_id
+    assert result.execution_id == execution.id
+    assert not_found is None
+
+
+def test_list_execution_audits_filter_by_execution_id(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_execution_audits filters by execution_id."""
+    from scheduler.data_access import (
+        ExecutionAuditHistoryQuery,
+        list_execution_audits,
+    )
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="one_time",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(run_at=scheduled_for),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        exec1 = create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=scheduled_for,
+                status="queued",
+            ),
+            execution_actor,
+        )
+        # Update to create multiple audit records
+        update_execution(
+            session,
+            exec1.id,
+            ExecutionUpdateInput(status="running"),
+            ExecutionActorContext(
+                actor_type="scheduled",
+                actor_id=None,
+                channel="scheduled",
+                trace_id="trace-2",
+            ),
+        )
+        update_execution(
+            session,
+            exec1.id,
+            ExecutionUpdateInput(status="succeeded"),
+            ExecutionActorContext(
+                actor_type="scheduled",
+                actor_id=None,
+                channel="scheduled",
+                trace_id="trace-3",
+            ),
+        )
+        # Create a second execution
+        exec2 = create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=scheduled_for + timedelta(hours=1),
+                status="queued",
+            ),
+            execution_actor,
+        )
+        session.commit()
+
+        result1 = list_execution_audits(
+            session, ExecutionAuditHistoryQuery(execution_id=exec1.id)
+        )
+        result2 = list_execution_audits(
+            session, ExecutionAuditHistoryQuery(execution_id=exec2.id)
+        )
+
+    assert len(result1.audit_logs) == 3  # queued, running, succeeded
+    assert all(a.execution_id == exec1.id for a in result1.audit_logs)
+    assert len(result2.audit_logs) == 1  # just queued
+
+
+def test_list_execution_audits_filter_by_schedule_id(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_execution_audits filters by schedule_id."""
+    from scheduler.data_access import (
+        ExecutionAuditHistoryQuery,
+        list_execution_audits,
+    )
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 16, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        sched1 = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="one_time",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(run_at=scheduled_for),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        sched2 = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="one_time",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(run_at=scheduled_for + timedelta(hours=1)),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=sched1.id,
+                scheduled_for=scheduled_for,
+                status="succeeded",
+            ),
+            execution_actor,
+        )
+        create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=sched2.id,
+                scheduled_for=scheduled_for + timedelta(hours=1),
+                status="succeeded",
+            ),
+            execution_actor,
+        )
+        session.commit()
+
+        result1 = list_execution_audits(
+            session, ExecutionAuditHistoryQuery(schedule_id=sched1.id)
+        )
+        result2 = list_execution_audits(
+            session, ExecutionAuditHistoryQuery(schedule_id=sched2.id)
+        )
+
+    assert len(result1.audit_logs) == 1
+    assert result1.audit_logs[0].schedule_id == sched1.id
+    assert len(result2.audit_logs) == 1
+    assert result2.audit_logs[0].schedule_id == sched2.id
+
+
+def test_list_execution_audits_filter_by_status(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_execution_audits filters by status."""
+    from scheduler.data_access import (
+        ExecutionAuditHistoryQuery,
+        list_execution_audits,
+    )
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 17, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="one_time",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(run_at=scheduled_for),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        exec1 = create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=scheduled_for,
+                status="queued",
+            ),
+            execution_actor,
+        )
+        update_execution(
+            session,
+            exec1.id,
+            ExecutionUpdateInput(status="succeeded"),
+            ExecutionActorContext(
+                actor_type="scheduled",
+                actor_id=None,
+                channel="scheduled",
+                trace_id="trace-success",
+            ),
+        )
+        session.commit()
+
+        queued_result = list_execution_audits(
+            session, ExecutionAuditHistoryQuery(status="queued")
+        )
+        succeeded_result = list_execution_audits(
+            session, ExecutionAuditHistoryQuery(status="succeeded")
+        )
+
+    assert len(queued_result.audit_logs) == 1
+    assert queued_result.audit_logs[0].status == "queued"
+    assert len(succeeded_result.audit_logs) == 1
+    assert succeeded_result.audit_logs[0].status == "succeeded"
+
+
+def test_list_execution_audits_filter_by_time_range(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_execution_audits filters by occurred_after and occurred_before."""
+    from scheduler.data_access import (
+        ExecutionAuditHistoryQuery,
+        list_execution_audits,
+    )
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    base_time = datetime(2025, 1, 18, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=base_time - timedelta(hours=1),
+        )
+        # Create executions at different times
+        for i in range(3):
+            create_execution(
+                session,
+                ExecutionCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_id=schedule.id,
+                    scheduled_for=base_time + timedelta(hours=i),
+                    status="succeeded",
+                ),
+                execution_actor,
+                now=base_time + timedelta(hours=i),
+            )
+        session.commit()
+
+        after_result = list_execution_audits(
+            session,
+            ExecutionAuditHistoryQuery(occurred_after=base_time + timedelta(hours=1)),
+        )
+        before_result = list_execution_audits(
+            session,
+            ExecutionAuditHistoryQuery(occurred_before=base_time + timedelta(hours=1)),
+        )
+
+    assert len(after_result.audit_logs) == 2  # hours 1 and 2
+    assert len(before_result.audit_logs) == 2  # hours 0 and 1
+
+
+def test_list_execution_audits_pagination_with_cursor(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_execution_audits pagination works with cursor."""
+    from scheduler.data_access import (
+        ExecutionAuditHistoryQuery,
+        list_execution_audits,
+    )
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 19, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        # Create 5 executions (5 audit logs)
+        for i in range(5):
+            create_execution(
+                session,
+                ExecutionCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_id=schedule.id,
+                    scheduled_for=scheduled_for + timedelta(days=i),
+                    status="succeeded",
+                ),
+                execution_actor,
+            )
+        session.commit()
+
+        # First page
+        page1 = list_execution_audits(
+            session, ExecutionAuditHistoryQuery(limit=2)
+        )
+        assert len(page1.audit_logs) == 2
+        assert page1.next_cursor is not None
+
+        # Second page
+        page2 = list_execution_audits(
+            session,
+            ExecutionAuditHistoryQuery(limit=2, cursor=page1.next_cursor),
+        )
+        assert len(page2.audit_logs) == 2
+        assert page2.next_cursor is not None
+
+        # Third page - should have 1 record
+        page3 = list_execution_audits(
+            session,
+            ExecutionAuditHistoryQuery(limit=2, cursor=page2.next_cursor),
+        )
+        assert len(page3.audit_logs) == 1
+        assert page3.next_cursor is None
+
+        # Verify no overlap
+        all_ids = (
+            [a.id for a in page1.audit_logs]
+            + [a.id for a in page2.audit_logs]
+            + [a.id for a in page3.audit_logs]
+        )
+        assert len(all_ids) == len(set(all_ids))
+
+
+def test_list_execution_audits_invalid_status_raises(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_execution_audits raises ValueError for invalid status."""
+    from scheduler.data_access import (
+        ExecutionAuditHistoryQuery,
+        list_execution_audits,
+    )
+
+    session_factory = sqlite_session_factory
+
+    with closing(session_factory()) as session:
+        with pytest.raises(ValueError, match="Invalid execution status"):
+            list_execution_audits(
+                session, ExecutionAuditHistoryQuery(status="bad_status")
+            )
+
+
+def test_list_execution_audits_order_by_id_desc(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure list_execution_audits returns results ordered by id descending."""
+    from scheduler.data_access import (
+        ExecutionAuditHistoryQuery,
+        list_execution_audits,
+    )
+
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 20, 10, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        for i in range(3):
+            create_execution(
+                session,
+                ExecutionCreateInput(
+                    task_intent_id=intent.id,
+                    schedule_id=schedule.id,
+                    scheduled_for=scheduled_for + timedelta(days=i),
+                    status="succeeded",
+                ),
+                execution_actor,
+            )
+        session.commit()
+
+        result = list_execution_audits(session, ExecutionAuditHistoryQuery())
+
+    ids = [a.id for a in result.audit_logs]
+    assert ids == sorted(ids, reverse=True)

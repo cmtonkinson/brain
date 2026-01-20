@@ -944,3 +944,230 @@ def list_predicate_evaluation_audits_by_schedule(
         .limit(limit)
         .all()
     )
+
+
+@dataclass(frozen=True)
+class ExecutionHistoryQuery:
+    """Query parameters for execution history with filtering and pagination.
+
+    Supports filtering by schedule_id, task_intent_id, status, time range,
+    and actor_type. Results are ordered by created_at descending by default.
+    Pagination is implemented using cursor-based navigation.
+    """
+
+    schedule_id: int | None = None
+    task_intent_id: int | None = None
+    status: str | None = None
+    actor_type: str | None = None
+    created_after: datetime | None = None
+    created_before: datetime | None = None
+    limit: int = 100
+    cursor: int | None = None
+
+
+@dataclass(frozen=True)
+class ExecutionHistoryResult:
+    """Result of execution history query with pagination support.
+
+    Contains the list of executions and the next cursor for pagination.
+    If next_cursor is None, there are no more results.
+    """
+
+    executions: list[Execution]
+    next_cursor: int | None
+    total_count: int | None = None
+
+
+def get_execution(session: Session, execution_id: int) -> Execution | None:
+    """Fetch an execution record by ID.
+
+    Args:
+        session: SQLAlchemy session.
+        execution_id: The execution ID to fetch.
+
+    Returns:
+        The Execution record or None if not found.
+    """
+    return session.query(Execution).filter(Execution.id == execution_id).first()
+
+
+def list_executions(
+    session: Session,
+    query: ExecutionHistoryQuery,
+) -> ExecutionHistoryResult:
+    """List executions with filtering, ordering, and pagination.
+
+    Supports filtering by schedule_id, task_intent_id, status, actor_type,
+    and time range. Results are ordered by created_at descending.
+    Uses cursor-based pagination for efficient traversal.
+
+    Args:
+        session: SQLAlchemy session.
+        query: Query parameters including filters, limit, and cursor.
+
+    Returns:
+        ExecutionHistoryResult containing matching executions and pagination cursor.
+
+    Raises:
+        ValueError: If status filter is invalid.
+    """
+    if query.status is not None:
+        _validate_execution_status(query.status)
+
+    filters = []
+
+    if query.schedule_id is not None:
+        filters.append(Execution.schedule_id == query.schedule_id)
+    if query.task_intent_id is not None:
+        filters.append(Execution.task_intent_id == query.task_intent_id)
+    if query.status is not None:
+        filters.append(Execution.status == query.status)
+    if query.actor_type is not None:
+        filters.append(Execution.actor_type == query.actor_type)
+    if query.created_after is not None:
+        created_after = _normalize_timestamp(query.created_after, "created_after")
+        filters.append(Execution.created_at >= created_after)
+    if query.created_before is not None:
+        created_before = _normalize_timestamp(query.created_before, "created_before")
+        filters.append(Execution.created_at <= created_before)
+    if query.cursor is not None:
+        filters.append(Execution.id < query.cursor)
+
+    base_query = session.query(Execution)
+    if filters:
+        base_query = base_query.filter(and_(*filters))
+
+    # Fetch one extra to determine if there are more results
+    fetch_limit = query.limit + 1
+    executions = (
+        base_query
+        .order_by(Execution.id.desc())
+        .limit(fetch_limit)
+        .all()
+    )
+
+    has_more = len(executions) > query.limit
+    if has_more:
+        executions = executions[:query.limit]
+        next_cursor = executions[-1].id if executions else None
+    else:
+        next_cursor = None
+
+    return ExecutionHistoryResult(
+        executions=executions,
+        next_cursor=next_cursor,
+    )
+
+
+@dataclass(frozen=True)
+class ExecutionAuditHistoryQuery:
+    """Query parameters for execution audit history with filtering and pagination.
+
+    Supports filtering by execution_id, schedule_id, task_intent_id, status,
+    and time range. Results are ordered by occurred_at descending by default.
+    """
+
+    execution_id: int | None = None
+    schedule_id: int | None = None
+    task_intent_id: int | None = None
+    status: str | None = None
+    occurred_after: datetime | None = None
+    occurred_before: datetime | None = None
+    limit: int = 100
+    cursor: int | None = None
+
+
+@dataclass(frozen=True)
+class ExecutionAuditHistoryResult:
+    """Result of execution audit history query with pagination support.
+
+    Contains the list of audit logs and the next cursor for pagination.
+    """
+
+    audit_logs: list[ExecutionAuditLog]
+    next_cursor: int | None
+
+
+def get_execution_audit(session: Session, audit_id: int) -> ExecutionAuditLog | None:
+    """Fetch an execution audit log by ID.
+
+    Args:
+        session: SQLAlchemy session.
+        audit_id: The execution audit log ID to fetch.
+
+    Returns:
+        The ExecutionAuditLog record or None if not found.
+    """
+    return (
+        session.query(ExecutionAuditLog)
+        .filter(ExecutionAuditLog.id == audit_id)
+        .first()
+    )
+
+
+def list_execution_audits(
+    session: Session,
+    query: ExecutionAuditHistoryQuery,
+) -> ExecutionAuditHistoryResult:
+    """List execution audit logs with filtering, ordering, and pagination.
+
+    Supports filtering by execution_id, schedule_id, task_intent_id, status,
+    and time range. Results are ordered by occurred_at descending.
+    Uses cursor-based pagination for efficient traversal.
+
+    Args:
+        session: SQLAlchemy session.
+        query: Query parameters including filters, limit, and cursor.
+
+    Returns:
+        ExecutionAuditHistoryResult containing matching audit logs and pagination cursor.
+
+    Raises:
+        ValueError: If status filter is invalid.
+    """
+    if query.status is not None:
+        _validate_execution_status(query.status)
+
+    filters = []
+
+    if query.execution_id is not None:
+        filters.append(ExecutionAuditLog.execution_id == query.execution_id)
+    if query.schedule_id is not None:
+        filters.append(ExecutionAuditLog.schedule_id == query.schedule_id)
+    if query.task_intent_id is not None:
+        filters.append(ExecutionAuditLog.task_intent_id == query.task_intent_id)
+    if query.status is not None:
+        filters.append(ExecutionAuditLog.status == query.status)
+    if query.occurred_after is not None:
+        occurred_after = _normalize_timestamp(query.occurred_after, "occurred_after")
+        filters.append(ExecutionAuditLog.occurred_at >= occurred_after)
+    if query.occurred_before is not None:
+        occurred_before = _normalize_timestamp(query.occurred_before, "occurred_before")
+        filters.append(ExecutionAuditLog.occurred_at <= occurred_before)
+    if query.cursor is not None:
+        filters.append(ExecutionAuditLog.id < query.cursor)
+
+    base_query = session.query(ExecutionAuditLog)
+    if filters:
+        base_query = base_query.filter(and_(*filters))
+
+    # Fetch one extra to determine if there are more results
+    fetch_limit = query.limit + 1
+    audit_logs = (
+        base_query
+        .order_by(ExecutionAuditLog.id.desc())
+        .limit(fetch_limit)
+        .all()
+    )
+
+    has_more = len(audit_logs) > query.limit
+    if has_more:
+        audit_logs = audit_logs[:query.limit]
+        next_cursor = audit_logs[-1].id if audit_logs else None
+    else:
+        next_cursor = None
+
+    return ExecutionAuditHistoryResult(
+        audit_logs=audit_logs,
+        next_cursor=next_cursor,
+    )
