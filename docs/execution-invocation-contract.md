@@ -73,7 +73,7 @@ payloads, retry/backoff metadata, and audit fields. All scheduled executions run
 **Execution creation**
 - Create or reuse an Execution record keyed by (`schedule_id`, `scheduled_for`).
 - Set `status = queued`, `attempt_number`, `max_attempts`, and retry policy.
-- Generate a stable `correlation_id` for audit and tracing.
+- Generate a stable `trace_id` for audit and tracing.
 
 **Invocation gate**
 - Verify schedule state is `active` (or `paused` only when run-now is used).
@@ -97,7 +97,7 @@ payloads, retry/backoff metadata, and audit fields. All scheduled executions run
   - `max_attempts`
   - `backoff_strategy` (`fixed`, `exponential`, `none`)
   - `retry_after` (optional timestamp; next retry time)
-  - `correlation_id`
+  - `trace_id`
 - `task_intent`
   - `summary`
   - `details` (optional)
@@ -159,7 +159,7 @@ For every invocation attempt, record an audit entry with explicit fields (no JSO
 - `execution_id`
 - `schedule_id`
 - `task_intent_id`
-- `correlation_id`
+- `trace_id`
 - `callback_id` (if available)
 - `actor_type`, `actor_id`, `channel`
 - `scheduled_for`

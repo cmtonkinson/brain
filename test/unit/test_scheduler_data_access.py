@@ -55,7 +55,6 @@ def _execution_actor_context() -> ExecutionActorContext:
         trace_id="trace-789",
         request_id="req-999",
         actor_context="scheduled-envelope",
-        correlation_id="corr-123",
     )
 
 
@@ -442,7 +441,6 @@ def test_execution_audit_idempotent_by_request_id(
         trace_id="trace-123",
         request_id="req-dup",
         actor_context="scheduled-envelope",
-        correlation_id="corr-dup",
     )
     scheduled_for = datetime(2025, 1, 4, 10, 0, tzinfo=timezone.utc)
 

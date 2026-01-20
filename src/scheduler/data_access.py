@@ -123,7 +123,6 @@ class ExecutionActorContext:
     trace_id: str
     request_id: str | None = None
     actor_context: str | None = None
-    correlation_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -581,19 +580,19 @@ def list_execution_history(
     )
 
 
-def get_execution_by_correlation_id(
+def get_execution_by_trace_id(
     session: Session,
     schedule_id: int,
-    correlation_id: str,
+    trace_id: str,
 ) -> Execution | None:
-    """Return the latest execution matching a schedule and correlation id."""
-    if not correlation_id.strip():
-        raise ValueError("correlation_id is required.")
+    """Return the latest execution matching a schedule and trace id."""
+    if not trace_id.strip():
+        raise ValueError("trace_id is required.")
     return (
         session.query(Execution)
         .filter(
             Execution.schedule_id == schedule_id,
-            Execution.correlation_id == correlation_id,
+            Execution.trace_id == trace_id,
         )
         .order_by(Execution.id.desc())
         .first()
@@ -630,7 +629,7 @@ def create_execution(
         updated_at=timestamp,
         actor_type=actor.actor_type,
         actor_context=actor.actor_context,
-        correlation_id=actor.correlation_id,
+        trace_id=actor.trace_id,
         status=execution_input.status,
         attempt_count=execution_input.attempt_count,
         retry_count=execution_input.retry_count,
@@ -795,7 +794,6 @@ def _record_execution_audit(
         actor_context=actor.actor_context,
         trace_id=actor.trace_id,
         request_id=actor.request_id,
-        correlation_id=actor.correlation_id,
         occurred_at=occurred_at,
     )
     session.add(audit)

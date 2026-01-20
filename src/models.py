@@ -488,7 +488,7 @@ class Execution(Base):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     actor_type = Column(String(100), nullable=False)
     actor_context = Column(String(200), nullable=True)
-    correlation_id = Column(String(200), nullable=True)
+    trace_id = Column(String(200), nullable=True)
     status = Column(ExecutionStatusEnum, nullable=False)
     attempt_count = Column(Integer, nullable=False, default=0)
     retry_count = Column(Integer, nullable=False, default=0)
@@ -547,7 +547,6 @@ class ExecutionAuditLog(Base):
     actor_context = Column(String(200), nullable=True)
     trace_id = Column(String(200), nullable=False)
     request_id = Column(String(200), nullable=True)
-    correlation_id = Column(String(200), nullable=True)
     occurred_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

@@ -97,7 +97,7 @@ aligned with Brain doctrine (authority tiers, attention routing, and constrained
   - `created_at`
   - `actor_type` (fixed: `scheduled`)
   - `actor_context` (authorization context envelope identifier)
-  - `correlation_id`
+  - `trace_id`
 - Mutable (until terminal)
   - `status` (`queued`, `running`, `succeeded`, `failed`, `retry_scheduled`, `canceled`)
   - `attempt_number`

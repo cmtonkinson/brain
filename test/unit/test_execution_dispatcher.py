@@ -134,7 +134,7 @@ def test_execution_dispatcher_creates_execution_and_payload(
     payload = DispatcherCallbackPayload(
         schedule_id=schedule_id,
         scheduled_for=scheduled_for,
-        correlation_id="callback-123",
+        trace_id="callback-123",
         emitted_at=scheduled_for,
     )
 
@@ -156,7 +156,7 @@ def test_execution_dispatcher_creates_execution_and_payload(
     with closing(sqlite_session_factory()) as session:
         execution = session.query(Execution).filter(Execution.id == result.execution_id).first()
         assert execution is not None
-        assert execution.correlation_id == "callback-123"
+        assert execution.trace_id == "callback-123"
         assert execution.status == "succeeded"
         schedule = session.query(Schedule).filter(Schedule.id == schedule_id).first()
         assert schedule is not None
@@ -196,7 +196,7 @@ def test_execution_dispatcher_rejects_inactive_schedule(
     payload = DispatcherCallbackPayload(
         schedule_id=schedule_id,
         scheduled_for=datetime(2025, 2, 2, 10, 0, tzinfo=timezone.utc),
-        correlation_id="callback-paused",
+        trace_id="callback-paused",
         emitted_at=datetime(2025, 2, 2, 10, 0, tzinfo=timezone.utc),
     )
 
@@ -222,7 +222,7 @@ def test_execution_dispatcher_idempotent_audit_on_replay(
     payload = DispatcherCallbackPayload(
         schedule_id=schedule_id,
         scheduled_for=scheduled_for,
-        correlation_id="callback-dup",
+        trace_id="callback-dup",
         emitted_at=scheduled_for,
     )
 
@@ -271,7 +271,7 @@ def test_execution_dispatcher_records_exception_failure_audit(
     payload = DispatcherCallbackPayload(
         schedule_id=schedule_id,
         scheduled_for=scheduled_for,
-        correlation_id="callback-exc",
+        trace_id="callback-exc",
         emitted_at=scheduled_for,
     )
 
@@ -337,7 +337,7 @@ def test_execution_dispatcher_records_deferred_retry_audit(
     payload = DispatcherCallbackPayload(
         schedule_id=schedule_id,
         scheduled_for=scheduled_for,
-        correlation_id="callback-defer",
+        trace_id="callback-defer",
         emitted_at=scheduled_for,
     )
 
@@ -394,7 +394,7 @@ def test_execution_dispatcher_updates_one_time_schedule_completion(
     payload = DispatcherCallbackPayload(
         schedule_id=schedule_id,
         scheduled_for=scheduled_for,
-        correlation_id="callback-one-time",
+        trace_id="callback-one-time",
         emitted_at=scheduled_for,
     )
 

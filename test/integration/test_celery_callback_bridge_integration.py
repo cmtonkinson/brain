@@ -30,9 +30,8 @@ class _DispatcherStub:
             actor_type="scheduled",
             actor_id=None,
             channel="scheduled",
-            trace_id="trace-dispatch",
             request_id="req-dispatch",
-            correlation_id=payload.correlation_id,
+            trace_id=payload.trace_id,
         )
         with closing(self.session_factory()) as session:
             schedule = session.query(Schedule).filter(Schedule.id == payload.schedule_id).first()
@@ -88,7 +87,7 @@ def test_celery_callback_invokes_dispatcher(
         CeleryCallbackRequest(
             schedule_id=schedule.id,
             scheduled_for=None,
-            correlation_id="cb-integration",
+            trace_id="cb-integration",
             emitted_at=emitted_at,
             provider_attempt=1,
             provider_task_id="celery-task-99",
@@ -97,7 +96,7 @@ def test_celery_callback_invokes_dispatcher(
     )
 
     with closing(sqlite_session_factory()) as session:
-        execution = data_access.get_execution_by_correlation_id(
+        execution = data_access.get_execution_by_trace_id(
             session,
             schedule.id,
             "cb-integration",

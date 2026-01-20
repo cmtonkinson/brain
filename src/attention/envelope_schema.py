@@ -138,7 +138,7 @@ class RoutingEnvelope(BaseModel):
     urgency: float = Field(..., ge=0.0, le=1.0)
     channel_cost: float = Field(..., ge=0.0, le=1.0)
     content_type: str = Field(..., min_length=1)
-    correlation_id: str = Field(default_factory=lambda: uuid4().hex, min_length=1)
+    trace_id: str = Field(default_factory=lambda: uuid4().hex, min_length=1)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     deadline: datetime | None = None
     previous_severity: int | None = Field(default=None, ge=0)
@@ -170,13 +170,13 @@ class RoutingEnvelope(BaseModel):
             raise ValueError("Optional fields must be non-empty when provided.")
         return normalized
 
-    @field_validator("correlation_id")
+    @field_validator("trace_id")
     @classmethod
-    def _strip_correlation_id(cls, value: str) -> str:
-        """Normalize correlation identifiers."""
+    def _strip_trace_id(cls, value: str) -> str:
+        """Normalize trace identifiers."""
         normalized = value.strip()
         if not normalized:
-            raise ValueError("correlation_id must be non-empty.")
+            raise ValueError("trace_id must be non-empty.")
         return normalized
 
     @field_validator("timestamp", "deadline")

@@ -104,7 +104,7 @@ Conditional schedules must define evaluation cadence at creation time:
 - `actor_context` (ActorContext)
 - `provider_name` (required; scheduler identifier)
 - `provider_attempt` (required int; delivery attempt)
-- `correlation_id` (required; for audit)
+- `trace_id` (required; for audit)
 
 ### PredicateEvaluationResult
 - `status` (`true`, `false`, `error`)
@@ -152,7 +152,7 @@ Each evaluation attempt must be recorded with explicit fields (no JSON blobs):
 - `observed_value` (nullable)
 - `provider_name`
 - `provider_attempt`
-- `correlation_id`
+- `trace_id`
 
 ## Determinism and Inspectability
 - Predicate evaluation must not depend on mutable global state without explicit subject

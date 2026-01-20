@@ -22,7 +22,7 @@ class DispatcherCallbackPayload:
 
     schedule_id: int
     scheduled_for: datetime
-    correlation_id: str
+    trace_id: str
     emitted_at: datetime
 
 
@@ -58,10 +58,10 @@ class CallbackBridge:
         """Validate a callback payload, enforce idempotency, and invoke dispatcher."""
         _validate_payload(payload)
         with closing(self._session_factory()) as session:
-            existing = data_access.get_execution_by_correlation_id(
+            existing = data_access.get_execution_by_trace_id(
                 session,
                 payload.schedule_id,
-                payload.correlation_id,
+                payload.trace_id,
             )
         if existing is not None:
             return CallbackBridgeResult(
@@ -76,8 +76,8 @@ def _validate_payload(payload: DispatcherCallbackPayload) -> None:
     """Validate callback payload fields before dispatch."""
     if payload.schedule_id <= 0:
         raise CallbackBridgeError("schedule_id must be a positive integer.")
-    if not payload.correlation_id.strip():
-        raise CallbackBridgeError("correlation_id is required.")
+    if not payload.trace_id.strip():
+        raise CallbackBridgeError("trace_id is required.")
     payload_scheduled = _ensure_aware(payload.scheduled_for)
     payload_emitted = _ensure_aware(payload.emitted_at)
     if (

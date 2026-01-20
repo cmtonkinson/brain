@@ -55,15 +55,14 @@ def _seed_schedule(session):
     return intent, schedule
 
 
-def _execution_actor(correlation_id: str) -> data_access.ExecutionActorContext:
+def _execution_actor(trace_id: str) -> data_access.ExecutionActorContext:
     """Return an execution actor context for scheduler callbacks."""
     return data_access.ExecutionActorContext(
         actor_type="scheduled",
         actor_id=None,
         channel="scheduled",
-        trace_id="trace-callback",
         request_id="req-callback",
-        correlation_id=correlation_id,
+        trace_id=trace_id,
     )
 
 
@@ -73,7 +72,7 @@ def test_translate_celery_callback_uses_emitted_at_when_missing() -> None:
     request = CeleryCallbackRequest(
         schedule_id=11,
         scheduled_for=None,
-        correlation_id="cb-11",
+        trace_id="cb-11",
         emitted_at=emitted_at,
         provider_attempt=1,
         provider_task_id="celery-task-11",
@@ -83,7 +82,7 @@ def test_translate_celery_callback_uses_emitted_at_when_missing() -> None:
 
     assert payload.schedule_id == 11
     assert payload.scheduled_for == emitted_at
-    assert payload.correlation_id == "cb-11"
+    assert payload.trace_id == "cb-11"
     assert payload.emitted_at == emitted_at
 
 
@@ -112,7 +111,7 @@ def test_callback_bridge_skips_duplicate_callbacks(
     payload = DispatcherCallbackPayload(
         schedule_id=schedule_id,
         scheduled_for=scheduled_for,
-        correlation_id="cb-duplicate",
+        trace_id="cb-duplicate",
         emitted_at=scheduled_for,
     )
 
@@ -138,7 +137,7 @@ def test_callback_bridge_dispatches_new_callbacks(
     payload = DispatcherCallbackPayload(
         schedule_id=schedule_id,
         scheduled_for=scheduled_for,
-        correlation_id="cb-new",
+        trace_id="cb-new",
         emitted_at=scheduled_for,
     )
 

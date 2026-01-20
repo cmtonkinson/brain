@@ -126,7 +126,7 @@ def test_dispatcher_invokes_agent_and_routes_attention(
         DispatcherCallbackPayload(
             schedule_id=schedule.id,
             scheduled_for=scheduled_for,
-            correlation_id="callback-router",
+            trace_id="callback-router",
             emitted_at=scheduled_for,
         )
     )
