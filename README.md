@@ -7,7 +7,7 @@ An exocortex for attention, memory, and action. Brain is a local-first AI system
 durable knowledge; "cognitive infrastructure" that prioritizes context, directs intent deliberately, and closes loops.
 
 ## Overview
-_Conceptually_ Brain has three parts:
+_Conceptually_, Brain has three parts:
 1. A **personal knowledge base**: durable, human-readable, locally-stored information. At its simplest, this could be a
    single (if very large) file.
 2. A **reasoning engine**: an LLM used to interpret context, propose actions, explain decisions, and interact with you
@@ -15,10 +15,10 @@ _Conceptually_ Brain has three parts:
 3. A **capability layer**: governed operations that interact with the real world (files, calendars, messaging, etc.) via
    native APIs or MCP Servers.
 
-The **agent** serves to coordinate these concerns while keeping them separate, inspectable, and under your control.
+The **Agent** serves to coordinate these concerns while keeping them separate, inspectable, and under your control.
 
-_Technically_, the system takes advantage of Docker to isolate subsystems. In an ideal world every component would be
-containerized, but for various reasons (security boundaries, usability, performance) there are a limited number of
+_Architecturally_, the system takes advantage of Docker to isolate subsystems. In an ideal world every component would
+be containerized, but for various reasons (security boundaries, usability, performance) there are a limited number of
 services that need to run directly on your host system:
 - Obsidian, with its various plugins &mdash; _required_
 - Ollama for local chat and embedding &mdash; _optional_
@@ -32,7 +32,7 @@ All other services are run with Docker Compose:
 - Semantic search for embeddings is powered by **Qdrant**
 - Memory (short- and long-term) is managed by **Letta**
 - Secure chat/messaging is run through **Signal**
-- And the agent process itself, built with **Pydantic AI**, which uses
+- And the Agent process itself, built with **Pydantic AI**, leverages 
   - **LiteLLM** for model orchestration
   - **UTCP Code-Mode** for MCP tool discovery/execution
 
@@ -68,9 +68,9 @@ There is an optional OpenTelemetry-based observability stack (a separate but rel
 ```
 
 ## Data Tiers (Current State)
-
 **Tier 0 — Authoritative**
 - Obsidian vault (canonical notes, promoted memory)
+- TODO: Add MinIO
 - Configuration/policy files under `~/.config/brain`
 
 **Tier 1 — Durable system state**
@@ -81,10 +81,10 @@ There is an optional OpenTelemetry-based observability stack (a separate but rel
 **Tier 2 — Derived / cache**
 - Qdrant embeddings and indexes
 - Summaries and derived artifacts
+- TODO: Add Redis, Qdrant
 
 ## Phased Implementation
-
-### Phase 1: Text interaction + memory + MCP tools (current)
+### Phase 1: Text interaction + memory + MCP tools (implmented)
 - Obsidian Local REST API integration (read/write)
 - Letta archival memory
 - Code-Mode (UTCP) for MCP tool calls
@@ -92,23 +92,23 @@ There is an optional OpenTelemetry-based observability stack (a separate but rel
 - Vault indexer + Qdrant semantic search
 - Optional observability stack (OTel)
 
-### Phase 2: The "Assitant Triangle"
+### Phase 2: The "Assitant Triangle" (in work)
 - Skill framework + capability registry
 - Attention router + interruption policy
 - Commitment tracking + loop closure
+- Requires: scheduled/background jobs, policy engine, etc
 
-### Phase 3: Voice + telephony + SMS (combined)
+### Phase 3: Voice + telephony + SMS (planned)
 - Local voice (whisper.cpp + Piper)
 - POTS phone support (Twilio Media Streams)
 - SMS fallback (Google Voice)
 
 ## Prerequisites
-
 - macOS host (for EventKit MCP and host gateway)
 - Docker + Docker Compose
 - Python 3.13
 - Obsidian + Local REST API plugin
-- Optional: Ollama for local embeddings
+- Optional: Ollama for local chat/embeddings
 
 ### Obsidian setup
 1. Install Obsidian from https://obsidian.md
