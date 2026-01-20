@@ -17,7 +17,7 @@ This feature enables Brain to:
 - run periodic reviews and watchers
 - deliver notifications and follow-ups at the right time
 
-All while respecting autonomy, policy, and attention constraints.
+All while respecting autonomy and attention constraints, and remaining policy-aware where required.
 
 ---
 
@@ -34,7 +34,7 @@ Without a scheduling layer:
 Brain requires a **time-aware execution model** that is:
 - dynamic
 - inspectable
-- policy-governed
+- policy-aware
 - decoupled from implementation details
 
 ---
@@ -46,13 +46,13 @@ Brain requires a **time-aware execution model** that is:
 - Allow schedules to be created, modified, paused, or canceled at runtime
 - Enable scheduled tasks to invoke the Brain agent safely
 - Persist task intent and state durably
-- Integrate with memory, attention, and policy layers
+- Integrate with memory and attention layers; remain policy-aware where required
 
 ### Non-Goals
 - Real-time sub-second task execution
 - Hard dependency on any specific scheduler, queue, or framework
 - User-facing calendar replacement
-- Fully autonomous background actions without policy review
+- Fully autonomous background actions without attention routing or authorization context
 
 ---
 
@@ -61,7 +61,7 @@ Brain requires a **time-aware execution model** that is:
 1. **Time is a first-class input**
 2. **Schedules are data, not configuration**
 3. **Execution is decoupled from intent**
-4. **All scheduled actions are policy-bound**
+4. **Scheduled actions are policy-aware, not policy-bound**
 5. **Humans must be able to inspect and reason about schedules**
 
 ---
@@ -160,7 +160,11 @@ This enables audit, debugging, and trust.
 
 ---
 
-## 7. Policy & Safety Integration
+## 7. Policy Awareness & Safety Integration
+
+Policy awareness is limited to two cases:
+- Outbound notifications must flow through the Attention Router.
+- Skill/Ops invocation must carry the scheduled actor context so authorization policies evaluate correctly.
 
 ### 7.1 Actor Context
 
@@ -203,9 +207,7 @@ For each task and execution, the system must record:
 - execution timestamps
 - outcomes
 - side effects
-
-Optional:
-- summarized execution logs in Obsidian
+- full audit logging for every scheduled job invocation stored in Postgres
 - dashboards or CLI inspection tools
 
 ---
@@ -229,7 +231,7 @@ Mitigation:
 Mitigation:
 - conservative default autonomy
 - human-in-the-loop approvals
-- explicit policy gates
+- explicit attention routing gates and authorization context
 
 ---
 
@@ -248,7 +250,7 @@ Mitigation:
 - [ ] Schedule and task intent data model defined
 - [ ] Runtime schedule management supported
 - [ ] Execution invokes Brain agent
-- [ ] Policy and attention routing enforced
+- [ ] Attention routing enforced; scheduled actor context applied for authorization
 - [ ] Execution history persisted
 - [ ] Review and inspection mechanisms available
 
