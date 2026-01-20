@@ -7,7 +7,7 @@ Docblock:
 # Work Jobs Index (Critical Path Order)
 
 01. [closed] work-jobs/task-01-domain-model-state-transitions.md (epic 01, milestone 01)
-02. [open] work-jobs/task-02-architecture-boundaries-dataflow.md (epic 01, milestone 01)
+02. [closed] work-jobs/task-02-architecture-boundaries-dataflow.md (epic 01, milestone 01)
 03. [open] work-jobs/task-03-schedule-management-api-contract.md (epic 01, milestone 01)
 04. [open] work-jobs/task-04-execution-invocation-contract.md (epic 01, milestone 01)
 05. [open] work-jobs/task-05-predicate-evaluation-contract.md (epic 01, milestone 01)
