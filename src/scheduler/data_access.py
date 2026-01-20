@@ -6,8 +6,6 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
@@ -16,14 +14,18 @@ from models import (
     Execution,
     ExecutionAuditLog,
     ExecutionStatusEnum,
-    IntervalUnitEnum,
-    PredicateOperatorEnum,
     Schedule,
     ScheduleAuditEventTypeEnum,
     ScheduleAuditLog,
-    ScheduleStateEnum,
-    ScheduleTypeEnum,
     TaskIntent,
+)
+from scheduler.schedule_validation import (
+    validate_schedule_definition,
+    validate_schedule_state,
+    validate_schedule_state_transition,
+    validate_schedule_type,
+    validate_task_intent_immutable,
+    validate_timezone,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,9 +84,22 @@ class ScheduleCreateInput:
 
 
 @dataclass(frozen=True)
+class ScheduleCreateWithIntentInput:
+    """Input payload for creating a schedule with inline task intent."""
+
+    task_intent: TaskIntentInput
+    schedule_type: str
+    timezone: str
+    definition: ScheduleDefinitionInput
+    state: str = "active"
+    next_run_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class ScheduleUpdateInput:
     """Input payload for updating a schedule."""
 
+    task_intent_id: int | object = UNSET
     timezone: str | object = UNSET
     state: str | object = UNSET
     next_run_at: datetime | None | object = UNSET
@@ -156,16 +171,6 @@ def _normalize_timestamp(value: datetime, label: str) -> datetime:
     return value
 
 
-def _validate_timezone(timezone_name: str) -> None:
-    """Validate that the timezone name resolves to a ZoneInfo entry."""
-    if not timezone_name.strip():
-        raise ValueError("timezone is required.")
-    try:
-        ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError as exc:
-        raise ValueError(f"Invalid timezone: {timezone_name}") from exc
-
-
 def _validate_actor_context(context: ActorContext, *, allow_scheduled: bool = False) -> None:
     """Validate actor context inputs for schedule mutations."""
     if not context.actor_type.strip():
@@ -188,67 +193,10 @@ def _validate_execution_actor_context(context: ExecutionActorContext) -> None:
         raise ValueError("trace_id is required.")
 
 
-def _validate_schedule_type(schedule_type: str) -> None:
-    """Validate schedule type against allowed values."""
-    if schedule_type not in ScheduleTypeEnum.enums:
-        raise ValueError(f"Invalid schedule_type: {schedule_type}.")
-
-
-def _validate_schedule_state(state: str) -> None:
-    """Validate schedule state against allowed values."""
-    if state not in ScheduleStateEnum.enums:
-        raise ValueError(f"Invalid schedule state: {state}.")
-
-
 def _validate_execution_status(status: str) -> None:
     """Validate execution status against allowed values."""
     if status not in ExecutionStatusEnum.enums:
         raise ValueError(f"Invalid execution status: {status}.")
-
-
-def _validate_interval_unit(unit: str | None) -> None:
-    """Validate interval unit against allowed values."""
-    if unit is None or unit not in IntervalUnitEnum.enums:
-        raise ValueError("interval_unit is required and must be valid.")
-
-
-def _validate_predicate_operator(operator: str | None) -> None:
-    """Validate predicate operator against allowed values."""
-    if operator is None or operator not in PredicateOperatorEnum.enums:
-        raise ValueError("predicate_operator is required and must be valid.")
-
-
-def _validate_definition(schedule_type: str, definition: ScheduleDefinitionInput) -> None:
-    """Validate schedule definition fields based on schedule type."""
-    _validate_schedule_type(schedule_type)
-
-    if schedule_type == "one_time":
-        if definition.run_at is None:
-            raise ValueError("run_at is required for one_time schedules.")
-    elif schedule_type == "interval":
-        if definition.interval_count is None or definition.interval_count <= 0:
-            raise ValueError("interval_count is required and must be > 0.")
-        _validate_interval_unit(definition.interval_unit)
-    elif schedule_type == "calendar_rule":
-        if definition.rrule is None or not definition.rrule.strip():
-            raise ValueError("rrule is required for calendar_rule schedules.")
-    elif schedule_type == "conditional":
-        if definition.predicate_subject is None or not definition.predicate_subject.strip():
-            raise ValueError("predicate_subject is required for conditional schedules.")
-        _validate_predicate_operator(definition.predicate_operator)
-        if definition.predicate_operator != "exists":
-            if definition.predicate_value is None or not str(definition.predicate_value).strip():
-                raise ValueError("predicate_value is required for conditional schedules.")
-        if (
-            definition.evaluation_interval_count is None
-            or definition.evaluation_interval_count <= 0
-        ):
-            raise ValueError("evaluation_interval_count is required and must be > 0.")
-        if (
-            definition.evaluation_interval_unit is None
-            or definition.evaluation_interval_unit not in ("minute", "hour", "day", "week")
-        ):
-            raise ValueError("evaluation_interval_unit is required and must be valid.")
 
 
 def _definition_fields(definition: ScheduleDefinitionInput) -> dict[str, object | None]:
@@ -339,6 +287,48 @@ def update_task_intent(
     return intent
 
 
+def create_schedule_with_intent(
+    session: Session,
+    schedule_input: ScheduleCreateWithIntentInput,
+    actor: ActorContext,
+    *,
+    now: datetime | None = None,
+) -> tuple[TaskIntent, Schedule]:
+    """Create a task intent and schedule from an inline intent payload."""
+    if schedule_input.task_intent is None:
+        raise ValueError("task intent is required.")
+    if not isinstance(schedule_input.task_intent, TaskIntentInput):
+        raise ValueError("task intent must be provided as TaskIntentInput.")
+    if not isinstance(schedule_input.definition, ScheduleDefinitionInput):
+        raise ValueError("definition must be provided as ScheduleDefinitionInput.")
+
+    timestamp = _normalize_timestamp(now or datetime.now(timezone.utc), "created_at")
+    validate_schedule_type(schedule_input.schedule_type)
+    validate_schedule_state(schedule_input.state)
+    validate_timezone(schedule_input.timezone)
+    validate_schedule_definition(
+        schedule_input.schedule_type,
+        schedule_input.definition,
+        now=timestamp,
+        require_future_run_at=True,
+    )
+    intent = create_task_intent(session, schedule_input.task_intent, actor, now=timestamp)
+    schedule = create_schedule(
+        session,
+        ScheduleCreateInput(
+            task_intent_id=intent.id,
+            schedule_type=schedule_input.schedule_type,
+            timezone=schedule_input.timezone,
+            definition=schedule_input.definition,
+            state=schedule_input.state,
+            next_run_at=schedule_input.next_run_at,
+        ),
+        actor,
+        now=timestamp,
+    )
+    return intent, schedule
+
+
 def create_schedule(
     session: Session,
     schedule_input: ScheduleCreateInput,
@@ -348,15 +338,20 @@ def create_schedule(
 ) -> Schedule:
     """Create a schedule and write an audit entry."""
     _validate_actor_context(actor)
-    _validate_schedule_type(schedule_input.schedule_type)
-    _validate_schedule_state(schedule_input.state)
-    _validate_timezone(schedule_input.timezone)
-    _validate_definition(schedule_input.schedule_type, schedule_input.definition)
+    timestamp = _normalize_timestamp(now or datetime.now(timezone.utc), "created_at")
+    validate_schedule_type(schedule_input.schedule_type)
+    validate_schedule_state(schedule_input.state)
+    validate_timezone(schedule_input.timezone)
+    validate_schedule_definition(
+        schedule_input.schedule_type,
+        schedule_input.definition,
+        now=timestamp,
+        require_future_run_at=True,
+    )
 
     if get_task_intent(session, schedule_input.task_intent_id) is None:
         raise ValueError("task intent not found.")
 
-    timestamp = _normalize_timestamp(now or datetime.now(timezone.utc), "created_at")
     schedule = Schedule(
         task_intent_id=schedule_input.task_intent_id,
         schedule_type=schedule_input.schedule_type,
@@ -403,13 +398,22 @@ def update_schedule(
     changes: list[str] = []
     timestamp = _normalize_timestamp(now or datetime.now(timezone.utc), "updated_at")
 
+    if updates.task_intent_id is not UNSET:
+        validate_task_intent_immutable(schedule.task_intent_id, updates.task_intent_id)
     if updates.timezone is not UNSET:
-        _validate_timezone(str(updates.timezone))
+        validate_timezone(str(updates.timezone))
         schedule.timezone = str(updates.timezone)
         changes.append("timezone")
     if updates.state is not UNSET:
-        _validate_schedule_state(str(updates.state))
-        schedule.state = str(updates.state)
+        target_state = str(updates.state)
+        validate_schedule_state(target_state)
+        allow_noop = event_type not in {"pause", "resume", "delete"}
+        validate_schedule_state_transition(
+            schedule.state,
+            target_state,
+            allow_noop=allow_noop,
+        )
+        schedule.state = target_state
         changes.append("state")
     if updates.next_run_at is not UNSET:
         schedule.next_run_at = updates.next_run_at
@@ -443,7 +447,12 @@ def update_schedule(
         definition = updates.definition
         if not isinstance(definition, ScheduleDefinitionInput):
             raise ValueError("definition must be provided as ScheduleDefinitionInput.")
-        _validate_definition(schedule.schedule_type, definition)
+        validate_schedule_definition(
+            schedule.schedule_type,
+            definition,
+            now=timestamp,
+            require_future_run_at=True,
+        )
         for field_name, value in _definition_fields(definition).items():
             setattr(schedule, field_name, value)
         changes.append("definition")

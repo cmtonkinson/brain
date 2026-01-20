@@ -14,18 +14,21 @@ from scheduler.data_access import (
     ExecutionActorContext,
     ExecutionCreateInput,
     ExecutionUpdateInput,
+    ScheduleCreateWithIntentInput,
     ScheduleCreateInput,
     ScheduleDefinitionInput,
     ScheduleUpdateInput,
     TaskIntentInput,
     create_execution,
     create_schedule,
+    create_schedule_with_intent,
     create_task_intent,
     list_due_schedules,
     update_execution,
     update_schedule,
     update_task_intent,
 )
+from scheduler.schedule_service_interface import ScheduleValidationError
 
 
 def _actor_context() -> ActorContext:
@@ -51,6 +54,84 @@ def _execution_actor_context() -> ExecutionActorContext:
         actor_context="scheduled-envelope",
         correlation_id="corr-123",
     )
+
+
+def test_task_intent_creation_populates_audit_fields(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure task intent creation persists actor and timestamp fields."""
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    now = datetime(2025, 1, 1, 8, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(
+            session,
+            TaskIntentInput(
+                summary="  Check status  ",
+                details="Details",
+                origin_reference="signal:msg-1",
+            ),
+            actor,
+            now=now,
+        )
+        session.commit()
+        session.refresh(intent)
+
+        assert intent.summary == "Check status"
+        assert intent.details == "Details"
+        assert intent.origin_reference == "signal:msg-1"
+        assert intent.creator_actor_type == actor.actor_type
+        assert intent.creator_actor_id == actor.actor_id
+        assert intent.creator_channel == actor.channel
+        assert intent.created_at == now.replace(tzinfo=None)
+        assert intent.updated_at == now.replace(tzinfo=None)
+
+
+def test_schedule_create_with_intent_requires_payload(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure inline schedule creation requires a task intent payload."""
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    run_at = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        with pytest.raises(ValueError):
+            create_schedule_with_intent(
+                session,
+                ScheduleCreateWithIntentInput(
+                    task_intent=None,
+                    schedule_type="one_time",
+                    timezone="UTC",
+                    definition=ScheduleDefinitionInput(run_at=run_at),
+                ),
+                actor,
+            )
+
+
+def test_schedule_create_with_intent_rejects_blank_summary(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure inline intent creation rejects blank summaries."""
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    run_at = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+    validation_now = run_at - timedelta(hours=1)
+
+    with closing(session_factory()) as session:
+        with pytest.raises(ValueError):
+            create_schedule_with_intent(
+                session,
+                ScheduleCreateWithIntentInput(
+                    task_intent=TaskIntentInput(summary="   "),
+                    schedule_type="one_time",
+                    timezone="UTC",
+                    definition=ScheduleDefinitionInput(run_at=run_at),
+                ),
+                actor,
+                now=validation_now,
+            )
 
 
 def test_task_intent_immutability_enforced(
@@ -131,7 +212,7 @@ def test_schedule_definition_validation_rejects_missing_cadence(
 
     with closing(session_factory()) as session:
         intent = create_task_intent(session, TaskIntentInput(summary="Check status"), actor)
-        with pytest.raises(ValueError):
+        with pytest.raises(ScheduleValidationError):
             create_schedule(
                 session,
                 ScheduleCreateInput(
@@ -147,7 +228,7 @@ def test_schedule_definition_validation_rejects_missing_cadence(
                 actor,
             )
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ScheduleValidationError):
             create_schedule(
                 session,
                 ScheduleCreateInput(
@@ -184,6 +265,7 @@ def test_schedule_update_writes_audit(
                 definition=ScheduleDefinitionInput(run_at=now + timedelta(hours=1)),
             ),
             actor,
+            now=now,
         )
         update_schedule(
             session,
@@ -192,6 +274,7 @@ def test_schedule_update_writes_audit(
                 definition=ScheduleDefinitionInput(run_at=now + timedelta(hours=2)),
             ),
             actor,
+            now=now,
         )
         session.commit()
         audits = (
@@ -224,6 +307,7 @@ def test_execution_audit_logging_on_create_and_update(
                 definition=ScheduleDefinitionInput(run_at=scheduled_for),
             ),
             actor,
+            now=scheduled_for - timedelta(hours=1),
         )
         execution = create_execution(
             session,
