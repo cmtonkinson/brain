@@ -1171,3 +1171,369 @@ def list_execution_audits(
         audit_logs=audit_logs,
         next_cursor=next_cursor,
     )
+
+
+# ============================================================================
+# Schedule Audit History Querying
+# ============================================================================
+
+
+def _validate_schedule_audit_event_type(event_type: str) -> None:
+    """Validate schedule audit event type against allowed values."""
+    if event_type not in ScheduleAuditEventTypeEnum.enums:
+        raise ValueError(f"Invalid schedule audit event type: {event_type}.")
+
+
+@dataclass(frozen=True)
+class ScheduleAuditHistoryQuery:
+    """Query parameters for schedule audit history with filtering and pagination.
+
+    Supports filtering by schedule_id, task_intent_id, event_type, and time range.
+    Results are ordered by id descending by default.
+    """
+
+    schedule_id: int | None = None
+    task_intent_id: int | None = None
+    event_type: str | None = None
+    occurred_after: datetime | None = None
+    occurred_before: datetime | None = None
+    limit: int = 100
+    cursor: int | None = None
+
+
+@dataclass(frozen=True)
+class ScheduleAuditHistoryResult:
+    """Result of schedule audit history query with pagination support.
+
+    Contains the list of audit logs and the next cursor for pagination.
+    """
+
+    audit_logs: list[ScheduleAuditLog]
+    next_cursor: int | None
+
+
+def get_schedule_audit(session: Session, audit_id: int) -> ScheduleAuditLog | None:
+    """Fetch a schedule audit log by ID.
+
+    Args:
+        session: SQLAlchemy session.
+        audit_id: The schedule audit log ID to fetch.
+
+    Returns:
+        The ScheduleAuditLog record or None if not found.
+    """
+    return (
+        session.query(ScheduleAuditLog)
+        .filter(ScheduleAuditLog.id == audit_id)
+        .first()
+    )
+
+
+def list_schedule_audits(
+    session: Session,
+    query: ScheduleAuditHistoryQuery,
+) -> ScheduleAuditHistoryResult:
+    """List schedule audit logs with filtering, ordering, and pagination.
+
+    Supports filtering by schedule_id, task_intent_id, event_type, and time range.
+    Results are ordered by id descending.
+    Uses cursor-based pagination for efficient traversal.
+
+    Args:
+        session: SQLAlchemy session.
+        query: Query parameters including filters, limit, and cursor.
+
+    Returns:
+        ScheduleAuditHistoryResult containing matching audit logs and pagination cursor.
+
+    Raises:
+        ValueError: If event_type filter is invalid.
+    """
+    if query.event_type is not None:
+        _validate_schedule_audit_event_type(query.event_type)
+
+    filters = []
+
+    if query.schedule_id is not None:
+        filters.append(ScheduleAuditLog.schedule_id == query.schedule_id)
+    if query.task_intent_id is not None:
+        filters.append(ScheduleAuditLog.task_intent_id == query.task_intent_id)
+    if query.event_type is not None:
+        filters.append(ScheduleAuditLog.event_type == query.event_type)
+    if query.occurred_after is not None:
+        occurred_after = _normalize_timestamp(query.occurred_after, "occurred_after")
+        filters.append(ScheduleAuditLog.occurred_at >= occurred_after)
+    if query.occurred_before is not None:
+        occurred_before = _normalize_timestamp(query.occurred_before, "occurred_before")
+        filters.append(ScheduleAuditLog.occurred_at <= occurred_before)
+    if query.cursor is not None:
+        filters.append(ScheduleAuditLog.id < query.cursor)
+
+    base_query = session.query(ScheduleAuditLog)
+    if filters:
+        base_query = base_query.filter(and_(*filters))
+
+    # Fetch one extra to determine if there are more results
+    fetch_limit = query.limit + 1
+    audit_logs = (
+        base_query
+        .order_by(ScheduleAuditLog.id.desc())
+        .limit(fetch_limit)
+        .all()
+    )
+
+    has_more = len(audit_logs) > query.limit
+    if has_more:
+        audit_logs = audit_logs[:query.limit]
+        next_cursor = audit_logs[-1].id if audit_logs else None
+    else:
+        next_cursor = None
+
+    return ScheduleAuditHistoryResult(
+        audit_logs=audit_logs,
+        next_cursor=next_cursor,
+    )
+
+
+# ============================================================================
+# Predicate Evaluation Audit History Querying
+# ============================================================================
+
+
+def _validate_predicate_evaluation_status(status: str) -> None:
+    """Validate predicate evaluation status against allowed values."""
+    from models import PredicateEvaluationStatusEnum
+
+    if status not in PredicateEvaluationStatusEnum.enums:
+        raise ValueError(f"Invalid predicate evaluation status: {status}.")
+
+
+@dataclass(frozen=True)
+class PredicateEvaluationAuditHistoryQuery:
+    """Query parameters for predicate evaluation audit history with filtering and pagination.
+
+    Supports filtering by schedule_id, execution_id, task_intent_id, status,
+    and time range. Results are ordered by id descending by default.
+    """
+
+    schedule_id: int | None = None
+    execution_id: int | None = None
+    task_intent_id: int | None = None
+    status: str | None = None
+    evaluated_after: datetime | None = None
+    evaluated_before: datetime | None = None
+    limit: int = 100
+    cursor: int | None = None
+
+
+@dataclass(frozen=True)
+class PredicateEvaluationAuditHistoryResult:
+    """Result of predicate evaluation audit history query with pagination support.
+
+    Contains the list of audit logs and the next cursor for pagination.
+    """
+
+    audit_logs: list[PredicateEvaluationAuditLog]
+    next_cursor: int | None
+
+
+def get_predicate_evaluation_audit(
+    session: Session,
+    audit_id: int,
+) -> PredicateEvaluationAuditLog | None:
+    """Fetch a predicate evaluation audit log by ID.
+
+    Args:
+        session: SQLAlchemy session.
+        audit_id: The predicate evaluation audit log ID to fetch.
+
+    Returns:
+        The PredicateEvaluationAuditLog record or None if not found.
+    """
+    return (
+        session.query(PredicateEvaluationAuditLog)
+        .filter(PredicateEvaluationAuditLog.id == audit_id)
+        .first()
+    )
+
+
+def list_predicate_evaluation_audits(
+    session: Session,
+    query: PredicateEvaluationAuditHistoryQuery,
+) -> PredicateEvaluationAuditHistoryResult:
+    """List predicate evaluation audit logs with filtering, ordering, and pagination.
+
+    Supports filtering by schedule_id, execution_id, task_intent_id, status,
+    and time range. Results are ordered by id descending.
+    Uses cursor-based pagination for efficient traversal.
+
+    Args:
+        session: SQLAlchemy session.
+        query: Query parameters including filters, limit, and cursor.
+
+    Returns:
+        PredicateEvaluationAuditHistoryResult containing matching audit logs and cursor.
+
+    Raises:
+        ValueError: If status filter is invalid.
+    """
+    if query.status is not None:
+        _validate_predicate_evaluation_status(query.status)
+
+    filters = []
+
+    if query.schedule_id is not None:
+        filters.append(PredicateEvaluationAuditLog.schedule_id == query.schedule_id)
+    if query.execution_id is not None:
+        filters.append(PredicateEvaluationAuditLog.execution_id == query.execution_id)
+    if query.task_intent_id is not None:
+        filters.append(PredicateEvaluationAuditLog.task_intent_id == query.task_intent_id)
+    if query.status is not None:
+        filters.append(PredicateEvaluationAuditLog.status == query.status)
+    if query.evaluated_after is not None:
+        evaluated_after = _normalize_timestamp(query.evaluated_after, "evaluated_after")
+        filters.append(PredicateEvaluationAuditLog.evaluated_at >= evaluated_after)
+    if query.evaluated_before is not None:
+        evaluated_before = _normalize_timestamp(query.evaluated_before, "evaluated_before")
+        filters.append(PredicateEvaluationAuditLog.evaluated_at <= evaluated_before)
+    if query.cursor is not None:
+        filters.append(PredicateEvaluationAuditLog.id < query.cursor)
+
+    base_query = session.query(PredicateEvaluationAuditLog)
+    if filters:
+        base_query = base_query.filter(and_(*filters))
+
+    # Fetch one extra to determine if there are more results
+    fetch_limit = query.limit + 1
+    audit_logs = (
+        base_query
+        .order_by(PredicateEvaluationAuditLog.id.desc())
+        .limit(fetch_limit)
+        .all()
+    )
+
+    has_more = len(audit_logs) > query.limit
+    if has_more:
+        audit_logs = audit_logs[:query.limit]
+        next_cursor = audit_logs[-1].id if audit_logs else None
+    else:
+        next_cursor = None
+
+    return PredicateEvaluationAuditHistoryResult(
+        audit_logs=audit_logs,
+        next_cursor=next_cursor,
+    )
+
+
+# ============================================================================
+# Schedule and Task Intent Querying
+# ============================================================================
+
+
+def get_schedule(session: Session, schedule_id: int) -> Schedule | None:
+    """Fetch a schedule by ID.
+
+    Args:
+        session: SQLAlchemy session.
+        schedule_id: The schedule ID to fetch.
+
+    Returns:
+        The Schedule record or None if not found.
+    """
+    return session.query(Schedule).filter(Schedule.id == schedule_id).first()
+
+
+@dataclass(frozen=True)
+class ScheduleListQuery:
+    """Query parameters for schedule listing with filtering and pagination.
+
+    Supports filtering by state, schedule_type, created_by_actor_type, and time range.
+    Results are ordered by id descending by default.
+    """
+
+    state: str | None = None
+    schedule_type: str | None = None
+    created_by_actor_type: str | None = None
+    created_after: datetime | None = None
+    created_before: datetime | None = None
+    limit: int = 100
+    cursor: int | None = None
+
+
+@dataclass(frozen=True)
+class ScheduleListResult:
+    """Result of schedule listing query with pagination support.
+
+    Contains the list of schedules and the next cursor for pagination.
+    """
+
+    schedules: list[Schedule]
+    next_cursor: int | None
+
+
+def list_schedules(
+    session: Session,
+    query: ScheduleListQuery,
+) -> ScheduleListResult:
+    """List schedules with filtering, ordering, and pagination.
+
+    Supports filtering by state, schedule_type, created_by_actor_type, and time range.
+    Results are ordered by id descending.
+    Uses cursor-based pagination for efficient traversal.
+
+    Args:
+        session: SQLAlchemy session.
+        query: Query parameters including filters, limit, and cursor.
+
+    Returns:
+        ScheduleListResult containing matching schedules and pagination cursor.
+
+    Raises:
+        ValueError: If state or schedule_type filter is invalid.
+    """
+    if query.state is not None:
+        validate_schedule_state(query.state)
+    if query.schedule_type is not None:
+        validate_schedule_type(query.schedule_type)
+
+    filters = []
+
+    if query.state is not None:
+        filters.append(Schedule.state == query.state)
+    if query.schedule_type is not None:
+        filters.append(Schedule.schedule_type == query.schedule_type)
+    if query.created_by_actor_type is not None:
+        filters.append(Schedule.created_by_actor_type == query.created_by_actor_type)
+    if query.created_after is not None:
+        created_after = _normalize_timestamp(query.created_after, "created_after")
+        filters.append(Schedule.created_at >= created_after)
+    if query.created_before is not None:
+        created_before = _normalize_timestamp(query.created_before, "created_before")
+        filters.append(Schedule.created_at <= created_before)
+    if query.cursor is not None:
+        filters.append(Schedule.id < query.cursor)
+
+    base_query = session.query(Schedule)
+    if filters:
+        base_query = base_query.filter(and_(*filters))
+
+    # Fetch one extra to determine if there are more results
+    fetch_limit = query.limit + 1
+    schedules = (
+        base_query
+        .order_by(Schedule.id.desc())
+        .limit(fetch_limit)
+        .all()
+    )
+
+    has_more = len(schedules) > query.limit
+    if has_more:
+        schedules = schedules[:query.limit]
+        next_cursor = schedules[-1].id if schedules else None
+    else:
+        next_cursor = None
+
+    return ScheduleListResult(
+        schedules=schedules,
+        next_cursor=next_cursor,
+    )

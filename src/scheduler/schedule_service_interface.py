@@ -272,7 +272,6 @@ class PredicateEvaluationAuditLogView:
     authorization_policy_version: str | None
     provider_name: str
     provider_attempt: int
-    trace_id: str
     created_at: datetime
 
 
