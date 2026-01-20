@@ -4,7 +4,18 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, Time
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Time,
+)
 from sqlalchemy.orm import declarative_base
 
 from config import settings
@@ -12,6 +23,90 @@ from time_utils import to_local
 
 # SQLAlchemy base
 Base = declarative_base()
+
+# Scheduler enums
+ScheduleTypeEnum = Enum(
+    "one_time",
+    "interval",
+    "calendar_rule",
+    "conditional",
+    name="schedule_type",
+    native_enum=False,
+)
+ScheduleStateEnum = Enum(
+    "draft",
+    "active",
+    "paused",
+    "canceled",
+    "archived",
+    "completed",
+    name="schedule_state",
+    native_enum=False,
+)
+ExecutionStatusEnum = Enum(
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+    "retry_scheduled",
+    "canceled",
+    name="execution_status",
+    native_enum=False,
+)
+IntervalUnitEnum = Enum(
+    "minute",
+    "hour",
+    "day",
+    "week",
+    "month",
+    name="interval_unit",
+    native_enum=False,
+)
+PredicateOperatorEnum = Enum(
+    "eq",
+    "neq",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "exists",
+    "matches",
+    name="predicate_operator",
+    native_enum=False,
+)
+EvaluationIntervalUnitEnum = Enum(
+    "minute",
+    "hour",
+    "day",
+    "week",
+    name="evaluation_interval_unit",
+    native_enum=False,
+)
+PredicateEvaluationStatusEnum = Enum(
+    "true",
+    "false",
+    "error",
+    "unknown",
+    name="predicate_evaluation_status",
+    native_enum=False,
+)
+BackoffStrategyEnum = Enum(
+    "fixed",
+    "exponential",
+    "none",
+    name="backoff_strategy",
+    native_enum=False,
+)
+ScheduleAuditEventTypeEnum = Enum(
+    "create",
+    "update",
+    "pause",
+    "resume",
+    "delete",
+    "run_now",
+    name="schedule_audit_event_type",
+    native_enum=False,
+)
 
 
 # Database models
@@ -326,6 +421,134 @@ class AttentionDecisionRecord(Base):
     final_decision = Column(String(100), nullable=False)
     explanation = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class TaskIntent(Base):
+    """Task intent statement for scheduled executions."""
+
+    __tablename__ = "task_intents"
+
+    id = Column(Integer, primary_key=True)
+    summary = Column(String(500), nullable=False)
+    details = Column(Text, nullable=True)
+    creator_actor_type = Column(String(100), nullable=False)
+    creator_actor_id = Column(String(200), nullable=True)
+    creator_channel = Column(String(100), nullable=False)
+    origin_reference = Column(String(500), nullable=True)
+    superseded_by_intent_id = Column(Integer, ForeignKey("task_intents.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class Schedule(Base):
+    """Schedule definition linked to a task intent."""
+
+    __tablename__ = "schedules"
+
+    id = Column(Integer, primary_key=True)
+    task_intent_id = Column(Integer, ForeignKey("task_intents.id"), nullable=False)
+    schedule_type = Column(ScheduleTypeEnum, nullable=False)
+    state = Column(ScheduleStateEnum, nullable=False)
+    timezone = Column(String(100), nullable=True)
+    next_run_at = Column(DateTime(timezone=True), nullable=True)
+    last_run_at = Column(DateTime(timezone=True), nullable=True)
+    last_run_status = Column(ExecutionStatusEnum, nullable=True)
+    failure_count = Column(Integer, nullable=False, default=0)
+    last_execution_id = Column(Integer, ForeignKey("executions.id"), nullable=True)
+    created_by_actor_type = Column(String(100), nullable=False)
+    created_by_actor_id = Column(String(200), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    run_at = Column(DateTime(timezone=True), nullable=True)
+    interval_count = Column(Integer, nullable=True)
+    interval_unit = Column(IntervalUnitEnum, nullable=True)
+    anchor_at = Column(DateTime(timezone=True), nullable=True)
+    rrule = Column(String(1000), nullable=True)
+    calendar_anchor_at = Column(DateTime(timezone=True), nullable=True)
+    predicate_subject = Column(String(200), nullable=True)
+    predicate_operator = Column(PredicateOperatorEnum, nullable=True)
+    predicate_value = Column(String(500), nullable=True)
+    evaluation_interval_count = Column(Integer, nullable=True)
+    evaluation_interval_unit = Column(EvaluationIntervalUnitEnum, nullable=True)
+    last_evaluated_at = Column(DateTime(timezone=True), nullable=True)
+    last_evaluation_status = Column(PredicateEvaluationStatusEnum, nullable=True)
+    last_evaluation_error_code = Column(String(200), nullable=True)
+
+
+class Execution(Base):
+    """Execution record for a scheduled task."""
+
+    __tablename__ = "executions"
+
+    id = Column(Integer, primary_key=True)
+    task_intent_id = Column(Integer, ForeignKey("task_intents.id"), nullable=False)
+    schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=False)
+    scheduled_for = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    actor_type = Column(String(100), nullable=False)
+    actor_context = Column(String(200), nullable=True)
+    correlation_id = Column(String(200), nullable=True)
+    status = Column(ExecutionStatusEnum, nullable=False)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    retry_count = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=1)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    failure_count = Column(Integer, nullable=False, default=0)
+    retry_backoff_strategy = Column(BackoffStrategyEnum, nullable=True)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
+    last_error_code = Column(String(200), nullable=True)
+    last_error_message = Column(Text, nullable=True)
+
+
+class ScheduleAuditLog(Base):
+    """Audit log for schedule mutations."""
+
+    __tablename__ = "schedule_audit_logs"
+
+    id = Column(Integer, primary_key=True)
+    schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=False)
+    task_intent_id = Column(Integer, ForeignKey("task_intents.id"), nullable=False)
+    event_type = Column(ScheduleAuditEventTypeEnum, nullable=False)
+    actor_type = Column(String(100), nullable=False)
+    actor_id = Column(String(200), nullable=True)
+    actor_channel = Column(String(100), nullable=False)
+    trace_id = Column(String(200), nullable=False)
+    request_id = Column(String(200), nullable=True)
+    reason = Column(Text, nullable=True)
+    diff_summary = Column(String(1000), nullable=True)
+    occurred_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class ExecutionAuditLog(Base):
+    """Audit log for execution outcomes."""
+
+    __tablename__ = "execution_audit_logs"
+
+    id = Column(Integer, primary_key=True)
+    execution_id = Column(Integer, ForeignKey("executions.id"), nullable=False)
+    schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=False)
+    task_intent_id = Column(Integer, ForeignKey("task_intents.id"), nullable=False)
+    status = Column(ExecutionStatusEnum, nullable=False)
+    scheduled_for = Column(DateTime(timezone=True), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    retry_count = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=1)
+    failure_count = Column(Integer, nullable=False, default=0)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
+    last_error_code = Column(String(200), nullable=True)
+    last_error_message = Column(Text, nullable=True)
+    actor_type = Column(String(100), nullable=False)
+    actor_id = Column(String(200), nullable=True)
+    actor_channel = Column(String(100), nullable=False)
+    actor_context = Column(String(200), nullable=True)
+    trace_id = Column(String(200), nullable=False)
+    request_id = Column(String(200), nullable=True)
+    correlation_id = Column(String(200), nullable=True)
+    occurred_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 # Pydantic models for API/validation
