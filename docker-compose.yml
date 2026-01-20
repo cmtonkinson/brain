@@ -114,6 +114,74 @@ services:
     networks:
       - brain-network
 
+  scheduler-worker:
+    build: .
+    container_name: brain-scheduler-worker
+    env_file:
+      - .env
+    command:
+      - celery
+      - -A
+      - scheduler.celery_app
+      - worker
+      - --loglevel=info
+      - --queues
+      - ${CELERY_QUEUE_NAME:-scheduler}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./prompts:/app/prompts:ro
+      - ${OBSIDIAN_VAULT_PATH}:${OBSIDIAN_VAULT_PATH}:ro  # Read-only access to vault
+      - ${HOME}/.config/brain:/config:ro
+      - ${HOME}:${HOME}
+    environment:
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      CELERY_QUEUE_NAME: ${CELERY_QUEUE_NAME:-scheduler}
+      TZ: ${USER_TIMEZONE:-America/New_York}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: brain-scheduler-worker
+    restart: unless-stopped
+    networks:
+      - brain-network
+
+  scheduler-beat:
+    build: .
+    container_name: brain-scheduler-beat
+    env_file:
+      - .env
+    command:
+      - celery
+      - -A
+      - scheduler.celery_app
+      - beat
+      - --loglevel=info
+      - --schedule
+      - /var/lib/brain/scheduler/beat-schedule
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./data/scheduler:/var/lib/brain/scheduler
+      - ./prompts:/app/prompts:ro
+      - ${OBSIDIAN_VAULT_PATH}:${OBSIDIAN_VAULT_PATH}:ro  # Read-only access to vault
+      - ${HOME}/.config/brain:/config:ro
+      - ${HOME}:${HOME}
+    environment:
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      TZ: ${USER_TIMEZONE:-America/New_York}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: brain-scheduler-beat
+    restart: unless-stopped
+    networks:
+      - brain-network
+
 networks:
   brain-network:
     driver: bridge

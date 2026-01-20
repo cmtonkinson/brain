@@ -31,7 +31,7 @@ Docblock:
 23. [closed] work-jobs/task-42-dispatcher-agent-invocation.md (epic 05, milestone 03)
 24. [closed] work-jobs/task-18-retry-backoff-and-failure-handling.md (epic 05, milestone 03)
 25. [closed] work-jobs/task-43-failure-notification-throttling.md (epic 05, milestone 03)
-26. [open] work-jobs/task-40-docker-compose-scheduler-services.md (epic 05, milestone 03)
+26. [closed] work-jobs/task-40-docker-compose-scheduler-services.md (epic 05, milestone 03)
 27. [open] work-jobs/task-50-schedule-mutation-adapter-sync.md (epic 05, milestone 03)
 28. [open] work-jobs/task-21-read-only-capability-enforcement.md (epic 06, milestone 03)
 29. [open] work-jobs/task-20-predicate-evaluation-service.md (epic 06, milestone 03)
