@@ -550,6 +550,56 @@ class ExecutionAuditLog(Base):
     occurred_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+PredicateValueTypeEnum = Enum(
+    "string",
+    "number",
+    "boolean",
+    "timestamp",
+    name="predicate_value_type",
+    native_enum=False,
+)
+
+
+class PredicateEvaluationAuditLog(Base):
+    """Audit log for predicate evaluation outcomes."""
+
+    __tablename__ = "predicate_evaluation_audit_logs"
+
+    id = Column(Integer, primary_key=True)
+    evaluation_id = Column(String(200), nullable=False, unique=True)
+    schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=False)
+    execution_id = Column(Integer, ForeignKey("executions.id"), nullable=True)
+    task_intent_id = Column(Integer, ForeignKey("task_intents.id"), nullable=False)
+    actor_type = Column(String(100), nullable=False)
+    actor_id = Column(String(200), nullable=True)
+    actor_channel = Column(String(100), nullable=False)
+    actor_privilege_level = Column(String(50), nullable=False)
+    actor_autonomy_level = Column(String(50), nullable=False)
+    trace_id = Column(String(200), nullable=False)
+    request_id = Column(String(200), nullable=True)
+    predicate_subject = Column(String(200), nullable=False)
+    predicate_operator = Column(PredicateOperatorEnum, nullable=False)
+    predicate_value = Column(String(500), nullable=True)
+    predicate_value_type = Column(PredicateValueTypeEnum, nullable=False)
+    evaluation_time = Column(DateTime(timezone=True), nullable=False)
+    evaluated_at = Column(DateTime(timezone=True), nullable=False)
+    status = Column(PredicateEvaluationStatusEnum, nullable=False)
+    result_code = Column(String(200), nullable=False)
+    message = Column(Text, nullable=True)
+    observed_value = Column(String(500), nullable=True)
+    error_code = Column(String(200), nullable=True)
+    error_message = Column(Text, nullable=True)
+    authorization_decision = Column(String(50), nullable=False)
+    authorization_reason_code = Column(String(200), nullable=True)
+    authorization_reason_message = Column(Text, nullable=True)
+    authorization_policy_name = Column(String(200), nullable=True)
+    authorization_policy_version = Column(String(50), nullable=True)
+    provider_name = Column(String(200), nullable=False)
+    provider_attempt = Column(Integer, nullable=False)
+    correlation_id = Column(String(200), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 # Pydantic models for API/validation
 class TaskCreate(BaseModel):
     """Create a new task."""

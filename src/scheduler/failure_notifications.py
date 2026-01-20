@@ -80,7 +80,9 @@ class FailureNotificationService:
                     execution.schedule_id,
                 )
                 return False
-            intent = session.query(TaskIntent).filter(TaskIntent.id == schedule.task_intent_id).first()
+            intent = (
+                session.query(TaskIntent).filter(TaskIntent.id == schedule.task_intent_id).first()
+            )
             if intent is None:
                 logger.error(
                     "Failure notification skipped: intent %s not found.",
