@@ -116,6 +116,14 @@ def _env_settings_source():
         "SCHEDULER_DEFAULT_MAX_ATTEMPTS": ("scheduler.default_max_attempts", "int"),
         "SCHEDULER_DEFAULT_BACKOFF_STRATEGY": ("scheduler.default_backoff_strategy", "str"),
         "SCHEDULER_BACKOFF_BASE_SECONDS": ("scheduler.backoff_base_seconds", "int"),
+        "SCHEDULER_FAILURE_NOTIFICATION_THRESHOLD": (
+            "scheduler.failure_notification_threshold",
+            "int",
+        ),
+        "SCHEDULER_FAILURE_NOTIFICATION_THROTTLE_SECONDS": (
+            "scheduler.failure_notification_throttle_seconds",
+            "int",
+        ),
     }
 
     def source() -> dict[str, Any]:
@@ -258,6 +266,8 @@ class SchedulerConfig(BaseModel):
     default_max_attempts: int = 3
     default_backoff_strategy: str = "exponential"
     backoff_base_seconds: int = 60
+    failure_notification_threshold: int = 3
+    failure_notification_throttle_seconds: int = 3600
 
     @field_validator("default_max_attempts")
     @classmethod
@@ -284,6 +294,22 @@ class SchedulerConfig(BaseModel):
         """Ensure backoff base seconds is non-negative."""
         if value < 0:
             raise ValueError("scheduler.backoff_base_seconds must be >= 0.")
+        return value
+
+    @field_validator("failure_notification_threshold")
+    @classmethod
+    def validate_failure_notification_threshold(cls, value: int) -> int:
+        """Ensure failure notification threshold is positive."""
+        if value < 1:
+            raise ValueError("scheduler.failure_notification_threshold must be >= 1.")
+        return value
+
+    @field_validator("failure_notification_throttle_seconds")
+    @classmethod
+    def validate_failure_notification_throttle_seconds(cls, value: int) -> int:
+        """Ensure failure notification throttle window is non-negative."""
+        if value < 0:
+            raise ValueError("scheduler.failure_notification_throttle_seconds must be >= 0.")
         return value
 
 

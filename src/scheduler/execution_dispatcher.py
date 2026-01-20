@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -13,12 +14,15 @@ from models import Execution, Schedule, TaskIntent
 from scheduler import data_access
 from scheduler.actor_context import ScheduledActorContext
 from scheduler.callback_bridge import DispatcherCallbackPayload
+from scheduler.failure_notifications import FailureNotificationService
 from scheduler.retry_policy import (
     RetryPolicy,
     compute_retry_at,
     resolve_retry_policy,
     should_retry,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ExecutionDispatcherError(Exception):
@@ -43,7 +47,7 @@ class ExecutionInvocationExecution:
     max_attempts: int
     backoff_strategy: str | None
     retry_after: datetime | None
-    correlation_id: str
+    trace_id: str
 
 
 @dataclass(frozen=True)
@@ -173,12 +177,14 @@ class ExecutionDispatcher:
         *,
         now_provider: Callable[[], datetime] | None = None,
         retry_policy: RetryPolicy | None = None,
+        failure_notifier: FailureNotificationService | None = None,
     ) -> None:
         """Initialize the dispatcher with persistence and agent invoker access."""
         self._session_factory = session_factory
         self._invoker = invoker
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
         self._retry_policy = resolve_retry_policy(retry_policy)
+        self._failure_notifier = failure_notifier
 
     def dispatch(self, payload: DispatcherCallbackPayload) -> ExecutionDispatchResult:
         """Handle a scheduler callback by persisting execution and invoking the agent."""
@@ -192,10 +198,10 @@ class ExecutionDispatcher:
             schedule = _fetch_schedule(session, payload.schedule_id)
             _require_active_schedule(schedule)
             intent = _fetch_task_intent(session, schedule.task_intent_id)
-            existing = data_access.get_execution_by_correlation_id(
+            existing = data_access.get_execution_by_trace_id(
                 session,
                 payload.schedule_id,
-                payload.correlation_id,
+                payload.trace_id,
             )
             if existing is not None:
                 return ExecutionDispatchResult(
@@ -249,6 +255,7 @@ class ExecutionDispatcher:
                 self._now_provider(),
                 self._retry_policy,
             )
+            self._notify_failure_if_needed(execution_id)
             raise
         _record_invocation_result(
             self._session_factory,
@@ -258,11 +265,24 @@ class ExecutionDispatcher:
             self._now_provider(),
             self._retry_policy,
         )
+        self._notify_failure_if_needed(execution_id)
         return ExecutionDispatchResult(
             status="dispatched",
             execution_id=execution_id,
             invocation_request=invocation_request,
         )
+
+    def _notify_failure_if_needed(self, execution_id: int) -> None:
+        """Route failure notifications when configured."""
+        if self._failure_notifier is None:
+            return
+        try:
+            self._failure_notifier.notify_if_needed(execution_id)
+        except Exception:
+            logger.exception(
+                "Failure notification failed for execution_id=%s.",
+                execution_id,
+            )
 
 
 def _fetch_schedule(session: Session, schedule_id: int) -> Schedule:
@@ -337,7 +357,7 @@ def _build_invocation_request(
             str(execution.retry_backoff_strategy) if execution.retry_backoff_strategy else None
         ),
         retry_after=execution.next_retry_at,
-        correlation_id=payload.correlation_id,
+        trace_id=payload.trace_id,
     )
     invocation_schedule = ExecutionInvocationSchedule(
         schedule_type=str(schedule.schedule_type),
@@ -358,13 +378,13 @@ def _build_invocation_request(
         channel=scheduled_context.channel,
         privilege_level=scheduled_context.privilege_level,
         autonomy_level=scheduled_context.autonomy_level,
-        trace_id=payload.correlation_id,
+        trace_id=payload.trace_id,
         request_id=None,
     )
     invocation_metadata = ExecutionInvocationMetadata(
         actual_started_at=now,
         trigger_source="scheduler_callback",
-        callback_id=payload.correlation_id,
+        callback_id=payload.trace_id,
     )
     return ExecutionInvocationRequest(
         execution=invocation_execution,
@@ -384,12 +404,11 @@ def _build_execution_actor_context(
         actor_type=scheduled_context.actor_type,
         actor_id=None,
         channel=scheduled_context.channel,
-        trace_id=payload.correlation_id,
-        request_id=payload.correlation_id,
+        trace_id=payload.trace_id,
+        request_id=payload.trace_id,
         actor_context=scheduled_context.to_reference(
             trigger_source="scheduler_callback",
         ),
-        correlation_id=payload.correlation_id,
     )
 
 
