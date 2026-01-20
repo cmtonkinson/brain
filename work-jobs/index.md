@@ -11,7 +11,7 @@ Docblock:
 03. [closed] work-jobs/task-03-schedule-management-api-contract.md (epic 01, milestone 01)
 04. [closed] work-jobs/task-04-execution-invocation-contract.md (epic 01, milestone 01)
 05. [closed] work-jobs/task-05-predicate-evaluation-contract.md (epic 01, milestone 01)
-06. [open] work-jobs/task-06-scheduler-options-evaluation.md (epic 02, milestone 01)
+06. [closed] work-jobs/task-06-scheduler-options-evaluation.md (epic 02, milestone 01)
 07. [open] work-jobs/task-07-scheduler-decision-record.md (epic 02, milestone 01)
 08. [open] work-jobs/task-08-scheduler-adapter-config-boundary.md (epic 02, milestone 01)
 09. [open] work-jobs/task-09-scheduler-schema-migrations.md (epic 03, milestone 02)
