@@ -25,7 +25,7 @@ This avoids cross-server collisions while preserving dynamic discovery within ea
 
 **Configuration**
 - UTCP config: `~/.config/brain/utcp.json` (mounted into container at `/config/utcp.json`)
-- Example (from `utcp.json.sample`):
+- Example (from `config/utcp.json.sample`):
   - `command: npx`
   - `args: ["-y", "@modelcontextprotocol/server-filesystem", "/Users/yourname"]`
 - Effective root must be an allowed directory; relative paths resolve inside the container and are rejected if outside allowed roots.
@@ -45,7 +45,7 @@ This avoids cross-server collisions while preserving dynamic discovery within ea
 
 **Configuration**
 - UTCP config: `~/.config/brain/utcp.json` (mounted into container at `/config/utcp.json`)
-- Example (from `utcp.json.sample`):
+- Example (from `config/utcp.json.sample`):
   - `url: "http://host.docker.internal:7411/eventkit/rpc"`
   - `headers.Authorization: "Bearer REPLACE_ME"`
 
@@ -64,7 +64,7 @@ This avoids cross-server collisions while preserving dynamic discovery within ea
 
 **Configuration**
 - UTCP config: `~/.config/brain/utcp.json` (mounted into container at `/config/utcp.json`)
-- Example (from `utcp.json.sample`):
+- Example (from `config/utcp.json.sample`):
   - `command: "/usr/local/bin/github-mcp-server"`
   - `args: ["stdio"]`
   - `env.GITHUB_PERSONAL_ACCESS_TOKEN: "set-me"`

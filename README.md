@@ -140,7 +140,7 @@ cp config/secrets.yml.sample ~/.config/brain/secrets.yml
 chmod 600 ~/.config/brain/secrets.yml
 
 # MCP/UTCP tool config (optional but recommended)
-cp utcp.json.sample ~/.config/brain/utcp.json
+cp config/utcp.json.sample ~/.config/brain/utcp.json
 ```
 
 Update `~/.config/brain/brain.yml` and `~/.config/brain/secrets.yml` with:
@@ -188,7 +188,7 @@ Run this once after configuring Letta or changing Letta tool code.
 
 ## MCP Integrations (Code-Mode)
 
-Brain uses UTCP Code-Mode to discover and call MCP servers. Configure your MCP servers in `~/.config/brain/utcp.json` (see `utcp.json.sample`).
+Brain uses UTCP Code-Mode to discover and call MCP servers. Configure your MCP servers in `~/.config/brain/utcp.json` (see `config/utcp.json.sample`).
 
 For macOS-only MCP servers (like EventKit), run the host gateway on your Mac:
 ```bash
