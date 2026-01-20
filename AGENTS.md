@@ -2,7 +2,6 @@ Instructions for working in this repo:
 - Read `README.md`.
 - Read `docs/manifesto.md`.
 - Read `docs/architecture-doctrine.md`.
-- Read `docs/security-trust-boundary-model.md`.
 - Never modify `docs/manifesto.md`; if you think you need to, raise it as a question/suggestion for user modification.
 - Ask clarifying questions when needed.
 - Never create JSONB fields, or string/text fields meant to hold JSON data, in the database without:
