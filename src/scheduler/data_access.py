@@ -14,6 +14,7 @@ from models import (
     Execution,
     ExecutionAuditLog,
     ExecutionStatusEnum,
+    PredicateEvaluationAuditLog,
     Schedule,
     ScheduleAuditEventTypeEnum,
     ScheduleAuditLog,
@@ -799,3 +800,147 @@ def _record_execution_audit(
     session.add(audit)
     session.flush()
     return audit
+
+
+@dataclass(frozen=True)
+class PredicateEvaluationAuditInput:
+    """Input payload for predicate evaluation audit records."""
+
+    evaluation_id: str
+    schedule_id: int
+    execution_id: int | None
+    task_intent_id: int
+    actor_type: str
+    actor_id: str | None
+    actor_channel: str
+    actor_privilege_level: str
+    actor_autonomy_level: str
+    trace_id: str
+    request_id: str | None
+    predicate_subject: str
+    predicate_operator: str
+    predicate_value: str | None
+    predicate_value_type: str
+    evaluation_time: datetime
+    evaluated_at: datetime
+    status: str
+    result_code: str
+    message: str | None
+    observed_value: str | None
+    error_code: str | None
+    error_message: str | None
+    authorization_decision: str
+    authorization_reason_code: str | None
+    authorization_reason_message: str | None
+    authorization_policy_name: str | None
+    authorization_policy_version: str | None
+    provider_name: str
+    provider_attempt: int
+    correlation_id: str
+
+
+def record_predicate_evaluation_audit(
+    session: Session,
+    audit_input: PredicateEvaluationAuditInput,
+) -> PredicateEvaluationAuditLog:
+    """Persist a predicate evaluation audit log entry with idempotency.
+
+    If an audit record with the same evaluation_id already exists, returns
+    the existing record instead of creating a duplicate.
+
+    Args:
+        session: SQLAlchemy session.
+        audit_input: Audit input payload.
+
+    Returns:
+        The created or existing PredicateEvaluationAuditLog.
+    """
+    # Idempotency check: evaluation_id is unique
+    existing = (
+        session.query(PredicateEvaluationAuditLog)
+        .filter(PredicateEvaluationAuditLog.evaluation_id == audit_input.evaluation_id)
+        .first()
+    )
+    if existing is not None:
+        return existing
+
+    audit = PredicateEvaluationAuditLog(
+        evaluation_id=audit_input.evaluation_id,
+        schedule_id=audit_input.schedule_id,
+        execution_id=audit_input.execution_id,
+        task_intent_id=audit_input.task_intent_id,
+        actor_type=audit_input.actor_type,
+        actor_id=audit_input.actor_id,
+        actor_channel=audit_input.actor_channel,
+        actor_privilege_level=audit_input.actor_privilege_level,
+        actor_autonomy_level=audit_input.actor_autonomy_level,
+        trace_id=audit_input.trace_id,
+        request_id=audit_input.request_id,
+        predicate_subject=audit_input.predicate_subject,
+        predicate_operator=audit_input.predicate_operator,
+        predicate_value=audit_input.predicate_value,
+        predicate_value_type=audit_input.predicate_value_type,
+        evaluation_time=audit_input.evaluation_time,
+        evaluated_at=audit_input.evaluated_at,
+        status=audit_input.status,
+        result_code=audit_input.result_code,
+        message=audit_input.message,
+        observed_value=audit_input.observed_value,
+        error_code=audit_input.error_code,
+        error_message=audit_input.error_message,
+        authorization_decision=audit_input.authorization_decision,
+        authorization_reason_code=audit_input.authorization_reason_code,
+        authorization_reason_message=audit_input.authorization_reason_message,
+        authorization_policy_name=audit_input.authorization_policy_name,
+        authorization_policy_version=audit_input.authorization_policy_version,
+        provider_name=audit_input.provider_name,
+        provider_attempt=audit_input.provider_attempt,
+        correlation_id=audit_input.correlation_id,
+    )
+    session.add(audit)
+    session.flush()
+    return audit
+
+
+def get_predicate_evaluation_audit_by_evaluation_id(
+    session: Session,
+    evaluation_id: str,
+) -> PredicateEvaluationAuditLog | None:
+    """Fetch a predicate evaluation audit log by evaluation_id.
+
+    Args:
+        session: SQLAlchemy session.
+        evaluation_id: The unique evaluation identifier.
+
+    Returns:
+        The PredicateEvaluationAuditLog or None if not found.
+    """
+    return (
+        session.query(PredicateEvaluationAuditLog)
+        .filter(PredicateEvaluationAuditLog.evaluation_id == evaluation_id)
+        .first()
+    )
+
+
+def list_predicate_evaluation_audits_by_schedule(
+    session: Session,
+    schedule_id: int,
+    limit: int = 100,
+) -> list[PredicateEvaluationAuditLog]:
+    """Return predicate evaluation audit logs for a schedule.
+
+    Args:
+        session: SQLAlchemy session.
+        schedule_id: The schedule ID to filter by.
+        limit: Maximum number of records to return.
+
+    Returns:
+        List of PredicateEvaluationAuditLog ordered by evaluated_at desc.
+    """
+    return (
+        session.query(PredicateEvaluationAuditLog)
+        .filter(PredicateEvaluationAuditLog.schedule_id == schedule_id)
+        .order_by(PredicateEvaluationAuditLog.evaluated_at.desc())
+        .limit(limit)
+        .all()
+    )
