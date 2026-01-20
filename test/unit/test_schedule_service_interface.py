@@ -9,7 +9,6 @@ import pytest
 
 from scheduler.schedule_service_interface import (
     ExecutionRunNowResult,
-    ExecutionView,
     ScheduleCreateRequest,
     ScheduleDefinitionInput,
     ScheduleDefinitionView,
@@ -97,19 +96,7 @@ def test_schedule_mutation_result_is_frozen() -> None:
 def test_execution_run_now_result_is_frozen() -> None:
     """Ensure run-now execution results are immutable."""
     now = _now()
-    execution = ExecutionView(
-        id=30,
-        schedule_id=20,
-        task_intent_id=10,
-        scheduled_for=now,
-        status="queued",
-        attempt_number=0,
-        max_attempts=1,
-        created_at=now,
-        actor_type="scheduled",
-        correlation_id="corr-1",
-    )
-    result = ExecutionRunNowResult(execution=execution, audit_log_id=99)
+    result = ExecutionRunNowResult(schedule_id=20, scheduled_for=now, audit_log_id=99)
 
     with pytest.raises(FrozenInstanceError):
         result.audit_log_id = 100

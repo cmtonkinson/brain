@@ -73,6 +73,14 @@ class ScheduleActorContextError(ScheduleServiceError):
         super().__init__("missing_actor_context", message, details)
 
 
+class ScheduleAdapterSyncError(ScheduleServiceError):
+    """Raised when scheduler adapter synchronization fails."""
+
+    def __init__(self, message: str, details: dict[str, object] | None = None) -> None:
+        """Initialize an adapter sync error with optional details."""
+        super().__init__("adapter_error", message, details)
+
+
 @dataclass(frozen=True)
 class ActorContext:
     """Actor context metadata for schedule mutations and audits."""
@@ -180,7 +188,7 @@ class ExecutionView:
     max_attempts: int
     created_at: datetime
     actor_type: str
-    correlation_id: str | None
+    trace_id: str | None
 
 
 @dataclass(frozen=True)
@@ -226,7 +234,6 @@ class ExecutionAuditLogView:
     actor_context: str | None
     trace_id: str
     request_id: str | None
-    correlation_id: str | None
     occurred_at: datetime
 
 
@@ -265,7 +272,7 @@ class PredicateEvaluationAuditLogView:
     authorization_policy_version: str | None
     provider_name: str
     provider_attempt: int
-    correlation_id: str
+    trace_id: str
     created_at: datetime
 
 
@@ -484,9 +491,10 @@ class ExecutionResult:
 
 @dataclass(frozen=True)
 class ExecutionRunNowResult:
-    """Result wrapper for run-now execution creation with audit linkage."""
+    """Result wrapper for run-now execution requests with audit linkage."""
 
-    execution: ExecutionView
+    schedule_id: int
+    scheduled_for: datetime
     audit_log_id: int
 
 

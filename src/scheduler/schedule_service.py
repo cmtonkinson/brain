@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import closing
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -9,13 +10,18 @@ from typing import Callable, TypeVar
 
 from sqlalchemy.orm import Session
 
-from models import Execution, Schedule, ScheduleAuditLog, TaskIntent
+from models import Schedule, ScheduleAuditLog, TaskIntent
 from scheduler import data_access
-from scheduler.actor_context import ScheduledActorContext
+from scheduler.adapter_interface import (
+    ScheduleDefinition,
+    SchedulePayload,
+    SchedulerAdapter,
+    SchedulerAdapterError,
+)
 from scheduler.schedule_service_interface import (
     ActorContext,
     ExecutionRunNowResult,
-    ExecutionView,
+    ScheduleAdapterSyncError,
     ScheduleActorContextError,
     ScheduleConflictError,
     ScheduleCreateRequest,
@@ -38,6 +44,7 @@ from scheduler.schedule_service_interface import (
 )
 
 ResultT = TypeVar("ResultT")
+logger = logging.getLogger(__name__)
 
 
 class ScheduleCommandServiceImpl:
@@ -46,11 +53,13 @@ class ScheduleCommandServiceImpl:
     def __init__(
         self,
         session_factory: Callable[[], Session],
+        adapter: SchedulerAdapter,
         *,
         now_provider: Callable[[], datetime] | None = None,
     ) -> None:
         """Initialize the command service with a session factory."""
         self._session_factory = session_factory
+        self._adapter = adapter
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
 
     def create_schedule(
@@ -81,7 +90,25 @@ class ScheduleCommandServiceImpl:
                 audit_log_id=audit_log_id,
             )
 
-        return self._execute(handler)
+        result = self._execute(handler)
+        _sync_adapter_call(
+            self._adapter,
+            lambda: self._adapter.register_schedule(_to_adapter_payload(result.schedule)),
+            session_factory=self._session_factory,
+            schedule_id=result.schedule.id,
+            actor=actor,
+            event_type="create",
+        )
+        if result.schedule.state == "paused":
+            _sync_adapter_call(
+                self._adapter,
+                lambda: self._adapter.pause_schedule(result.schedule.id),
+                session_factory=self._session_factory,
+                schedule_id=result.schedule.id,
+                actor=actor,
+                event_type="pause",
+            )
+        return result
 
     def update_schedule(
         self,
@@ -108,7 +135,15 @@ class ScheduleCommandServiceImpl:
                 audit_log_id=audit_log_id,
             )
 
-        return self._execute(handler)
+        result = self._execute(handler)
+        _sync_adapter_update(
+            adapter=self._adapter,
+            schedule=result.schedule,
+            request=request,
+            actor=actor,
+            session_factory=self._session_factory,
+        )
+        return result
 
     def pause_schedule(
         self,
@@ -133,7 +168,16 @@ class ScheduleCommandServiceImpl:
                 audit_log_id=audit_log_id,
             )
 
-        return self._execute(handler)
+        result = self._execute(handler)
+        _sync_adapter_call(
+            self._adapter,
+            lambda: self._adapter.pause_schedule(result.schedule.id),
+            session_factory=self._session_factory,
+            schedule_id=result.schedule.id,
+            actor=actor,
+            event_type="pause",
+        )
+        return result
 
     def resume_schedule(
         self,
@@ -158,7 +202,16 @@ class ScheduleCommandServiceImpl:
                 audit_log_id=audit_log_id,
             )
 
-        return self._execute(handler)
+        result = self._execute(handler)
+        _sync_adapter_call(
+            self._adapter,
+            lambda: self._adapter.resume_schedule(result.schedule.id),
+            session_factory=self._session_factory,
+            schedule_id=result.schedule.id,
+            actor=actor,
+            event_type="resume",
+        )
+        return result
 
     def delete_schedule(
         self,
@@ -182,7 +235,16 @@ class ScheduleCommandServiceImpl:
                 audit_log_id=audit_log_id,
             )
 
-        return self._execute(handler)
+        result = self._execute(handler)
+        _sync_adapter_call(
+            self._adapter,
+            lambda: self._adapter.delete_schedule(result.schedule_id),
+            session_factory=self._session_factory,
+            schedule_id=result.schedule_id,
+            actor=actor,
+            event_type="delete",
+        )
+        return result
 
     def run_now(
         self,
@@ -200,17 +262,6 @@ class ScheduleCommandServiceImpl:
                     {"schedule_id": schedule.id, "state": str(schedule.state)},
                 )
             requested_for = request.requested_for or timestamp
-            execution = data_access.create_execution(
-                session,
-                data_access.ExecutionCreateInput(
-                    task_intent_id=schedule.task_intent_id,
-                    schedule_id=schedule.id,
-                    scheduled_for=requested_for,
-                    status="queued",
-                ),
-                _to_execution_actor_context(actor),
-                now=timestamp,
-            )
             audit_log_id = data_access.record_schedule_audit(
                 session,
                 schedule.id,
@@ -220,11 +271,25 @@ class ScheduleCommandServiceImpl:
                 now=timestamp,
             ).id
             return ExecutionRunNowResult(
-                execution=_to_execution_view(execution),
+                schedule_id=schedule.id,
+                scheduled_for=requested_for,
                 audit_log_id=audit_log_id,
             )
 
-        return self._execute(handler)
+        result = self._execute(handler)
+        _sync_adapter_call(
+            self._adapter,
+            lambda: self._adapter.trigger_callback(
+                result.schedule_id,
+                result.scheduled_for,
+                trace_id=actor.trace_id,
+            ),
+            session_factory=self._session_factory,
+            schedule_id=result.schedule_id,
+            actor=actor,
+            event_type="run_now",
+        )
+        return result
 
     def _execute(self, handler: Callable[[Session], ResultT]) -> ResultT:
         """Run a handler inside a managed session with error mapping."""
@@ -264,34 +329,6 @@ def _to_data_access_actor(actor: ActorContext) -> data_access.ActorContext:
         request_id=actor.request_id,
         reason=actor.reason,
     )
-
-
-def _to_execution_actor_context(actor: ActorContext) -> data_access.ExecutionActorContext:
-    """Map run-now actor context into a scheduled execution actor context."""
-    scheduled_context = ScheduledActorContext()
-    correlation_id = actor.request_id or actor.trace_id
-    return data_access.ExecutionActorContext(
-        actor_type=scheduled_context.actor_type,
-        actor_id=None,
-        channel=scheduled_context.channel,
-        trace_id=actor.trace_id,
-        request_id=actor.request_id,
-        actor_context=scheduled_context.to_reference(
-            trigger_source="run_now",
-            requested_by=_format_requested_by(actor),
-        ),
-        correlation_id=correlation_id,
-    )
-
-
-def _format_requested_by(actor: ActorContext) -> str | None:
-    """Return a compact requested-by label for scheduled actor context."""
-    if not actor.actor_type:
-        return None
-    label = actor.actor_type.strip()
-    if actor.channel:
-        label = f"{label}@{actor.channel.strip()}"
-    return label or None
 
 
 def _to_task_intent_input(
@@ -433,28 +470,17 @@ def _to_schedule_view(schedule: Schedule) -> ScheduleView:
     )
 
 
-def _to_execution_view(execution: Execution) -> ExecutionView:
-    """Map execution model to view."""
-    return ExecutionView(
-        id=execution.id,
-        schedule_id=execution.schedule_id,
-        task_intent_id=execution.task_intent_id,
-        scheduled_for=execution.scheduled_for,
-        status=str(execution.status),
-        attempt_number=execution.attempt_count,
-        max_attempts=execution.max_attempts,
-        created_at=execution.created_at,
-        actor_type=execution.actor_type,
-        correlation_id=execution.correlation_id,
-    )
-
-
 def _map_exception(exc: Exception) -> ScheduleServiceError:
     """Map generic exceptions into schedule service errors."""
     if isinstance(exc, ScheduleServiceError):
         return exc
     if isinstance(exc, ValueError):
         return _map_value_error(str(exc))
+    if isinstance(exc, SchedulerAdapterError):
+        return ScheduleAdapterSyncError(
+            "Schedule adapter sync failed.",
+            {"adapter_code": exc.code, "adapter_details": exc.details},
+        )
     return ScheduleServiceError(
         "unexpected_error",
         "Unexpected schedule service error.",
@@ -479,3 +505,177 @@ def _map_value_error(message: str) -> ScheduleServiceError:
     }:
         return ScheduleValidationError(message)
     return ScheduleValidationError(message)
+
+
+def _to_adapter_definition(definition: ScheduleDefinitionView) -> ScheduleDefinition:
+    """Map a schedule definition view into an adapter definition payload."""
+    return ScheduleDefinition(
+        run_at=definition.run_at,
+        interval_count=definition.interval_count,
+        interval_unit=definition.interval_unit,
+        anchor_at=definition.anchor_at,
+        rrule=definition.rrule,
+        calendar_anchor_at=definition.calendar_anchor_at,
+        predicate_subject=definition.predicate_subject,
+        predicate_operator=definition.predicate_operator,
+        predicate_value=definition.predicate_value,
+        evaluation_interval_count=definition.evaluation_interval_count,
+        evaluation_interval_unit=definition.evaluation_interval_unit,
+    )
+
+
+def _to_adapter_payload(schedule: ScheduleView) -> SchedulePayload:
+    """Map a schedule view into an adapter registration payload."""
+    return SchedulePayload(
+        schedule_id=schedule.id,
+        schedule_type=schedule.schedule_type,
+        timezone=schedule.timezone,
+        definition=_to_adapter_definition(schedule.definition),
+    )
+
+
+def _sync_adapter_update(
+    *,
+    adapter: SchedulerAdapter,
+    schedule: ScheduleView,
+    request: ScheduleUpdateRequest,
+    actor: ActorContext,
+    session_factory: Callable[[], Session],
+) -> None:
+    """Synchronize schedule updates to the adapter."""
+    terminal_states = {"canceled", "archived", "completed"}
+    state = request.state
+    if state in terminal_states:
+        _sync_adapter_call(
+            adapter,
+            lambda: adapter.delete_schedule(schedule.id),
+            session_factory=session_factory,
+            schedule_id=schedule.id,
+            actor=actor,
+            event_type="update",
+        )
+        return
+
+    needs_update = request.definition is not None or request.timezone is not None
+    if needs_update:
+        _sync_adapter_call(
+            adapter,
+            lambda: adapter.update_schedule(_to_adapter_payload(schedule)),
+            session_factory=session_factory,
+            schedule_id=schedule.id,
+            actor=actor,
+            event_type="update",
+        )
+
+    if state == "paused":
+        _sync_adapter_call(
+            adapter,
+            lambda: adapter.pause_schedule(schedule.id),
+            session_factory=session_factory,
+            schedule_id=schedule.id,
+            actor=actor,
+            event_type="pause",
+        )
+    elif state == "active":
+        _sync_adapter_call(
+            adapter,
+            lambda: adapter.resume_schedule(schedule.id),
+            session_factory=session_factory,
+            schedule_id=schedule.id,
+            actor=actor,
+            event_type="resume",
+        )
+
+
+def _sync_adapter_call(
+    adapter: SchedulerAdapter,
+    action: Callable[[], None],
+    *,
+    session_factory: Callable[[], Session],
+    schedule_id: int,
+    actor: ActorContext,
+    event_type: str,
+) -> None:
+    """Execute an adapter call and audit any failures."""
+    try:
+        action()
+    except SchedulerAdapterError as exc:
+        _record_adapter_failure(
+            session_factory=session_factory,
+            schedule_id=schedule_id,
+            actor=actor,
+            event_type=event_type,
+            adapter_code=exc.code,
+            adapter_message=str(exc),
+        )
+        raise ScheduleAdapterSyncError(
+            "Schedule adapter sync failed.",
+            {
+                "schedule_id": schedule_id,
+                "event_type": event_type,
+                "adapter_code": exc.code,
+                "adapter_message": str(exc),
+                "adapter_details": exc.details,
+            },
+        ) from exc
+    except Exception as exc:
+        _record_adapter_failure(
+            session_factory=session_factory,
+            schedule_id=schedule_id,
+            actor=actor,
+            event_type=event_type,
+            adapter_code="unexpected_error",
+            adapter_message=str(exc),
+        )
+        raise ScheduleAdapterSyncError(
+            "Schedule adapter sync failed.",
+            {
+                "schedule_id": schedule_id,
+                "event_type": event_type,
+                "adapter_code": "unexpected_error",
+                "adapter_message": str(exc),
+            },
+        ) from exc
+
+
+def _record_adapter_failure(
+    *,
+    session_factory: Callable[[], Session],
+    schedule_id: int,
+    actor: ActorContext,
+    event_type: str,
+    adapter_code: str,
+    adapter_message: str,
+) -> None:
+    """Persist an audit log entry when adapter sync fails."""
+    reason = f"adapter_sync_failed:{event_type}:{adapter_code}"
+    diff_summary = reason
+    failure_actor = ActorContext(
+        actor_type=actor.actor_type,
+        actor_id=actor.actor_id,
+        channel=actor.channel,
+        trace_id=actor.trace_id,
+        request_id=None,
+        reason=_merge_reason(actor.reason, adapter_message),
+    )
+    with closing(session_factory()) as session:
+        try:
+            data_access.record_schedule_audit(
+                session,
+                schedule_id,
+                _to_data_access_actor(failure_actor),
+                event_type=event_type,
+                diff_summary=diff_summary,
+                now=datetime.now(timezone.utc),
+            )
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            logger.warning("Failed to record adapter sync audit: %s", exc)
+
+
+def _merge_reason(original: str | None, adapter_message: str) -> str:
+    """Compose a reason string for adapter failure audits."""
+    if original:
+        return f"{original} | adapter_error: {adapter_message}"
+    return f"adapter_error: {adapter_message}"

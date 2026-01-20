@@ -75,7 +75,13 @@ class SchedulerAdapter(Protocol):
         """Delete a schedule from the provider."""
         ...
 
-    def trigger_callback(self, schedule_id: int, scheduled_for: datetime) -> None:
+    def trigger_callback(
+        self,
+        schedule_id: int,
+        scheduled_for: datetime,
+        *,
+        trace_id: str | None = None,
+    ) -> None:
         """Trigger a callback execution for the schedule."""
         ...
 

@@ -61,7 +61,7 @@ Single module with command and query paths.
 - `pause_schedule(request: SchedulePauseRequest, actor: ActorContext) -> ScheduleResult`
 - `resume_schedule(request: ScheduleResumeRequest, actor: ActorContext) -> ScheduleResult`
 - `delete_schedule(request: ScheduleDeleteRequest, actor: ActorContext) -> ScheduleDeleteResult`
-- `run_now(request: ScheduleRunNowRequest, actor: ActorContext) -> ExecutionResult`
+- `run_now(request: ScheduleRunNowRequest, actor: ActorContext) -> ExecutionRunNowResult`
 
 ### Query Methods
 - `get_schedule(request: ScheduleGetRequest) -> ScheduleResult`
@@ -157,8 +157,10 @@ Single module with command and query paths.
 - `schedule_id`
 - `state` (final state; `canceled` or `archived`)
 
-### ExecutionResult (from run-now)
-- `execution` (ExecutionView)
+### ExecutionRunNowResult (from run-now)
+- `schedule_id`
+- `scheduled_for`
+- `audit_log_id`
 
 ## View Shapes
 
@@ -199,7 +201,7 @@ Single module with command and query paths.
 - `max_attempts`
 - `created_at`
 - `actor_type` (fixed: `scheduled`)
-- `correlation_id`
+- `trace_id`
 
 ## Validation Rules
 

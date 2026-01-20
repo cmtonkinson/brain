@@ -52,6 +52,7 @@ class CeleryCallbackPayload:
 
     schedule_id: int
     scheduled_for: datetime | None
+    trace_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -135,10 +136,20 @@ class CelerySchedulerAdapter:
         """Delete a Celery Beat schedule entry."""
         self._client.delete_entry(_entry_name(schedule_id))
 
-    def trigger_callback(self, schedule_id: int, scheduled_for: datetime) -> None:
+    def trigger_callback(
+        self,
+        schedule_id: int,
+        scheduled_for: datetime,
+        *,
+        trace_id: str | None = None,
+    ) -> None:
         """Trigger an immediate Celery callback execution."""
         eta = _ensure_aware(scheduled_for, timezone.utc)
-        payload = CeleryCallbackPayload(schedule_id=schedule_id, scheduled_for=eta)
+        payload = CeleryCallbackPayload(
+            schedule_id=schedule_id,
+            scheduled_for=eta,
+            trace_id=trace_id,
+        )
         self._client.enqueue_callback(payload, eta=eta, queue_name=self._config.queue_name)
 
     def check_health(self) -> AdapterHealth:
