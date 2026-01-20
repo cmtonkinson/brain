@@ -1,5 +1,5 @@
 # PRD: Scheduled & Timed Task Execution
-## Dynamic, Policy-Aware Scheduling for Brain
+## Dynamic, Authorization-Context-Aware Scheduling for Brain
 
 ---
 
@@ -17,7 +17,7 @@ This feature enables Brain to:
 - run periodic reviews and watchers
 - deliver notifications and follow-ups at the right time
 
-All while respecting autonomy and attention constraints, and remaining policy-aware where required.
+All while respecting autonomy and attention constraints, and carrying the scheduled actor context where required.
 
 ---
 
@@ -34,7 +34,7 @@ Without a scheduling layer:
 Brain requires a **time-aware execution model** that is:
 - dynamic
 - inspectable
-- policy-aware
+- authorization-context-aware
 - decoupled from implementation details
 
 ---
@@ -46,7 +46,7 @@ Brain requires a **time-aware execution model** that is:
 - Allow schedules to be created, modified, paused, or canceled at runtime
 - Enable scheduled tasks to invoke the Brain agent safely
 - Persist task intent and state durably
-- Integrate with memory and attention layers; remain policy-aware where required
+- Integrate with memory and attention layers; carry the scheduled actor context where required
 
 ### Non-Goals
 - Real-time sub-second task execution
@@ -61,7 +61,7 @@ Brain requires a **time-aware execution model** that is:
 1. **Time is a first-class input**
 2. **Schedules are data, not configuration**
 3. **Execution is decoupled from intent**
-4. **Scheduled actions are policy-aware, not policy-bound**
+4. **Scheduled actions are authorization-context-aware, not authorization-bound**
 5. **Humans must be able to inspect and reason about schedules**
 
 ---
@@ -160,11 +160,11 @@ This enables audit, debugging, and trust.
 
 ---
 
-## 7. Policy Awareness & Safety Integration
+## 7. Authorization Context & Safety Integration
 
-Policy awareness is limited to two cases:
+Authorization context is limited to two cases:
 - Outbound notifications must flow through the Attention Router.
-- Skill/Ops invocation must carry the scheduled actor context so authorization policies evaluate correctly.
+- Skill/Ops invocation must carry the scheduled actor context so authorization checks evaluate correctly.
 
 ### 7.1 Actor Context
 
@@ -208,7 +208,7 @@ For each task and execution, the system must record:
 - outcomes
 - side effects
 - full audit logging for every scheduled job invocation stored in Postgres
-- dashboards or CLI inspection tools
+- internal inspection surfaces for schedules and executions
 
 ---
 
