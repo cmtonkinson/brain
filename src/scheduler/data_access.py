@@ -524,6 +524,33 @@ def delete_schedule(
     )
 
 
+def record_schedule_audit(
+    session: Session,
+    schedule_id: int,
+    actor: ActorContext,
+    *,
+    event_type: str,
+    diff_summary: str | None = None,
+    now: datetime | None = None,
+) -> ScheduleAuditLog:
+    """Record a schedule audit entry without mutating the schedule."""
+    _validate_actor_context(actor)
+    if event_type not in ScheduleAuditEventTypeEnum.enums:
+        raise ValueError(f"Invalid schedule audit event: {event_type}.")
+    schedule = session.query(Schedule).filter(Schedule.id == schedule_id).first()
+    if schedule is None:
+        raise ValueError("schedule not found.")
+    timestamp = _normalize_timestamp(now or datetime.now(timezone.utc), "occurred_at")
+    return _record_schedule_audit(
+        session,
+        schedule,
+        actor,
+        event_type=event_type,
+        diff_summary=diff_summary,
+        occurred_at=timestamp,
+    )
+
+
 def list_active_schedules(session: Session) -> list[Schedule]:
     """Return active schedules."""
     return session.query(Schedule).filter(Schedule.state == "active").all()

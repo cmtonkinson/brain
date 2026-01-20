@@ -21,7 +21,7 @@ Docblock:
 13. [closed] work-jobs/task-49-schedule-service-interface-module.md (epic 04, milestone 02)
 14. [closed] work-jobs/task-46-task-intent-creation-path.md (epic 04, milestone 02)
 15. [closed] work-jobs/task-13-schedule-validation-layer.md (epic 04, milestone 02)
-16. [open] work-jobs/task-12-schedule-api-routing-and-handlers.md (epic 04, milestone 02)
+16. [closed] work-jobs/task-12-schedule-api-routing-and-handlers.md (epic 04, milestone 02)
 17. [open] work-jobs/task-14-authorization-context-wiring.md (epic 04, milestone 02)
 18. [open] work-jobs/task-15-schedule-audit-linkage.md (epic 04, milestone 02)
 19. [open] work-jobs/task-16-scheduler-adapter-implementation.md (epic 05, milestone 03)
