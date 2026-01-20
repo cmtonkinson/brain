@@ -3,33 +3,29 @@
 [![CI Tests](https://github.com/cmtonkinson/brain/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/cmtonkinson/brain/actions/workflows/tests.yml)
 ![Python: 3.13](https://img.shields.io/badge/Python-3.13-blue.svg)
 
-An exocortex for attention, memory, and action. Brain is a local-first AI system grounded in data
-sovereignty and durable knowledge; "cognitive infrastructure" that prioritizes context, directs
-intent deliberately, and closes loops.
+An exocortex for attention, memory, and action. Brain is a local-first AI system grounded in data sovereignty and
+durable knowledge; "cognitive infrastructure" that prioritizes context, directs intent deliberately, and closes loops.
 
 ## Overview
-_Conceptually_, Brain has three parts.
+_Conceptually_ Brain has three parts:
+1. A **personal knowledge base**: durable, human-readable, locally-stored information. At its simplest, this could be a
+   single (if very large) file.
+2. A **reasoning engine**: an LLM used to interpret context, propose actions, explain decisions, and interact with you
+   conversationally.
+3. A **capability layer**: governed operations that interact with the real world (files, calendars, messaging, etc.) via
+   native APIs or MCP Servers.
 
-1. A **personal knowledge base**: durable, human-readable, locally-stored information. At its
-   simplest, this could be a single (if very large) file.
-2. A **reasoning engine**: an LLM used to interpret context, propose actions, explain decisions, and
-   interact with you conversationally.
-3. A **capability layer**: governed operations that interact with the real world (files, calendars,
-   messaging, etc.) via native APIs or MCP Servers.
+The **agent** serves to coordinate these concerns while keeping them separate, inspectable, and under your control.
 
-Brain’s **agent** exists to coordinate these three concerns while keeping them separate,
-inspectable, and under your control.
-
-_Operationally_, however, the picture is more complicated. Currently there are an array of sepearate
-services satisfying different needs.
-
-A limited number of processes need to be run directly on your host system:
-- Obsidian, with its various plugings &mdash; _required_
+_Technically_, the system takes advantage of Docker to isolate subsystems. In an ideal world every component would be
+containerized, but for various reasons (security boundaries, usability, performance) there are a limited number of
+services that need to run directly on your host system:
+- Obsidian, with its various plugins &mdash; _required_
 - Ollama for local chat and embedding &mdash; _optional_
-- any MCP Servers which require host access (e.g. for EventKit on MacOS) &mdash; _optional_
-- the Host MCP Gateway proxy (an HTTP server) &mdash; _optional_
+- Any MCP Servers which require host access (e.g. for EventKit on MacOS) &mdash; _optional_
+- The Host MCP Gateway proxy (an HTTP server) &mdash; _optional_
 
-Other services are run out of Docker Compose:
+All other services are run with Docker Compose:
 - Durable working state and application logs are kept in **Postgres**
 - Object storage is provided by **MinIO**
 - Caching and queueing are handled by **Redis**
@@ -40,9 +36,8 @@ Other services are run out of Docker Compose:
   - **LiteLLM** for model orchestration
   - **UTCP Code-Mode** for MCP tool discovery/execution
 
-There is an optional observability stack (also managed by Docker Compose) which leverages
-**Prometheus**, **Loki**, and **Grafana**; everything is designed to use OpenTelemetry for
-instrumentation.
+There is an optional OpenTelemetry-based observability stack (a separate but related Docker Compose) which leverages
+**Prometheus**, **Loki**, and **Grafana**.
 
 ## Architecture
 
