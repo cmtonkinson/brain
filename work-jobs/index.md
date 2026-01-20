@@ -39,7 +39,7 @@ Docblock:
 31. [closed] work-jobs/task-47-scheduler-adapter-recurring-conditional.md (epic 05, milestone 03)
 32. [closed] work-jobs/task-24-execution-history-querying.md (epic 07, milestone 04)
 33. [closed] work-jobs/task-26-audit-log-surface.md (epic 07, milestone 04)
-34. [open] work-jobs/task-23-inspection-api.md (epic 07, milestone 04)
+34. [closed] work-jobs/task-23-inspection-api.md (epic 07, milestone 04)
 35. [closed] work-jobs/task-25-predicate-evaluation-visibility.md (epic 07, milestone 04)
 36. [open] work-jobs/task-27-orphaned-failing-schedule-criteria.md (epic 08, milestone 04)
 37. [open] work-jobs/task-48-review-detection-queries.md (epic 08, milestone 04)
