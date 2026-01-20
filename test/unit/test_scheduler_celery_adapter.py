@@ -10,6 +10,7 @@ import pytest
 from scheduler.adapter_interface import ScheduleDefinition, SchedulePayload, SchedulerAdapterError
 from scheduler.adapters.celery_adapter import (
     CeleryAdapterConfig,
+    CeleryCrontabSchedule,
     CeleryEtaSchedule,
     CeleryIntervalSchedule,
     CelerySchedulerAdapter,
@@ -80,6 +81,16 @@ class _FakeCeleryClient:
 def _adapter(client: _FakeCeleryClient) -> CelerySchedulerAdapter:
     """Build a Celery scheduler adapter for tests."""
     config = CeleryAdapterConfig(callback_task_name="scheduler.dispatch", queue_name="scheduler")
+    return CelerySchedulerAdapter(client, config)
+
+
+def _adapter_with_evaluation_callback(client: _FakeCeleryClient) -> CelerySchedulerAdapter:
+    """Build a Celery scheduler adapter with evaluation callback task for conditional schedules."""
+    config = CeleryAdapterConfig(
+        callback_task_name="scheduler.dispatch",
+        evaluation_callback_task_name="scheduler.evaluate_predicate",
+        queue_name="scheduler",
+    )
     return CelerySchedulerAdapter(client, config)
 
 
@@ -154,15 +165,15 @@ def test_register_interval_month_is_rejected() -> None:
     assert exc.value.code == "unsupported_interval_unit"
 
 
-def test_register_unsupported_schedule_type_is_rejected() -> None:
-    """Ensure unsupported schedule types are rejected by the adapter."""
+def test_register_unknown_schedule_type_is_rejected() -> None:
+    """Ensure unknown schedule types are rejected by the adapter."""
     client = _FakeCeleryClient()
     adapter = _adapter(client)
     payload = SchedulePayload(
         schedule_id=404,
-        schedule_type="calendar_rule",
+        schedule_type="unknown_type",
         timezone="UTC",
-        definition=ScheduleDefinition(rrule="FREQ=DAILY"),
+        definition=ScheduleDefinition(),
     )
 
     with pytest.raises(SchedulerAdapterError) as exc:
@@ -214,3 +225,529 @@ def test_check_health_reports_status() -> None:
     client.health_ok = False
     health = adapter.check_health()
     assert health.status == "unhealthy"
+
+
+# -----------------------------------------------------------------------------
+# Calendar-rule schedule tests (RRULE to crontab mapping)
+# -----------------------------------------------------------------------------
+
+
+def test_register_calendar_rule_daily_builds_crontab_entry() -> None:
+    """Ensure daily RRULE schedules translate into crontab entries."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    payload = SchedulePayload(
+        schedule_id=501,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="FREQ=DAILY"),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert entry.name == "schedule:501"
+    assert isinstance(entry.schedule, CeleryCrontabSchedule)
+    # Daily at midnight by default
+    assert entry.schedule.minute == "0"
+    assert entry.schedule.hour == "0"
+    assert entry.schedule.day_of_week == "*"
+    assert entry.schedule.day_of_month == "*"
+    assert entry.schedule.month_of_year == "*"
+
+
+def test_register_calendar_rule_weekly_with_byday() -> None:
+    """Ensure weekly RRULE with BYDAY maps to correct day_of_week."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    # Every Monday, Wednesday, Friday
+    payload = SchedulePayload(
+        schedule_id=502,
+        schedule_type="calendar_rule",
+        timezone="America/New_York",
+        definition=ScheduleDefinition(rrule="FREQ=WEEKLY;BYDAY=MO,WE,FR"),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryCrontabSchedule)
+    # MO=1, WE=3, FR=5 in crontab
+    assert entry.schedule.day_of_week == "1,3,5"
+    assert entry.schedule.minute == "0"
+    assert entry.schedule.hour == "0"
+
+
+def test_register_calendar_rule_with_byhour_byminute() -> None:
+    """Ensure BYHOUR and BYMINUTE map to crontab hour and minute."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    payload = SchedulePayload(
+        schedule_id=503,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="FREQ=DAILY;BYHOUR=9;BYMINUTE=30"),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryCrontabSchedule)
+    assert entry.schedule.hour == "9"
+    assert entry.schedule.minute == "30"
+
+
+def test_register_calendar_rule_monthly_with_bymonthday() -> None:
+    """Ensure monthly RRULE with BYMONTHDAY maps correctly."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    # 15th of every month
+    payload = SchedulePayload(
+        schedule_id=504,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="FREQ=MONTHLY;BYMONTHDAY=15"),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryCrontabSchedule)
+    assert entry.schedule.day_of_month == "15"
+    assert entry.schedule.minute == "0"
+    assert entry.schedule.hour == "0"
+
+
+def test_register_calendar_rule_yearly_with_bymonth() -> None:
+    """Ensure yearly RRULE with BYMONTH maps correctly."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    # January 1st every year
+    payload = SchedulePayload(
+        schedule_id=505,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="FREQ=YEARLY;BYMONTH=1;BYMONTHDAY=1"),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryCrontabSchedule)
+    assert entry.schedule.month_of_year == "1"
+    assert entry.schedule.day_of_month == "1"
+
+
+def test_register_calendar_rule_hourly_with_interval() -> None:
+    """Ensure hourly RRULE with INTERVAL maps to step expression."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    # Every 2 hours
+    payload = SchedulePayload(
+        schedule_id=506,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="FREQ=HOURLY;INTERVAL=2"),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryCrontabSchedule)
+    assert entry.schedule.hour == "*/2"
+    assert entry.schedule.minute == "0"
+
+
+def test_register_calendar_rule_minutely() -> None:
+    """Ensure minutely RRULE maps to crontab with minute wildcard."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    # Every 5 minutes
+    payload = SchedulePayload(
+        schedule_id=507,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="FREQ=MINUTELY;INTERVAL=5"),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryCrontabSchedule)
+    assert entry.schedule.minute == "*/5"
+
+
+def test_register_calendar_rule_missing_rrule_is_rejected() -> None:
+    """Ensure calendar_rule without rrule is rejected."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    payload = SchedulePayload(
+        schedule_id=508,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(),
+    )
+
+    with pytest.raises(SchedulerAdapterError) as exc:
+        adapter.register_schedule(payload)
+
+    # Validation layer catches this before adapter-specific logic
+    assert exc.value.code == "invalid_schedule_definition"
+
+
+def test_register_calendar_rule_missing_freq_is_rejected() -> None:
+    """Ensure RRULE without FREQ is rejected."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    payload = SchedulePayload(
+        schedule_id=509,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="BYDAY=MO"),
+    )
+
+    with pytest.raises(SchedulerAdapterError) as exc:
+        adapter.register_schedule(payload)
+
+    # Validation layer catches missing FREQ before adapter-specific logic
+    assert exc.value.code == "invalid_schedule_definition"
+
+
+def test_register_calendar_rule_unsupported_freq_is_rejected() -> None:
+    """Ensure unsupported RRULE FREQ is rejected."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    payload = SchedulePayload(
+        schedule_id=510,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="FREQ=SECONDLY"),
+    )
+
+    with pytest.raises(SchedulerAdapterError) as exc:
+        adapter.register_schedule(payload)
+
+    assert exc.value.code == "unsupported_rrule_freq"
+
+
+def test_update_calendar_rule_schedule() -> None:
+    """Ensure calendar_rule schedules can be updated via the adapter."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    payload = SchedulePayload(
+        schedule_id=511,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="FREQ=WEEKLY;BYDAY=TU,TH"),
+    )
+
+    adapter.update_schedule(payload)
+
+    entry = client.updated[-1]
+    assert entry.name == "schedule:511"
+    assert isinstance(entry.schedule, CeleryCrontabSchedule)
+    assert entry.schedule.day_of_week == "2,4"  # TU=2, TH=4
+
+
+# -----------------------------------------------------------------------------
+# Conditional schedule tests (evaluation cadence mapping)
+# -----------------------------------------------------------------------------
+
+
+def test_register_conditional_schedule_builds_interval_for_evaluation() -> None:
+    """Ensure conditional schedules build interval for evaluation cadence."""
+    client = _FakeCeleryClient()
+    adapter = _adapter_with_evaluation_callback(client)
+    payload = SchedulePayload(
+        schedule_id=601,
+        schedule_type="conditional",
+        timezone="UTC",
+        definition=ScheduleDefinition(
+            predicate_subject="obsidian.notes.count",
+            predicate_operator="gt",
+            predicate_value="100",
+            evaluation_interval_count=15,
+            evaluation_interval_unit="minute",
+        ),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert entry.name == "schedule:601"
+    assert entry.task == "scheduler.evaluate_predicate"
+    assert isinstance(entry.schedule, CeleryIntervalSchedule)
+    assert entry.schedule.every == 15
+    assert entry.schedule.period == "minutes"
+    assert entry.schedule.anchor_at is None
+
+
+def test_register_conditional_schedule_with_hourly_cadence() -> None:
+    """Ensure conditional schedules support hourly evaluation cadence."""
+    client = _FakeCeleryClient()
+    adapter = _adapter_with_evaluation_callback(client)
+    payload = SchedulePayload(
+        schedule_id=602,
+        schedule_type="conditional",
+        timezone="America/Los_Angeles",
+        definition=ScheduleDefinition(
+            predicate_subject="api.status",
+            predicate_operator="eq",
+            predicate_value="healthy",
+            evaluation_interval_count=6,
+            evaluation_interval_unit="hour",
+        ),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryIntervalSchedule)
+    assert entry.schedule.every == 6
+    assert entry.schedule.period == "hours"
+
+
+def test_register_conditional_schedule_with_daily_cadence() -> None:
+    """Ensure conditional schedules support daily evaluation cadence."""
+    client = _FakeCeleryClient()
+    adapter = _adapter_with_evaluation_callback(client)
+    payload = SchedulePayload(
+        schedule_id=603,
+        schedule_type="conditional",
+        timezone="UTC",
+        definition=ScheduleDefinition(
+            predicate_subject="memory.hygiene.score",
+            predicate_operator="lt",
+            predicate_value="80",
+            evaluation_interval_count=1,
+            evaluation_interval_unit="day",
+        ),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryIntervalSchedule)
+    assert entry.schedule.every == 1
+    assert entry.schedule.period == "days"
+
+
+def test_register_conditional_schedule_with_weekly_cadence() -> None:
+    """Ensure conditional schedules support weekly evaluation cadence."""
+    client = _FakeCeleryClient()
+    adapter = _adapter_with_evaluation_callback(client)
+    payload = SchedulePayload(
+        schedule_id=604,
+        schedule_type="conditional",
+        timezone="UTC",
+        definition=ScheduleDefinition(
+            predicate_subject="backup.last_run",
+            predicate_operator="exists",
+            predicate_value=None,
+            evaluation_interval_count=1,
+            evaluation_interval_unit="week",
+        ),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryIntervalSchedule)
+    assert entry.schedule.every == 1
+    assert entry.schedule.period == "weeks"
+
+
+def test_register_conditional_missing_evaluation_callback_task_is_rejected() -> None:
+    """Ensure conditional schedules require evaluation_callback_task_name in config."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)  # No evaluation_callback_task_name
+    payload = SchedulePayload(
+        schedule_id=605,
+        schedule_type="conditional",
+        timezone="UTC",
+        definition=ScheduleDefinition(
+            predicate_subject="test.subject",
+            predicate_operator="eq",
+            predicate_value="value",
+            evaluation_interval_count=10,
+            evaluation_interval_unit="minute",
+        ),
+    )
+
+    with pytest.raises(SchedulerAdapterError) as exc:
+        adapter.register_schedule(payload)
+
+    assert exc.value.code == "missing_evaluation_callback_task"
+
+
+def test_register_conditional_missing_evaluation_interval_count_is_rejected() -> None:
+    """Ensure conditional schedules require evaluation_interval_count."""
+    client = _FakeCeleryClient()
+    adapter = _adapter_with_evaluation_callback(client)
+    payload = SchedulePayload(
+        schedule_id=606,
+        schedule_type="conditional",
+        timezone="UTC",
+        definition=ScheduleDefinition(
+            predicate_subject="test.subject",
+            predicate_operator="eq",
+            predicate_value="value",
+            evaluation_interval_unit="minute",
+        ),
+    )
+
+    with pytest.raises(SchedulerAdapterError) as exc:
+        adapter.register_schedule(payload)
+
+    # Validation layer catches this before adapter-specific logic
+    assert exc.value.code == "invalid_schedule_definition"
+
+
+def test_register_conditional_missing_evaluation_interval_unit_is_rejected() -> None:
+    """Ensure conditional schedules require evaluation_interval_unit."""
+    client = _FakeCeleryClient()
+    adapter = _adapter_with_evaluation_callback(client)
+    payload = SchedulePayload(
+        schedule_id=607,
+        schedule_type="conditional",
+        timezone="UTC",
+        definition=ScheduleDefinition(
+            predicate_subject="test.subject",
+            predicate_operator="eq",
+            predicate_value="value",
+            evaluation_interval_count=10,
+        ),
+    )
+
+    with pytest.raises(SchedulerAdapterError) as exc:
+        adapter.register_schedule(payload)
+
+    # Validation layer catches this before adapter-specific logic
+    assert exc.value.code == "invalid_schedule_definition"
+
+
+def test_register_conditional_unsupported_interval_unit_is_rejected() -> None:
+    """Ensure conditional schedules reject unsupported evaluation interval units."""
+    client = _FakeCeleryClient()
+    adapter = _adapter_with_evaluation_callback(client)
+    payload = SchedulePayload(
+        schedule_id=608,
+        schedule_type="conditional",
+        timezone="UTC",
+        definition=ScheduleDefinition(
+            predicate_subject="test.subject",
+            predicate_operator="eq",
+            predicate_value="value",
+            evaluation_interval_count=1,
+            evaluation_interval_unit="month",  # Not supported
+        ),
+    )
+
+    with pytest.raises(SchedulerAdapterError) as exc:
+        adapter.register_schedule(payload)
+
+    # Validation layer catches this before adapter-specific logic
+    assert exc.value.code == "invalid_schedule_definition"
+
+
+def test_update_conditional_schedule() -> None:
+    """Ensure conditional schedules can be updated via the adapter."""
+    client = _FakeCeleryClient()
+    adapter = _adapter_with_evaluation_callback(client)
+    payload = SchedulePayload(
+        schedule_id=609,
+        schedule_type="conditional",
+        timezone="UTC",
+        definition=ScheduleDefinition(
+            predicate_subject="updated.subject",
+            predicate_operator="neq",
+            predicate_value="old_value",
+            evaluation_interval_count=30,
+            evaluation_interval_unit="minute",
+        ),
+    )
+
+    adapter.update_schedule(payload)
+
+    entry = client.updated[-1]
+    assert entry.name == "schedule:609"
+    assert entry.task == "scheduler.evaluate_predicate"
+    assert isinstance(entry.schedule, CeleryIntervalSchedule)
+    assert entry.schedule.every == 30
+    assert entry.schedule.period == "minutes"
+
+
+def test_pause_resume_delete_works_for_all_schedule_types() -> None:
+    """Ensure pause/resume/delete work consistently for all schedule types."""
+    client = _FakeCeleryClient()
+    adapter = _adapter_with_evaluation_callback(client)
+
+    # Calendar rule schedule
+    adapter.pause_schedule(700)
+    adapter.resume_schedule(700)
+    adapter.delete_schedule(700)
+
+    # Conditional schedule
+    adapter.pause_schedule(701)
+    adapter.resume_schedule(701)
+    adapter.delete_schedule(701)
+
+    assert client.paused == ["schedule:700", "schedule:701"]
+    assert client.resumed == ["schedule:700", "schedule:701"]
+    assert client.deleted == ["schedule:700", "schedule:701"]
+
+
+def test_calendar_rule_with_ordinal_byday() -> None:
+    """Ensure BYDAY with ordinal prefix (e.g., 1MO for first Monday) is handled."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    # First Monday of each month
+    payload = SchedulePayload(
+        schedule_id=801,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="FREQ=MONTHLY;BYDAY=1MO"),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryCrontabSchedule)
+    # Ordinal prefix is stripped, just use the day
+    assert entry.schedule.day_of_week == "1"  # Monday
+
+
+def test_calendar_rule_sunday_mapping() -> None:
+    """Ensure Sunday maps correctly to crontab day 0."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    payload = SchedulePayload(
+        schedule_id=802,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="FREQ=WEEKLY;BYDAY=SU"),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryCrontabSchedule)
+    assert entry.schedule.day_of_week == "0"  # Sunday
+
+
+def test_calendar_rule_saturday_mapping() -> None:
+    """Ensure Saturday maps correctly to crontab day 6."""
+    client = _FakeCeleryClient()
+    adapter = _adapter(client)
+    payload = SchedulePayload(
+        schedule_id=803,
+        schedule_type="calendar_rule",
+        timezone="UTC",
+        definition=ScheduleDefinition(rrule="FREQ=WEEKLY;BYDAY=SA"),
+    )
+
+    adapter.register_schedule(payload)
+
+    entry = client.registered[-1]
+    assert isinstance(entry.schedule, CeleryCrontabSchedule)
+    assert entry.schedule.day_of_week == "6"  # Saturday
