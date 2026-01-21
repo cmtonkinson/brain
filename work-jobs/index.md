@@ -60,6 +60,6 @@ Docblock:
 52. [closed] work-jobs/task-53-inspection-api-integration-tests.md (epic 07, milestone 04)
 53. [closed] work-jobs/task-54-review-job-integration-tests.md (epic 08, milestone 04)
 54. [closed] work-jobs/task-35-ops-runbook.md (epic 10, milestone 05)
-55. [open] work-jobs/task-36-deployment-validation-checklist.md (epic 10, milestone 05)
+55. [closed] work-jobs/task-36-deployment-validation-checklist.md (epic 10, milestone 05)
 56. [open] work-jobs/task-60-compose-scheduler-validation-steps.md (epic 10, milestone 05)
 57. [open] work-jobs/task-37-upgrade-rollback-checklist.md (epic 10, milestone 05)
