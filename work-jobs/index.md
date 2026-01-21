@@ -48,7 +48,7 @@ Docblock:
 40. [closed] work-jobs/task-29-review-output-surface.md (epic 08, milestone 04)
 41. [closed] work-jobs/task-30-review-ops-docs.md (epic 08, milestone 04)
 42. [closed] work-jobs/task-34-test-stability-harness.md (epic 09, milestone 05)
-43. [open] work-jobs/task-31-e2e-schedule-lifecycle-tests.md (epic 09, milestone 05)
+43. [closed] work-jobs/task-31-e2e-schedule-lifecycle-tests.md (epic 09, milestone 05)
 44. [open] work-jobs/task-44-e2e-run-now-execution.md (epic 09, milestone 05)
 45. [open] work-jobs/task-55-e2e-schedule-pause-resume.md (epic 09, milestone 05)
 46. [open] work-jobs/task-45-e2e-schedule-types-coverage.md (epic 09, milestone 05)

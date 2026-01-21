@@ -174,6 +174,13 @@ def _normalize_timestamp(value: datetime, label: str) -> datetime:
     return value
 
 
+def _normalize_optional_timestamp(value: datetime | None, label: str) -> datetime | None:
+    """Normalize optional timestamps to timezone-aware UTC values when provided."""
+    if value is None:
+        return None
+    return _normalize_timestamp(value, label)
+
+
 def _validate_actor_context(context: ActorContext, *, allow_scheduled: bool = False) -> None:
     """Validate actor context inputs for schedule mutations."""
     if not context.actor_type.strip():
@@ -636,6 +643,9 @@ def create_execution(
 
     timestamp = _normalize_timestamp(now or datetime.now(timezone.utc), "created_at")
     scheduled_for = _normalize_timestamp(execution_input.scheduled_for, "scheduled_for")
+    started_at = _normalize_optional_timestamp(execution_input.started_at, "started_at")
+    finished_at = _normalize_optional_timestamp(execution_input.finished_at, "finished_at")
+    next_retry_at = _normalize_optional_timestamp(execution_input.next_retry_at, "next_retry_at")
     execution = Execution(
         task_intent_id=execution_input.task_intent_id,
         schedule_id=execution_input.schedule_id,
@@ -649,11 +659,11 @@ def create_execution(
         attempt_count=execution_input.attempt_count,
         retry_count=execution_input.retry_count,
         max_attempts=execution_input.max_attempts,
-        started_at=execution_input.started_at,
-        finished_at=execution_input.finished_at,
+        started_at=started_at,
+        finished_at=finished_at,
         failure_count=execution_input.failure_count,
         retry_backoff_strategy=execution_input.retry_backoff_strategy,
-        next_retry_at=execution_input.next_retry_at,
+        next_retry_at=next_retry_at,
         last_error_code=execution_input.last_error_code,
         last_error_message=execution_input.last_error_message,
     )
@@ -696,9 +706,9 @@ def update_execution(
     if updates.max_attempts is not UNSET:
         execution.max_attempts = int(updates.max_attempts)
     if updates.started_at is not UNSET:
-        execution.started_at = updates.started_at
+        execution.started_at = _normalize_optional_timestamp(updates.started_at, "started_at")
     if updates.finished_at is not UNSET:
-        execution.finished_at = updates.finished_at
+        execution.finished_at = _normalize_optional_timestamp(updates.finished_at, "finished_at")
     if updates.failure_count is not UNSET:
         execution.failure_count = int(updates.failure_count)
     if updates.retry_backoff_strategy is not UNSET:
@@ -709,7 +719,9 @@ def update_execution(
                 raise ValueError("retry_backoff_strategy must be valid when provided.")
             execution.retry_backoff_strategy = str(updates.retry_backoff_strategy)
     if updates.next_retry_at is not UNSET:
-        execution.next_retry_at = updates.next_retry_at
+        execution.next_retry_at = _normalize_optional_timestamp(
+            updates.next_retry_at, "next_retry_at"
+        )
     if updates.last_error_code is not UNSET:
         execution.last_error_code = updates.last_error_code
     if updates.last_error_message is not UNSET:

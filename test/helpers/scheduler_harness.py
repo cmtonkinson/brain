@@ -87,6 +87,7 @@ def wait_for_execution_status(
             if execution is not None:
                 last_status = str(execution.status)
                 if last_status in statuses:
+                    _normalize_execution_timestamps(execution)
                     return execution
         if time.monotonic() - start >= timeout_seconds:
             raise TimeoutError(
@@ -112,3 +113,19 @@ def _fetch_execution(
         .order_by(Execution.id.desc())
         .first()
     )
+
+
+def _normalize_execution_timestamps(execution: Execution) -> None:
+    """Normalize execution timestamps to UTC when the database returns naive values."""
+    execution.scheduled_for = _ensure_aware(execution.scheduled_for)
+    execution.started_at = _ensure_aware(execution.started_at)
+    execution.finished_at = _ensure_aware(execution.finished_at)
+
+
+def _ensure_aware(value: datetime | None) -> datetime | None:
+    """Return a timezone-aware datetime, assuming UTC when tzinfo is missing."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
