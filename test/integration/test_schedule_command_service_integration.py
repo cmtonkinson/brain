@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import sessionmaker
 
 from models import Schedule, ScheduleAuditLog, TaskIntent
-from scheduler.adapter_interface import AdapterHealth, SchedulePayload, SchedulerAdapter
 from scheduler.schedule_service import ScheduleCommandServiceImpl
 from scheduler.schedule_service_interface import (
     ActorContext,
@@ -20,6 +19,7 @@ from scheduler.schedule_service_interface import (
     ScheduleValidationError,
     TaskIntentInput,
 )
+from test.helpers.scheduler_adapter_stub import RecordingSchedulerAdapter
 
 
 def _actor_context() -> ActorContext:
@@ -34,59 +34,12 @@ def _actor_context() -> ActorContext:
     )
 
 
-class AdapterStub(SchedulerAdapter):
-    """In-memory scheduler adapter stub for integration tests."""
-
-    def __init__(self) -> None:
-        """Initialize stub call storage."""
-        self.registered: list[SchedulePayload] = []
-        self.updated: list[SchedulePayload] = []
-        self.paused: list[int] = []
-        self.resumed: list[int] = []
-        self.deleted: list[int] = []
-        self.triggered: list[tuple[int, datetime, str | None]] = []
-
-    def register_schedule(self, payload: SchedulePayload) -> None:
-        """Record schedule registrations."""
-        self.registered.append(payload)
-
-    def update_schedule(self, payload: SchedulePayload) -> None:
-        """Record schedule updates."""
-        self.updated.append(payload)
-
-    def pause_schedule(self, schedule_id: int) -> None:
-        """Record schedule pauses."""
-        self.paused.append(schedule_id)
-
-    def resume_schedule(self, schedule_id: int) -> None:
-        """Record schedule resumes."""
-        self.resumed.append(schedule_id)
-
-    def delete_schedule(self, schedule_id: int) -> None:
-        """Record schedule deletions."""
-        self.deleted.append(schedule_id)
-
-    def trigger_callback(
-        self,
-        schedule_id: int,
-        scheduled_for: datetime,
-        *,
-        trace_id: str | None = None,
-    ) -> None:
-        """Record run-now trigger callbacks."""
-        self.triggered.append((schedule_id, scheduled_for, trace_id))
-
-    def check_health(self) -> AdapterHealth:
-        """Return a stub health indicator."""
-        return AdapterHealth(status="ok", message="stub adapter ready")
-
-
 def test_schedule_service_create_update_delete_happy_path(
     sqlite_session_factory: sessionmaker,
 ) -> None:
     """Ensure create/update/delete flows succeed through the command service."""
     now = datetime(2025, 1, 1, 9, 0, tzinfo=timezone.utc)
-    adapter = AdapterStub()
+    adapter = RecordingSchedulerAdapter()
     service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
@@ -148,7 +101,7 @@ def test_schedule_service_lifecycle_updates_metadata_and_audits(
 ) -> None:
     """Ensure schedule lifecycle updates metadata without altering task intent."""
     now = datetime(2025, 1, 2, 12, 0, tzinfo=timezone.utc)
-    adapter = AdapterStub()
+    adapter = RecordingSchedulerAdapter()
     service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
@@ -206,7 +159,7 @@ def test_schedule_service_update_rejects_invalid_timezone(
 ) -> None:
     """Ensure invalid timezone updates fail without creating audit entries."""
     now = datetime(2025, 1, 3, 8, 0, tzinfo=timezone.utc)
-    adapter = AdapterStub()
+    adapter = RecordingSchedulerAdapter()
     service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
