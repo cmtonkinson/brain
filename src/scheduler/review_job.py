@@ -48,11 +48,12 @@ class ReviewJob:
         self._session = session
         self._config = config or ReviewJobConfig()
 
-    def run(self, now: datetime | None = None) -> ReviewOutput:
+    def run(self, now: datetime | None = None, job_execution_id: int | None = None) -> ReviewOutput:
         """Execute the review job.
 
         Args:
             now: Reference timestamp (defaults to current UTC time).
+            job_execution_id: Optional execution id for the review job run.
 
         Returns:
             The created ReviewOutput record.
@@ -79,8 +80,13 @@ class ReviewJob:
         )
 
         review_output = ReviewOutput(
+            job_execution_id=job_execution_id,
             window_start=window_start,
             window_end=now,  # Initially same, effectively instantaneous check
+            orphan_grace_period_seconds=int(self._config.orphan_grace_period.total_seconds()),
+            consecutive_failure_threshold=self._config.consecutive_failure_threshold,
+            stale_failure_age_seconds=int(self._config.stale_failure_age.total_seconds()),
+            ignored_pause_age_seconds=int(self._config.ignored_pause_age.total_seconds()),
             orphaned_count=len(orphans),
             failing_count=len(failing),
             ignored_count=len(ignored),
@@ -164,6 +170,7 @@ class ReviewJob:
             review_output_id=review_output_id,
             schedule_id=schedule.id,
             task_intent_id=schedule.task_intent_id,
+            execution_id=schedule.last_execution_id,
             issue_type=issue_type,
             severity=severity,
             description=description,

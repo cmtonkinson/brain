@@ -11,6 +11,8 @@ from models import (
     Execution,
     ExecutionAuditLog,
     PredicateEvaluationAuditLog,
+    ReviewItem,
+    ReviewOutput,
     Schedule,
     ScheduleAuditLog,
     TaskIntent,
@@ -32,6 +34,13 @@ from scheduler.schedule_service_interface import (
     PredicateEvaluationAuditListResult,
     PredicateEvaluationAuditLogView,
     PredicateEvaluationAuditResult,
+    ReviewCriteriaView,
+    ReviewItemView,
+    ReviewOutputGetRequest,
+    ReviewOutputListRequest,
+    ReviewOutputListResult,
+    ReviewOutputResult,
+    ReviewOutputView,
     ScheduleAuditGetRequest,
     ScheduleAuditListRequest,
     ScheduleAuditListResult,
@@ -403,6 +412,81 @@ class ScheduleQueryServiceImpl:
                 next_cursor=next_cursor,
             )
 
+    def get_review_output(self, request: ReviewOutputGetRequest) -> ReviewOutputResult:
+        """Fetch a review output by id with its review items.
+
+        Args:
+            request: Query request containing the review_output_id.
+
+        Returns:
+            ReviewOutputResult containing the review output view and review item views.
+
+        Raises:
+            ScheduleNotFoundError: If the review output is not found.
+            ScheduleServiceError: If validation fails for filter values.
+        """
+        with closing(self._session_factory()) as session:
+            review_output = data_access.get_review_output(session, request.review_output_id)
+            if review_output is None:
+                raise ScheduleNotFoundError(
+                    "review output not found.",
+                    {"review_output_id": request.review_output_id},
+                )
+            try:
+                review_items = data_access.list_review_items(
+                    session,
+                    review_output_id=review_output.id,
+                    severity=request.severity,
+                )
+            except ValueError as exc:
+                raise ScheduleServiceError(
+                    "validation_error",
+                    str(exc),
+                    {"filter": "review_output_detail"},
+                ) from exc
+            return ReviewOutputResult(
+                review_output=_to_review_output_view(review_output),
+                review_items=tuple(_to_review_item_view(item) for item in review_items),
+            )
+
+    def list_review_outputs(self, request: ReviewOutputListRequest) -> ReviewOutputListResult:
+        """List review outputs matching the provided filters.
+
+        Args:
+            request: Query request with optional filters and pagination.
+
+        Returns:
+            ReviewOutputListResult containing matching review outputs and next cursor.
+
+        Raises:
+            ScheduleServiceError: If validation fails for filter values.
+        """
+        with closing(self._session_factory()) as session:
+            try:
+                result = data_access.list_review_outputs(
+                    session,
+                    data_access.ReviewOutputListQuery(
+                        severity=request.severity,
+                        created_after=request.created_after,
+                        created_before=request.created_before,
+                        limit=request.limit,
+                        cursor=int(request.cursor) if request.cursor else None,
+                    ),
+                )
+            except ValueError as exc:
+                raise ScheduleServiceError(
+                    "validation_error",
+                    str(exc),
+                    {"filter": "review_output_list"},
+                ) from exc
+
+            review_views = tuple(_to_review_output_view(o) for o in result.review_outputs)
+            next_cursor = str(result.next_cursor) if result.next_cursor else None
+            return ReviewOutputListResult(
+                review_outputs=review_views,
+                next_cursor=next_cursor,
+            )
+
 
 # ============================================================================
 # Model to View Conversion Functions
@@ -567,4 +651,45 @@ def _to_predicate_evaluation_audit_view(
         provider_name=audit.provider_name,
         provider_attempt=audit.provider_attempt,
         created_at=audit.created_at,
+    )
+
+
+def _to_review_criteria_view(review_output: ReviewOutput) -> ReviewCriteriaView:
+    """Convert ReviewOutput criteria fields to a ReviewCriteriaView."""
+    return ReviewCriteriaView(
+        orphan_grace_period_seconds=review_output.orphan_grace_period_seconds,
+        consecutive_failure_threshold=review_output.consecutive_failure_threshold,
+        stale_failure_age_seconds=review_output.stale_failure_age_seconds,
+        ignored_pause_age_seconds=review_output.ignored_pause_age_seconds,
+    )
+
+
+def _to_review_output_view(review_output: ReviewOutput) -> ReviewOutputView:
+    """Convert a ReviewOutput model to a ReviewOutputView."""
+    return ReviewOutputView(
+        id=review_output.id,
+        job_execution_id=review_output.job_execution_id,
+        window_start=review_output.window_start,
+        window_end=review_output.window_end,
+        criteria=_to_review_criteria_view(review_output),
+        orphaned_count=review_output.orphaned_count,
+        failing_count=review_output.failing_count,
+        ignored_count=review_output.ignored_count,
+        created_at=review_output.created_at,
+    )
+
+
+def _to_review_item_view(review_item: ReviewItem) -> ReviewItemView:
+    """Convert a ReviewItem model to a ReviewItemView."""
+    return ReviewItemView(
+        id=review_item.id,
+        review_output_id=review_item.review_output_id,
+        schedule_id=review_item.schedule_id,
+        task_intent_id=review_item.task_intent_id,
+        execution_id=review_item.execution_id,
+        issue_type=str(review_item.issue_type),
+        severity=str(review_item.severity),
+        description=review_item.description,
+        last_error_message=review_item.last_error_message,
+        created_at=review_item.created_at,
     )

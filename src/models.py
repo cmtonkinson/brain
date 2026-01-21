@@ -671,6 +671,10 @@ class ReviewOutput(Base):
     job_execution_id = Column(Integer, ForeignKey("executions.id"), nullable=True)
     window_start = Column(DateTime(timezone=True), nullable=False)
     window_end = Column(DateTime(timezone=True), nullable=False)
+    orphan_grace_period_seconds = Column(Integer, nullable=True)
+    consecutive_failure_threshold = Column(Integer, nullable=True)
+    stale_failure_age_seconds = Column(Integer, nullable=True)
+    ignored_pause_age_seconds = Column(Integer, nullable=True)
     orphaned_count = Column(Integer, nullable=False, default=0)
     failing_count = Column(Integer, nullable=False, default=0)
     ignored_count = Column(Integer, nullable=False, default=0)
@@ -686,6 +690,7 @@ class ReviewItem(Base):
     review_output_id = Column(Integer, ForeignKey("review_outputs.id"), nullable=False)
     schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=False)
     task_intent_id = Column(Integer, ForeignKey("task_intents.id"), nullable=False)
+    execution_id = Column(Integer, ForeignKey("executions.id"), nullable=True)
     issue_type = Column(String(50), nullable=False)  # ReviewIssueTypeEnum
     severity = Column(String(50), nullable=False)  # ReviewSeverityEnum
     description = Column(String(500), nullable=False)

@@ -276,6 +276,47 @@ class PredicateEvaluationAuditLogView:
 
 
 @dataclass(frozen=True)
+class ReviewCriteriaView:
+    """Criteria metadata used to detect review issues."""
+
+    orphan_grace_period_seconds: int | None
+    consecutive_failure_threshold: int | None
+    stale_failure_age_seconds: int | None
+    ignored_pause_age_seconds: int | None
+
+
+@dataclass(frozen=True)
+class ReviewOutputView:
+    """Read-only view of a review output summary."""
+
+    id: int
+    job_execution_id: int | None
+    window_start: datetime
+    window_end: datetime
+    criteria: ReviewCriteriaView
+    orphaned_count: int
+    failing_count: int
+    ignored_count: int
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class ReviewItemView:
+    """Read-only view of an individual review item."""
+
+    id: int
+    review_output_id: int
+    schedule_id: int
+    task_intent_id: int
+    execution_id: int | None
+    issue_type: str
+    severity: str
+    description: str
+    last_error_message: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class ScheduleCreateRequest:
     """Command request to create a schedule with inline task intent."""
 
@@ -441,6 +482,25 @@ class PredicateEvaluationAuditListRequest:
 
 
 @dataclass(frozen=True)
+class ReviewOutputGetRequest:
+    """Query request to fetch a review output by id."""
+
+    review_output_id: int
+    severity: str | None = None
+
+
+@dataclass(frozen=True)
+class ReviewOutputListRequest:
+    """Query request to list review outputs with optional filters."""
+
+    severity: str | None = None
+    created_after: datetime | None = None
+    created_before: datetime | None = None
+    limit: int = 100
+    cursor: str | None = None
+
+
+@dataclass(frozen=True)
 class ScheduleResult:
     """Result wrapper for schedule reads."""
 
@@ -550,6 +610,22 @@ class PredicateEvaluationAuditListResult:
     next_cursor: str | None
 
 
+@dataclass(frozen=True)
+class ReviewOutputResult:
+    """Result wrapper for review output reads."""
+
+    review_output: ReviewOutputView
+    review_items: tuple[ReviewItemView, ...]
+
+
+@dataclass(frozen=True)
+class ReviewOutputListResult:
+    """Result wrapper for review output listings."""
+
+    review_outputs: tuple[ReviewOutputView, ...]
+    next_cursor: str | None
+
+
 class ScheduleCommandService(Protocol):
     """Command interface for schedule mutations and run-now execution."""
 
@@ -653,4 +729,12 @@ class ScheduleQueryService(Protocol):
         request: PredicateEvaluationAuditListRequest,
     ) -> PredicateEvaluationAuditListResult:
         """List predicate evaluation audit entries matching the provided filters."""
+        ...
+
+    def get_review_output(self, request: ReviewOutputGetRequest) -> ReviewOutputResult:
+        """Fetch a review output by id."""
+        ...
+
+    def list_review_outputs(self, request: ReviewOutputListRequest) -> ReviewOutputListResult:
+        """List review outputs matching the provided filters."""
         ...

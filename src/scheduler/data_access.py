@@ -15,6 +15,9 @@ from models import (
     ExecutionAuditLog,
     ExecutionStatusEnum,
     PredicateEvaluationAuditLog,
+    ReviewItem,
+    ReviewOutput,
+    ReviewSeverityEnum,
     Schedule,
     ScheduleAuditEventTypeEnum,
     ScheduleAuditLog,
@@ -197,6 +200,17 @@ def _validate_execution_status(status: str) -> None:
     """Validate execution status against allowed values."""
     if status not in ExecutionStatusEnum.enums:
         raise ValueError(f"Invalid execution status: {status}.")
+
+
+def _validate_review_severity(severity: str) -> None:
+    """Validate review severity against allowed values."""
+    allowed = {
+        ReviewSeverityEnum.high,
+        ReviewSeverityEnum.medium,
+        ReviewSeverityEnum.low,
+    }
+    if severity not in allowed:
+        raise ValueError(f"Invalid review severity: {severity}.")
 
 
 def _definition_fields(definition: ScheduleDefinitionInput) -> dict[str, object | None]:
@@ -1504,6 +1518,134 @@ def list_schedules(
         schedules=schedules,
         next_cursor=next_cursor,
     )
+
+
+# ============================================================================
+# Review Output Querying
+# ============================================================================
+
+
+def get_review_output(session: Session, review_output_id: int) -> ReviewOutput | None:
+    """Fetch a review output by ID.
+
+    Args:
+        session: SQLAlchemy session.
+        review_output_id: The review output ID to fetch.
+
+    Returns:
+        The ReviewOutput record or None if not found.
+    """
+    return session.query(ReviewOutput).filter(ReviewOutput.id == review_output_id).first()
+
+
+@dataclass(frozen=True)
+class ReviewOutputListQuery:
+    """Query parameters for review output listing with filtering and pagination.
+
+    Supports filtering by severity and created_at time range.
+    Results are ordered by id descending by default.
+    """
+
+    severity: str | None = None
+    created_after: datetime | None = None
+    created_before: datetime | None = None
+    limit: int = 100
+    cursor: int | None = None
+
+
+@dataclass(frozen=True)
+class ReviewOutputListResult:
+    """Result of review output listing query with pagination support.
+
+    Contains the list of review outputs and the next cursor for pagination.
+    """
+
+    review_outputs: list[ReviewOutput]
+    next_cursor: int | None
+
+
+def list_review_outputs(
+    session: Session,
+    query: ReviewOutputListQuery,
+) -> ReviewOutputListResult:
+    """List review outputs with filtering, ordering, and pagination.
+
+    Supports filtering by severity (via review items) and created_at time range.
+    Results are ordered by id descending.
+    Uses cursor-based pagination for efficient traversal.
+
+    Args:
+        session: SQLAlchemy session.
+        query: Query parameters including filters, limit, and cursor.
+
+    Returns:
+        ReviewOutputListResult containing matching review outputs and pagination cursor.
+
+    Raises:
+        ValueError: If severity filter is invalid.
+    """
+    if query.severity is not None:
+        _validate_review_severity(query.severity)
+
+    filters = []
+
+    if query.created_after is not None:
+        created_after = _normalize_timestamp(query.created_after, "created_after")
+        filters.append(ReviewOutput.created_at >= created_after)
+    if query.created_before is not None:
+        created_before = _normalize_timestamp(query.created_before, "created_before")
+        filters.append(ReviewOutput.created_at <= created_before)
+    if query.cursor is not None:
+        filters.append(ReviewOutput.id < query.cursor)
+
+    base_query = session.query(ReviewOutput)
+    if query.severity is not None:
+        base_query = base_query.join(ReviewItem).filter(ReviewItem.severity == query.severity)
+    if filters:
+        base_query = base_query.filter(and_(*filters))
+
+    # Fetch one extra to determine if there are more results
+    fetch_limit = query.limit + 1
+    review_outputs = base_query.distinct().order_by(ReviewOutput.id.desc()).limit(fetch_limit).all()
+
+    has_more = len(review_outputs) > query.limit
+    if has_more:
+        review_outputs = review_outputs[: query.limit]
+        next_cursor = review_outputs[-1].id if review_outputs else None
+    else:
+        next_cursor = None
+
+    return ReviewOutputListResult(
+        review_outputs=review_outputs,
+        next_cursor=next_cursor,
+    )
+
+
+def list_review_items(
+    session: Session,
+    review_output_id: int,
+    severity: str | None = None,
+) -> list[ReviewItem]:
+    """List review items for a review output with optional severity filtering.
+
+    Args:
+        session: SQLAlchemy session.
+        review_output_id: Review output ID to fetch items for.
+        severity: Optional severity filter.
+
+    Returns:
+        List of matching ReviewItem records ordered by id ascending.
+
+    Raises:
+        ValueError: If severity filter is invalid.
+    """
+    if severity is not None:
+        _validate_review_severity(severity)
+
+    query = session.query(ReviewItem).filter(ReviewItem.review_output_id == review_output_id)
+    if severity is not None:
+        query = query.filter(ReviewItem.severity == severity)
+    return query.order_by(ReviewItem.id.asc()).all()
 
 
 # ============================================================================
