@@ -9,14 +9,12 @@ from __future__ import annotations
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
-import pytest
 from sqlalchemy.orm import sessionmaker
 
 from models import (
     PredicateEvaluationAuditLog,
     Schedule,
     TaskIntent,
-    Execution,
 )
 from scheduler.data_access import (
     ActorContext,

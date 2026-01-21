@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from contextlib import closing
-from datetime import datetime
 from typing import Callable
 
 from sqlalchemy.orm import Session

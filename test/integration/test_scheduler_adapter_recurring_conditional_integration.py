@@ -17,7 +17,6 @@ from sqlalchemy.orm import sessionmaker
 from models import Schedule, ScheduleAuditLog
 from scheduler.adapter_interface import (
     AdapterHealth,
-    ScheduleDefinition,
     SchedulePayload,
     SchedulerAdapter,
 )

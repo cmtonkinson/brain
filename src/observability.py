@@ -1,7 +1,7 @@
 """
 Observability module for the Brain agent.
 
-Provides OpenTelemetry-based tracing and metrics, with structured JSON logging.
+Provides OpenTelemetry-based tracing, metrics, and logging.
 See docs/observability.md for full documentation.
 """
 
@@ -9,22 +9,25 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import time
-from datetime import datetime, timezone
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
 from opentelemetry import metrics, trace
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Status, StatusCode
-from pythonjsonlogger.json import JsonFormatter
 
 if TYPE_CHECKING:
     from opentelemetry.metrics import Meter
@@ -39,36 +42,6 @@ F = TypeVar("F", bound=Callable[..., Any])
 _tracer: Tracer | None = None
 _meter: Meter | None = None
 _metrics: BrainMetrics | None = None
-
-
-class BrainJsonFormatter(JsonFormatter):
-    """Custom JSON formatter with Brain-specific fields and trace correlation."""
-
-    def add_fields(
-        self,
-        log_record: dict[str, Any],
-        record: logging.LogRecord,
-        message_dict: dict[str, Any],
-    ) -> None:
-        """Inject trace context and Brain metadata into log fields."""
-        super().add_fields(log_record, record, message_dict)
-
-        # Add trace context for correlation (wrapped to never break logging)
-        try:
-            span = trace.get_current_span()
-            if span and span.is_recording():
-                ctx = span.get_span_context()
-                log_record["trace_id"] = format(ctx.trace_id, "032x")
-                log_record["span_id"] = format(ctx.span_id, "016x")
-        except Exception:
-            pass  # Never let trace context issues break logging
-
-        # Standardize timestamp
-        log_record["timestamp"] = datetime.now(timezone.utc).isoformat()
-        log_record["service"] = "brain-agent"
-
-        # Map level name
-        log_record["level"] = record.levelname
 
 
 class BrainMetrics:
@@ -208,7 +181,7 @@ def setup_observability(
     otlp_endpoint: str | None = None,
     enable_console_exporter: bool = False,
 ) -> tuple[Tracer, Meter, BrainMetrics]:
-    """Initialize OpenTelemetry instrumentation.
+    """Initialize OpenTelemetry instrumentation for traces, metrics, and logs.
 
     Args:
         service_name: Name of the service for telemetry
@@ -223,7 +196,7 @@ def setup_observability(
 
     # Get endpoint from env if not provided
     if otlp_endpoint is None:
-        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 
     resource = Resource.create(
         {
@@ -236,15 +209,10 @@ def setup_observability(
 
     # --- Tracing Setup ---
     tracer_provider = TracerProvider(resource=resource)
+    if otlp_endpoint:
+        otlp_span_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
+        tracer_provider.add_span_processor(BatchSpanProcessor(otlp_span_exporter))
 
-    # OTLP exporter
-    otlp_span_exporter = OTLPSpanExporter(
-        endpoint=otlp_endpoint,
-        insecure=True,
-    )
-    tracer_provider.add_span_processor(BatchSpanProcessor(otlp_span_exporter))
-
-    # Optional console exporter for debugging
     if enable_console_exporter:
         from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 
@@ -253,19 +221,28 @@ def setup_observability(
     trace.set_tracer_provider(tracer_provider)
 
     # --- Metrics Setup ---
-    otlp_metric_exporter = OTLPMetricExporter(
-        endpoint=otlp_endpoint,
-        insecure=True,
-    )
-    metric_reader = PeriodicExportingMetricReader(
-        otlp_metric_exporter,
-        export_interval_millis=30000,  # 30s
-    )
+    metric_reader = None
+    if otlp_endpoint:
+        otlp_metric_exporter = OTLPMetricExporter(endpoint=otlp_endpoint, insecure=True)
+        metric_reader = PeriodicExportingMetricReader(
+            otlp_metric_exporter, export_interval_millis=30000
+        )
+
     meter_provider = MeterProvider(
         resource=resource,
-        metric_readers=[metric_reader],
+        metric_readers=[metric_reader] if metric_reader else [],
     )
     metrics.set_meter_provider(meter_provider)
+
+    # --- Logging Setup ---
+    logger_provider = LoggerProvider(resource=resource)
+    set_logger_provider(logger_provider)
+
+    if otlp_endpoint:
+        otlp_log_exporter = OTLPLogExporter(endpoint=otlp_endpoint, insecure=True)
+        logger_provider.add_log_record_processor(
+            BatchLogRecordProcessor(otlp_log_exporter)
+        )
 
     # --- Auto-instrumentation ---
     HTTPXClientInstrumentor().instrument()
@@ -275,28 +252,50 @@ def setup_observability(
     _meter = metrics.get_meter(service_name, service_version)
     _metrics = BrainMetrics(_meter)
 
-    logger.info(f"Observability initialized: endpoint={otlp_endpoint}")
+    if otlp_endpoint:
+        logger.info(f"Observability initialized: endpoint={otlp_endpoint}")
+    else:
+        logger.info("Observability disabled (OTEL_EXPORTER_OTLP_ENDPOINT not set)")
 
     return _tracer, _meter, _metrics
 
 
-def setup_json_logging(level: int = logging.INFO) -> None:
-    """Configure structured JSON logging with trace correlation.
+def configure_logging(level: str, otel_level: str) -> None:
+    """Configure dual-handler logging to STDOUT and OTLP.
 
     Args:
-        level: Logging level (default INFO)
+        level: Logging level for stdout handler.
+        otel_level: Logging level for OTLP handler.
     """
-    import sys
+    # Convert string log levels to numeric
+    numeric_level = getattr(logging, level.upper(), logging.INFO)
+    numeric_otel_level = getattr(logging, otel_level.upper(), logging.INFO)
 
-    # Explicitly use stdout (not stderr) for Docker log capture reliability.
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(BrainJsonFormatter("%(timestamp)s %(level)s %(name)s %(message)s"))
+    # The root logger must have the lowest level of all handlers
+    root_level = min(numeric_level, numeric_otel_level)
 
-    root = logging.getLogger()
-    root.handlers = [handler]
-    root.setLevel(level)
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.setLevel(root_level)
 
-    # Reduce noise from libraries
+    # 1. Console Handler (for docker logs)
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setLevel(numeric_level)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    stdout_handler.setFormatter(formatter)
+    root_logger.addHandler(stdout_handler)
+
+    # 2. OTLP Handler (if endpoint is configured)
+    if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        # The LoggerProvider is already configured in setup_observability.
+        # The LoggingHandler will automatically use the global provider.
+        otlp_handler = LoggingHandler(level=numeric_otel_level)
+        root_logger.addHandler(otlp_handler)
+        logger.info("OTLP log handler configured and added.")
+
+    # Reduce noise from common libraries
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("opentelemetry").setLevel(logging.WARNING)
@@ -305,28 +304,36 @@ def setup_json_logging(level: int = logging.INFO) -> None:
 def get_tracer() -> Tracer:
     """Get the global tracer instance."""
     if _tracer is None:
-        raise RuntimeError("Observability not initialized. Call setup_observability() first.")
+        raise RuntimeError(
+            "Observability not initialized. Call setup_observability() first."
+        )
     return _tracer
 
 
 def get_meter() -> Meter:
     """Get the global meter instance."""
     if _meter is None:
-        raise RuntimeError("Observability not initialized. Call setup_observability() first.")
+        raise RuntimeError(
+            "Observability not initialized. Call setup_observability() first."
+        )
     return _meter
 
 
 def get_metrics() -> BrainMetrics:
     """Get the global metrics instance."""
     if _metrics is None:
-        raise RuntimeError("Observability not initialized. Call setup_observability() first.")
+        raise RuntimeError(
+            "Observability not initialized. Call setup_observability() first."
+        )
     return _metrics
 
 
 # --- Decorators for easy instrumentation ---
 
 
-def traced(name: str | None = None, attributes: dict[str, Any] | None = None) -> Callable[[F], F]:
+def traced(
+    name: str | None = None, attributes: dict[str, Any] | None = None
+) -> Callable[[F], F]:
     """Decorator to add tracing to a function.
 
     Args:

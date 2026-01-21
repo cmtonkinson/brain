@@ -367,6 +367,10 @@ class Settings(BaseSettings):
             _yaml_settings_source([_DEFAULT_CONFIG_PATH]),
         )
 
+    # Logging
+    log_level: str = "INFO"
+    log_level_otel: str = "INFO"
+
     # LLM Configuration
     anthropic_api_key: str | None = None
 

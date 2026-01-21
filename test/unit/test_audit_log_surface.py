@@ -27,7 +27,6 @@ from scheduler.data_access import (
     create_execution,
     create_schedule,
     create_task_intent,
-    get_schedule,
     get_schedule_audit,
     list_schedule_audits,
     list_schedules,
@@ -44,7 +43,6 @@ from scheduler.schedule_query_service import ScheduleQueryServiceImpl
 from scheduler.schedule_service_interface import (
     ExecutionAuditListRequest,
     ExecutionGetRequest,
-    ExecutionListRequest,
     PredicateEvaluationAuditGetRequest,
     PredicateEvaluationAuditListRequest,
     ScheduleAuditGetRequest,

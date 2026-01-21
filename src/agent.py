@@ -61,7 +61,7 @@ from skills.services import SkillServices, set_services
 try:
     from observability import (
         setup_observability,
-        setup_json_logging,
+        configure_logging,
         get_tracer,
         BrainMetrics,
     )
@@ -70,18 +70,6 @@ try:
     OBSERVABILITY_AVAILABLE = True
 except ImportError:
     OBSERVABILITY_AVAILABLE = False
-
-# Configure logging - use JSON if observability available, otherwise basic (stdout only).
-# Use force=True to override any handlers set by imported modules (e.g., indexer.py).
-# Explicitly use sys.stdout (not stderr) for Docker log capture reliability.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-    ],
-    force=True,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -121,26 +109,7 @@ def _preview(text: str, limit: int = 160) -> str:
     return cleaned
 
 
-def _ensure_logging() -> None:
-    """Force logging to stdout at INFO in case another lib muted it."""
-    logging.disable(logging.NOTSET)
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-    for handler in root.handlers:
-        handler.setLevel(logging.INFO)
-        handler.flush()  # Ensure any buffered output is written
-    logger.setLevel(logging.INFO)
-    logger.propagate = True
-    logger.info("Logging configured (handlers=%s)", len(root.handlers))
-    # Flush again after logging to ensure immediate output
-    for handler in root.handlers:
-        handler.flush()
 
-
-def _stdout(msg: str) -> None:
-    """Write a message to stdout and flush immediately."""
-    sys.stdout.write(msg + "\n")
-    sys.stdout.flush()
 
 
 def _ensure_llm_env() -> None:
@@ -196,7 +165,6 @@ async def _run_code_mode_diagnostics(ctx: RunContext[AgentDeps]) -> list[str]:
 
     if not code_mode_enabled:
         logger.info("self_diagnostic: code-mode search_tools skipped (not configured)")
-        _stdout("AGENT: self_diagnostic code-mode search_tools skipped (not configured)")
         results.append("- code-mode: skipped (not configured)")
         results.append("- mcp/filesystem: skipped (not configured)")
         results.append("- mcp/calendar: skipped (not configured)")
@@ -207,29 +175,23 @@ async def _run_code_mode_diagnostics(ctx: RunContext[AgentDeps]) -> list[str]:
     # Code-Mode: search tools to confirm UTCP is available.
     try:
         logger.info("self_diagnostic: code-mode search_tools")
-        _stdout("AGENT: self_diagnostic code-mode search_tools")
         response = await ctx.deps.code_mode.search_tools("list tools")
         if response.startswith("Code-Mode is not configured"):
             logger.warning("self_diagnostic: code-mode not configured")
-            _stdout("AGENT: self_diagnostic code-mode not configured")
             results.append("- code-mode: error (not configured)")
         elif _has_tool_results(response):
             logger.info("self_diagnostic: code-mode ok (search_tools)")
-            _stdout("AGENT: self_diagnostic code-mode ok (search_tools)")
             results.append("- code-mode: ok (search_tools)")
         else:
             logger.warning("self_diagnostic: code-mode empty search_tools result")
-            _stdout("AGENT: self_diagnostic code-mode empty search_tools result")
             results.append("- code-mode: error (empty tool search)")
     except Exception as exc:
         logger.error(f"self_diagnostic code-mode failed: {exc}")
-        _stdout(f"AGENT: self_diagnostic code-mode failed ({exc})")
         results.append(f"- code-mode: error ({exc})")
 
     # MCP filesystem: list base directory.
     try:
         logger.info("self_diagnostic: mcp filesystem list_directory")
-        _stdout("AGENT: self_diagnostic mcp filesystem list_directory")
         allowed_code = "result = filesystem.list_allowed_directories({})\nreturn result"
         allowed_output = await ctx.deps.code_mode.call_tool_chain(allowed_code)
         allowed_raw = extract_code_mode_result(allowed_output)
@@ -239,7 +201,6 @@ async def _run_code_mode_diagnostics(ctx: RunContext[AgentDeps]) -> list[str]:
             allowed_dirs = extract_allowed_directories_from_text(allowed_output)
         if not allowed_dirs:
             logger.warning("self_diagnostic: mcp filesystem no allowed directories")
-            _stdout("AGENT: self_diagnostic mcp filesystem no allowed directories")
             results.append("- mcp/filesystem: error (no allowed directories)")
         else:
             base_path = Path(os.path.expanduser(allowed_dirs[0])).resolve()
@@ -250,28 +211,22 @@ async def _run_code_mode_diagnostics(ctx: RunContext[AgentDeps]) -> list[str]:
             raw = extract_code_mode_result(output)
             if _has_non_empty_listing(raw):
                 logger.info("self_diagnostic: mcp filesystem ok")
-                _stdout("AGENT: self_diagnostic mcp filesystem ok")
                 results.append("- mcp/filesystem: ok (base directory listed)")
             else:
-                logger.warning("self_diagnostic: mcp filesystem empty listing")
-                _stdout("AGENT: self_diagnostic mcp filesystem empty listing")
-                results.append("- mcp/filesystem: error (empty directory listing)")
+                            logger.warning("self_diagnostic: mcp filesystem empty listing")                results.append("- mcp/filesystem: error (empty directory listing)")
     except Exception as exc:
         logger.error(f"self_diagnostic mcp filesystem failed: {exc}")
-        _stdout(f"AGENT: self_diagnostic mcp filesystem failed ({exc})")
         results.append(f"- mcp/filesystem: error ({exc})")
 
     # MCP calendar: list event calendars.
     try:
         logger.info("self_diagnostic: mcp calendar list_event_calendars")
-        _stdout("AGENT: self_diagnostic mcp calendar list_event_calendars")
         code = "result = eventkit.list_event_calendars({})\nreturn result"
         output = await ctx.deps.code_mode.call_tool_chain(code)
         raw = extract_code_mode_result(output)
         expected_calendar = settings.user.test_calendar_name
         if _has_non_empty_listing(raw) and contains_expected_name(raw, expected_calendar):
             logger.info("self_diagnostic: mcp calendar ok")
-            _stdout("AGENT: self_diagnostic mcp calendar ok")
             results.append("- mcp/calendar: ok (calendars listed)")
         else:
             if _has_non_empty_listing(raw):
@@ -279,30 +234,25 @@ async def _run_code_mode_diagnostics(ctx: RunContext[AgentDeps]) -> list[str]:
                     "self_diagnostic: mcp calendar missing expected name (%s)",
                     expected_calendar,
                 )
-                _stdout("AGENT: self_diagnostic mcp calendar missing expected name")
                 results.append(
                     f"- mcp/calendar: error (missing expected calendar: {expected_calendar})"
                 )
             else:
                 logger.warning("self_diagnostic: mcp calendar empty list")
-                _stdout("AGENT: self_diagnostic mcp calendar empty list")
                 results.append("- mcp/calendar: error (no calendars)")
     except Exception as exc:
         logger.error(f"self_diagnostic mcp calendar failed: {exc}")
-        _stdout(f"AGENT: self_diagnostic mcp calendar failed ({exc})")
         results.append(f"- mcp/calendar: error ({exc})")
 
     # MCP reminders: list reminder lists.
     try:
         logger.info("self_diagnostic: mcp reminders list_calendars")
-        _stdout("AGENT: self_diagnostic mcp reminders list_calendars")
         code = "result = eventkit.list_calendars({})\nreturn result"
         output = await ctx.deps.code_mode.call_tool_chain(code)
         raw = extract_code_mode_result(output)
         expected_reminders = settings.user.test_reminder_list_name
         if _has_non_empty_listing(raw) and contains_expected_name(raw, expected_reminders):
             logger.info("self_diagnostic: mcp reminders ok")
-            _stdout("AGENT: self_diagnostic mcp reminders ok")
             results.append("- mcp/reminders: ok (reminder lists listed)")
         else:
             if _has_non_empty_listing(raw):
@@ -310,37 +260,30 @@ async def _run_code_mode_diagnostics(ctx: RunContext[AgentDeps]) -> list[str]:
                     "self_diagnostic: mcp reminders missing expected name (%s)",
                     expected_reminders,
                 )
-                _stdout("AGENT: self_diagnostic mcp reminders missing expected name")
                 results.append(
                     f"- mcp/reminders: error (missing expected reminder list: {expected_reminders})"
                 )
             else:
                 logger.warning("self_diagnostic: mcp reminders empty list")
-                _stdout("AGENT: self_diagnostic mcp reminders empty list")
                 results.append("- mcp/reminders: error (no reminder lists)")
     except Exception as exc:
         logger.error(f"self_diagnostic mcp reminders failed: {exc}")
-        _stdout(f"AGENT: self_diagnostic mcp reminders failed ({exc})")
         results.append(f"- mcp/reminders: error ({exc})")
 
     # MCP github: fetch authenticated user.
     try:
         logger.info("self_diagnostic: mcp github get_authenticated_user")
-        _stdout("AGENT: self_diagnostic mcp github get_authenticated_user")
         code = "result = github.get_me({})\nreturn result"
         output = await ctx.deps.code_mode.call_tool_chain(code)
         raw = extract_code_mode_result(output)
         if _has_non_empty_listing(raw):
             logger.info("self_diagnostic: mcp github ok")
-            _stdout("AGENT: self_diagnostic mcp github ok")
             results.append("- mcp/github: ok (authenticated user)")
         else:
             logger.warning("self_diagnostic: mcp github empty response")
-            _stdout("AGENT: self_diagnostic mcp github empty response")
             results.append("- mcp/github: error (empty response)")
     except Exception as exc:
         logger.error(f"self_diagnostic mcp github failed: {exc}")
-        _stdout(f"AGENT: self_diagnostic mcp github failed ({exc})")
         results.append(f"- mcp/github: error ({exc})")
 
     return results
@@ -666,86 +609,68 @@ def create_agent() -> Agent[AgentDeps, str]:
     async def self_diagnostic(ctx: RunContext[AgentDeps]) -> str:
         """Run a lightweight self-diagnostic across core subsystems."""
         logger.info("Tool: self_diagnostic")
-        _stdout("AGENT: self_diagnostic started")
         results: list[str] = []
 
         # Obsidian: list base vault directory.
         try:
             logger.info("self_diagnostic: obsidian list_dir")
-            _stdout("AGENT: self_diagnostic obsidian list_dir")
             entries = await ctx.deps.obsidian.list_dir("")
             if entries:
-                logger.info("self_diagnostic: obsidian ok (%s entries)", len(entries))
-                _stdout(f"AGENT: self_diagnostic obsidian ok ({len(entries)} entries)")
+                logger.info(f"self_diagnostic: obsidian ok ({len(entries)} entries)")
                 results.append(f"- obsidian: ok ({len(entries)} entries)")
             else:
                 logger.warning("self_diagnostic: obsidian empty directory listing")
-                _stdout("AGENT: self_diagnostic obsidian empty directory listing")
                 results.append("- obsidian: error (empty directory listing)")
         except Exception as exc:
             logger.error(f"self_diagnostic obsidian failed: {exc}")
-            _stdout(f"AGENT: self_diagnostic obsidian failed ({exc})")
             results.append(f"- obsidian: error ({exc})")
 
         # Letta: check enabled then read-only search.
         letta = LettaService()
         if not letta.enabled:
             logger.info("self_diagnostic: letta skipped (not configured)")
-            _stdout("AGENT: self_diagnostic letta skipped (not configured)")
             results.append("- letta: skipped (not configured)")
         else:
             try:
                 logger.info("self_diagnostic: letta archival search")
-                _stdout("AGENT: self_diagnostic letta archival search")
                 await asyncio.to_thread(letta.search_archival_memory, "smoke test")
                 logger.info("self_diagnostic: letta ok (archival search)")
-                _stdout("AGENT: self_diagnostic letta ok (archival search)")
                 results.append("- letta: ok (archival search)")
             except Exception as exc:
                 logger.error(f"self_diagnostic letta failed: {exc}")
-                _stdout(f"AGENT: self_diagnostic letta failed ({exc})")
                 results.append(f"- letta: error ({exc})")
 
         # Signal: check connection then fetch accounts.
         try:
             signal_client = SignalClient()
             logger.info("self_diagnostic: signal check_connection")
-            _stdout("AGENT: self_diagnostic signal check_connection")
             connected = await signal_client.check_connection()
             if not connected:
                 logger.warning("self_diagnostic: signal connection failed")
-                _stdout("AGENT: self_diagnostic signal connection failed")
                 results.append("- signal: error (connection failed)")
             else:
                 logger.info("self_diagnostic: signal get_accounts")
-                _stdout("AGENT: self_diagnostic signal get_accounts")
                 accounts = await signal_client.get_accounts()
                 if accounts:
-                    logger.info("self_diagnostic: signal ok (%s account(s))", len(accounts))
-                    _stdout(f"AGENT: self_diagnostic signal ok ({len(accounts)} account(s))")
+                    logger.info(f"self_diagnostic: signal ok ({len(accounts)} account(s))")
                     results.append(f"- signal: ok ({len(accounts)} account(s))")
                 else:
                     logger.warning("self_diagnostic: signal no accounts returned")
-                    _stdout("AGENT: self_diagnostic signal no accounts returned")
                     results.append("- signal: error (no accounts returned)")
         except Exception as exc:
             logger.error(f"self_diagnostic signal failed: {exc}")
-            _stdout(f"AGENT: self_diagnostic signal failed ({exc})")
             results.append(f"- signal: error ({exc})")
 
         # Qdrant: list collections to confirm service is reachable.
         try:
             logger.info("self_diagnostic: qdrant get_collections")
-            _stdout("AGENT: self_diagnostic qdrant get_collections")
             qdrant = QdrantClient(url=settings.qdrant.url)
             collections = qdrant.get_collections()
             count = len(collections.collections or [])
-            logger.info("self_diagnostic: qdrant ok (%s collection(s))", count)
-            _stdout(f"AGENT: self_diagnostic qdrant ok ({count} collection(s))")
+            logger.info(f"self_diagnostic: qdrant ok ({count} collection(s))")
             results.append(f"- qdrant: ok ({count} collection(s))")
         except Exception as exc:
             logger.error(f"self_diagnostic qdrant failed: {exc}")
-            _stdout(f"AGENT: self_diagnostic qdrant failed ({exc})")
             results.append(f"- qdrant: error ({exc})")
 
         results.extend(await _run_code_mode_diagnostics(ctx))
@@ -1054,8 +979,7 @@ async def handle_signal_message(
     sender = signal_msg.sender
     message = signal_msg.message
 
-    _ensure_logging()
-    _stdout("AGENT: message received")
+
     logger.info("Incoming message from %s: %s", sender, _preview(message))
 
     # Record message received metric
@@ -1184,7 +1108,6 @@ async def run_signal_loop(
     logger.info(f"Starting Signal polling for {phone_number}")
 
     while True:
-        _ensure_logging()
         poll_start = time.perf_counter()
         try:
             logger.info("Polling Signal for %s", phone_number)
@@ -1261,29 +1184,35 @@ async def main() -> None:
     )
     args = parser.parse_args()
 
-    # Initialize observability if available and not disabled
+    # Determine OTLP endpoint
     otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-    if OBSERVABILITY_AVAILABLE and not args.no_otel and otel_endpoint:
-        logger.info(f"Initializing observability: endpoint={otel_endpoint}")
+    if args.no_otel:
+        otel_endpoint = None
+
+    # Configure logging and observability
+    if OBSERVABILITY_AVAILABLE:
         try:
             _, _, _brain_metrics = setup_observability(
                 service_name="brain-agent",
                 service_version="1.0.0",
                 otlp_endpoint=otel_endpoint,
             )
-            setup_json_logging(logging.INFO)
-            setup_litellm_observability(_brain_metrics)
-            logger.info("Observability initialized successfully")
+            configure_logging(settings.log_level, settings.log_level_otel)
+            if otel_endpoint:
+                setup_litellm_observability(_brain_metrics)
         except Exception as e:
-            logger.warning(f"Failed to initialize observability: {e}")
-    elif not OBSERVABILITY_AVAILABLE:
-        logger.info("Observability modules not available (install opentelemetry packages)")
-    elif args.no_otel:
-        logger.info("Observability disabled via --no-otel flag")
+            logging.warning(f"Failed to initialize observability: {e}", exc_info=True)
     else:
-        logger.info("Observability disabled (OTEL_EXPORTER_OTLP_ENDPOINT not set)")
+        # Fallback to basic logging if observability packages are not installed
+        log_level_numeric = getattr(logging, settings.log_level.upper(), logging.INFO)
+        logging.basicConfig(
+            level=log_level_numeric,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            handlers=[logging.StreamHandler(sys.stdout)],
+            force=True,
+        )
+        logger.info("Observability modules not available, using basic logging.")
 
-    _ensure_logging()
     _ensure_llm_env()
 
     logger.info("Brain assistant starting...")

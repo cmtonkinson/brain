@@ -1,6 +1,9 @@
 # Brain configuration defaults (non-secret).
 # Override in ~/.config/brain/brain.yml or /config/brain.yml.
 
+log_level: "INFO"
+log_level_otel: "INFO"
+
 obsidian:
   url: "http://host.docker.internal:27123"
 
