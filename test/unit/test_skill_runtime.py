@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from skills.approvals import InMemoryApprovalRecorder
+from skills.approvals import ApprovalProposal, InMemoryApprovalRecorder
 from skills.context import SkillContext
 from skills.errors import SkillPolicyError, SkillValidationError
 from skills.policy import DefaultPolicy
@@ -366,7 +366,7 @@ async def test_runtime_rejects_unknown_fields(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_runtime_records_approval_proposal(tmp_path):
+async def test_runtime_records_approval_proposal(tmp_path: Path) -> None:
     """Ensure approval-required denials generate proposals."""
     loader = _setup_registry(
         tmp_path,
@@ -374,7 +374,10 @@ async def test_runtime_records_approval_proposal(tmp_path):
     )
     proposals: list[str] = []
 
-    async def _capture(proposal, context):
+    async def _capture(
+        proposal: ApprovalProposal,
+        context: SkillContext,
+    ) -> None:
         """Collect proposal identifiers for assertions."""
         proposals.append(proposal.proposal_id)
         return None
