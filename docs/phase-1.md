@@ -587,10 +587,7 @@ SIGNAL_PHONE_NUMBER=+15551234567      # Agent's phone number (NEW)
 
 # Optional (have defaults)
 LITELLM_MODEL=claude-sonnet-4-20250514
-OBSIDIAN_URL=http://host.docker.internal:27123
 QDRANT_URL=http://qdrant:6333
-REDIS_URL=redis://redis:6379
-SIGNAL_API_URL=http://signal-api:8080
 ```
 
 ### New Config Fields
@@ -711,8 +708,7 @@ response_text = result.data
 
 To test without Docker:
 1. Run Obsidian with Local REST API plugin locally
-2. Set `OBSIDIAN_URL=http://localhost:27123`
-3. Use `--test` mode to skip Signal
+2. Use `--test` mode to skip Signal
 
 #### What "Done" Looks Like
 

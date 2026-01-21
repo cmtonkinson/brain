@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
+import logging
 
 import pytest
 from sqlalchemy.orm import sessionmaker
@@ -88,7 +89,7 @@ def test_disabled_mode_returns_no_output(
     """Ensure disabled mode returns no output and logs a no-op."""
     session_factory = sqlite_session_factory
     now = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
-    with closing(session_factory()) as session:
+    with caplog.at_level(logging.INFO), closing(session_factory()) as session:
         explanation = generate_explanation(session, "signal-1", enabled=False)
         summary = generate_usage_summary(
             session,

@@ -4,6 +4,7 @@ config/brain.yml
 
 # General files
 .coverage
+coverage.xml
 __pycache__
 data/
 logs/

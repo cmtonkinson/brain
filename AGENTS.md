@@ -40,3 +40,9 @@ Whenever changes impact config files (`.env`, `config/*.{yml,json}`, etc.):
 - Never replace existing live/.gitignored config values with sample data.
 - Never modify the live/.gitignored files without approval.
 - Always report what changes were made to live/.gitignored files.
+
+Test suites can be run using the helper `test.sh` script:
+- including integration tests: `BRAIN_RUN_INTEGRATION=1 test.sh`
+- generating a coverage report: `BRAIN_RUN_COVERAGE=1 test.sh`
+- or both at the same time
+

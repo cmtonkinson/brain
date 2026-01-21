@@ -75,7 +75,7 @@ class AdapterStub(SchedulerAdapter):
         """Record run-now trigger callbacks."""
         self.triggered.append((schedule_id, scheduled_for, trace_id))
 
-    def check_health(self) -> object:
+    def check_health(self) -> AdapterHealth:
         """Return a stub health indicator."""
         return AdapterHealth(status="ok", message="stub adapter ready")
 

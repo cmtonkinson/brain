@@ -113,3 +113,4 @@ reportCallIssue = false
 reportGeneralTypeIssues = false
 reportOptionalMemberAccess = false
 reportReturnType = false
+reportAssignmentType = false

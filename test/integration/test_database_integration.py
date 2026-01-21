@@ -46,7 +46,7 @@ def test_model_round_trip_persists_records() -> None:
 
     with closing(database.get_sync_session()) as session:
         task = Task(description="integration task", completed=False)
-        conversation = Conversation(obsidian_path="Brain/Conversations/test.md")
+        conversation = Conversation(obsidian_path="_brain/conversations/test.md")
         note = IndexedNote(
             path="Notes/Test.md",
             collection="obsidian",
@@ -73,7 +73,7 @@ def test_model_round_trip_persists_records() -> None:
         assert fetched_task is not None
         assert fetched_task.description == "integration task"
         assert fetched_conversation is not None
-        assert fetched_conversation.obsidian_path == "Brain/Conversations/test.md"
+        assert fetched_conversation.obsidian_path == "_brain/conversations/test.md"
         assert fetched_note is not None
         assert fetched_note.path == "Notes/Test.md"
         assert fetched_chunk is not None

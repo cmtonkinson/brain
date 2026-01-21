@@ -112,6 +112,8 @@ def test_dispatcher_invokes_agent_and_routes_attention(
     """Ensure dispatcher invokes agent and routes notifications through attention router."""
     with closing(sqlite_session_factory()) as session:
         schedule = _seed_schedule(session)
+        session.flush()
+        schedule_id = schedule.id
         session.commit()
 
     router = AttentionRouter(
@@ -124,7 +126,7 @@ def test_dispatcher_invokes_agent_and_routes_attention(
 
     dispatcher.dispatch(
         DispatcherCallbackPayload(
-            schedule_id=schedule.id,
+            schedule_id=schedule_id,
             scheduled_for=scheduled_for,
             trace_id="callback-router",
             emitted_at=scheduled_for,

@@ -77,6 +77,8 @@ def test_celery_callback_invokes_dispatcher(
     """Ensure Celery callback handling dispatches and persists execution."""
     with closing(sqlite_session_factory()) as session:
         schedule = _seed_schedule(session)
+        session.flush()
+        schedule_id = schedule.id
         session.commit()
 
     dispatcher = _DispatcherStub(sqlite_session_factory)
@@ -85,7 +87,7 @@ def test_celery_callback_invokes_dispatcher(
 
     result = handle_celery_callback(
         CeleryCallbackRequest(
-            schedule_id=schedule.id,
+            schedule_id=schedule_id,
             scheduled_for=None,
             trace_id="cb-integration",
             emitted_at=emitted_at,
@@ -98,7 +100,7 @@ def test_celery_callback_invokes_dispatcher(
     with closing(sqlite_session_factory()) as session:
         execution = data_access.get_execution_by_trace_id(
             session,
-            schedule.id,
+            schedule_id,
             "cb-integration",
         )
 

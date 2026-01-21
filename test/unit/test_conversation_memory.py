@@ -46,7 +46,8 @@ class FakeObsidianClient:
 @pytest.mark.asyncio
 async def test_get_or_create_conversation_reuses_cache(monkeypatch) -> None:
     """get_or_create_conversation reuses cached paths for same day."""
-    monkeypatch.setattr(settings.conversation, "folder", "Brain/Conversations", raising=False)
+    monkeypatch.setattr(settings.obsidian, "root_folder", "_brain", raising=False)
+    monkeypatch.setattr(settings.obsidian, "conversation_folder", "conversations", raising=False)
     obsidian = FakeObsidianClient()
     memory = ConversationMemory(obsidian)
     timestamp = datetime(2026, 1, 12, 9, 0, 0)
@@ -62,7 +63,8 @@ async def test_get_or_create_conversation_reuses_cache(monkeypatch) -> None:
 async def test_log_message_appends_markdown(monkeypatch) -> None:
     """log_message appends formatted markdown content to the note."""
     monkeypatch.setattr(settings.user, "name", "Tester", raising=False)
-    monkeypatch.setattr(settings.conversation, "folder", "Brain/Conversations", raising=False)
+    monkeypatch.setattr(settings.obsidian, "root_folder", "_brain", raising=False)
+    monkeypatch.setattr(settings.obsidian, "conversation_folder", "conversations", raising=False)
     obsidian = FakeObsidianClient()
     memory = ConversationMemory(obsidian)
     timestamp = datetime(2026, 1, 12, 10, 30, 0)
@@ -77,7 +79,8 @@ async def test_log_message_appends_markdown(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_get_recent_context_truncates_at_boundary(monkeypatch) -> None:
     """get_recent_context trims to max_chars and aligns to message boundary."""
-    monkeypatch.setattr(settings.conversation, "folder", "Brain/Conversations", raising=False)
+    monkeypatch.setattr(settings.obsidian, "root_folder", "_brain", raising=False)
+    monkeypatch.setattr(settings.obsidian, "conversation_folder", "conversations", raising=False)
     obsidian = FakeObsidianClient()
     memory = ConversationMemory(obsidian)
     timestamp = datetime.now()
@@ -104,7 +107,8 @@ async def test_get_recent_context_truncates_at_boundary(monkeypatch) -> None:
 @pytest.mark.asyncio
 async def test_get_recent_context_missing_note_returns_none(monkeypatch) -> None:
     """get_recent_context returns None when the note is missing."""
-    monkeypatch.setattr(settings.conversation, "folder", "Brain/Conversations", raising=False)
+    monkeypatch.setattr(settings.obsidian, "root_folder", "_brain", raising=False)
+    monkeypatch.setattr(settings.obsidian, "conversation_folder", "conversations", raising=False)
     obsidian = FakeObsidianClient()
     memory = ConversationMemory(obsidian)
 
@@ -116,11 +120,12 @@ async def test_get_recent_context_missing_note_returns_none(monkeypatch) -> None
 @pytest.mark.asyncio
 async def test_log_summary_marker_appends_link(monkeypatch) -> None:
     """log_summary_marker appends a link to the summary note."""
-    monkeypatch.setattr(settings.conversation, "folder", "Brain/Conversations", raising=False)
+    monkeypatch.setattr(settings.obsidian, "root_folder", "_brain", raising=False)
+    monkeypatch.setattr(settings.obsidian, "conversation_folder", "conversations", raising=False)
     obsidian = FakeObsidianClient()
     memory = ConversationMemory(obsidian)
     timestamp = datetime(2026, 1, 12, 11, 0, 0)
-    summary_path = "Brain/Conversations/Summaries/summary.md"
+    summary_path = "_brain/conversations/summaries/summary.md"
 
     await memory.log_summary_marker("sender", summary_path, timestamp=timestamp, channel="signal")
 

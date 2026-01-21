@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
 from models import (
+    Execution,
     ReviewIssueTypeEnum,
     ReviewItem,
     ReviewOutput,
     ReviewSeverityEnum,
+    Schedule,
 )
 from scheduler.data_access import (
     get_failing_schedules,
@@ -129,7 +130,7 @@ class ReviewJob:
     def _create_review_item(
         self,
         review_output_id: int,
-        schedule: Any,  # Typed as Any to avoid circular import or just imply Schedule model
+        schedule: Schedule,
         issue_type: ReviewIssueTypeEnum,
         severity: ReviewSeverityEnum,
         description: str,
@@ -151,8 +152,6 @@ class ReviewJob:
                 # Might need to query Execution manually or rely on lazy loading if relationship existed (it doesn't seem to be in the snippet).
                 # Actually, `last_execution_id` is on Schedule.
                 # Let's just query it if we have the session?
-                from models import Execution
-
                 execution = (
                     self._session.query(Execution)
                     .filter(Execution.id == schedule.last_execution_id)
