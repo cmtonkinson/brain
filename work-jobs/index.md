@@ -62,4 +62,4 @@ Docblock:
 54. [closed] work-jobs/task-35-ops-runbook.md (epic 10, milestone 05)
 55. [closed] work-jobs/task-36-deployment-validation-checklist.md (epic 10, milestone 05)
 56. [closed] work-jobs/task-60-compose-scheduler-validation-steps.md (epic 10, milestone 05)
-57. [open] work-jobs/task-37-upgrade-rollback-checklist.md (epic 10, milestone 05)
+57. [closed] work-jobs/task-37-upgrade-rollback-checklist.md (epic 10, milestone 05)
