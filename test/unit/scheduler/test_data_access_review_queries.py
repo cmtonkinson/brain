@@ -107,9 +107,7 @@ def test_get_orphaned_schedules_identifies_stale_active_tasks(
             now=now - timedelta(days=3),
         )
         # Manually set running status
-        session.query(type(running)).filter_by(id=running.id).update(
-            {"last_run_status": "running"}
-        )
+        session.query(type(running)).filter_by(id=running.id).update({"last_run_status": "running"})
         running_id = running.id
 
         session.commit()

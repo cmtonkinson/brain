@@ -5,14 +5,15 @@ Revises: 0019_trace_id_consolidation
 Create Date: 2026-01-21 12:32:31.097527
 
 """
+
 from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
 
 
-revision = 'bdd7c89f9c03'
-down_revision = '0019_trace_id_consolidation'
+revision = "bdd7c89f9c03"
+down_revision = "0019_trace_id_consolidation"
 branch_labels = None
 depends_on = None
 
@@ -55,4 +56,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("review_items")
     op.drop_table("review_outputs")
-

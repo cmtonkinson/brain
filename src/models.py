@@ -636,6 +636,7 @@ class ConversationMessage(BaseModel):
     role: str  # "user" or "assistant"
     content: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
     def to_markdown(self) -> str:
         """Format message as markdown for Obsidian."""
         local_timestamp = to_local(self.timestamp)
