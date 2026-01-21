@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "Running smoke tests..."
+
 run_pytest() {
   set +e
   poetry run pytest "$@"

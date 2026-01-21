@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "Running unit tests..."
+
 run_pytest() {
   set +e
   poetry run pytest "$@"

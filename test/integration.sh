@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "Running integration tests..."
+
 if [[ "${BRAIN_RUN_INTEGRATION:-}" != "1" ]]; then
   echo "Skipping integration tests (set BRAIN_RUN_INTEGRATION=1 to run)."
   exit 0

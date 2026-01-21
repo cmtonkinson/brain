@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "Running Go checks..."
+
 pushd host-mcp-gateway >/dev/null
 gofmt_output=$(gofmt -l .)
 if [[ -n "$gofmt_output" ]]; then
