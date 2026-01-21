@@ -98,9 +98,7 @@ class TestScheduleGetDetail:
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="America/New_York",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="day"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
                 ),
                 actor,
                 now=now,
@@ -144,9 +142,7 @@ class TestScheduleGetDetail:
         now = datetime(2025, 1, 2, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
@@ -196,9 +192,7 @@ class TestScheduleList:
         now = datetime(2025, 1, 3, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             for i in range(3):
                 create_schedule(
                     session,
@@ -206,9 +200,7 @@ class TestScheduleList:
                         task_intent_id=intent.id,
                         schedule_type="one_time",
                         timezone="UTC",
-                        definition=ScheduleDefinitionInput(
-                            run_at=now + timedelta(hours=i + 1)
-                        ),
+                        definition=ScheduleDefinitionInput(run_at=now + timedelta(hours=i + 1)),
                     ),
                     actor,
                     now=now,
@@ -220,17 +212,13 @@ class TestScheduleList:
 
         assert len(result.schedules) == 3
 
-    def test_list_schedules_filter_by_state(
-        self, sqlite_session_factory: sessionmaker
-    ) -> None:
+    def test_list_schedules_filter_by_state(self, sqlite_session_factory: sessionmaker) -> None:
         """Ensure list_schedules filters by state correctly."""
         actor = _actor_context()
         now = datetime(2025, 1, 4, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             # Active schedule
             create_schedule(
                 session,
@@ -238,9 +226,7 @@ class TestScheduleList:
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="day"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
                 ),
                 actor,
                 now=now,
@@ -252,9 +238,7 @@ class TestScheduleList:
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="hour"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="hour"),
                 ),
                 actor,
                 now=now,
@@ -279,9 +263,7 @@ class TestScheduleList:
         now = datetime(2025, 1, 5, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             create_schedule(
                 session,
                 ScheduleCreateInput(
@@ -299,9 +281,7 @@ class TestScheduleList:
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="day"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
                 ),
                 actor,
                 now=now,
@@ -325,9 +305,7 @@ class TestScheduleList:
         base_time = datetime(2025, 1, 6, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             for i in range(3):
                 create_schedule(
                     session,
@@ -363,9 +341,7 @@ class TestScheduleList:
         now = datetime(2025, 1, 7, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             for i in range(5):
                 create_schedule(
                     session,
@@ -373,9 +349,7 @@ class TestScheduleList:
                         task_intent_id=intent.id,
                         schedule_type="one_time",
                         timezone="UTC",
-                        definition=ScheduleDefinitionInput(
-                            run_at=now + timedelta(hours=i + 1)
-                        ),
+                        definition=ScheduleDefinitionInput(run_at=now + timedelta(hours=i + 1)),
                     ),
                     actor,
                     now=now,
@@ -493,9 +467,7 @@ class TestExecutionGetDetail:
         now = datetime(2025, 1, 8, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
@@ -557,22 +529,18 @@ class TestExecutionList:
     ) -> None:
         """Ensure list_executions returns all executions with no filters."""
         actor = _actor_context()
-        exec_actor = _execution_actor_context()
+        #         exec_actor = _execution_actor_context()
         now = datetime(2025, 1, 9, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="hour"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="hour"),
                 ),
                 actor,
                 now=now,
@@ -603,9 +571,7 @@ class TestExecutionList:
         now = datetime(2025, 1, 10, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule1 = create_schedule(
                 session,
                 ScheduleCreateInput(
@@ -661,31 +627,25 @@ class TestExecutionList:
         assert len(result2.executions) == 1
         assert result2.executions[0].schedule_id == schedule2_id
 
-    def test_list_executions_filter_by_status(
-        self, sqlite_session_factory: sessionmaker
-    ) -> None:
+    def test_list_executions_filter_by_status(self, sqlite_session_factory: sessionmaker) -> None:
         """Ensure list_executions filters by status correctly."""
         actor = _actor_context()
         now = datetime(2025, 1, 11, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="hour"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="hour"),
                 ),
                 actor,
                 now=now,
             )
-            exec_queued = create_execution(
+            create_execution(
                 session,
                 ExecutionCreateInput(
                     task_intent_id=intent.id,
@@ -731,18 +691,14 @@ class TestExecutionList:
         base_time = datetime(2025, 1, 12, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="hour"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="hour"),
                 ),
                 actor,
                 now=base_time,
@@ -780,18 +736,14 @@ class TestExecutionList:
         now = datetime(2025, 1, 13, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="hour"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="hour"),
                 ),
                 actor,
                 now=now,
@@ -817,16 +769,12 @@ class TestExecutionList:
         assert page1.next_cursor is not None
 
         # Second page
-        page2 = service.list_executions(
-            ExecutionListRequest(limit=2, cursor=page1.next_cursor)
-        )
+        page2 = service.list_executions(ExecutionListRequest(limit=2, cursor=page1.next_cursor))
         assert len(page2.executions) == 2
         assert page2.next_cursor is not None
 
         # Third page
-        page3 = service.list_executions(
-            ExecutionListRequest(limit=2, cursor=page2.next_cursor)
-        )
+        page3 = service.list_executions(ExecutionListRequest(limit=2, cursor=page2.next_cursor))
         assert len(page3.executions) == 1
         assert page3.next_cursor is None
 
@@ -845,32 +793,26 @@ class TestExecutionList:
 
         assert exc_info.value.code == "validation_error"
 
-    def test_list_executions_combined_filters(
-        self, sqlite_session_factory: sessionmaker
-    ) -> None:
+    def test_list_executions_combined_filters(self, sqlite_session_factory: sessionmaker) -> None:
         """Ensure list_executions supports combining multiple filters."""
         actor = _actor_context()
         base_time = datetime(2025, 1, 14, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="hour"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="hour"),
                 ),
                 actor,
                 now=base_time,
             )
             # Create executions with different statuses and times
-            exec1 = create_execution(
+            create_execution(
                 session,
                 ExecutionCreateInput(
                     task_intent_id=intent.id,
@@ -933,9 +875,7 @@ class TestExecutionAuditGet:
         now = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
@@ -962,19 +902,13 @@ class TestExecutionAuditGet:
             # Get the audit log id
             from models import ExecutionAuditLog
 
-            audit = (
-                session.query(ExecutionAuditLog)
-                .filter_by(execution_id=execution.id)
-                .first()
-            )
+            audit = session.query(ExecutionAuditLog).filter_by(execution_id=execution.id).first()
             audit_id = audit.id
             execution_id = execution.id
             schedule_id = schedule.id
 
         service = ScheduleQueryServiceImpl(sqlite_session_factory)
-        result = service.get_execution_audit(
-            ExecutionAuditGetRequest(execution_audit_id=audit_id)
-        )
+        result = service.get_execution_audit(ExecutionAuditGetRequest(execution_audit_id=audit_id))
 
         assert result.audit_log.id == audit_id
         assert result.audit_log.execution_id == execution_id
@@ -989,9 +923,7 @@ class TestExecutionAuditGet:
         service = ScheduleQueryServiceImpl(sqlite_session_factory)
 
         with pytest.raises(ScheduleNotFoundError) as exc_info:
-            service.get_execution_audit(
-                ExecutionAuditGetRequest(execution_audit_id=99999)
-            )
+            service.get_execution_audit(ExecutionAuditGetRequest(execution_audit_id=99999))
 
         assert exc_info.value.code == "not_found"
 
@@ -1012,18 +944,14 @@ class TestAuditLinkageVisibility:
         now = datetime(2025, 1, 16, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="day"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
                 ),
                 actor,
                 now=now,
@@ -1050,9 +978,7 @@ class TestAuditLinkageVisibility:
         now = datetime(2025, 1, 17, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Conditional task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Conditional task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
@@ -1099,9 +1025,7 @@ class TestAuditLinkageVisibility:
         now = datetime(2025, 1, 18, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
@@ -1145,17 +1069,13 @@ class TestAuditLinkageVisibility:
 class TestOrdering:
     """Tests to verify consistent ordering (id descending)."""
 
-    def test_list_schedules_ordered_by_id_desc(
-        self, sqlite_session_factory: sessionmaker
-    ) -> None:
+    def test_list_schedules_ordered_by_id_desc(self, sqlite_session_factory: sessionmaker) -> None:
         """Ensure list_schedules returns schedules ordered by id descending."""
         actor = _actor_context()
         now = datetime(2025, 1, 19, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             ids = []
             for i in range(3):
                 schedule = create_schedule(
@@ -1164,9 +1084,7 @@ class TestOrdering:
                         task_intent_id=intent.id,
                         schedule_type="one_time",
                         timezone="UTC",
-                        definition=ScheduleDefinitionInput(
-                            run_at=now + timedelta(hours=i + 1)
-                        ),
+                        definition=ScheduleDefinitionInput(run_at=now + timedelta(hours=i + 1)),
                     ),
                     actor,
                     now=now,
@@ -1180,26 +1098,20 @@ class TestOrdering:
         # Verify descending order
         assert result.schedules[0].id > result.schedules[1].id > result.schedules[2].id
 
-    def test_list_executions_ordered_by_id_desc(
-        self, sqlite_session_factory: sessionmaker
-    ) -> None:
+    def test_list_executions_ordered_by_id_desc(self, sqlite_session_factory: sessionmaker) -> None:
         """Ensure list_executions returns executions ordered by id descending."""
         actor = _actor_context()
         now = datetime(2025, 1, 20, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Test task"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="hour"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="hour"),
                 ),
                 actor,
                 now=now,

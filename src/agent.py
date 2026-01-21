@@ -109,9 +109,6 @@ def _preview(text: str, limit: int = 160) -> str:
     return cleaned
 
 
-
-
-
 def _ensure_llm_env() -> None:
     """Bridge config secrets into env for SDKs that only read env vars."""
     if settings.anthropic_api_key and not os.environ.get("ANTHROPIC_API_KEY"):
@@ -213,7 +210,9 @@ async def _run_code_mode_diagnostics(ctx: RunContext[AgentDeps]) -> list[str]:
                 logger.info("self_diagnostic: mcp filesystem ok")
                 results.append("- mcp/filesystem: ok (base directory listed)")
             else:
-                            logger.warning("self_diagnostic: mcp filesystem empty listing")                results.append("- mcp/filesystem: error (empty directory listing)")
+                logger.warning("self_diagnostic: mcp filesystem empty listing")
+                results.append("- mcp/filesystem: error (empty directory listing)")
+
     except Exception as exc:
         logger.error(f"self_diagnostic mcp filesystem failed: {exc}")
         results.append(f"- mcp/filesystem: error ({exc})")
@@ -978,7 +977,6 @@ async def handle_signal_message(
     """
     sender = signal_msg.sender
     message = signal_msg.message
-
 
     logger.info("Incoming message from %s: %s", sender, _preview(message))
 

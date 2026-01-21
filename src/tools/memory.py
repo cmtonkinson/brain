@@ -37,9 +37,7 @@ def get_conversation_path(date: datetime, sender: str, channel: str | None = Non
     month = local_date.strftime("%m")
     channel_slug = _normalize_channel(channel)
 
-    conversation_folder = (
-        f"{settings.obsidian.root_folder}/{settings.obsidian.conversation_folder}"
-    )
+    conversation_folder = f"{settings.obsidian.root_folder}/{settings.obsidian.conversation_folder}"
     return f"{conversation_folder}/{year}/{month}/{channel_slug}-{date_str}-{sender_hash}.md"
 
 

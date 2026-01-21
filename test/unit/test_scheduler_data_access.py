@@ -672,12 +672,8 @@ def test_list_executions_filter_by_schedule_id(
         )
         session.commit()
 
-        result1 = list_executions(
-            session, ExecutionHistoryQuery(schedule_id=schedule1.id)
-        )
-        result2 = list_executions(
-            session, ExecutionHistoryQuery(schedule_id=schedule2.id)
-        )
+        result1 = list_executions(session, ExecutionHistoryQuery(schedule_id=schedule1.id))
+        result2 = list_executions(session, ExecutionHistoryQuery(schedule_id=schedule2.id))
 
     assert len(result1.executions) == 2
     assert all(e.schedule_id == schedule1.id for e in result1.executions)
@@ -722,9 +718,7 @@ def test_list_executions_filter_by_status(
             )
         session.commit()
 
-        succeeded = list_executions(
-            session, ExecutionHistoryQuery(status="succeeded")
-        )
+        succeeded = list_executions(session, ExecutionHistoryQuery(status="succeeded"))
         failed = list_executions(session, ExecutionHistoryQuery(status="failed"))
         queued = list_executions(session, ExecutionHistoryQuery(status="queued"))
 
@@ -805,12 +799,8 @@ def test_list_executions_filter_by_actor_type(
         )
         session.commit()
 
-        scheduled_result = list_executions(
-            session, ExecutionHistoryQuery(actor_type="scheduled")
-        )
-        human_result = list_executions(
-            session, ExecutionHistoryQuery(actor_type="human")
-        )
+        scheduled_result = list_executions(session, ExecutionHistoryQuery(actor_type="scheduled"))
+        human_result = list_executions(session, ExecutionHistoryQuery(actor_type="human"))
 
     assert len(scheduled_result.executions) == 2
     assert all(e.actor_type == "scheduled" for e in scheduled_result.executions)
@@ -931,9 +921,7 @@ def test_list_executions_pagination_with_cursor(
         assert page1.next_cursor is not None
 
         # Second page: use cursor
-        page2 = list_executions(
-            session, ExecutionHistoryQuery(limit=2, cursor=page1.next_cursor)
-        )
+        page2 = list_executions(session, ExecutionHistoryQuery(limit=2, cursor=page1.next_cursor))
         assert len(page2.executions) == 2
         assert page2.next_cursor is not None
         # Verify no overlap
@@ -942,9 +930,7 @@ def test_list_executions_pagination_with_cursor(
         assert page1_ids.isdisjoint(page2_ids)
 
         # Third page: should have 1 record and no next cursor
-        page3 = list_executions(
-            session, ExecutionHistoryQuery(limit=2, cursor=page2.next_cursor)
-        )
+        page3 = list_executions(session, ExecutionHistoryQuery(limit=2, cursor=page2.next_cursor))
         assert len(page3.executions) == 1
         assert page3.next_cursor is None
 
@@ -1122,11 +1108,7 @@ def test_get_execution_audit_returns_record_by_id(
         )
         session.commit()
 
-        audits = (
-            session.query(ExecutionAuditLog)
-            .filter_by(execution_id=execution.id)
-            .all()
-        )
+        audits = session.query(ExecutionAuditLog).filter_by(execution_id=execution.id).all()
         audit_id = audits[0].id
 
         result = get_execution_audit(session, audit_id)
@@ -1211,12 +1193,8 @@ def test_list_execution_audits_filter_by_execution_id(
         )
         session.commit()
 
-        result1 = list_execution_audits(
-            session, ExecutionAuditHistoryQuery(execution_id=exec1.id)
-        )
-        result2 = list_execution_audits(
-            session, ExecutionAuditHistoryQuery(execution_id=exec2.id)
-        )
+        result1 = list_execution_audits(session, ExecutionAuditHistoryQuery(execution_id=exec1.id))
+        result2 = list_execution_audits(session, ExecutionAuditHistoryQuery(execution_id=exec2.id))
 
     assert len(result1.audit_logs) == 3  # queued, running, succeeded
     assert all(a.execution_id == exec1.id for a in result1.audit_logs)
@@ -1283,12 +1261,8 @@ def test_list_execution_audits_filter_by_schedule_id(
         )
         session.commit()
 
-        result1 = list_execution_audits(
-            session, ExecutionAuditHistoryQuery(schedule_id=sched1.id)
-        )
-        result2 = list_execution_audits(
-            session, ExecutionAuditHistoryQuery(schedule_id=sched2.id)
-        )
+        result1 = list_execution_audits(session, ExecutionAuditHistoryQuery(schedule_id=sched1.id))
+        result2 = list_execution_audits(session, ExecutionAuditHistoryQuery(schedule_id=sched2.id))
 
     assert len(result1.audit_logs) == 1
     assert result1.audit_logs[0].schedule_id == sched1.id
@@ -1346,9 +1320,7 @@ def test_list_execution_audits_filter_by_status(
         )
         session.commit()
 
-        queued_result = list_execution_audits(
-            session, ExecutionAuditHistoryQuery(status="queued")
-        )
+        queued_result = list_execution_audits(session, ExecutionAuditHistoryQuery(status="queued"))
         succeeded_result = list_execution_audits(
             session, ExecutionAuditHistoryQuery(status="succeeded")
         )
@@ -1456,9 +1428,7 @@ def test_list_execution_audits_pagination_with_cursor(
         session.commit()
 
         # First page
-        page1 = list_execution_audits(
-            session, ExecutionAuditHistoryQuery(limit=2)
-        )
+        page1 = list_execution_audits(session, ExecutionAuditHistoryQuery(limit=2))
         assert len(page1.audit_logs) == 2
         assert page1.next_cursor is not None
 
@@ -1500,9 +1470,7 @@ def test_list_execution_audits_invalid_status_raises(
 
     with closing(session_factory()) as session:
         with pytest.raises(ValueError, match="Invalid execution status"):
-            list_execution_audits(
-                session, ExecutionAuditHistoryQuery(status="bad_status")
-            )
+            list_execution_audits(session, ExecutionAuditHistoryQuery(status="bad_status"))
 
 
 def test_list_execution_audits_order_by_id_desc(

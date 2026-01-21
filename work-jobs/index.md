@@ -42,7 +42,7 @@ Docblock:
 34. [closed] work-jobs/task-23-inspection-api.md (epic 07, milestone 04)
 35. [closed] work-jobs/task-25-predicate-evaluation-visibility.md (epic 07, milestone 04)
 36. [closed] work-jobs/task-27-orphaned-failing-schedule-criteria.md (epic 08, milestone 04)
-37. [open] work-jobs/task-48-review-detection-queries.md (epic 08, milestone 04)
+37. [closed] work-jobs/task-48-review-detection-queries.md (epic 08, milestone 04)
 38. [open] work-jobs/task-39-review-output-schema.md (epic 08, milestone 04)
 39. [open] work-jobs/task-28-review-job-implementation.md (epic 08, milestone 04)
 40. [open] work-jobs/task-29-review-output-surface.md (epic 08, milestone 04)

@@ -103,9 +103,7 @@ def test_calendar_rule_schedule_creates_with_rrule_propagated_to_adapter(
     """Ensure calendar-rule schedules register with RRULE in adapter payload."""
     now = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
     adapter = RecordingAdapterStub()
-    service = ScheduleCommandServiceImpl(
-        sqlite_session_factory, adapter, now_provider=lambda: now
-    )
+    service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
     result = service.create_schedule(
@@ -147,9 +145,7 @@ def test_calendar_rule_schedule_update_propagates_to_adapter(
     """Ensure calendar-rule schedule updates propagate to the adapter."""
     now = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
     adapter = RecordingAdapterStub()
-    service = ScheduleCommandServiceImpl(
-        sqlite_session_factory, adapter, now_provider=lambda: now
-    )
+    service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
     # Create the schedule
@@ -188,9 +184,7 @@ def test_calendar_rule_schedule_pause_resume_delete_flow(
     """Ensure pause/resume/delete work correctly for calendar-rule schedules."""
     now = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
     adapter = RecordingAdapterStub()
-    service = ScheduleCommandServiceImpl(
-        sqlite_session_factory, adapter, now_provider=lambda: now
-    )
+    service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
     # Create the schedule
@@ -252,9 +246,7 @@ def test_calendar_rule_with_complex_rrule(
     """Ensure complex RRULE patterns are preserved through the system."""
     now = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
     adapter = RecordingAdapterStub()
-    service = ScheduleCommandServiceImpl(
-        sqlite_session_factory, adapter, now_provider=lambda: now
-    )
+    service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
     # Complex: every 2 hours on weekdays
@@ -285,9 +277,7 @@ def test_conditional_schedule_creates_with_evaluation_cadence(
     """Ensure conditional schedules register with evaluation interval in adapter."""
     now = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
     adapter = RecordingAdapterStub()
-    service = ScheduleCommandServiceImpl(
-        sqlite_session_factory, adapter, now_provider=lambda: now
-    )
+    service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
     result = service.create_schedule(
@@ -343,9 +333,7 @@ def test_conditional_schedule_update_propagates_to_adapter(
     """Ensure conditional schedule updates propagate to the adapter."""
     now = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
     adapter = RecordingAdapterStub()
-    service = ScheduleCommandServiceImpl(
-        sqlite_session_factory, adapter, now_provider=lambda: now
-    )
+    service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
     # Create the schedule
@@ -396,9 +384,7 @@ def test_conditional_schedule_pause_resume_delete_flow(
     """Ensure pause/resume/delete work correctly for conditional schedules."""
     now = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
     adapter = RecordingAdapterStub()
-    service = ScheduleCommandServiceImpl(
-        sqlite_session_factory, adapter, now_provider=lambda: now
-    )
+    service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
     # Create the schedule
@@ -451,9 +437,7 @@ def test_conditional_schedule_with_numeric_predicate_value(
     """Ensure conditional schedules handle numeric predicate values correctly."""
     now = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
     adapter = RecordingAdapterStub()
-    service = ScheduleCommandServiceImpl(
-        sqlite_session_factory, adapter, now_provider=lambda: now
-    )
+    service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
     result = service.create_schedule(
@@ -482,9 +466,7 @@ def test_conditional_schedule_with_exists_operator(
     """Ensure conditional schedules with 'exists' operator work without predicate_value."""
     now = datetime(2025, 3, 1, 10, 0, tzinfo=timezone.utc)
     adapter = RecordingAdapterStub()
-    service = ScheduleCommandServiceImpl(
-        sqlite_session_factory, adapter, now_provider=lambda: now
-    )
+    service = ScheduleCommandServiceImpl(sqlite_session_factory, adapter, now_provider=lambda: now)
     actor = _actor_context()
 
     result = service.create_schedule(

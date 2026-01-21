@@ -378,9 +378,7 @@ class TestPredicateEvaluationAuditIdempotency:
             # Only one record should exist
             count = (
                 session.query(PredicateEvaluationAuditLog)
-                .filter(
-                    PredicateEvaluationAuditLog.evaluation_id == "eval-callback-001"
-                )
+                .filter(PredicateEvaluationAuditLog.evaluation_id == "eval-callback-001")
                 .count()
             )
             assert count == 1
@@ -408,9 +406,7 @@ class TestPredicateEvaluationAuditQueries:
             record_predicate_evaluation_audit(session, audit_input)
             session.commit()
 
-            result = get_predicate_evaluation_audit_by_evaluation_id(
-                session, "eval-query-001"
-            )
+            result = get_predicate_evaluation_audit_by_evaluation_id(session, "eval-query-001")
 
             assert result is not None
             assert result.evaluation_id == "eval-query-001"
@@ -421,9 +417,7 @@ class TestPredicateEvaluationAuditQueries:
     ) -> None:
         """Verify get_by_evaluation_id returns None for missing records."""
         with closing(sqlite_session_factory()) as session:
-            result = get_predicate_evaluation_audit_by_evaluation_id(
-                session, "nonexistent-eval-id"
-            )
+            result = get_predicate_evaluation_audit_by_evaluation_id(session, "nonexistent-eval-id")
 
             assert result is None
 
@@ -450,9 +444,7 @@ class TestPredicateEvaluationAuditQueries:
                 record_predicate_evaluation_audit(session, audit_input)
             session.commit()
 
-            results = list_predicate_evaluation_audits_by_schedule(
-                session, schedule.id
-            )
+            results = list_predicate_evaluation_audits_by_schedule(session, schedule.id)
 
             assert len(results) == 3
             # Most recent first
@@ -482,9 +474,7 @@ class TestPredicateEvaluationAuditQueries:
                 record_predicate_evaluation_audit(session, audit_input)
             session.commit()
 
-            results = list_predicate_evaluation_audits_by_schedule(
-                session, schedule.id, limit=2
-            )
+            results = list_predicate_evaluation_audits_by_schedule(session, schedule.id, limit=2)
 
             assert len(results) == 2
             # Most recent first
@@ -518,9 +508,7 @@ class TestPredicateEvaluationAuditQueries:
             record_predicate_evaluation_audit(session, audit_input_2)
             session.commit()
 
-            results = list_predicate_evaluation_audits_by_schedule(
-                session, schedule1.id
-            )
+            results = list_predicate_evaluation_audits_by_schedule(session, schedule1.id)
 
             assert len(results) == 1
             assert results[0].evaluation_id == "eval-filter-001"
@@ -588,9 +576,7 @@ class TestPredicateEvaluationAuditRecorderIntegration:
 
         # Verify persisted
         with closing(sqlite_session_factory()) as session:
-            audit = get_predicate_evaluation_audit_by_evaluation_id(
-                session, "eval-recorder-001"
-            )
+            audit = get_predicate_evaluation_audit_by_evaluation_id(session, "eval-recorder-001")
 
             assert audit is not None
             assert audit.evaluation_id == "eval-recorder-001"
@@ -660,10 +646,7 @@ class TestPredicateEvaluationAuditRecorderIntegration:
         with closing(sqlite_session_factory()) as session:
             count = (
                 session.query(PredicateEvaluationAuditLog)
-                .filter(
-                    PredicateEvaluationAuditLog.evaluation_id
-                    == "eval-recorder-idempotent-001"
-                )
+                .filter(PredicateEvaluationAuditLog.evaluation_id == "eval-recorder-idempotent-001")
                 .count()
             )
             assert count == 1
@@ -727,9 +710,7 @@ class TestPredicateEvaluationAuditRecorderIntegration:
 
         # Verify recorded
         with closing(sqlite_session_factory()) as session:
-            audit = get_predicate_evaluation_audit_by_evaluation_id(
-                session, "eval-rollback-001"
-            )
+            audit = get_predicate_evaluation_audit_by_evaluation_id(session, "eval-rollback-001")
             assert audit is not None
 
 

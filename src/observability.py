@@ -240,9 +240,7 @@ def setup_observability(
 
     if otlp_endpoint:
         otlp_log_exporter = OTLPLogExporter(endpoint=otlp_endpoint, insecure=True)
-        logger_provider.add_log_record_processor(
-            BatchLogRecordProcessor(otlp_log_exporter)
-        )
+        logger_provider.add_log_record_processor(BatchLogRecordProcessor(otlp_log_exporter))
 
     # --- Auto-instrumentation ---
     HTTPXClientInstrumentor().instrument()
@@ -281,9 +279,7 @@ def configure_logging(level: str, otel_level: str) -> None:
     # 1. Console Handler (for docker logs)
     stdout_handler = logging.StreamHandler(sys.stdout)
     stdout_handler.setLevel(numeric_level)
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     stdout_handler.setFormatter(formatter)
     root_logger.addHandler(stdout_handler)
 
@@ -304,36 +300,28 @@ def configure_logging(level: str, otel_level: str) -> None:
 def get_tracer() -> Tracer:
     """Get the global tracer instance."""
     if _tracer is None:
-        raise RuntimeError(
-            "Observability not initialized. Call setup_observability() first."
-        )
+        raise RuntimeError("Observability not initialized. Call setup_observability() first.")
     return _tracer
 
 
 def get_meter() -> Meter:
     """Get the global meter instance."""
     if _meter is None:
-        raise RuntimeError(
-            "Observability not initialized. Call setup_observability() first."
-        )
+        raise RuntimeError("Observability not initialized. Call setup_observability() first.")
     return _meter
 
 
 def get_metrics() -> BrainMetrics:
     """Get the global metrics instance."""
     if _metrics is None:
-        raise RuntimeError(
-            "Observability not initialized. Call setup_observability() first."
-        )
+        raise RuntimeError("Observability not initialized. Call setup_observability() first.")
     return _metrics
 
 
 # --- Decorators for easy instrumentation ---
 
 
-def traced(
-    name: str | None = None, attributes: dict[str, Any] | None = None
-) -> Callable[[F], F]:
+def traced(name: str | None = None, attributes: dict[str, Any] | None = None) -> Callable[[F], F]:
     """Decorator to add tracing to a function.
 
     Args:

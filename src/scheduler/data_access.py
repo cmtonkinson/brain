@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
@@ -1039,16 +1039,11 @@ def list_executions(
 
     # Fetch one extra to determine if there are more results
     fetch_limit = query.limit + 1
-    executions = (
-        base_query
-        .order_by(Execution.id.desc())
-        .limit(fetch_limit)
-        .all()
-    )
+    executions = base_query.order_by(Execution.id.desc()).limit(fetch_limit).all()
 
     has_more = len(executions) > query.limit
     if has_more:
-        executions = executions[:query.limit]
+        executions = executions[: query.limit]
         next_cursor = executions[-1].id if executions else None
     else:
         next_cursor = None
@@ -1098,11 +1093,7 @@ def get_execution_audit(session: Session, audit_id: int) -> ExecutionAuditLog | 
     Returns:
         The ExecutionAuditLog record or None if not found.
     """
-    return (
-        session.query(ExecutionAuditLog)
-        .filter(ExecutionAuditLog.id == audit_id)
-        .first()
-    )
+    return session.query(ExecutionAuditLog).filter(ExecutionAuditLog.id == audit_id).first()
 
 
 def list_execution_audits(
@@ -1153,16 +1144,11 @@ def list_execution_audits(
 
     # Fetch one extra to determine if there are more results
     fetch_limit = query.limit + 1
-    audit_logs = (
-        base_query
-        .order_by(ExecutionAuditLog.id.desc())
-        .limit(fetch_limit)
-        .all()
-    )
+    audit_logs = base_query.order_by(ExecutionAuditLog.id.desc()).limit(fetch_limit).all()
 
     has_more = len(audit_logs) > query.limit
     if has_more:
-        audit_logs = audit_logs[:query.limit]
+        audit_logs = audit_logs[: query.limit]
         next_cursor = audit_logs[-1].id if audit_logs else None
     else:
         next_cursor = None
@@ -1222,11 +1208,7 @@ def get_schedule_audit(session: Session, audit_id: int) -> ScheduleAuditLog | No
     Returns:
         The ScheduleAuditLog record or None if not found.
     """
-    return (
-        session.query(ScheduleAuditLog)
-        .filter(ScheduleAuditLog.id == audit_id)
-        .first()
-    )
+    return session.query(ScheduleAuditLog).filter(ScheduleAuditLog.id == audit_id).first()
 
 
 def list_schedule_audits(
@@ -1275,16 +1257,11 @@ def list_schedule_audits(
 
     # Fetch one extra to determine if there are more results
     fetch_limit = query.limit + 1
-    audit_logs = (
-        base_query
-        .order_by(ScheduleAuditLog.id.desc())
-        .limit(fetch_limit)
-        .all()
-    )
+    audit_logs = base_query.order_by(ScheduleAuditLog.id.desc()).limit(fetch_limit).all()
 
     has_more = len(audit_logs) > query.limit
     if has_more:
-        audit_logs = audit_logs[:query.limit]
+        audit_logs = audit_logs[: query.limit]
         next_cursor = audit_logs[-1].id if audit_logs else None
     else:
         next_cursor = None
@@ -1405,16 +1382,11 @@ def list_predicate_evaluation_audits(
 
     # Fetch one extra to determine if there are more results
     fetch_limit = query.limit + 1
-    audit_logs = (
-        base_query
-        .order_by(PredicateEvaluationAuditLog.id.desc())
-        .limit(fetch_limit)
-        .all()
-    )
+    audit_logs = base_query.order_by(PredicateEvaluationAuditLog.id.desc()).limit(fetch_limit).all()
 
     has_more = len(audit_logs) > query.limit
     if has_more:
-        audit_logs = audit_logs[:query.limit]
+        audit_logs = audit_logs[: query.limit]
         next_cursor = audit_logs[-1].id if audit_logs else None
     else:
         next_cursor = None
@@ -1519,16 +1491,11 @@ def list_schedules(
 
     # Fetch one extra to determine if there are more results
     fetch_limit = query.limit + 1
-    schedules = (
-        base_query
-        .order_by(Schedule.id.desc())
-        .limit(fetch_limit)
-        .all()
-    )
+    schedules = base_query.order_by(Schedule.id.desc()).limit(fetch_limit).all()
 
     has_more = len(schedules) > query.limit
     if has_more:
-        schedules = schedules[:query.limit]
+        schedules = schedules[: query.limit]
         next_cursor = schedules[-1].id if schedules else None
     else:
         next_cursor = None
@@ -1536,4 +1503,114 @@ def list_schedules(
     return ScheduleListResult(
         schedules=schedules,
         next_cursor=next_cursor,
+    )
+
+
+# ============================================================================
+# Review Detection Queries (Task 48)
+# ============================================================================
+
+
+def get_orphaned_schedules(
+    session: Session,
+    grace_period: timedelta,
+    now: datetime | None = None,
+) -> list[Schedule]:
+    """Return active schedules that missed their next run beyond the grace period.
+
+    Orphaned Criteria:
+      1. State is 'active'.
+      2. next_run_at is older than (now - grace_period).
+      3. last_run_status is NOT 'running' (it is not currently executing).
+
+    Args:
+        session: SQLAlchemy session.
+        grace_period: Time duration to tolerate before flagging as orphaned.
+        now: Reference timestamp (default: current UTC time).
+
+    Returns:
+        List of matching Schedule records.
+    """
+    now = _normalize_timestamp(now or datetime.now(timezone.utc), "now")
+    cutoff = now - grace_period
+
+    return (
+        session.query(Schedule)
+        .filter(
+            Schedule.state == "active",
+            Schedule.next_run_at < cutoff,
+            # Ensure we don't flag currently running tasks
+            # (Assuming running status implies valid activity)
+            (Schedule.last_run_status != "running") | (Schedule.last_run_status.is_(None)),
+        )
+        .all()
+    )
+
+
+def get_failing_schedules(
+    session: Session,
+    consecutive_failure_threshold: int,
+    stale_failure_age: timedelta,
+    now: datetime | None = None,
+) -> list[Schedule]:
+    """Return schedules that are consistently failing or stuck in failure.
+
+    Failing Criteria:
+      1. last_run_status is 'failed' AND failure_count >= threshold.
+      2. last_run_status is 'failed' AND last_run_at older than (now - stale_age).
+
+    Args:
+        session: SQLAlchemy session.
+        consecutive_failure_threshold: Minimum failure count to flag.
+        stale_failure_age: Time duration since last failed run to consider stale.
+        now: Reference timestamp (default: current UTC time).
+
+    Returns:
+        List of matching Schedule records.
+    """
+    now = _normalize_timestamp(now or datetime.now(timezone.utc), "now")
+    stale_cutoff = now - stale_failure_age
+
+    return (
+        session.query(Schedule)
+        .filter(
+            Schedule.last_run_status == "failed",
+            and_(
+                (Schedule.failure_count >= consecutive_failure_threshold)
+                | (Schedule.last_run_at < stale_cutoff)
+            ),
+        )
+        .all()
+    )
+
+
+def get_ignored_schedules(
+    session: Session,
+    ignored_age: timedelta,
+    now: datetime | None = None,
+) -> list[Schedule]:
+    """Return paused schedules that have been untouched for a long period.
+
+    Ignored Criteria:
+      1. State is 'paused'.
+      2. updated_at is older than (now - ignored_age).
+
+    Args:
+        session: SQLAlchemy session.
+        ignored_age: Time duration since last update to consider ignored.
+        now: Reference timestamp (default: current UTC time).
+
+    Returns:
+        List of matching Schedule records.
+    """
+    now = _normalize_timestamp(now or datetime.now(timezone.utc), "now")
+    cutoff = now - ignored_age
+
+    return (
+        session.query(Schedule)
+        .filter(
+            Schedule.state == "paused",
+            Schedule.updated_at < cutoff,
+        )
+        .all()
     )

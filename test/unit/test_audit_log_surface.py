@@ -92,9 +92,7 @@ def test_get_schedule_audit_returns_record_by_id(
     now = datetime(2025, 1, 1, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
@@ -111,11 +109,7 @@ def test_get_schedule_audit_returns_record_by_id(
         # Find the audit log created during schedule creation
         from models import ScheduleAuditLog
 
-        audit = (
-            session.query(ScheduleAuditLog)
-            .filter_by(schedule_id=schedule.id)
-            .first()
-        )
+        audit = session.query(ScheduleAuditLog).filter_by(schedule_id=schedule.id).first()
         audit_id = audit.id
 
         result = get_schedule_audit(session, audit_id)
@@ -137,18 +131,14 @@ def test_list_schedule_audits_no_filters_returns_all(
     now = datetime(2025, 1, 1, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
                 task_intent_id=intent.id,
                 schedule_type="interval",
                 timezone="UTC",
-                definition=ScheduleDefinitionInput(
-                    interval_count=1, interval_unit="day"
-                ),
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
             ),
             actor,
             now=now,
@@ -194,9 +184,7 @@ def test_list_schedule_audits_filter_by_schedule_id(
     now = datetime(2025, 1, 2, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule1 = create_schedule(
             session,
             ScheduleCreateInput(
@@ -221,12 +209,8 @@ def test_list_schedule_audits_filter_by_schedule_id(
         )
         session.commit()
 
-        result1 = list_schedule_audits(
-            session, ScheduleAuditHistoryQuery(schedule_id=schedule1.id)
-        )
-        result2 = list_schedule_audits(
-            session, ScheduleAuditHistoryQuery(schedule_id=schedule2.id)
-        )
+        result1 = list_schedule_audits(session, ScheduleAuditHistoryQuery(schedule_id=schedule1.id))
+        result2 = list_schedule_audits(session, ScheduleAuditHistoryQuery(schedule_id=schedule2.id))
 
     assert len(result1.audit_logs) == 1
     assert result1.audit_logs[0].schedule_id == schedule1.id
@@ -243,18 +227,14 @@ def test_list_schedule_audits_filter_by_event_type(
     now = datetime(2025, 1, 3, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
                 task_intent_id=intent.id,
                 schedule_type="interval",
                 timezone="UTC",
-                definition=ScheduleDefinitionInput(
-                    interval_count=1, interval_unit="day"
-                ),
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
             ),
             actor,
             now=now,
@@ -275,9 +255,7 @@ def test_list_schedule_audits_filter_by_event_type(
         create_result = list_schedule_audits(
             session, ScheduleAuditHistoryQuery(event_type="create")
         )
-        pause_result = list_schedule_audits(
-            session, ScheduleAuditHistoryQuery(event_type="pause")
-        )
+        pause_result = list_schedule_audits(session, ScheduleAuditHistoryQuery(event_type="pause"))
 
     assert len(create_result.audit_logs) == 1
     assert create_result.audit_logs[0].event_type == "create"
@@ -294,9 +272,7 @@ def test_list_schedule_audits_filter_by_time_range(
     base_time = datetime(2025, 1, 4, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         # Create schedules at different times
         for i in range(3):
             create_schedule(
@@ -305,9 +281,7 @@ def test_list_schedule_audits_filter_by_time_range(
                     task_intent_id=intent.id,
                     schedule_type="one_time",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        run_at=base_time + timedelta(hours=i + 5)
-                    ),
+                    definition=ScheduleDefinitionInput(run_at=base_time + timedelta(hours=i + 5)),
                 ),
                 actor,
                 now=base_time + timedelta(hours=i),
@@ -338,9 +312,7 @@ def test_list_schedule_audits_pagination_with_cursor(
     now = datetime(2025, 1, 5, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         # Create 5 schedules (5 audit logs)
         for i in range(5):
             create_schedule(
@@ -349,9 +321,7 @@ def test_list_schedule_audits_pagination_with_cursor(
                     task_intent_id=intent.id,
                     schedule_type="one_time",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        run_at=now + timedelta(hours=i + 1)
-                    ),
+                    definition=ScheduleDefinitionInput(run_at=now + timedelta(hours=i + 1)),
                 ),
                 actor,
                 now=now,
@@ -394,9 +364,7 @@ def test_list_schedule_audits_invalid_event_type_raises(
 
     with closing(session_factory()) as session:
         with pytest.raises(ValueError, match="Invalid schedule audit event type"):
-            list_schedule_audits(
-                session, ScheduleAuditHistoryQuery(event_type="invalid_type")
-            )
+            list_schedule_audits(session, ScheduleAuditHistoryQuery(event_type="invalid_type"))
 
 
 def test_list_schedule_audits_combined_filters(
@@ -408,18 +376,14 @@ def test_list_schedule_audits_combined_filters(
     base_time = datetime(2025, 1, 6, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
                 task_intent_id=intent.id,
                 schedule_type="interval",
                 timezone="UTC",
-                definition=ScheduleDefinitionInput(
-                    interval_count=1, interval_unit="day"
-                ),
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
             ),
             actor,
             now=base_time,
@@ -527,9 +491,7 @@ def test_get_predicate_evaluation_audit_returns_record_by_id(
     now = datetime(2025, 1, 7, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
@@ -547,9 +509,7 @@ def test_get_predicate_evaluation_audit_returns_record_by_id(
             actor,
             now=now,
         )
-        _create_predicate_evaluation_audit(
-            session, schedule.id, intent.id, "eval-001", now
-        )
+        _create_predicate_evaluation_audit(session, schedule.id, intent.id, "eval-001", now)
         session.commit()
 
         # Find the audit log
@@ -576,9 +536,7 @@ def test_list_predicate_evaluation_audits_no_filters(
     now = datetime(2025, 1, 8, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
@@ -606,9 +564,7 @@ def test_list_predicate_evaluation_audits_no_filters(
             )
         session.commit()
 
-        result = list_predicate_evaluation_audits(
-            session, PredicateEvaluationAuditHistoryQuery()
-        )
+        result = list_predicate_evaluation_audits(session, PredicateEvaluationAuditHistoryQuery())
 
     assert len(result.audit_logs) == 3
     # Ordered by id desc
@@ -624,9 +580,7 @@ def test_list_predicate_evaluation_audits_filter_by_schedule_id(
     now = datetime(2025, 1, 9, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule1 = create_schedule(
             session,
             ScheduleCreateInput(
@@ -662,16 +616,12 @@ def test_list_predicate_evaluation_audits_filter_by_schedule_id(
             now=now,
         )
         # Two audits for schedule1
-        _create_predicate_evaluation_audit(
-            session, schedule1.id, intent.id, "eval-s1-001", now
-        )
+        _create_predicate_evaluation_audit(session, schedule1.id, intent.id, "eval-s1-001", now)
         _create_predicate_evaluation_audit(
             session, schedule1.id, intent.id, "eval-s1-002", now + timedelta(hours=1)
         )
         # One audit for schedule2
-        _create_predicate_evaluation_audit(
-            session, schedule2.id, intent.id, "eval-s2-001", now
-        )
+        _create_predicate_evaluation_audit(session, schedule2.id, intent.id, "eval-s2-001", now)
         session.commit()
 
         result1 = list_predicate_evaluation_audits(
@@ -696,9 +646,7 @@ def test_list_predicate_evaluation_audits_filter_by_status(
     now = datetime(2025, 1, 10, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
@@ -751,9 +699,7 @@ def test_list_predicate_evaluation_audits_filter_by_time_range(
     base_time = datetime(2025, 1, 11, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
@@ -784,16 +730,12 @@ def test_list_predicate_evaluation_audits_filter_by_time_range(
         # After 1 hour mark
         after_result = list_predicate_evaluation_audits(
             session,
-            PredicateEvaluationAuditHistoryQuery(
-                evaluated_after=base_time + timedelta(hours=1)
-            ),
+            PredicateEvaluationAuditHistoryQuery(evaluated_after=base_time + timedelta(hours=1)),
         )
         # Before 1 hour mark
         before_result = list_predicate_evaluation_audits(
             session,
-            PredicateEvaluationAuditHistoryQuery(
-                evaluated_before=base_time + timedelta(hours=1)
-            ),
+            PredicateEvaluationAuditHistoryQuery(evaluated_before=base_time + timedelta(hours=1)),
         )
 
     assert len(after_result.audit_logs) == 2  # hours 1 and 2
@@ -809,9 +751,7 @@ def test_list_predicate_evaluation_audits_pagination(
     now = datetime(2025, 1, 12, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
@@ -890,9 +830,7 @@ def test_list_schedules_no_filters_returns_all(
     now = datetime(2025, 1, 13, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         for i in range(3):
             create_schedule(
                 session,
@@ -900,9 +838,7 @@ def test_list_schedules_no_filters_returns_all(
                     task_intent_id=intent.id,
                     schedule_type="one_time",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        run_at=now + timedelta(hours=i + 1)
-                    ),
+                    definition=ScheduleDefinitionInput(run_at=now + timedelta(hours=i + 1)),
                 ),
                 actor,
                 now=now,
@@ -925,18 +861,14 @@ def test_list_schedules_filter_by_state(
     now = datetime(2025, 1, 14, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         active_sched = create_schedule(
             session,
             ScheduleCreateInput(
                 task_intent_id=intent.id,
                 schedule_type="interval",
                 timezone="UTC",
-                definition=ScheduleDefinitionInput(
-                    interval_count=1, interval_unit="day"
-                ),
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
             ),
             actor,
             now=now,
@@ -947,9 +879,7 @@ def test_list_schedules_filter_by_state(
                 task_intent_id=intent.id,
                 schedule_type="interval",
                 timezone="UTC",
-                definition=ScheduleDefinitionInput(
-                    interval_count=1, interval_unit="day"
-                ),
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
             ),
             actor,
             now=now,
@@ -985,9 +915,7 @@ def test_list_schedules_filter_by_schedule_type(
     now = datetime(2025, 1, 15, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         create_schedule(
             session,
             ScheduleCreateInput(
@@ -1005,21 +933,15 @@ def test_list_schedules_filter_by_schedule_type(
                 task_intent_id=intent.id,
                 schedule_type="interval",
                 timezone="UTC",
-                definition=ScheduleDefinitionInput(
-                    interval_count=1, interval_unit="day"
-                ),
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
             ),
             actor,
             now=now,
         )
         session.commit()
 
-        one_time_result = list_schedules(
-            session, ScheduleListQuery(schedule_type="one_time")
-        )
-        interval_result = list_schedules(
-            session, ScheduleListQuery(schedule_type="interval")
-        )
+        one_time_result = list_schedules(session, ScheduleListQuery(schedule_type="one_time"))
+        interval_result = list_schedules(session, ScheduleListQuery(schedule_type="interval"))
 
     assert len(one_time_result.schedules) == 1
     assert str(one_time_result.schedules[0].schedule_type) == "one_time"
@@ -1036,9 +958,7 @@ def test_list_schedules_pagination(
     now = datetime(2025, 1, 16, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         for i in range(5):
             create_schedule(
                 session,
@@ -1046,9 +966,7 @@ def test_list_schedules_pagination(
                     task_intent_id=intent.id,
                     schedule_type="one_time",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        run_at=now + timedelta(hours=i + 1)
-                    ),
+                    definition=ScheduleDefinitionInput(run_at=now + timedelta(hours=i + 1)),
                 ),
                 actor,
                 now=now,
@@ -1059,15 +977,11 @@ def test_list_schedules_pagination(
         assert len(page1.schedules) == 2
         assert page1.next_cursor is not None
 
-        page2 = list_schedules(
-            session, ScheduleListQuery(limit=2, cursor=page1.next_cursor)
-        )
+        page2 = list_schedules(session, ScheduleListQuery(limit=2, cursor=page1.next_cursor))
         assert len(page2.schedules) == 2
         assert page2.next_cursor is not None
 
-        page3 = list_schedules(
-            session, ScheduleListQuery(limit=2, cursor=page2.next_cursor)
-        )
+        page3 = list_schedules(session, ScheduleListQuery(limit=2, cursor=page2.next_cursor))
         assert len(page3.schedules) == 1
         assert page3.next_cursor is None
 
@@ -1086,9 +1000,7 @@ def test_query_service_get_schedule_returns_schedule_with_intent(
     now = datetime(2025, 1, 17, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
@@ -1160,9 +1072,7 @@ def test_query_service_list_schedules(
     now = datetime(2025, 1, 18, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         create_schedule(
             session,
             ScheduleCreateInput(
@@ -1180,9 +1090,7 @@ def test_query_service_list_schedules(
                 task_intent_id=intent.id,
                 schedule_type="interval",
                 timezone="UTC",
-                definition=ScheduleDefinitionInput(
-                    interval_count=1, interval_unit="day"
-                ),
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
             ),
             actor,
             now=now,
@@ -1191,9 +1099,7 @@ def test_query_service_list_schedules(
 
     service = ScheduleQueryServiceImpl(session_factory)
     all_result = service.list_schedules(ScheduleListRequest())
-    one_time_result = service.list_schedules(
-        ScheduleListRequest(schedule_type="one_time")
-    )
+    one_time_result = service.list_schedules(ScheduleListRequest(schedule_type="one_time"))
 
     assert len(all_result.schedules) == 2
     assert len(one_time_result.schedules) == 1
@@ -1208,18 +1114,14 @@ def test_query_service_list_schedule_audits(
     now = datetime(2025, 1, 19, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
                 task_intent_id=intent.id,
                 schedule_type="interval",
                 timezone="UTC",
-                definition=ScheduleDefinitionInput(
-                    interval_count=1, interval_unit="day"
-                ),
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
             ),
             actor,
             now=now,
@@ -1259,9 +1161,7 @@ def test_query_service_list_execution_audits(
     now = datetime(2025, 1, 20, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
@@ -1288,9 +1188,7 @@ def test_query_service_list_execution_audits(
         execution_id = execution.id
 
     service = ScheduleQueryServiceImpl(session_factory)
-    result = service.list_execution_audits(
-        ExecutionAuditListRequest(schedule_id=schedule_id)
-    )
+    result = service.list_execution_audits(ExecutionAuditListRequest(schedule_id=schedule_id))
 
     assert len(result.audit_logs) == 1
     assert result.audit_logs[0].execution_id == execution_id
@@ -1306,9 +1204,7 @@ def test_query_service_get_schedule_audit(
     now = datetime(2025, 1, 21, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
@@ -1324,17 +1220,11 @@ def test_query_service_get_schedule_audit(
 
         from models import ScheduleAuditLog
 
-        audit = (
-            session.query(ScheduleAuditLog)
-            .filter_by(schedule_id=schedule.id)
-            .first()
-        )
+        audit = session.query(ScheduleAuditLog).filter_by(schedule_id=schedule.id).first()
         audit_id = audit.id
 
     service = ScheduleQueryServiceImpl(session_factory)
-    result = service.get_schedule_audit(
-        ScheduleAuditGetRequest(schedule_audit_id=audit_id)
-    )
+    result = service.get_schedule_audit(ScheduleAuditGetRequest(schedule_audit_id=audit_id))
 
     assert result.audit_log.id == audit_id
     assert result.audit_log.event_type == "create"
@@ -1349,9 +1239,7 @@ def test_query_service_list_predicate_evaluation_audits(
     now = datetime(2025, 1, 22, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
@@ -1369,9 +1257,7 @@ def test_query_service_list_predicate_evaluation_audits(
             actor,
             now=now,
         )
-        _create_predicate_evaluation_audit(
-            session, schedule.id, intent.id, "eval-svc-001", now
-        )
+        _create_predicate_evaluation_audit(session, schedule.id, intent.id, "eval-svc-001", now)
         _create_predicate_evaluation_audit(
             session, schedule.id, intent.id, "eval-svc-002", now + timedelta(hours=1)
         )
@@ -1395,9 +1281,7 @@ def test_query_service_get_predicate_evaluation_audit_by_evaluation_id(
     now = datetime(2025, 1, 23, 10, 0, tzinfo=timezone.utc)
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Test task"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Test task"), actor)
         schedule = create_schedule(
             session,
             ScheduleCreateInput(
@@ -1415,9 +1299,7 @@ def test_query_service_get_predicate_evaluation_audit_by_evaluation_id(
             actor,
             now=now,
         )
-        _create_predicate_evaluation_audit(
-            session, schedule.id, intent.id, "eval-unique-123", now
-        )
+        _create_predicate_evaluation_audit(session, schedule.id, intent.id, "eval-unique-123", now)
         session.commit()
 
     service = ScheduleQueryServiceImpl(session_factory)
@@ -1467,9 +1349,7 @@ def test_schedule_audit_query_performance_with_many_records(
     num_mutations_per_schedule = 5
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Performance test"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Performance test"), actor)
         for i in range(num_schedules):
             schedule = create_schedule(
                 session,
@@ -1477,9 +1357,7 @@ def test_schedule_audit_query_performance_with_many_records(
                     task_intent_id=intent.id,
                     schedule_type="interval",
                     timezone="UTC",
-                    definition=ScheduleDefinitionInput(
-                        interval_count=1, interval_unit="day"
-                    ),
+                    definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
                 ),
                 actor,
                 now=now + timedelta(minutes=i),
@@ -1506,9 +1384,7 @@ def test_schedule_audit_query_performance_with_many_records(
 
     with closing(session_factory()) as session:
         # Query all audits with pagination
-        page1 = list_schedule_audits(
-            session, ScheduleAuditHistoryQuery(limit=50)
-        )
+        page1 = list_schedule_audits(session, ScheduleAuditHistoryQuery(limit=50))
 
         # Query by specific schedule
         filtered = list_schedule_audits(
@@ -1533,7 +1409,8 @@ def test_schedule_audit_query_performance_with_many_records(
     elapsed_time = time.time() - start_time
 
     # Verify results are correct
-    total_expected = num_schedules * (num_mutations_per_schedule + 1)  # +1 for create
+    # total_expected = num_schedules * (num_mutations_per_schedule + 1)  # +1 for create
+
     assert page1.next_cursor is not None  # Should have more records
     assert len(filtered.audit_logs) == num_mutations_per_schedule + 1
     assert len(creates.audit_logs) == num_schedules
@@ -1562,9 +1439,7 @@ def test_predicate_evaluation_audit_query_performance(
     num_evaluations_per_schedule = 10
 
     with closing(session_factory()) as session:
-        intent = create_task_intent(
-            session, TaskIntentInput(summary="Perf test"), actor
-        )
+        intent = create_task_intent(session, TaskIntentInput(summary="Perf test"), actor)
         schedules = []
         for i in range(num_schedules):
             schedule = create_schedule(
@@ -1729,9 +1604,7 @@ class TestPredicateEvaluationVisibilityIntegration:
         service = ScheduleQueryServiceImpl(sqlite_session_factory)
 
         # Verify schedule view has predicate definition
-        schedule_result = service.get_schedule(
-            ScheduleGetRequest(schedule_id=schedule_id)
-        )
+        schedule_result = service.get_schedule(ScheduleGetRequest(schedule_id=schedule_id))
         assert schedule_result.schedule.schedule_type == "conditional"
         assert schedule_result.schedule.definition.predicate_subject == "external.service.status"
         assert schedule_result.schedule.definition.predicate_operator == "eq"
@@ -1739,9 +1612,7 @@ class TestPredicateEvaluationVisibilityIntegration:
         assert schedule_result.task_intent.summary == "Watch for service availability"
 
         # Verify execution is linked
-        execution_result = service.get_execution(
-            ExecutionGetRequest(execution_id=execution_id)
-        )
+        execution_result = service.get_execution(ExecutionGetRequest(execution_id=execution_id))
         assert execution_result.execution.schedule_id == schedule_id
         assert execution_result.execution.task_intent_id == intent_id
 
@@ -1802,16 +1673,28 @@ class TestPredicateEvaluationVisibilityIntegration:
                 session, schedule.id, intent.id, "eval-true-1", now, status="true"
             )
             _create_predicate_evaluation_audit(
-                session, schedule.id, intent.id, "eval-true-2",
-                now + timedelta(hours=1), status="true"
+                session,
+                schedule.id,
+                intent.id,
+                "eval-true-2",
+                now + timedelta(hours=1),
+                status="true",
             )
             _create_predicate_evaluation_audit(
-                session, schedule.id, intent.id, "eval-false-1",
-                now + timedelta(hours=2), status="false"
+                session,
+                schedule.id,
+                intent.id,
+                "eval-false-1",
+                now + timedelta(hours=2),
+                status="false",
             )
             _create_predicate_evaluation_audit(
-                session, schedule.id, intent.id, "eval-error-1",
-                now + timedelta(hours=3), status="error"
+                session,
+                schedule.id,
+                intent.id,
+                "eval-error-1",
+                now + timedelta(hours=3),
+                status="error",
             )
             session.commit()
             schedule_id = schedule.id
@@ -2042,9 +1925,7 @@ class TestPredicateEvaluationVisibilityIntegration:
         assert audit.execution_id == execution_id
 
         # Verify we can fetch the linked schedule and get consistent data
-        schedule_result = service.get_schedule(
-            ScheduleGetRequest(schedule_id=audit.schedule_id)
-        )
+        schedule_result = service.get_schedule(ScheduleGetRequest(schedule_id=audit.schedule_id))
         assert schedule_result.schedule.id == audit.schedule_id
         assert schedule_result.schedule.task_intent_id == audit.task_intent_id
         assert schedule_result.schedule.schedule_type == "conditional"
@@ -2077,9 +1958,7 @@ class TestPredicateEvaluationVisibilityIntegration:
         now = datetime(2025, 3, 5, 10, 0, tzinfo=timezone.utc)
 
         with closing(sqlite_session_factory()) as session:
-            intent = create_task_intent(
-                session, TaskIntentInput(summary="Multi-eval test"), actor
-            )
+            intent = create_task_intent(session, TaskIntentInput(summary="Multi-eval test"), actor)
             schedule = create_schedule(
                 session,
                 ScheduleCreateInput(

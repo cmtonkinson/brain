@@ -214,9 +214,7 @@ class ScheduleQueryServiceImpl:
                 next_cursor=next_cursor,
             )
 
-    def get_schedule_audit(
-        self, request: ScheduleAuditGetRequest
-    ) -> ScheduleAuditResult:
+    def get_schedule_audit(self, request: ScheduleAuditGetRequest) -> ScheduleAuditResult:
         """Fetch a schedule audit entry by id.
 
         Args:
@@ -237,9 +235,7 @@ class ScheduleQueryServiceImpl:
                 )
             return ScheduleAuditResult(audit_log=_to_schedule_audit_view(audit))
 
-    def list_schedule_audits(
-        self, request: ScheduleAuditListRequest
-    ) -> ScheduleAuditListResult:
+    def list_schedule_audits(self, request: ScheduleAuditListRequest) -> ScheduleAuditListResult:
         """List schedule audit entries matching the provided filters.
 
         Args:
@@ -277,9 +273,7 @@ class ScheduleQueryServiceImpl:
                 next_cursor=next_cursor,
             )
 
-    def get_execution_audit(
-        self, request: ExecutionAuditGetRequest
-    ) -> ExecutionAuditResult:
+    def get_execution_audit(self, request: ExecutionAuditGetRequest) -> ExecutionAuditResult:
         """Fetch an execution audit entry by id.
 
         Args:
@@ -300,9 +294,7 @@ class ScheduleQueryServiceImpl:
                 )
             return ExecutionAuditResult(audit_log=_to_execution_audit_view(audit))
 
-    def list_execution_audits(
-        self, request: ExecutionAuditListRequest
-    ) -> ExecutionAuditListResult:
+    def list_execution_audits(self, request: ExecutionAuditListRequest) -> ExecutionAuditListResult:
         """List execution audit entries matching the provided filters.
 
         Args:
@@ -404,9 +396,7 @@ class ScheduleQueryServiceImpl:
                     {"filter": "predicate_evaluation_audit_list"},
                 ) from exc
 
-            audit_views = tuple(
-                _to_predicate_evaluation_audit_view(a) for a in result.audit_logs
-            )
+            audit_views = tuple(_to_predicate_evaluation_audit_view(a) for a in result.audit_logs)
             next_cursor = str(result.next_cursor) if result.next_cursor else None
             return PredicateEvaluationAuditListResult(
                 audit_logs=audit_views,
