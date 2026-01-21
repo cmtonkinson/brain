@@ -7,40 +7,42 @@ Docblock:
 # Scheduler Deployment Checklist
 
 ## Context and scope
-- Validate the `celery-worker` and `celery-beat` services that implement the scheduler adapters and execution dispatcher from `docker-compose.yml` (see `work-jobs/epic-10-ops-and-deployment-validation.md`).
-- Confirm deployments start clean, stay healthy, restart quietly, and persist the beat schedule state recorded in `./data/scheduler/beat-schedule`.
-- Reference `docs/prd-scheduled-timed-tasks.md` for the intent/authorization constraints that the scheduler must honor.
+- Validate the `celery-worker` and `celery-beat` services implemented by `docker-compose.yml` for the scheduler adapters and execution dispatcher (`work-jobs/epic-10-ops-and-deployment-validation.md`).
+- Ensure deployments start clean, stay healthy, restart quietly, and preserve the beat schedule state recorded in `./data/scheduler/beat-schedule`.
+- Reference `docs/prd-scheduled-timed-tasks.md` for authorization context, attention routing, and audit expectations that the scheduler must honor.
 
-## 1. Pre-flight
-- **Service definitions:** Inspect `docker-compose.yml` to confirm `celery-worker` and `celery-beat` both run `scheduler.celery_app` (worker + beat) and the restart policy is `unless-stopped` to keep the scheduler task loop resilient.
-- **Volumes:** Ensure both services mount `./prompts`, the read-only Obsidian vault path, and the scheduler data volume (`./data/scheduler:/var/lib/brain/scheduler`) so `beat-schedule` persists across deployments.
-- **Environment variables:** Verify `.env.sample` declares the scheduler variables `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, and `CELERY_QUEUE_NAME` (no additional updates required; use placeholders to keep secrets out of version control).
+## Manual validation steps (compose-focused)
 
-## 2. Startup and readiness
-- `docker compose up -d celery-worker celery-beat redis` (or bring up the full stack) and then `docker compose ps`/`docker ps` to confirm both scheduler containers reach `Up` state with healthy status.
-- Check service health via `docker compose logs --tail 20 celery-beat` and `celery-worker`; look for lines like `beat: Starting...` and `worker: Ready` to confirm they loaded the queue and broker.
-- If using health-checking tooling, ensure Compose sees the services as healthy before declaring the deployment validated.
+### 1. Pre-flight compose review
+- Run `docker compose config --services` to confirm the scheduler services (`celery-beat`, `celery-worker`) are defined on the active Compose project.
+- Inspect `docker compose config` or `docker-compose.yml` directly to verify both services use `scheduler.celery_app`, mount the Prompts directory, the read-only `OBSIDIAN_VAULT_PATH`, and the scheduler data volume (`./data/scheduler:/var/lib/brain/scheduler`) so the beat schedule persists.
+- Confirm `restart: unless-stopped` is set for both services and that `.env.sample` documents `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, and `CELERY_QUEUE_NAME` to make the required environment explicit.
 
-## 3. Port and broker validation
-- From the scheduler containers, verify Redis connectivity: `docker compose exec celery-worker redis-cli -h redis -p 6379 ping` returns `PONG` and `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND` are reachable.
-- Ensure no other firewall rules prevent `redis` port `6379` from being accessed within the `brain-network` bridge (use `docker network inspect brain-network` for diagnostics if needed).
+### 2. Startup and readiness
+- `docker compose up -d redis celery-worker celery-beat` (optionally include the full stack) and then `docker compose ps` / `docker ps` to show all scheduler containers `Up` and healthy.
+- Use `docker compose logs --tail 20 celery-beat` and `docker compose logs --tail 20 celery-worker` to confirm the beat scheduler logs `beat: Starting...` and the worker reports `Ready`/`task accepted` messages, ensuring the queue and broker loaded successfully.
+- If you rely on Compose health checks, wait until services report `healthy` before moving to the next step.
 
-## 4. Log-based verification
-- Tail the most recent logs while a dummy scheduled job runs: `docker compose logs --since 10s celery-beat celery-worker` and confirm no `Error`/`Traceback` patterns appear. Focus on keywords such as `schedule` (beat) and `task accepted`/`task succeeded` (worker).
-- Save a sample log excerpt for the deployment validation run (for example `docker compose logs celery-beat --since 1m > logs/validation/celery-beat.log`).
+### 3. Broker and port validation
+- From inside the scheduler containers, run `docker compose exec celery-worker redis-cli -h redis -p 6379 ping` to ensure the Redis broker port is reachable and answers `PONG`.
+- Confirm the effective `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND` (visible via `docker compose exec celery-worker env | grep CELERY_`) resolves to the Compose `redis` service so queue and result traffic stay inside the bridge network.
+- Use `docker network inspect brain-network` if you need to assert that port `6379` routes properly across scheduler containers.
 
-## 5. Restart and persistence
+### 4. Log-based verification
+- Tail recent logs during a known schedule run with `docker compose logs --since 10s celery-beat celery-worker` and confirm no `Error`/`Traceback` entries appear; focus on keywords like `schedule`, `task accepted`, `task succeeded`, and the scheduler dispatch payload.
+- Archive a representative log excerpt to `logs/validation/` (e.g., `docker compose logs celery-beat --since 1m > logs/validation/celery-beat.log`) so future deployments can compare expected output.
+
+### 5. Restart and persistence
 - Restart the scheduler containers: `docker compose restart celery-beat celery-worker`.
-- After restart, verify `docker compose ps` still shows them `Up` and re-check the logs to confirm the beat schedule reloads without dropping entries.
-- Inspect the persisted schedule file: `ls -l ./data/scheduler/beat-schedule` and record the timestamp/size before and after restart to confirm it was written and preserved.
-- Optionally simulate a failure (stop > start) and ensure `beat-schedule` still contains the prior schedule definitions so no jobs are forgotten.
+- After restart, rerun `docker compose ps` and re-check the logs to ensure the beat scheduler reloads without dropping entries and the worker reconnects to Redis.
+- Inspect `ls -l ./data/scheduler/beat-schedule` before and after the restart to record timestamp/size, confirming the file rewrites and is persisted across restarts without manual re-creation.
 
-## 6. Persistence and recovery checks
-- Remove a scheduler container (`docker compose rm -f celery-beat`), then `docker compose up -d celery-beat` while keeping `./data/scheduler` mounted, and confirm the beat scheduler resumes without needing to re-create schedules.
-- Confirm the `restart: unless-stopped` policy allows the service to recover from transient crashes by checking `docker inspect celery-beat | jq .HostConfig.RestartPolicy` returns `"Name": "unless-stopped"`.
+### 6. Recovery and resilience checks
+- Simulate a recovery: `docker compose rm -f celery-beat` then `docker compose up -d celery-beat` with `./data/scheduler` still mounted, and verify the beat resumes without requiring schedule re-registration.
+- Check that `restart: unless-stopped` is honored by running `docker inspect celery-beat | jq .HostConfig.RestartPolicy` and confirming `Name` remains `unless-stopped`, ensuring the service can recover from transient failures.
 
-## 7. Documentation and observability checkpoints
-- Update or confirm documentation references (this checklist plus `docs/prd-scheduled-timed-tasks.md`) so future operators understand why the scheduler must honor authorization context and attention routing.
-- Capture the log-based validation steps in an ops runbook or monitoring alert so repeated deployments can follow the same checklist.
+### 7. Documentation and observability checkpoints
+- Record your validation run (commands executed, log excerpts, observed health) and link it to `docs/scheduler-ops-runbook.md` so operators understand how these Compose-based steps relate to the broader workflow.
+- Keep the `docs/prd-scheduled-timed-tasks.md` and this checklist in sync so attention/authorization guarantees remain clear when the scheduler configuration evolves.
 
-_Refs:_ `docs/prd-scheduled-timed-tasks.md` (overall PRD), `docker-compose.yml` service definitions, and `.env.sample` for scheduler env vars.
+_Refs:_ `docs/prd-scheduled-timed-tasks.md`, `docs/scheduler-ops-runbook.md`, `docker-compose.yml`, `.env.sample`
