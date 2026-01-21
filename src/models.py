@@ -636,7 +636,6 @@ class ConversationMessage(BaseModel):
     role: str  # "user" or "assistant"
     content: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
     def to_markdown(self) -> str:
         """Format message as markdown for Obsidian."""
         local_timestamp = to_local(self.timestamp)
@@ -644,3 +643,50 @@ class ConversationMessage(BaseModel):
         user_display = settings.user.name or "User"
         role_display = user_display if self.role == "user" else "Brain"
         return f"## {time_str} - {role_display}\n\n{self.content}\n"
+
+
+class ReviewSeverityEnum(str, Enum):
+    """Severity levels for review items."""
+
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
+class ReviewIssueTypeEnum(str, Enum):
+    """Types of issues identified by the review job."""
+
+    orphaned = "orphaned"
+    failing = "failing"
+    ignored = "ignored"
+
+
+class ReviewOutput(Base):
+    """Summary of a review execution run."""
+
+    __tablename__ = "review_outputs"
+
+    id = Column(Integer, primary_key=True)
+    job_execution_id = Column(Integer, ForeignKey("executions.id"), nullable=True)
+    window_start = Column(DateTime(timezone=True), nullable=False)
+    window_end = Column(DateTime(timezone=True), nullable=False)
+    orphaned_count = Column(Integer, nullable=False, default=0)
+    failing_count = Column(Integer, nullable=False, default=0)
+    ignored_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class ReviewItem(Base):
+    """Individual finding from a review job."""
+
+    __tablename__ = "review_items"
+
+    id = Column(Integer, primary_key=True)
+    review_output_id = Column(Integer, ForeignKey("review_outputs.id"), nullable=False)
+    schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=False)
+    task_intent_id = Column(Integer, ForeignKey("task_intents.id"), nullable=False)
+    issue_type = Column(String(50), nullable=False)  # ReviewIssueTypeEnum
+    severity = Column(String(50), nullable=False)  # ReviewSeverityEnum
+    description = Column(String(500), nullable=False)
+    last_error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
