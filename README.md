@@ -1,7 +1,6 @@
 # Brain
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 [![CI Tests](https://github.com/cmtonkinson/brain/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/cmtonkinson/brain/actions/workflows/tests.yml)
-[![Coverage](https://codecov.io/gh/cmtonkinson/brain/branch/main/graph/badge.svg)](https://codecov.io/gh/cmtonkinson/brain)
 ![Python: 3.13](https://img.shields.io/badge/Python-3.13-blue.svg)
 
 An exocortex for attention, memory, and action. Brain is a local-first AI system grounded in data sovereignty and
