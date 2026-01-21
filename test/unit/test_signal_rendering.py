@@ -1,33 +1,40 @@
 """Unit tests for Signal markdown rendering."""
 
+import pytest
+
 from agent import _render_signal_message
 
 
-def test_render_signal_message_transforms_markdown() -> None:
-    """Markdown is transformed to Signal-friendly formatting."""
-    text = (
-        "# Title\n\n"
-        "A [link](http://example.com) and ![img](http://img)\n\n"
-        "~~gone~~ _ital_ __bold__"
-    )
-    rendered = _render_signal_message(text)
-    assert "**Title**" in rendered
-    assert "link (http://example.com)" in rendered
-    assert "img (http://img)" in rendered
-    assert "~gone~" in rendered
-    assert "*ital*" in rendered
-    assert "**bold**" in rendered
-
-
-def test_render_signal_message_handles_code_fence() -> None:
-    """Code fences are converted to Signal monospace formatting."""
-    text = "```python\nx = 1\n```"
-    rendered = _render_signal_message(text)
-    assert rendered.strip() == "`x = 1`"
-
-
-def test_render_signal_message_preserves_inline_code() -> None:
-    """Inline code spans are preserved during rendering."""
-    text = "Use `__bold__` and _ital_."
-    rendered = _render_signal_message(text)
-    assert "`__bold__`" in rendered
+@pytest.mark.parametrize(
+    ("markdown", "expected"),
+    [
+        (
+            (
+                "# Title\n\n"
+                "A [link](http://example.com) and ![img](http://img)\n\n"
+                "~~gone~~ _ital_ __bold__"
+            ),
+            (
+                "**Title**\n\n"
+                "A link (http://example.com) and img (http://img)\n\n"
+                "~gone~ *ital* **bold**"
+            ),
+        ),
+        (
+            ("## Notes\n" "- Alpha\n" "- Beta\n" "\n" "> quoted line\n" "Normal text"),
+            ("**Notes**\n" "- Alpha\n" "- Beta\n" "\n" "> quoted line\n" "Normal text"),
+        ),
+        (
+            "```python\nx = 1\n```",
+            "`x = 1`",
+        ),
+        (
+            "Use `__bold__` and _ital_.",
+            "Use `__bold__` and *ital*.",
+        ),
+    ],
+)
+def test_render_signal_message_golden_cases(markdown: str, expected: str) -> None:
+    """Golden tests for heading, list, link, and code formatting."""
+    rendered = _render_signal_message(markdown)
+    assert rendered == expected
