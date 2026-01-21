@@ -3,6 +3,9 @@
 
 obsidian:
   url: "http://host.docker.internal:27123"
+  root_folder: "_brain"
+  conversation_folder: "conversations"
+  summary_folder: "summaries"
 
 llm:
   model: "anthropic:claude-sonnet-4-20250514"
@@ -21,7 +24,6 @@ letta:
   bootstrap_on_start: false
 
 conversation:
-  folder: "Brain/Conversations"
   default_channel: "signal"
   summary_every_turns: 7
 

@@ -37,8 +37,10 @@ def get_conversation_path(date: datetime, sender: str, channel: str | None = Non
     month = local_date.strftime("%m")
     channel_slug = _normalize_channel(channel)
 
-    folder = settings.conversation.folder
-    return f"{folder}/{year}/{month}/{channel_slug}-{date_str}-{sender_hash}.md"
+    conversation_folder = (
+        f"{settings.obsidian.root_folder}/{settings.obsidian.conversation_folder}"
+    )
+    return f"{conversation_folder}/{year}/{month}/{channel_slug}-{date_str}-{sender_hash}.md"
 
 
 def get_summary_path(date: datetime, sender: str, channel: str | None = None) -> str:
@@ -51,9 +53,13 @@ def get_summary_path(date: datetime, sender: str, channel: str | None = None) ->
     month = local_date.strftime("%m")
     channel_slug = _normalize_channel(channel)
 
-    folder = settings.conversation.folder
+    summary_folder_path = (
+        f"{settings.obsidian.root_folder}/"
+        f"{settings.obsidian.conversation_folder}/"
+        f"{settings.obsidian.summary_folder}"
+    )
     return (
-        f"{folder}/Summaries/{year}/{month}/"
+        f"{summary_folder_path}/{year}/{month}/"
         f"{channel_slug}-summary-{date_str}-{time_str}-{sender_hash}.md"
     )
 

@@ -171,6 +171,9 @@ class ObsidianConfig(BaseModel):
     api_key: str
     url: str = "http://host.docker.internal:27123"
     vault_path: str
+    root_folder: str | None = None
+    conversation_folder: str | None = None
+    summary_folder: str | None = None
 
 
 class DatabaseConfig(BaseModel):
@@ -240,7 +243,6 @@ class LettaConfig(BaseModel):
 class ConversationConfig(BaseModel):
     """Conversation note storage defaults."""
 
-    folder: str = "Brain/Conversations"
     default_channel: str = "signal"
     summary_every_turns: int = 7
 
