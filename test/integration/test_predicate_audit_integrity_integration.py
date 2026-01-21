@@ -18,7 +18,9 @@ from scheduler.schedule_service_interface import PredicateEvaluationAuditListReq
 class _StaticSubjectResolver:
     """Simple resolver that returns a constant value for a subject."""
 
-    def resolve(self, subject: str, actor_context: object) -> str | int | float | bool | None:  # noqa: ARG002
+    def resolve(
+        self, subject: str, actor_context: object
+    ) -> str | int | float | bool | None:  # noqa: ARG002
         return "ready"
 
 

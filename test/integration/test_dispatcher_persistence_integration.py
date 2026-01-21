@@ -15,7 +15,6 @@ from scheduler.execution_dispatcher import (
     ExecutionInvocationRequest,
     ExecutionInvocationResult,
 )
-from scheduler.schedule_service_interface import ActorContext
 from test.helpers.scheduler_harness import DeterministicClock
 
 

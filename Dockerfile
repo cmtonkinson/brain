@@ -2,6 +2,9 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
+# Ensure src is on PYTHONPATH so in-repo packages like scheduler are importable.
+ENV PYTHONPATH=/app/src
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \

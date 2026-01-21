@@ -46,7 +46,9 @@ def _seed_schedule(session: Session) -> data_access.Schedule:
     return schedule
 
 
-def _create_execution(session: Session, schedule: data_access.Schedule, trace_id: str, status: str) -> data_access.Execution:
+def _create_execution(
+    session: Session, schedule: data_access.Schedule, trace_id: str, status: str
+) -> data_access.Execution:
     """Persist an execution record for the provided schedule."""
     actor = data_access.ExecutionActorContext(
         actor_type="scheduled",
@@ -69,12 +71,14 @@ def _create_execution(session: Session, schedule: data_access.Schedule, trace_id
     return execution
 
 
-def test_inspection_queries_include_schedule_executions_and_audit_data(sqlite_session_factory) -> None:
+def test_inspection_queries_include_schedule_executions_and_audit_data(
+    sqlite_session_factory,
+) -> None:
     """Ensure the inspection API surfaces return schedule, execution, and audit linkage."""
     with closing(sqlite_session_factory()) as session:
         schedule = _seed_schedule(session)
         first_exec = _create_execution(session, schedule, "trace-first-exec", status="succeeded")
-        second_exec = _create_execution(session, schedule, "trace-second-exec", status="failed")
+        _create_execution(session, schedule, "trace-second-exec", status="failed")
         audit_input = PredicateEvaluationAuditInput(
             evaluation_id="eval-inspection-001",
             schedule_id=schedule.id,

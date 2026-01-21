@@ -45,7 +45,11 @@ class _DispatcherStub:
             actor_context="scheduled|callback",
         )
         with closing(self.session_factory()) as session:
-            schedule = session.query(data_access.Schedule).filter(data_access.Schedule.id == payload.schedule_id).first()
+            schedule = (
+                session.query(data_access.Schedule)
+                .filter(data_access.Schedule.id == payload.schedule_id)
+                .first()
+            )
             if schedule is None:
                 raise ValueError("schedule not found for dispatcher stub.")
             data_access.create_execution(
@@ -86,7 +90,9 @@ class _RecordingCeleryClient:
     def delete_entry(self, entry_name: str) -> None:
         self.deleted.append(entry_name)
 
-    def enqueue_callback(self, payload: object, *, eta: datetime, queue_name: str | None) -> None:  # noqa: ARG001
+    def enqueue_callback(
+        self, payload: object, *, eta: datetime, queue_name: str | None
+    ) -> None:  # noqa: ARG001
         self.enqueued.append((payload.schedule_id, eta))
 
     def check_health(self) -> bool:
