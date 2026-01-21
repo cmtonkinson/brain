@@ -51,7 +51,7 @@ Docblock:
 43. [closed] work-jobs/task-31-e2e-schedule-lifecycle-tests.md (epic 09, milestone 05)
 44. [closed] work-jobs/task-44-e2e-run-now-execution.md (epic 09, milestone 05)
 45. [closed] work-jobs/task-55-e2e-schedule-pause-resume.md (epic 09, milestone 05)
-46. [open] work-jobs/task-45-e2e-schedule-types-coverage.md (epic 09, milestone 05)
+46. [closed] work-jobs/task-45-e2e-schedule-types-coverage.md (epic 09, milestone 05)
 47. [open] work-jobs/task-33-audit-integrity-tests.md (epic 09, milestone 05)
 48. [open] work-jobs/task-58-execution-audit-integrity-tests.md (epic 09, milestone 05)
 49. [open] work-jobs/task-59-predicate-audit-integrity-tests.md (epic 09, milestone 05)
