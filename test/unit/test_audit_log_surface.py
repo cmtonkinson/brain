@@ -1777,7 +1777,7 @@ class TestPredicateEvaluationVisibilityIntegration:
                     execution_id=None,
                     task_intent_id=intent.id,
                     actor_type="scheduled",
-                    actor_id="scheduler-worker-1",
+                    actor_id="celery-worker-1",
                     actor_channel="scheduled",
                     actor_privilege_level="standard",
                     actor_autonomy_level="limited",
@@ -1831,7 +1831,7 @@ class TestPredicateEvaluationVisibilityIntegration:
 
         # Verify actor context fields
         assert audit.actor_type == "scheduled"
-        assert audit.actor_id == "scheduler-worker-1"
+        assert audit.actor_id == "celery-worker-1"
         assert audit.actor_channel == "scheduled"
         assert audit.actor_privilege_level == "standard"
         assert audit.actor_autonomy_level == "limited"

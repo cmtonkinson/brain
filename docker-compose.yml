@@ -114,9 +114,9 @@ services:
     networks:
       - brain-network
 
-  scheduler-worker:
+  celery-worker:
     build: .
-    container_name: brain-scheduler-worker
+    container_name: brain-celery-worker
     env_file:
       - .env
     command:
@@ -143,14 +143,14 @@ services:
       CELERY_QUEUE_NAME: ${CELERY_QUEUE_NAME:-scheduler}
       TZ: ${USER_TIMEZONE:-America/New_York}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-      OTEL_SERVICE_NAME: brain-scheduler-worker
+      OTEL_SERVICE_NAME: brain-celery-worker
     restart: unless-stopped
     networks:
       - brain-network
 
-  scheduler-beat:
+  celery-beat:
     build: .
-    container_name: brain-scheduler-beat
+    container_name: brain-celery-beat
     env_file:
       - .env
     command:
@@ -177,7 +177,7 @@ services:
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       TZ: ${USER_TIMEZONE:-America/New_York}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-      OTEL_SERVICE_NAME: brain-scheduler-beat
+      OTEL_SERVICE_NAME: brain-celery-beat
     restart: unless-stopped
     networks:
       - brain-network
