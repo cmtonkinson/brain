@@ -10,6 +10,7 @@ Instructions for working in this repo:
   - No work output should be stored in these directories.
   - Do not modify the contents (with the exception of `index.md`) unless instructed.
 - Non-obvious architecture/design tradeoffs should be documented in an ADR.
+- Do not generate documentation files (`.md`, etc.) unless instructed.
 
 When modifying code:
 - Adhere to SOLID principles when they improve clarity or testability.
