@@ -7,6 +7,8 @@ from datetime import datetime
 import pytest
 
 from config import settings
+from time_utils import get_local_timezone
+import tools.memory as memory_module
 from tools.memory import ConversationMemory, get_conversation_path
 
 
@@ -83,7 +85,8 @@ async def test_get_recent_context_truncates_at_boundary(monkeypatch) -> None:
     monkeypatch.setattr(settings.obsidian, "conversation_folder", "conversations", raising=False)
     obsidian = FakeObsidianClient()
     memory = ConversationMemory(obsidian)
-    timestamp = datetime.now()
+    timestamp = datetime(2026, 1, 12, 9, 0, 0, tzinfo=get_local_timezone())
+    monkeypatch.setattr(memory_module, "local_now", lambda: timestamp, raising=False)
     path = get_conversation_path(timestamp, "sender", channel="signal")
     content = "\n".join(
         [
