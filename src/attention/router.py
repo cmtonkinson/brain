@@ -98,6 +98,14 @@ class AttentionRouter:
         if envelope.routing_intent == RoutingIntent.LOG_ONLY:
             return _record_log_only(self, envelope)
 
+        envelope_id: int | None = None
+        decision_record_id: int | None = None
+        final_decision: str = "LOG_ONLY"
+        primary_channel: str | None = None
+        metadata_text: str | None = None
+        base_assessment_value: str = BaseAssessmentOutcome.SUPPRESS.value
+        policy_outcome: str | None = None
+
         with closing(self._session_factory()) as session:
             audit_logger = AttentionAuditLogger(session)
             try:
@@ -192,21 +200,6 @@ class AttentionRouter:
                     final_decision = rate_limit
                     primary_channel = None
 
-                delivered = await _deliver_primary_channel(
-                    self._signal_client,
-                    envelope,
-                    primary_channel,
-                    envelope_id,
-                    audit_logger,
-                    base_assessment.outcome.value,
-                    policy_decision.policy_outcome,
-                    final_decision,
-                    session,
-                )
-                if not delivered and primary_channel:
-                    final_decision = "LOG_ONLY"
-                    primary_channel = None
-
                 audit_logger.log_signal(
                     source_component=envelope.notification.source_component,
                     signal_reference=envelope.signal_reference,
@@ -245,13 +238,12 @@ class AttentionRouter:
                     decided_at=envelope.timestamp,
                 )
 
+                metadata_text = _prepare_channel_metadata(session, envelope_id, primary_channel)
+                base_assessment_value = base_assessment.outcome.value
+                policy_outcome = policy_decision.policy_outcome
+                decision_record_id = decision_record.record_id
+
                 session.commit()
-                return RoutingResult(
-                    decision=final_decision,
-                    channel=primary_channel,
-                    envelope_id=envelope_id,
-                    decision_record_id=decision_record.record_id,
-                )
             except Exception as exc:
                 session.rollback()
                 logger.exception("Routing failed for signal=%s.", envelope.signal_reference)
@@ -262,6 +254,30 @@ class AttentionRouter:
                     decision_record_id=None,
                     error=str(exc),
                 )
+
+        delivered = False
+        if primary_channel:
+            delivered = await _deliver_primary_channel(
+                self._signal_client,
+                envelope,
+                primary_channel,
+                envelope_id,
+                metadata_text,
+                base_assessment_value,
+                policy_outcome,
+                final_decision,
+                session_factory=self._session_factory,
+            )
+            if not delivered:
+                final_decision = "LOG_ONLY"
+                primary_channel = None
+
+        return RoutingResult(
+            decision=final_decision,
+            channel=primary_channel,
+            envelope_id=envelope_id,
+            decision_record_id=decision_record_id,
+        )
 
     def routed_signals(self) -> list[RoutingEnvelope]:
         """Return routed envelopes for testing and inspection."""
@@ -390,16 +406,31 @@ def _apply_rate_limit(
     return decision.decision
 
 
+def _prepare_channel_metadata(
+    session: Session,
+    envelope_id: int | None,
+    channel: str | None,
+) -> str | None:
+    """Render metadata for the allowed delivery channel."""
+    if envelope_id is None or channel != "signal":
+        return None
+    metadata = render_envelope_metadata(session, envelope_id, channel)
+    if metadata.decision != EnvelopeDecision.ACCEPT.value:
+        return None
+    return metadata.metadata
+
+
 async def _deliver_primary_channel(
     signal_client: SignalClient,
     envelope: RoutingEnvelope,
     channel: str | None,
     envelope_id: int | None,
-    audit_logger: AttentionAuditLogger,
+    metadata: str | None,
     base_assessment: str,
     policy_outcome: str | None,
     final_decision: str,
-    session: Session,
+    *,
+    session_factory: Callable[[], Session],
 ) -> bool:
     """Deliver the routed signal via the primary channel."""
     if channel is None:
@@ -412,10 +443,8 @@ async def _deliver_primary_channel(
         return False
 
     message = envelope.signal_payload.message
-    if envelope_id is not None:
-        metadata = render_envelope_metadata(session, envelope_id, channel)
-        if metadata.decision == EnvelopeDecision.ACCEPT.value and metadata.metadata:
-            message = f"{message}\n\n{metadata.metadata}"
+    if metadata:
+        message = f"{message}\n\n{metadata}"
 
     token = activate_router_context()
     try:
@@ -426,7 +455,8 @@ async def _deliver_primary_channel(
             source_component=envelope.notification.source_component,
         )
         if ok and envelope_id is not None:
-            audit_logger.log_notification(
+            _log_notification_delivery(
+                session_factory=session_factory,
                 source_component=envelope.notification.source_component,
                 signal_reference=envelope.signal_reference,
                 base_assessment=base_assessment,
@@ -437,6 +467,32 @@ async def _deliver_primary_channel(
         return ok
     finally:
         deactivate_router_context(token)
+
+
+def _log_notification_delivery(
+    session_factory: Callable[[], Session],
+    source_component: str,
+    signal_reference: str,
+    base_assessment: str,
+    policy_outcome: str | None,
+    final_decision: str,
+    envelope_id: int,
+) -> None:
+    """Persist notification audit entries after delivery."""
+    with closing(session_factory()) as session:
+        audit_logger = AttentionAuditLogger(session)
+        logged = audit_logger.log_notification(
+            source_component=source_component,
+            signal_reference=signal_reference,
+            base_assessment=base_assessment,
+            policy_outcome=policy_outcome,
+            final_decision=final_decision,
+            envelope_id=envelope_id,
+        )
+        if logged:
+            session.commit()
+        else:
+            session.rollback()
 
 
 def _urgency_level(score: float) -> str:

@@ -11,7 +11,7 @@ from skills.policy import DefaultPolicy
 from skills.registry import SkillRegistryLoader
 from skills.registry_schema import SkillKind
 from skills.runtime import ExecutionResult, SkillRuntime
-from skills.services import SkillServices, set_services
+from skills.services import SkillServices
 
 
 @dataclass(frozen=True)
@@ -61,6 +61,7 @@ class SkillTestHarness:
             allowed_capabilities=allow_capabilities,
             actor="test",
             channel="test",
+            services=services or SkillServices(),
         )
         runtime = SkillRuntime(
             registry=self.registry,
@@ -69,9 +70,6 @@ class SkillTestHarness:
         )
         skill = self.registry.get_skill(name, version)
         runtime._validate_schema(inputs, skill.definition.inputs_schema, "inputs")
-
-        if services is not None:
-            set_services(services)
 
         if dry_run:
             if skill.definition.kind == SkillKind.pipeline:

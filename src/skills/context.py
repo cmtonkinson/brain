@@ -7,6 +7,7 @@ from typing import Iterable
 from uuid import uuid4
 
 from .registry_schema import AutonomyLevel
+from .services import SkillServices
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class SkillContext:
     trace_id: str = field(default_factory=lambda: uuid4().hex)
     invocation_id: str = field(default_factory=lambda: uuid4().hex)
     parent_invocation_id: str | None = None
+    services: SkillServices = field(default_factory=SkillServices)
 
     def child(self, requested_capabilities: Iterable[str]) -> "SkillContext":
         """Create a child context constrained to requested capabilities."""
@@ -36,4 +38,5 @@ class SkillContext:
             approval_token=self.approval_token,
             trace_id=self.trace_id,
             parent_invocation_id=self.invocation_id,
+            services=self.services,
         )

@@ -55,7 +55,7 @@ from skills.registry import OpRegistryLoader, SkillRegistryLoader
 from skills.errors import SkillPolicyError, SkillRuntimeError
 from skills.runtime import SkillRuntime
 from skills.registry_schema import AutonomyLevel, SkillStatus
-from skills.services import SkillServices, set_services
+from skills.services import SkillServices
 
 # Observability imports (conditional to allow running without OTEL)
 try:
@@ -342,6 +342,11 @@ async def _execute_skill(
         channel=deps.channel,
         max_autonomy=AutonomyLevel.L1,
         confirmed=confirmed,
+        services=SkillServices(
+            obsidian=deps.obsidian,
+            code_mode=deps.code_mode,
+            signal=None,
+        ),
     )
     router = AttentionRouter(signal_client=SignalClient())
     skill_routing_hook = build_skill_routing_hook(router)
@@ -365,13 +370,6 @@ async def _execute_skill(
         ),
         routing_hook=skill_routing_hook,
         approval_router=approval_router,
-    )
-    set_services(
-        SkillServices(
-            obsidian=deps.obsidian,
-            code_mode=deps.code_mode,
-            signal=None,
-        )
     )
     result = await runtime.execute(name, inputs, context, version=version)
     return result.output

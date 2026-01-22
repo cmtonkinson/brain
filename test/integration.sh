@@ -3,8 +3,27 @@ set -euo pipefail
 
 echo "Running integration tests..."
 
-if [[ "${BRAIN_RUN_INTEGRATION:-}" != "1" ]]; then
-  echo "Skipping integration tests (set BRAIN_RUN_INTEGRATION=1 to run)."
+RUN_INTEGRATION=false
+while (( "$#" )); do
+  case "$1" in
+    --integration) RUN_INTEGRATION=true; shift ;;
+    -h|--help)
+      echo "Usage: $0 [--integration]"
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "${BRAIN_RUN_INTEGRATION:-}" == "1" ]]; then
+  RUN_INTEGRATION=true
+fi
+
+if ! $RUN_INTEGRATION; then
+  echo "Skipping integration tests (pass --integration or -a to run)."
   exit 0
 fi
 

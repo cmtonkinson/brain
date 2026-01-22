@@ -39,7 +39,7 @@ Whenever changes impact config files (`.env`, `config/*.{yml,json}`, etc.):
 - Always report what changes were made to live/.gitignored files.
 
 Test suites can be run using the helper `test.sh` script:
-- including integration tests: `BRAIN_RUN_INTEGRATION=1 test.sh`
-- generating a coverage report: `BRAIN_RUN_COVERAGE=1 test.sh`
-- or both at the same time
-
+- core suite (lint, checks, unit/contract/smoke/go): `./test.sh`
+- include integration tests: `./test.sh --integration`
+- enable coverage reporting: `./test.sh --coverage`
+- include both integration and coverage: `./test.sh --all`

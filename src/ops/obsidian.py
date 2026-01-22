@@ -5,12 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from skills.context import SkillContext
-from skills.services import get_services
 
 
 async def search(inputs: dict[str, Any], context: SkillContext) -> dict[str, Any]:
     """Search the Obsidian vault and return formatted results."""
-    obsidian = get_services().obsidian
+    obsidian = context.services.obsidian
     if obsidian is None:
         raise RuntimeError("Obsidian service not available")
 
@@ -39,7 +38,7 @@ async def search(inputs: dict[str, Any], context: SkillContext) -> dict[str, Any
 
 async def read_note(inputs: dict[str, Any], context: SkillContext) -> dict[str, Any]:
     """Read a note from the Obsidian vault."""
-    obsidian = get_services().obsidian
+    obsidian = context.services.obsidian
     if obsidian is None:
         raise RuntimeError("Obsidian service not available")
 
@@ -50,7 +49,7 @@ async def read_note(inputs: dict[str, Any], context: SkillContext) -> dict[str, 
 
 async def create_note(inputs: dict[str, Any], context: SkillContext) -> dict[str, Any]:
     """Create a new note in the Obsidian vault."""
-    obsidian = get_services().obsidian
+    obsidian = context.services.obsidian
     if obsidian is None:
         raise RuntimeError("Obsidian service not available")
 
@@ -62,7 +61,7 @@ async def create_note(inputs: dict[str, Any], context: SkillContext) -> dict[str
 
 async def append_note(inputs: dict[str, Any], context: SkillContext) -> dict[str, Any]:
     """Append content to an existing Obsidian note."""
-    obsidian = get_services().obsidian
+    obsidian = context.services.obsidian
     if obsidian is None:
         raise RuntimeError("Obsidian service not available")
 

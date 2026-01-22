@@ -21,7 +21,4 @@ jobs:
       - name: Install dependencies
         run: poetry install
       - name: Run tests
-        env:
-          BRAIN_RUN_INTEGRATION: "1"
-          BRAIN_RUN_COVERAGE: "1"
-        run: ./test.sh
+        run: ./test.sh --all

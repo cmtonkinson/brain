@@ -93,25 +93,26 @@ class ScheduleCommandServiceImpl:
                 audit_log_id=audit_log_id,
             )
 
-        result = self._execute(handler)
-        _sync_adapter_call(
-            self._adapter,
-            lambda: self._adapter.register_schedule(_to_adapter_payload(result.schedule)),
-            session_factory=self._session_factory,
-            schedule_id=result.schedule.id,
-            actor=actor,
-            event_type="create",
-        )
-        if result.schedule.state == "paused":
+        def _post_handler(result: ScheduleMutationResult) -> None:
             _sync_adapter_call(
                 self._adapter,
-                lambda: self._adapter.pause_schedule(result.schedule.id),
+                lambda: self._adapter.register_schedule(_to_adapter_payload(result.schedule)),
                 session_factory=self._session_factory,
                 schedule_id=result.schedule.id,
                 actor=actor,
-                event_type="pause",
+                event_type="create",
             )
-        return result
+            if result.schedule.state == "paused":
+                _sync_adapter_call(
+                    self._adapter,
+                    lambda: self._adapter.pause_schedule(result.schedule.id),
+                    session_factory=self._session_factory,
+                    schedule_id=result.schedule.id,
+                    actor=actor,
+                    event_type="pause",
+                )
+
+        return self._execute(handler, post_handler=_post_handler)
 
     def update_schedule(
         self,
@@ -138,15 +139,16 @@ class ScheduleCommandServiceImpl:
                 audit_log_id=audit_log_id,
             )
 
-        result = self._execute(handler)
-        _sync_adapter_update(
-            adapter=self._adapter,
-            schedule=result.schedule,
-            request=request,
-            actor=actor,
-            session_factory=self._session_factory,
+        return self._execute(
+            handler,
+            post_handler=lambda result: _sync_adapter_update(
+                adapter=self._adapter,
+                schedule=result.schedule,
+                request=request,
+                actor=actor,
+                session_factory=self._session_factory,
+            ),
         )
-        return result
 
     def pause_schedule(
         self,
@@ -171,16 +173,17 @@ class ScheduleCommandServiceImpl:
                 audit_log_id=audit_log_id,
             )
 
-        result = self._execute(handler)
-        _sync_adapter_call(
-            self._adapter,
-            lambda: self._adapter.pause_schedule(result.schedule.id),
-            session_factory=self._session_factory,
-            schedule_id=result.schedule.id,
-            actor=actor,
-            event_type="pause",
+        return self._execute(
+            handler,
+            post_handler=lambda result: _sync_adapter_call(
+                self._adapter,
+                lambda: self._adapter.pause_schedule(result.schedule.id),
+                session_factory=self._session_factory,
+                schedule_id=result.schedule.id,
+                actor=actor,
+                event_type="pause",
+            ),
         )
-        return result
 
     def resume_schedule(
         self,
@@ -205,16 +208,17 @@ class ScheduleCommandServiceImpl:
                 audit_log_id=audit_log_id,
             )
 
-        result = self._execute(handler)
-        _sync_adapter_call(
-            self._adapter,
-            lambda: self._adapter.resume_schedule(result.schedule.id),
-            session_factory=self._session_factory,
-            schedule_id=result.schedule.id,
-            actor=actor,
-            event_type="resume",
+        return self._execute(
+            handler,
+            post_handler=lambda result: _sync_adapter_call(
+                self._adapter,
+                lambda: self._adapter.resume_schedule(result.schedule.id),
+                session_factory=self._session_factory,
+                schedule_id=result.schedule.id,
+                actor=actor,
+                event_type="resume",
+            ),
         )
-        return result
 
     def delete_schedule(
         self,
@@ -238,16 +242,17 @@ class ScheduleCommandServiceImpl:
                 audit_log_id=audit_log_id,
             )
 
-        result = self._execute(handler)
-        _sync_adapter_call(
-            self._adapter,
-            lambda: self._adapter.delete_schedule(result.schedule_id),
-            session_factory=self._session_factory,
-            schedule_id=result.schedule_id,
-            actor=actor,
-            event_type="delete",
+        return self._execute(
+            handler,
+            post_handler=lambda result: _sync_adapter_call(
+                self._adapter,
+                lambda: self._adapter.delete_schedule(result.schedule_id),
+                session_factory=self._session_factory,
+                schedule_id=result.schedule_id,
+                actor=actor,
+                event_type="delete",
+            ),
         )
-        return result
 
     def run_now(
         self,
@@ -280,34 +285,42 @@ class ScheduleCommandServiceImpl:
                 audit_log_id=audit_log_id,
             )
 
-        result = self._execute(handler)
-        _sync_adapter_call(
-            self._adapter,
-            lambda: self._adapter.trigger_callback(
-                result.schedule_id,
-                result.scheduled_for,
-                trace_id=actor.trace_id,
-                trigger_source="run_now",
+        return self._execute(
+            handler,
+            post_handler=lambda result: _sync_adapter_call(
+                self._adapter,
+                lambda: self._adapter.trigger_callback(
+                    result.schedule_id,
+                    result.scheduled_for,
+                    trace_id=actor.trace_id,
+                    trigger_source="run_now",
+                ),
+                session_factory=self._session_factory,
+                schedule_id=result.schedule_id,
+                actor=actor,
+                event_type="run_now",
             ),
-            session_factory=self._session_factory,
-            schedule_id=result.schedule_id,
-            actor=actor,
-            event_type="run_now",
         )
-        return result
 
-    def _execute(self, handler: Callable[[Session], ResultT]) -> ResultT:
+    def _execute(
+        self,
+        handler: Callable[[Session], ResultT],
+        *,
+        post_handler: Callable[[ResultT], None] | None = None,
+    ) -> ResultT:
         """Run a handler inside a managed session with error mapping."""
         with closing(self._session_factory()) as session:
             try:
                 result = handler(session)
                 session.commit()
-                return result
             except Exception as exc:
                 session.rollback()
                 if isinstance(exc, ScheduleServiceError):
                     raise
                 raise _map_exception(exc) from exc
+        if post_handler:
+            post_handler(result)
+        return result
 
 
 def _override_reason(actor: ActorContext, reason: str | None) -> ActorContext:
