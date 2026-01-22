@@ -8,6 +8,12 @@ set -euo pipefail
 
 echo "Running attention router gate check..."
 
+if ! command -v rg >/dev/null 2>&1; then
+  echo "Attention router gate check requires ripgrep (rg) on PATH."
+  echo "Install ripgrep or add it to PATH so this gate can run."
+  exit 1
+fi
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
