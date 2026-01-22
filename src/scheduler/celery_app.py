@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from celery import Celery
@@ -19,8 +20,18 @@ from scheduler.agent_invoker import AgentExecutionInvoker
 from scheduler.callback_bridge import CallbackBridge, DispatcherEntrypoint
 from scheduler.execution_dispatcher import ExecutionDispatcher
 from scheduler.failure_notifications import FailureNotificationService
+from scheduler.predicate_evaluation import (
+    PredicateEvaluationErrorCode,
+    PredicateEvaluationResult,
+    PredicateEvaluationService,
+    PredicateEvaluationServiceError,
+    PredicateEvaluationStatus,
+    SubjectResolver,
+)
+from scheduler.predicate_evaluation_audit import PredicateEvaluationAuditRecorder
 from services.database import get_sync_session
 from services.signal import SignalClient
+from models import Schedule
 
 LOGGER = logging.getLogger(__name__)
 
@@ -115,6 +126,147 @@ def _build_callback_request(
     )
 
 
+_EVALUATION_TASK_NAME = "scheduler.evaluate_predicate"
+
+
+class _UnsupportedSubjectResolver(SubjectResolver):
+    """Fallback resolver used when no real subject resolver is configured."""
+
+    def resolve(
+        self,
+        subject: str,
+        actor_context: object,
+    ) -> str | int | float | bool | None:
+        """Raise a structured error indicating the subject is not implemented."""
+        raise PredicateEvaluationServiceError(
+            code=PredicateEvaluationErrorCode.SUBJECT_NOT_FOUND.value,
+            message=f"Subject '{subject}' resolution is not implemented.",
+        )
+
+
+def _default_subject_resolver() -> SubjectResolver:
+    """Return the default placeholder subject resolver."""
+    return _UnsupportedSubjectResolver()
+
+
+_subject_resolver_factory: Callable[[], SubjectResolver] = _default_subject_resolver
+
+
+def _default_evaluation_service_factory() -> PredicateEvaluationService:
+    """Build the production predicate evaluation service."""
+    return PredicateEvaluationService(
+        session_factory=_session_factory,
+        subject_resolver=_subject_resolver_factory(),
+        audit_recorder=PredicateEvaluationAuditRecorder(_session_factory),
+    )
+
+
+_evaluation_service_factory: Callable[[], PredicateEvaluationService] = (
+    _default_evaluation_service_factory
+)
+
+
+def _persist_schedule_evaluation(
+    schedule_id: int,
+    evaluation_time: datetime,
+    result: PredicateEvaluationResult,
+) -> None:
+    """Store the latest predicate evaluation metadata on the schedule."""
+    try:
+        with closing(_session_factory()) as session:
+            schedule = session.query(Schedule).filter(Schedule.id == schedule_id).first()
+            if schedule is None:
+                LOGGER.warning(
+                    "Skipping predicate evaluation persistence for unknown schedule %s",
+                    schedule_id,
+                )
+                return
+            schedule.last_evaluated_at = evaluation_time
+            schedule.last_evaluation_status = str(result.status)
+            schedule.last_evaluation_error_code = result.error.error_code if result.error else None
+            session.commit()
+    except Exception:
+        LOGGER.exception(
+            "Failed to persist predicate evaluation metadata: schedule=%s", schedule_id
+        )
+
+
+def _dispatch_conditional_execution(schedule_id: int, scheduled_for: datetime) -> bool:
+    """Trigger the execution flow for a conditional schedule after a positive predicate."""
+    request = _build_callback_request(
+        schedule_id=schedule_id,
+        scheduled_for=scheduled_for,
+        provider_task_id=None,
+    )
+    try:
+        result = handle_celery_callback(request, _BRIDGE)
+        LOGGER.info(
+            "Conditional execution dispatch result: schedule=%s status=%s",
+            schedule_id,
+            result.status,
+        )
+        return result.status in {"accepted", "duplicate"}
+    except Exception:
+        LOGGER.exception("Failed to dispatch execution for conditional schedule: %s", schedule_id)
+        return False
+
+
+def evaluate_conditional_schedule(
+    schedule_id: int,
+    scheduled_for: Any | None,
+    *,
+    evaluation_service_factory: Callable[[], PredicateEvaluationService] | None = None,
+    metadata_persistor: Callable[[int, datetime, PredicateEvaluationResult], None] | None = (None),
+    dispatcher_trigger: Callable[[int, datetime], bool] | None = None,
+    provider_name: str | None = None,
+    provider_attempt: int | None = None,
+    trace_id: str | None = None,
+    evaluation_id: str | None = None,
+) -> dict[str, object]:
+    """Core logic for running predicate evaluation and dispatching executions."""
+    evaluation_time = _coerce_datetime(scheduled_for) or datetime.now(timezone.utc)
+    evaluation_id = evaluation_id or f"predicate:{schedule_id}:{uuid4().hex}"
+    provider_name = provider_name or _EVALUATION_TASK_NAME
+    provider_attempt = provider_attempt or 1
+    trace_id = trace_id or f"{provider_name}:{schedule_id}:{uuid4().hex}"
+    service_factory = evaluation_service_factory or _evaluation_service_factory
+    service = service_factory()
+    result = service.evaluate_schedule(
+        schedule_id=schedule_id,
+        evaluation_id=evaluation_id,
+        evaluation_time=evaluation_time,
+        provider_name=provider_name,
+        provider_attempt=provider_attempt,
+        trace_id=trace_id,
+    )
+    persistor = metadata_persistor or _persist_schedule_evaluation
+    try:
+        persistor(schedule_id, evaluation_time, result)
+    except Exception:
+        LOGGER.exception("Error persisting predicate evaluation metadata: schedule=%s", schedule_id)
+    executed = False
+    if result.status == PredicateEvaluationStatus.TRUE:
+        dispatcher = dispatcher_trigger or _dispatch_conditional_execution
+        executed = dispatcher(schedule_id, evaluation_time)
+    LOGGER.info(
+        "Predicate evaluation completed: schedule=%s status=%s dispatched=%s",
+        schedule_id,
+        result.status,
+        executed,
+    )
+    return {
+        "status": result.status,
+        "evaluation_id": evaluation_id,
+        "schedule_id": schedule_id,
+        "provider_attempt": provider_attempt,
+        "result_code": result.result_code,
+        "message": result.message,
+        "error_code": result.error.error_code if result.error else None,
+        "error_message": result.error.error_message if result.error else None,
+        "execution_dispatched": executed,
+    }
+
+
 @celery_app.task(
     bind=True,
     name="scheduler.dispatch",
@@ -150,9 +302,18 @@ def dispatch(self, schedule_id: int, scheduled_for: Any | None = None) -> dict[s
 
 
 @celery_app.task(bind=True, name="scheduler.evaluate_predicate")
-def evaluate_predicate(self, schedule_id: int) -> dict[str, str]:
-    """Placeholder predicate evaluation task; conditional schedules are unsupported."""
-    LOGGER.warning(
-        "Conditional schedule evaluation is not yet implemented: schedule=%s", schedule_id
+def evaluate_predicate(
+    self,
+    schedule_id: int,
+    scheduled_for: Any | None = None,
+) -> dict[str, object]:
+    """Evaluate the predicate for a conditional schedule and trigger execution if needed."""
+    provider_attempt = getattr(self.request, "retries", 0) + 1
+    trace_id = getattr(self.request, "id", None)
+    return evaluate_conditional_schedule(
+        schedule_id,
+        scheduled_for,
+        provider_name=self.name,
+        provider_attempt=provider_attempt,
+        trace_id=trace_id,
     )
-    return {"status": "unsupported", "schedule_id": str(schedule_id)}

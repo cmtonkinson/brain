@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    event,
 )
 from sqlalchemy.orm import declarative_base
 
@@ -519,6 +520,21 @@ class ScheduleAuditLog(Base):
     reason = Column(Text, nullable=True)
     diff_summary = Column(String(1000), nullable=True)
     occurred_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+def _ensure_aware_timestamp(value: datetime | None) -> datetime | None:
+    """Normalize timestamps to UTC when timezone info is missing."""
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=timezone.utc)
+
+
+@event.listens_for(ScheduleAuditLog, "load")
+def _normalize_schedule_audit_on_load(target: ScheduleAuditLog, _context: object) -> None:
+    """Ensure loaded schedule audit timestamps retain timezone awareness."""
+    target.occurred_at = _ensure_aware_timestamp(target.occurred_at)
 
 
 class ExecutionAuditLog(Base):
