@@ -84,6 +84,7 @@ def test_translate_celery_callback_uses_emitted_at_when_missing() -> None:
     assert payload.scheduled_for == emitted_at
     assert payload.trace_id == "cb-11"
     assert payload.emitted_at == emitted_at
+    assert payload.trigger_source == "scheduler_callback"
 
 
 def test_callback_bridge_skips_duplicate_callbacks(

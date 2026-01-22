@@ -24,6 +24,7 @@ class DispatcherCallbackPayload:
     scheduled_for: datetime
     trace_id: str
     emitted_at: datetime
+    trigger_source: str = "scheduler_callback"
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,8 @@ def _validate_payload(payload: DispatcherCallbackPayload) -> None:
         raise CallbackBridgeError("schedule_id must be a positive integer.")
     if not payload.trace_id.strip():
         raise CallbackBridgeError("trace_id is required.")
+    if not payload.trigger_source.strip():
+        raise CallbackBridgeError("trigger_source is required.")
     payload_scheduled = _ensure_aware(payload.scheduled_for)
     payload_emitted = _ensure_aware(payload.emitted_at)
     if (

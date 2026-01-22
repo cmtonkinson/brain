@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
+from sqlalchemy.orm import Session
+
 from celery import Celery
 
 from attention.router import AttentionRouter
@@ -17,6 +19,7 @@ from scheduler.adapters.celery_callback_bridge import (
     handle_celery_callback,
 )
 from scheduler.agent_invoker import AgentExecutionInvoker
+from scheduler import data_access
 from scheduler.callback_bridge import CallbackBridge, DispatcherEntrypoint
 from scheduler.execution_dispatcher import ExecutionDispatcher
 from scheduler.failure_notifications import FailureNotificationService
@@ -49,6 +52,17 @@ celery_app.conf.result_serializer = "json"
 celery_app.conf.accept_content = ["json"]
 celery_app.conf.enable_utc = True
 celery_app.conf.timezone = "UTC"
+
+_RETRY_SCAN_INTERVAL_SECONDS = float(_env("SCHEDULER_RETRY_SCAN_INTERVAL_SECONDS", "60"))
+_RETRY_SCAN_BATCH_SIZE = int(_env("SCHEDULER_RETRY_SCAN_BATCH_SIZE", "100"))
+beat_schedule = celery_app.conf.get("beat_schedule")
+if beat_schedule is None:
+    beat_schedule = {}
+beat_schedule["scheduler.enqueue_retry_callbacks"] = {
+    "task": "scheduler.enqueue_retry_callbacks",
+    "schedule": _RETRY_SCAN_INTERVAL_SECONDS,
+}
+celery_app.conf.beat_schedule = beat_schedule
 
 
 def _session_factory():
@@ -113,6 +127,7 @@ def _build_callback_request(
     schedule_id: int,
     scheduled_for: datetime | None,
     provider_task_id: str | None,
+    trigger_source: str = "scheduler_callback",
 ) -> CeleryCallbackRequest:
     """Build the Celery callback payload that flows into the dispatcher."""
     now = datetime.now(timezone.utc)
@@ -123,6 +138,7 @@ def _build_callback_request(
         emitted_at=now,
         provider_attempt=1,
         provider_task_id=provider_task_id,
+        trigger_source=trigger_source,
     )
 
 
@@ -211,6 +227,70 @@ def _dispatch_conditional_execution(schedule_id: int, scheduled_for: datetime) -
         return False
 
 
+def process_due_retry_executions(
+    *,
+    session_factory: Callable[[], Session],
+    dispatcher_task: Any,
+    now: datetime,
+    batch_size: int,
+) -> dict[str, int]:
+    """Scan for retry_scheduled executions that are due and enqueue callbacks."""
+    now = now.astimezone(timezone.utc)
+    with closing(session_factory()) as session:
+        claims = data_access.claim_due_retry_executions(session, now, limit=batch_size)
+        session.commit()
+
+    scheduled = 0
+    restored = 0
+    for claim in claims:
+        try:
+            dispatcher_task.apply_async(
+                args=(claim.schedule_id,),
+                kwargs={"scheduled_for": claim.retry_at},
+            )
+            scheduled += 1
+        except Exception:
+            _restore_retry_claim(claim, session_factory)
+            restored += 1
+
+    LOGGER.info(
+        "Retry scan completed: scanned=%s scheduled=%s restored=%s",
+        len(claims),
+        scheduled,
+        restored,
+    )
+    return {"scanned": len(claims), "scheduled": scheduled, "restored": restored}
+
+
+def _restore_retry_claim(
+    claim: data_access.RetryExecutionClaim,
+    session_factory: Callable[[], Session],
+) -> None:
+    """Restore the next_retry_at value when scheduling a retry callback fails."""
+    try:
+        with closing(session_factory()) as session:
+            actor_context = data_access.ExecutionActorContext(
+                actor_type="system",
+                actor_id=None,
+                channel="scheduler",
+                trace_id=f"retry_restore:{claim.execution_id}:{uuid4().hex}",
+                actor_context=f"retry_restore:{claim.execution_id}",
+            )
+            data_access.update_execution(
+                session,
+                claim.execution_id,
+                data_access.ExecutionUpdateInput(next_retry_at=claim.retry_at),
+                actor_context,
+                now=datetime.now(timezone.utc),
+            )
+            session.commit()
+    except Exception:
+        LOGGER.exception(
+            "Failed to restore next_retry_at for execution=%s",
+            claim.execution_id,
+        )
+
+
 def evaluate_conditional_schedule(
     schedule_id: int,
     scheduled_for: Any | None,
@@ -274,7 +354,12 @@ def evaluate_conditional_schedule(
     autoretry_for=(),
     reject_on_worker_lost=True,
 )
-def dispatch(self, schedule_id: int, scheduled_for: Any | None = None) -> dict[str, Any]:
+def dispatch(
+    self,
+    schedule_id: int,
+    scheduled_for: Any | None = None,
+    trigger_source: str | None = None,
+) -> dict[str, Any]:
     """Handle provider callbacks by routing them through the scheduler dispatcher."""
     try:
         scheduled = _coerce_datetime(scheduled_for)
@@ -286,6 +371,7 @@ def dispatch(self, schedule_id: int, scheduled_for: Any | None = None) -> dict[s
         schedule_id=schedule_id,
         scheduled_for=scheduled,
         provider_task_id=getattr(self.request, "id", None),
+        trigger_source=trigger_source or "scheduler_callback",
     )
 
     result = handle_celery_callback(request, _BRIDGE)
@@ -299,6 +385,17 @@ def dispatch(self, schedule_id: int, scheduled_for: Any | None = None) -> dict[s
         "status": result.status,
         "duplicate_execution_id": result.duplicate_execution_id,
     }
+
+
+@celery_app.task(name="scheduler.enqueue_retry_callbacks")
+def enqueue_retry_callbacks() -> dict[str, int]:
+    """Celery beat job that re-enqueues retry callbacks."""
+    return process_due_retry_executions(
+        session_factory=_session_factory,
+        dispatcher_task=dispatch,
+        now=datetime.now(timezone.utc),
+        batch_size=_RETRY_SCAN_BATCH_SIZE,
+    )
 
 
 @celery_app.task(bind=True, name="scheduler.evaluate_predicate")

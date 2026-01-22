@@ -23,7 +23,8 @@ logic.
 - `pause_schedule(schedule_id)`
 - `resume_schedule(schedule_id)`
 - `delete_schedule(schedule_id)`
-- `trigger_callback(schedule_id, scheduled_for)`
+- `trigger_callback(schedule_id, scheduled_for, *, trace_id=None, trigger_source="scheduler_callback")`
+- `trigger_source` describes whether the callback came from a run-now command or regular cadence.
 
 ### Celery + Redis Mapping (Implementation Detail)
 - **register/update**: translate Brain schedule definition into Celery Beat entries (ETA/interval/

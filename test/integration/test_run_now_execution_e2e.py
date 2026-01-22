@@ -17,7 +17,7 @@ from attention.envelope_schema import (
     RoutingIntent,
 )
 from attention.router import AttentionRouter
-from models import Execution, ExecutionAuditLog, ScheduleAuditLog
+from models import Execution, ExecutionAuditLog, Schedule, ScheduleAuditLog
 from scheduler import data_access
 from scheduler.adapter_interface import AdapterHealth, SchedulePayload, SchedulerAdapter
 from scheduler.callback_bridge import CallbackBridge, DispatcherCallbackPayload
@@ -30,6 +30,7 @@ from scheduler.schedule_service import ScheduleCommandServiceImpl
 from scheduler.schedule_service_interface import (
     ActorContext,
     ScheduleConflictError,
+    SchedulePauseRequest,
     ScheduleRunNowRequest,
 )
 from test.helpers.scheduler_harness import DeterministicClock
@@ -111,7 +112,7 @@ class RunNowAdapter(SchedulerAdapter):
         """Initialize the adapter with callback bridge and clock access."""
         self._bridge = bridge
         self._now_provider = now_provider
-        self.triggered: list[tuple[int, datetime, str | None]] = []
+        self.triggered: list[tuple[int, datetime, str | None, str]] = []
 
     def register_schedule(self, payload: SchedulePayload) -> None:
         """Ignore schedule registrations for run-now tests."""
@@ -134,16 +135,18 @@ class RunNowAdapter(SchedulerAdapter):
         scheduled_for: datetime,
         *,
         trace_id: str | None = None,
+        trigger_source: str = "run_now",
     ) -> None:
         """Trigger the callback bridge for the run-now request."""
         if trace_id is None or not trace_id.strip():
             raise ValueError("trace_id is required for run-now callbacks.")
-        self.triggered.append((schedule_id, scheduled_for, trace_id))
+        self.triggered.append((schedule_id, scheduled_for, trace_id, trigger_source))
         payload = DispatcherCallbackPayload(
             schedule_id=schedule_id,
             scheduled_for=scheduled_for,
             trace_id=trace_id,
             emitted_at=self._now_provider(),
+            trigger_source=trigger_source,
         )
         self._bridge.handle_callback(payload)
 
@@ -235,7 +238,7 @@ def test_run_now_execution_end_to_end_creates_audits_and_routes_attention(
     )
 
     assert result.schedule_id == schedule_id
-    assert adapter.triggered == [(schedule_id, requested_for, actor.trace_id)]
+    assert adapter.triggered == [(schedule_id, requested_for, actor.trace_id, "run_now")]
     assert router.routed_sources() == ["scheduled_task"]
 
     with closing(sqlite_session_factory()) as session:
@@ -267,6 +270,46 @@ def test_run_now_execution_end_to_end_creates_audits_and_routes_attention(
     assert latest_audit.actor_channel == "scheduled"
     assert latest_audit.trace_id == actor.trace_id
     assert "run_now" in {str(audit.event_type) for audit in schedule_audits}
+
+
+def test_run_now_dispatches_for_paused_schedule_and_logs_state(
+    sqlite_session_factory,
+) -> None:
+    """Ensure run-now succeeds for paused schedules and records the paused state."""
+    clock = DeterministicClock(datetime(2025, 2, 7, 12, 0, tzinfo=timezone.utc))
+    with closing(sqlite_session_factory()) as session:
+        schedule_id = _seed_schedule(session)
+        session.commit()
+
+    adapter, service, router = _build_services(sqlite_session_factory, clock.provider())
+    actor = _api_actor()
+    service.pause_schedule(
+        SchedulePauseRequest(schedule_id=schedule_id, reason="maintenance"),
+        actor,
+    )
+
+    requested_for = clock.now()
+    result = service.run_now(
+        ScheduleRunNowRequest(schedule_id=schedule_id, requested_for=requested_for),
+        actor,
+    )
+
+    assert result.schedule_id == schedule_id
+    assert adapter.triggered[-1] == (schedule_id, requested_for, actor.trace_id, "run_now")
+    assert router.routed_sources() == ["scheduled_task"]
+
+    with closing(sqlite_session_factory()) as session:
+        schedule = session.query(Schedule).filter_by(id=schedule_id).one()
+        assert str(schedule.state) == "paused"
+        run_now_audit = (
+            session.query(ScheduleAuditLog)
+            .filter_by(schedule_id=schedule_id, event_type="run_now")
+            .order_by(ScheduleAuditLog.id.desc())
+            .first()
+        )
+
+    assert run_now_audit is not None
+    assert run_now_audit.diff_summary == "run_now(state=paused)"
 
 
 def test_run_now_rejects_canceled_schedule_without_dispatch(

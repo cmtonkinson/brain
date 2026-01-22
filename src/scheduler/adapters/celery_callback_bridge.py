@@ -23,6 +23,7 @@ class CeleryCallbackRequest:
     emitted_at: datetime
     provider_attempt: int = 1
     provider_task_id: str | None = None
+    trigger_source: str = "scheduler_callback"
 
 
 def handle_celery_callback(
@@ -43,6 +44,7 @@ def translate_celery_callback(request: CeleryCallbackRequest) -> DispatcherCallb
         scheduled_for=_ensure_aware(scheduled_for),
         trace_id=request.trace_id,
         emitted_at=_ensure_aware(request.emitted_at),
+        trigger_source=request.trigger_source or "scheduler_callback",
     )
 
 
@@ -52,6 +54,8 @@ def _validate_celery_request(request: CeleryCallbackRequest) -> None:
         raise CallbackBridgeError("schedule_id must be a positive integer.")
     if not request.trace_id.strip():
         raise CallbackBridgeError("trace_id is required.")
+    if not request.trigger_source.strip():
+        raise CallbackBridgeError("trigger_source is required.")
     _ensure_aware(request.emitted_at)
     if request.provider_attempt <= 0:
         raise CallbackBridgeError("provider_attempt must be >= 1.")

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from models import ExecutionAuditLog, ScheduleAuditLog
+from models import Execution, ExecutionAuditLog, ScheduleAuditLog
 from scheduler.data_access import (
     ActorContext,
     ExecutionActorContext,
@@ -19,6 +19,7 @@ from scheduler.data_access import (
     ScheduleDefinitionInput,
     ScheduleUpdateInput,
     TaskIntentInput,
+    claim_due_retry_executions,
     create_execution,
     create_schedule,
     create_schedule_with_intent,
@@ -426,6 +427,78 @@ def test_execution_audit_logging_on_create_and_update(
         )
 
     assert [audit.status for audit in audits] == ["queued", "failed"]
+
+
+def test_claim_due_retry_executions_claims_due_retry_records(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure due retry_scheduled executions are claimed and cleared."""
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    execution_actor = _execution_actor_context()
+    scheduled_for = datetime(2025, 1, 3, 10, 0, tzinfo=timezone.utc)
+    retry_at = scheduled_for + timedelta(minutes=5)
+
+    with closing(session_factory()) as session:
+        intent = create_task_intent(session, TaskIntentInput(summary="Retry task"), actor)
+        schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="one_time",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(run_at=scheduled_for),
+            ),
+            actor,
+            now=scheduled_for - timedelta(hours=1),
+        )
+        execution = create_execution(
+            session,
+            ExecutionCreateInput(
+                task_intent_id=intent.id,
+                schedule_id=schedule.id,
+                scheduled_for=scheduled_for,
+            ),
+            execution_actor,
+        )
+        update_execution(
+            session,
+            execution.id,
+            ExecutionUpdateInput(
+                status="retry_scheduled",
+                next_retry_at=retry_at,
+            ),
+            execution_actor,
+            now=retry_at,
+        )
+        session.commit()
+        execution_id = execution.id
+
+    now = retry_at + timedelta(minutes=1)
+    with closing(session_factory()) as session:
+        claims = claim_due_retry_executions(session, now, limit=5)
+        session.commit()
+
+    assert len(claims) == 1
+    assert claims[0].execution_id == execution_id
+    assert claims[0].retry_at == retry_at
+
+    with closing(session_factory()) as session:
+        refreshed = session.query(Execution).filter(Execution.id == execution_id).first()
+
+    assert refreshed is not None
+    assert refreshed.next_retry_at is None
+
+
+def test_claim_due_retry_executions_validates_limit(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure claiming retries enforces a positive limit."""
+    session_factory = sqlite_session_factory
+
+    with closing(session_factory()) as session:
+        with pytest.raises(ValueError):
+            claim_due_retry_executions(session, datetime.now(timezone.utc), limit=0)
 
 
 def test_execution_audit_idempotent_by_request_id(

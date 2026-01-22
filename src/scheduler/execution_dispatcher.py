@@ -196,7 +196,7 @@ class ExecutionDispatcher:
         )
         with closing(self._session_factory()) as session:
             schedule = _fetch_schedule(session, payload.schedule_id)
-            _require_active_schedule(schedule)
+            _require_active_schedule(schedule, payload.trigger_source)
             intent = _fetch_task_intent(session, schedule.task_intent_id)
             existing = data_access.get_execution_by_trace_id(
                 session,
@@ -309,15 +309,18 @@ def _fetch_task_intent(session: Session, task_intent_id: int) -> TaskIntent:
     return intent
 
 
-def _require_active_schedule(schedule: Schedule) -> None:
-    """Require a schedule to be active for dispatch."""
+def _require_active_schedule(schedule: Schedule, trigger_source: str) -> None:
+    """Require a schedule to be active for dispatch unless run_now explicitly allows paused state."""
     state = str(schedule.state)
-    if state != "active":
-        raise ExecutionDispatcherError(
-            "schedule_inactive",
-            "schedule must be active to dispatch.",
-            {"schedule_id": schedule.id, "state": state},
-        )
+    if state == "active":
+        return
+    if trigger_source == "run_now" and state == "paused":
+        return
+    raise ExecutionDispatcherError(
+        "schedule_inactive",
+        "schedule must be active to dispatch.",
+        {"schedule_id": schedule.id, "state": state},
+    )
 
 
 def _build_invocation_request(
@@ -383,7 +386,7 @@ def _build_invocation_request(
     )
     invocation_metadata = ExecutionInvocationMetadata(
         actual_started_at=now,
-        trigger_source="scheduler_callback",
+        trigger_source=payload.trigger_source,
         callback_id=payload.trace_id,
     )
     return ExecutionInvocationRequest(
@@ -407,7 +410,7 @@ def _build_execution_actor_context(
         trace_id=payload.trace_id,
         request_id=payload.trace_id,
         actor_context=scheduled_context.to_reference(
-            trigger_source="scheduler_callback",
+            trigger_source=payload.trigger_source,
         ),
     )
 

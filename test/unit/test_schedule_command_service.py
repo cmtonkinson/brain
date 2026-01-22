@@ -176,6 +176,7 @@ def test_run_now_triggers_adapter_callback() -> None:
         schedule.id,
         result.scheduled_for,
         trace_id=actor.trace_id,
+        trigger_source="run_now",
     )
 
 

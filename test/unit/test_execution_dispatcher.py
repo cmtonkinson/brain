@@ -206,6 +206,33 @@ def test_execution_dispatcher_rejects_inactive_schedule(
     assert excinfo.value.code == "schedule_inactive"
 
 
+def test_execution_dispatcher_allows_run_now_on_paused_schedule(
+    sqlite_session_factory,
+) -> None:
+    """Ensure run-now callbacks bypass the active-only guard for paused schedules."""
+    invoker = _StubInvoker(sqlite_session_factory)
+    dispatcher = ExecutionDispatcher(sqlite_session_factory, invoker)
+
+    scheduled_for = datetime(2025, 2, 2, 10, 0, tzinfo=timezone.utc)
+    with closing(sqlite_session_factory()) as session:
+        _, schedule = _seed_schedule(session)
+        schedule.state = "paused"
+        session.commit()
+        schedule_id = schedule.id
+
+    payload = DispatcherCallbackPayload(
+        schedule_id=schedule_id,
+        scheduled_for=scheduled_for,
+        trace_id="callback-run-now",
+        emitted_at=scheduled_for,
+        trigger_source="run_now",
+    )
+
+    result = dispatcher.dispatch(payload)
+
+    assert result.status == "dispatched"
+
+
 def test_execution_dispatcher_idempotent_audit_on_replay(
     sqlite_session_factory,
 ) -> None:

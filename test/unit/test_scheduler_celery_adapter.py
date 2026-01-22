@@ -26,6 +26,7 @@ class _EnqueueCall:
     eta: datetime
     queue_name: str | None
     trace_id: str | None
+    trigger_source: str
 
 
 class _FakeCeleryClient:
@@ -70,6 +71,7 @@ class _FakeCeleryClient:
                 eta=eta,
                 queue_name=queue_name,
                 trace_id=payload.trace_id,
+                trigger_source=payload.trigger_source,
             )
         )
 
@@ -188,7 +190,12 @@ def test_trigger_callback_enqueues_immediate_task() -> None:
     adapter = _adapter(client)
     scheduled_for = datetime(2025, 2, 1, 12, 0, tzinfo=timezone.utc)
 
-    adapter.trigger_callback(505, scheduled_for, trace_id="trace-505")
+    adapter.trigger_callback(
+        505,
+        scheduled_for,
+        trace_id="trace-505",
+        trigger_source="run_now",
+    )
 
     assert client.enqueued
     call = client.enqueued[-1]
@@ -197,6 +204,7 @@ def test_trigger_callback_enqueues_immediate_task() -> None:
     assert call.eta == scheduled_for
     assert call.queue_name == "scheduler"
     assert call.trace_id == "trace-505"
+    assert call.trigger_source == "run_now"
 
 
 def test_pause_resume_delete_calls_provider() -> None:

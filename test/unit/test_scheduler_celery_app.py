@@ -1,8 +1,12 @@
 """Unit tests for the scheduler Celery evaluate_predicate helper."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from scheduler.celery_app import evaluate_conditional_schedule
+from scheduler import data_access
+from scheduler.celery_app import (
+    evaluate_conditional_schedule,
+    process_due_retry_executions,
+)
 from scheduler.predicate_evaluation import (
     PredicateEvaluationError,
     PredicateEvaluationResult,
@@ -134,3 +138,103 @@ def test_evaluate_conditional_schedule_bubbles_error_metadata() -> None:
     assert response["execution_dispatched"] is False
     assert response["error_code"] == "subject_missing"
     assert response["error_message"] == "subject not found"
+
+
+def test_process_due_retry_executions_enqueues_dispatch(monkeypatch) -> None:
+    """Ensure retry scans schedule dispatches for due executions."""
+    now = datetime(2025, 1, 4, 12, 0, tzinfo=timezone.utc)
+    claim = data_access.RetryExecutionClaim(
+        execution_id=11,
+        schedule_id=22,
+        retry_at=now - timedelta(minutes=1),
+    )
+    recorded_limits: list[int] = []
+
+    def fake_claim_due_retry_executions(session, when, *, limit):
+        recorded_limits.append(limit)
+        assert when == now
+        return [claim]
+
+    class _FakeSession:
+        def commit(self) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    class _FakeDispatcher:
+        def __init__(self) -> None:
+            self.calls: list[tuple[tuple[int, ...], dict[str, object]]] = []
+
+        def apply_async(
+            self, args: tuple[int, ...] | None = None, kwargs: dict[str, object] | None = None
+        ) -> None:
+            self.calls.append((args or (), kwargs or {}))
+
+    dispatcher = _FakeDispatcher()
+    monkeypatch.setattr(data_access, "claim_due_retry_executions", fake_claim_due_retry_executions)
+
+    result = process_due_retry_executions(
+        session_factory=lambda: _FakeSession(),
+        dispatcher_task=dispatcher,
+        now=now,
+        batch_size=5,
+    )
+
+    assert recorded_limits == [5]
+    assert dispatcher.calls == [((claim.schedule_id,), {"scheduled_for": claim.retry_at})]
+    assert result["scanned"] == 1
+    assert result["scheduled"] == 1
+    assert result["restored"] == 0
+
+
+def test_process_due_retry_executions_restores_retry_on_dispatch_failure(monkeypatch) -> None:
+    """Dispatch failures should restore the retry_at timestamp for the execution."""
+    now = datetime(2025, 1, 4, 12, 0, tzinfo=timezone.utc)
+    claim = data_access.RetryExecutionClaim(
+        execution_id=99,
+        schedule_id=100,
+        retry_at=now - timedelta(minutes=2),
+    )
+
+    def fake_claim_due_retry_executions(session, when, *, limit):
+        return [claim]
+
+    class _FakeSession:
+        def commit(self) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    class _FailingDispatcher:
+        def apply_async(self, *args: object, **kwargs: object) -> None:
+            raise RuntimeError("retry dispatch failed")
+
+    restored: list[tuple[int, datetime]] = []
+
+    def fake_update_execution(
+        session: object,
+        execution_id: int,
+        updates: data_access.ExecutionUpdateInput,
+        actor_context: object,
+        *,
+        now: datetime,
+    ) -> object:
+        restored.append((execution_id, updates.next_retry_at))
+        return object()
+
+    monkeypatch.setattr(data_access, "claim_due_retry_executions", fake_claim_due_retry_executions)
+    monkeypatch.setattr(data_access, "update_execution", fake_update_execution)
+
+    result = process_due_retry_executions(
+        session_factory=lambda: _FakeSession(),
+        dispatcher_task=_FailingDispatcher(),
+        now=now,
+        batch_size=1,
+    )
+
+    assert result["scanned"] == 1
+    assert result["scheduled"] == 0
+    assert result["restored"] == 1
+    assert restored == [(claim.execution_id, claim.retry_at)]

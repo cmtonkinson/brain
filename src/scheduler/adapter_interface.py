@@ -81,8 +81,12 @@ class SchedulerAdapter(Protocol):
         scheduled_for: datetime,
         *,
         trace_id: str | None = None,
+        trigger_source: str = "scheduler_callback",
     ) -> None:
-        """Trigger a callback execution for the schedule."""
+        """Trigger a callback execution for the schedule.
+
+        trigger_source indicates the origin of the callback (e.g., run_now or scheduler_callback).
+        """
         ...
 
     def check_health(self) -> AdapterHealth:

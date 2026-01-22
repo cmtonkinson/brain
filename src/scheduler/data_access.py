@@ -130,6 +130,15 @@ class ExecutionActorContext:
 
 
 @dataclass(frozen=True)
+class RetryExecutionClaim:
+    """Metadata describing a retry_scheduled execution that is due."""
+
+    execution_id: int
+    schedule_id: int
+    retry_at: datetime
+
+
+@dataclass(frozen=True)
 class ExecutionCreateInput:
     """Input payload for creating an execution record."""
 
@@ -585,6 +594,45 @@ def list_due_schedules(session: Session, now: datetime) -> list[Schedule]:
         .filter(and_(Schedule.state == "active", Schedule.next_run_at <= now))
         .all()
     )
+
+
+def claim_due_retry_executions(
+    session: Session,
+    now: datetime,
+    *,
+    limit: int = 100,
+) -> list[RetryExecutionClaim]:
+    """Lock and claim retry_scheduled executions that are due for a retry."""
+    if limit <= 0:
+        raise ValueError("limit must be >= 1.")
+    now = _normalize_timestamp(now, "now")
+    executions = (
+        session.query(Execution)
+        .filter(
+            Execution.status == "retry_scheduled",
+            Execution.next_retry_at.isnot(None),
+            Execution.next_retry_at <= now,
+        )
+        .order_by(Execution.next_retry_at.asc())
+        .limit(limit)
+        .all()
+    )
+    claims: list[RetryExecutionClaim] = []
+    for execution in executions:
+        retry_at = execution.next_retry_at
+        if retry_at is None:
+            continue
+        retry_at = _normalize_timestamp(retry_at, "next_retry_at")
+        claims.append(
+            RetryExecutionClaim(
+                execution_id=execution.id,
+                schedule_id=execution.schedule_id,
+                retry_at=retry_at,
+            )
+        )
+        execution.next_retry_at = None
+    session.flush()
+    return claims
 
 
 def list_execution_history(

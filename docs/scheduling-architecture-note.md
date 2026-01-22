@@ -95,7 +95,8 @@ scheduled actor context, attention routing, and audit requirements.
 - `pause_schedule(schedule_id)`
 - `resume_schedule(schedule_id)`
 - `delete_schedule(schedule_id)`
-- `trigger_callback(schedule_id, scheduled_for)`
+- `trigger_callback(schedule_id, scheduled_for, *, trace_id=None, trigger_source="scheduler_callback")`
+- `trigger_source` indicates the origin of the callback (e.g., `run_now` vs the scheduler cadence).
 
 ## Alignment Notes
 - **Attention is sacred**: all notifications routed and suppressible.

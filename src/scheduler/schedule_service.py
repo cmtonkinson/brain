@@ -256,7 +256,8 @@ class ScheduleCommandServiceImpl:
         def handler(session: Session) -> ExecutionRunNowResult:
             timestamp = self._now_provider()
             schedule = _fetch_schedule(session, request.schedule_id)
-            if str(schedule.state) not in {"active", "paused"}:
+            state = str(schedule.state)
+            if state not in {"active", "paused"}:
                 raise ScheduleConflictError(
                     "run_now is only allowed for active or paused schedules.",
                     {"schedule_id": schedule.id, "state": str(schedule.state)},
@@ -267,7 +268,7 @@ class ScheduleCommandServiceImpl:
                 schedule.id,
                 _to_data_access_actor(_override_reason(actor, request.reason)),
                 event_type="run_now",
-                diff_summary="run_now",
+                diff_summary="run_now" if state == "active" else f"run_now(state={state})",
                 now=timestamp,
             ).id
             return ExecutionRunNowResult(
@@ -283,6 +284,7 @@ class ScheduleCommandServiceImpl:
                 result.schedule_id,
                 result.scheduled_for,
                 trace_id=actor.trace_id,
+                trigger_source="run_now",
             ),
             session_factory=self._session_factory,
             schedule_id=result.schedule_id,

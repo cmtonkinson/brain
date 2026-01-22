@@ -44,7 +44,7 @@ class _RecordingAdapter(SchedulerAdapter):
         self.paused: list[int] = []
         self.resumed: list[int] = []
         self.deleted: list[int] = []
-        self.triggered: list[tuple[int, datetime, str | None]] = []
+        self.triggered: list[tuple[int, datetime, str | None, str]] = []
 
     def register_schedule(self, payload: SchedulePayload) -> None:
         """Record schedule registrations."""
@@ -72,9 +72,10 @@ class _RecordingAdapter(SchedulerAdapter):
         scheduled_for: datetime,
         *,
         trace_id: str | None = None,
+        trigger_source: str = "scheduler_callback",
     ) -> None:
-        """Record adapter callback triggers."""
-        self.triggered.append((schedule_id, scheduled_for, trace_id))
+        """Record adapter callback triggers with origin metadata."""
+        self.triggered.append((schedule_id, scheduled_for, trace_id, trigger_source))
 
     def check_health(self) -> AdapterHealth:
         """Return a healthy status for the stub."""

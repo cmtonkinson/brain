@@ -90,6 +90,7 @@ class CeleryCallbackPayload:
     schedule_id: int
     scheduled_for: datetime | None
     trace_id: str | None = None
+    trigger_source: str = "scheduler_callback"
 
 
 @dataclass(frozen=True)
@@ -179,13 +180,15 @@ class CelerySchedulerAdapter:
         scheduled_for: datetime,
         *,
         trace_id: str | None = None,
+        trigger_source: str = "scheduler_callback",
     ) -> None:
-        """Trigger an immediate Celery callback execution."""
+        """Trigger an immediate Celery callback execution with a traceable source."""
         eta = _ensure_aware(scheduled_for, timezone.utc)
         payload = CeleryCallbackPayload(
             schedule_id=schedule_id,
             scheduled_for=eta,
             trace_id=trace_id,
+            trigger_source=trigger_source,
         )
         self._client.enqueue_callback(payload, eta=eta, queue_name=self._config.queue_name)
 
@@ -455,7 +458,11 @@ def _build_callback_kwargs(payload: SchedulePayload, schedule: CelerySchedule) -
     scheduled_for: datetime | None = None
     if isinstance(schedule, CeleryEtaSchedule):
         scheduled_for = schedule.eta
-    return {"schedule_id": payload.schedule_id, "scheduled_for": scheduled_for}
+    return {
+        "schedule_id": payload.schedule_id,
+        "scheduled_for": scheduled_for,
+        "trigger_source": "scheduler_callback",
+    }
 
 
 def _validate_payload(payload: SchedulePayload) -> None:
