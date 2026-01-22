@@ -4,8 +4,11 @@ config/brain.yml
 
 # General files
 .coverage
-coverage.xml
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 __pycache__
+coverage.xml
 data/
 logs/
 
