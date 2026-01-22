@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Callable, Protocol
 
 from sqlalchemy.orm import Session
@@ -21,6 +21,7 @@ from scheduler.retry_policy import (
     resolve_retry_policy,
     should_retry,
 )
+from scheduler.schedule_timing import compute_calendar_rule_next_run, compute_interval_next_run
 
 logger = logging.getLogger(__name__)
 
@@ -638,7 +639,20 @@ def _schedule_updates_from_execution(
     state: str | object = data_access.UNSET
     schedule_type = str(schedule.schedule_type)
     if schedule_type == "interval":
-        next_run = _compute_interval_next_run(schedule, execution.scheduled_for)
+        next_run = compute_interval_next_run(
+            schedule.interval_count,
+            schedule.interval_unit,
+            schedule.anchor_at,
+            reference_time=execution.scheduled_for,
+        )
+        if next_run is not None:
+            next_run_at = next_run
+    elif schedule_type == "calendar_rule":
+        next_run = compute_calendar_rule_next_run(
+            schedule.rrule,
+            schedule.calendar_anchor_at,
+            reference_time=execution.scheduled_for,
+        )
         if next_run is not None:
             next_run_at = next_run
     elif schedule_type == "one_time":
@@ -660,43 +674,3 @@ def _schedule_updates_from_execution(
         next_run_at=next_run_at,
         state=state,
     )
-
-
-def _compute_interval_next_run(
-    schedule: Schedule,
-    scheduled_for: datetime,
-) -> datetime | None:
-    """Compute the next run timestamp for interval schedules."""
-    interval_count = schedule.interval_count
-    interval_unit = str(schedule.interval_unit) if schedule.interval_unit else None
-    if interval_count is None or interval_count <= 0 or interval_unit is None:
-        return None
-    if interval_unit == "minute":
-        return scheduled_for + timedelta(minutes=interval_count)
-    if interval_unit == "hour":
-        return scheduled_for + timedelta(hours=interval_count)
-    if interval_unit == "day":
-        return scheduled_for + timedelta(days=interval_count)
-    if interval_unit == "week":
-        return scheduled_for + timedelta(weeks=interval_count)
-    if interval_unit == "month":
-        return _add_months(scheduled_for, interval_count)
-    return None
-
-
-def _add_months(value: datetime, months: int) -> datetime:
-    """Add a month offset to a timezone-aware datetime."""
-    year = value.year + (value.month - 1 + months) // 12
-    month = (value.month - 1 + months) % 12 + 1
-    day = min(value.day, _days_in_month(year, month))
-    return value.replace(year=year, month=month, day=day)
-
-
-def _days_in_month(year: int, month: int) -> int:
-    """Return the number of days in a month."""
-    if month == 12:
-        next_month = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
-    else:
-        next_month = datetime(year, month + 1, 1, tzinfo=timezone.utc)
-    current_month = datetime(year, month, 1, tzinfo=timezone.utc)
-    return (next_month - current_month).days

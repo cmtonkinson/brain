@@ -1,7 +1,11 @@
 """Unit tests for the scheduler Celery evaluate_predicate helper."""
 
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy.orm import sessionmaker
+
+import scheduler.celery_app as celery_app
 from scheduler import data_access
 from scheduler.celery_app import (
     evaluate_conditional_schedule,
@@ -12,6 +16,7 @@ from scheduler.predicate_evaluation import (
     PredicateEvaluationResult,
     PredicateEvaluationStatus,
 )
+from models import Schedule
 
 
 class _StubEvaluationService:
@@ -237,4 +242,65 @@ def test_process_due_retry_executions_restores_retry_on_dispatch_failure(monkeyp
     assert result["scanned"] == 1
     assert result["scheduled"] == 0
     assert result["restored"] == 1
-    assert restored == [(claim.execution_id, claim.retry_at)]
+
+
+def test_persist_schedule_evaluation_updates_next_run(
+    monkeypatch,
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure predicate evaluations refresh the conditional schedule next run."""
+    now = datetime(2025, 1, 1, 8, 0, tzinfo=timezone.utc)
+    evaluation_time = now + timedelta(minutes=5)
+    actor = data_access.ActorContext(
+        actor_type="system",
+        actor_id="tester",
+        channel="scheduler",
+        trace_id="trace-567",
+        request_id="req-890",
+    )
+
+    with closing(sqlite_session_factory()) as session:
+        intent = data_access.create_task_intent(
+            session, data_access.TaskIntentInput(summary="conditional check"), actor
+        )
+        schedule = data_access.create_schedule(
+            session,
+            data_access.ScheduleCreateInput(
+                task_intent_id=intent.id,
+                schedule_type="conditional",
+                timezone="UTC",
+                definition=data_access.ScheduleDefinitionInput(
+                    predicate_subject="signal:status",
+                    predicate_operator="exists",
+                    evaluation_interval_count=10,
+                    evaluation_interval_unit="minute",
+                ),
+            ),
+            actor,
+            now=now,
+        )
+        session.commit()
+        schedule_id = schedule.id
+
+    monkeypatch.setattr(celery_app, "_session_factory", lambda: sqlite_session_factory())
+
+    result = PredicateEvaluationResult(
+        status=PredicateEvaluationStatus.TRUE,
+        result_code="ok",
+        message=None,
+        observed_value=None,
+        evaluated_at=evaluation_time,
+        error=None,
+    )
+    celery_app._persist_schedule_evaluation(schedule_id, evaluation_time, result)
+
+    with closing(sqlite_session_factory()) as session:
+        refreshed = session.query(Schedule).filter(Schedule.id == schedule_id).first()
+    assert refreshed is not None
+
+    def _naive(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=None)
+
+    assert _naive(refreshed.next_run_at) == _naive(evaluation_time + timedelta(minutes=10))

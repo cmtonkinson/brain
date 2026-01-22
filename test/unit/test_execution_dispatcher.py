@@ -17,6 +17,7 @@ from scheduler.execution_dispatcher import (
     ExecutionDispatcherError,
     ExecutionInvocationRequest,
     ExecutionInvocationResult,
+    _schedule_updates_from_execution,
 )
 from scheduler.retry_policy import RetryPolicy
 
@@ -434,3 +435,39 @@ def test_execution_dispatcher_updates_one_time_schedule_completion(
     assert str(schedule.state) == "completed"
     assert schedule.next_run_at is None
     assert _naive(schedule.last_run_at) == _naive(now)
+
+
+def test_schedule_updates_advances_calendar_rule_next_run() -> None:
+    """Ensure calendar-rule executions advance the next run timestamp."""
+    schedule = Schedule(
+        id=1,
+        task_intent_id=1,
+        schedule_type="calendar_rule",
+        state="active",
+        timezone="UTC",
+        next_run_at=None,
+        last_run_at=None,
+        last_run_status=None,
+        failure_count=0,
+        created_by_actor_type="human",
+        created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        rrule="FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+        calendar_anchor_at=datetime(2025, 1, 1, 9, 0, tzinfo=timezone.utc),
+    )
+    execution = Execution(
+        id=1,
+        task_intent_id=1,
+        schedule_id=1,
+        scheduled_for=datetime(2025, 1, 1, 9, 0, tzinfo=timezone.utc),
+        actor_type="scheduled",
+        status="succeeded",
+    )
+
+    updates = _schedule_updates_from_execution(
+        schedule,
+        execution,
+        finished_at=datetime(2025, 1, 1, 9, 2, tzinfo=timezone.utc),
+    )
+
+    assert updates.next_run_at == datetime(2025, 1, 2, 9, 0, tzinfo=timezone.utc)

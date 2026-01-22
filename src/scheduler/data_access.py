@@ -31,6 +31,7 @@ from scheduler.schedule_validation import (
     validate_task_intent_immutable,
     validate_timezone,
 )
+from scheduler.schedule_timing import compute_next_run_for_definition
 
 logger = logging.getLogger(__name__)
 
@@ -382,12 +383,21 @@ def create_schedule(
     if get_task_intent(session, schedule_input.task_intent_id) is None:
         raise ValueError("task intent not found.")
 
+    next_run = schedule_input.next_run_at
+    if next_run is None:
+        next_run = compute_next_run_for_definition(
+            schedule_input.schedule_type,
+            schedule_input.definition,
+            reference_time=timestamp,
+        )
+    next_run = _normalize_optional_timestamp(next_run, "next_run_at")
+
     schedule = Schedule(
         task_intent_id=schedule_input.task_intent_id,
         schedule_type=schedule_input.schedule_type,
         state=schedule_input.state,
         timezone=schedule_input.timezone,
-        next_run_at=schedule_input.next_run_at,
+        next_run_at=next_run,
         created_by_actor_type=actor.actor_type,
         created_by_actor_id=actor.actor_id,
         created_at=timestamp,
@@ -485,6 +495,17 @@ def update_schedule(
         )
         for field_name, value in _definition_fields(definition).items():
             setattr(schedule, field_name, value)
+        if updates.next_run_at is UNSET:
+            computed_next_run = compute_next_run_for_definition(
+                schedule.schedule_type,
+                definition,
+                reference_time=timestamp,
+            )
+            if computed_next_run is not None:
+                schedule.next_run_at = _normalize_optional_timestamp(
+                    computed_next_run, "next_run_at"
+                )
+                changes.append("next_run_at")
         changes.append("definition")
 
     schedule.updated_at = timestamp

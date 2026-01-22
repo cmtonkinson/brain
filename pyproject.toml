@@ -45,6 +45,7 @@ pyright = "*"
 greenlet = "^3.3.0"
 types-PyYAML = "*"
 pytest-cov = "*"
+types-python-dateutil = "^2.9.0.20251115"
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

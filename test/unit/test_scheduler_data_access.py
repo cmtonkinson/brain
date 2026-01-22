@@ -212,6 +212,81 @@ def test_schedule_create_writes_audit_and_due_query(
     assert schedule.id in {entry.id for entry in due}
 
 
+def _naive(value: datetime | None) -> datetime | None:
+    """Return a naive datetime for comparison."""
+    if value is None:
+        return None
+    return value.replace(tzinfo=None)
+
+
+def test_schedule_creation_populates_next_run_for_all_types(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Ensure interval, calendar, and conditional schedules initialize next_run_at."""
+    session_factory = sqlite_session_factory
+    actor = _actor_context()
+    now = datetime(2025, 1, 1, 8, 0, tzinfo=timezone.utc)
+
+    with closing(session_factory()) as session:
+        intent_interval = create_task_intent(session, TaskIntentInput(summary="Daily diary"), actor)
+        interval_schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent_interval.id,
+                schedule_type="interval",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(interval_count=1, interval_unit="day"),
+            ),
+            actor,
+            now=now,
+        )
+        intent_calendar = create_task_intent(
+            session, TaskIntentInput(summary="Daily standup"), actor
+        )
+        calendar_anchor = datetime(2025, 1, 1, 10, 0, tzinfo=timezone.utc)
+        calendar_schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent_calendar.id,
+                schedule_type="calendar_rule",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(
+                    rrule="FREQ=DAILY;BYHOUR=10;BYMINUTE=0",
+                    calendar_anchor_at=calendar_anchor,
+                ),
+            ),
+            actor,
+            now=now,
+        )
+        intent_conditional = create_task_intent(
+            session, TaskIntentInput(summary="Conditional check"), actor
+        )
+        conditional_schedule = create_schedule(
+            session,
+            ScheduleCreateInput(
+                task_intent_id=intent_conditional.id,
+                schedule_type="conditional",
+                timezone="UTC",
+                definition=ScheduleDefinitionInput(
+                    predicate_subject="status:update",
+                    predicate_operator="exists",
+                    evaluation_interval_count=15,
+                    evaluation_interval_unit="minute",
+                ),
+            ),
+            actor,
+            now=now,
+        )
+        interval_next = interval_schedule.next_run_at
+        calendar_next = calendar_schedule.next_run_at
+        conditional_next = conditional_schedule.next_run_at
+        session.commit()
+
+    assert _naive(interval_next) == _naive(now + timedelta(days=1))
+    assert _naive(calendar_next) == _naive(calendar_anchor)
+    assert _naive(conditional_next) == _naive(now + timedelta(minutes=15))
+
+
 def test_schedule_definition_validation_rejects_missing_cadence(
     sqlite_session_factory: sessionmaker,
 ) -> None:

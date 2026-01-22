@@ -35,6 +35,7 @@ from scheduler.predicate_evaluation_audit import PredicateEvaluationAuditRecorde
 from services.database import get_sync_session
 from services.signal import SignalClient
 from models import Schedule
+from scheduler.schedule_timing import compute_conditional_next_run
 
 LOGGER = logging.getLogger(__name__)
 
@@ -198,8 +199,17 @@ def _persist_schedule_evaluation(
                 )
                 return
             schedule.last_evaluated_at = evaluation_time
-            schedule.last_evaluation_status = str(result.status)
+            status_value = getattr(result.status, "value", str(result.status))
+            schedule.last_evaluation_status = str(status_value)
             schedule.last_evaluation_error_code = result.error.error_code if result.error else None
+            if str(schedule.schedule_type) == "conditional":
+                next_run = compute_conditional_next_run(
+                    schedule.evaluation_interval_count,
+                    schedule.evaluation_interval_unit,
+                    reference_time=evaluation_time,
+                )
+                if next_run is not None:
+                    schedule.next_run_at = next_run
             session.commit()
     except Exception:
         LOGGER.exception(
