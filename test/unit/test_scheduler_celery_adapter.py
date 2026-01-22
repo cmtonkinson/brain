@@ -435,7 +435,7 @@ def test_register_calendar_rule_unsupported_freq_is_rejected() -> None:
     with pytest.raises(SchedulerAdapterError) as exc:
         adapter.register_schedule(payload)
 
-    assert exc.value.code == "unsupported_rrule_freq"
+    assert exc.value.code == "invalid_schedule_definition"
 
 
 def test_update_calendar_rule_schedule() -> None:

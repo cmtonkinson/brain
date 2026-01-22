@@ -32,7 +32,7 @@ from scheduler.predicate_evaluation import (
     SubjectResolver,
 )
 from scheduler.predicate_evaluation_audit import PredicateEvaluationAuditRecorder
-from services.database import get_sync_session
+from services.database import get_sync_engine, get_sync_session
 from services.signal import SignalClient
 from models import Schedule
 from scheduler.schedule_timing import compute_conditional_next_run
@@ -44,6 +44,9 @@ def _env(var: str, default: str) -> str:
     return os.environ.get(var, default)
 
 
+_DEFAULT_BEAT_DBURI = str(get_sync_engine().url)
+
+
 celery_app = Celery("brain.scheduler")
 celery_app.conf.broker_url = _env("CELERY_BROKER_URL", "redis://redis:6379/1")
 celery_app.conf.result_backend = _env("CELERY_RESULT_BACKEND", "redis://redis:6379/2")
@@ -53,6 +56,11 @@ celery_app.conf.result_serializer = "json"
 celery_app.conf.accept_content = ["json"]
 celery_app.conf.enable_utc = True
 celery_app.conf.timezone = "UTC"
+celery_app.conf.beat_scheduler = _env(
+    "CELERY_BEAT_SCHEDULER",
+    "celery_sqlalchemy_v2_scheduler.schedulers.DatabaseScheduler",
+)
+celery_app.conf.beat_dburi = _env("CELERY_BEAT_DB_URI", _DEFAULT_BEAT_DBURI)
 
 _RETRY_SCAN_INTERVAL_SECONDS = float(_env("SCHEDULER_RETRY_SCAN_INTERVAL_SECONDS", "60"))
 _RETRY_SCAN_BATCH_SIZE = int(_env("SCHEDULER_RETRY_SCAN_BATCH_SIZE", "100"))

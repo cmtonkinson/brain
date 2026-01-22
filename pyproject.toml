@@ -33,6 +33,7 @@ opentelemetry-instrumentation-httpx = "*"
 opentelemetry-instrumentation-sqlalchemy = "*"
 python-json-logger = "*"
 celery = "^5.6.2"
+celery_sqlalchemy_v2_scheduler = "^0.1.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
@@ -54,6 +55,7 @@ addopts = "-ra"
 filterwarnings = [
   "ignore:pkg_resources is deprecated as an API.*:UserWarning",
   "ignore:Type google\\._upb\\._message\\..*:DeprecationWarning",
+  "ignore:The ``declarative_base\\(\\)`` function is now available as sqlalchemy\\.orm\\.declarative_base\\(\\)\\.:sqlalchemy.exc.MovedIn20Warning",
 ]
 markers = [
   "integration: marks integration tests that may rely on external services",

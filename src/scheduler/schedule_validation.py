@@ -30,7 +30,6 @@ _ALLOWED_STATE_TRANSITIONS: dict[str, set[str]] = {
 }
 
 _ALLOWED_RRULE_FREQUENCIES = {
-    "SECONDLY",
     "MINUTELY",
     "HOURLY",
     "DAILY",

@@ -141,6 +141,8 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
       CELERY_QUEUE_NAME: ${CELERY_QUEUE_NAME:-scheduler}
+      CELERY_BEAT_DB_URI: ${CELERY_BEAT_DB_URI:-postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain}
+      CELERY_BEAT_SCHEDULER: ${CELERY_BEAT_SCHEDULER:-celery_sqlalchemy_v2_scheduler.schedulers.DatabaseScheduler}
       TZ: ${USER_TIMEZONE:-America/New_York}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: brain-celery-worker
@@ -175,6 +177,8 @@ services:
     environment:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      CELERY_BEAT_DB_URI: ${CELERY_BEAT_DB_URI:-postgresql://brain:${POSTGRES_PASSWORD}@postgres:5432/brain}
+      CELERY_BEAT_SCHEDULER: ${CELERY_BEAT_SCHEDULER:-celery_sqlalchemy_v2_scheduler.schedulers.DatabaseScheduler}
       TZ: ${USER_TIMEZONE:-America/New_York}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_SERVICE_NAME: brain-celery-beat

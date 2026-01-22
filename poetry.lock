@@ -594,6 +594,23 @@ zookeeper = ["kazoo (>=1.3.1)"]
 zstd = ["zstandard (==0.23.0)"]
 
 [[package]]
+name = "celery-sqlalchemy-v2-scheduler"
+version = "0.1.2"
+description = "Celery beat scheduler using SQLAlchemy, patched for SQLAlchemy 2.x"
+optional = false
+python-versions = ">=3.6"
+groups = ["main"]
+files = [
+    {file = "celery_sqlalchemy_v2_scheduler-0.1.2-py3-none-any.whl", hash = "sha256:baf7174161351b7e6c8514d990afec8f998e8a3b5297e2ea18847b5e21c27dd9"},
+    {file = "celery_sqlalchemy_v2_scheduler-0.1.2.tar.gz", hash = "sha256:ba8654307476e02409e83b00c3aecd101c784322d424289f3e948875f56070a5"},
+]
+
+[package.dependencies]
+celery = ">=4.2"
+pytz = "*"
+sqlalchemy = "*"
+
+[[package]]
 name = "certifi"
 version = "2026.1.4"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -5154,6 +5171,18 @@ files = [
 dev = ["black", "build", "mypy", "pytest", "pytest-cov", "setuptools", "tox", "twine", "wheel"]
 
 [[package]]
+name = "pytz"
+version = "2025.2"
+description = "World timezone definitions, modern and historical"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "pytz-2025.2-py2.py3-none-any.whl", hash = "sha256:5ddf76296dd8c44c26eb8f4b6f35488f3ccbf6fbbd7adee0b7262d43f0ec2f00"},
+    {file = "pytz-2025.2.tar.gz", hash = "sha256:360b9e3dbb49a209c21ad61809c7fb453643e048b38924c765813546746e81c3"},
+]
+
+[[package]]
 name = "pywin32"
 version = "311"
 description = "Python for Window Extensions"
@@ -6984,4 +7013,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.14"
-content-hash = "72a3cbdddbd5124e5fa0e62bc3d19ecea60656047ae76a0a2bd82a1a4670d2bb"
+content-hash = "e4885d12cb6333782068e19d73b0c699e50a4b9a20075d85870d79edc0ae91cd"

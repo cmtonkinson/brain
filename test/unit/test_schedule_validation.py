@@ -75,6 +75,15 @@ def test_calendar_rule_requires_valid_rrule() -> None:
     )
 
 
+def test_calendar_rule_rejects_unsupported_rrule_freq() -> None:
+    """Ensure unsupported RRULE frequencies are rejected."""
+    with pytest.raises(ScheduleValidationError):
+        validate_schedule_definition(
+            "calendar_rule",
+            ScheduleDefinitionInput(rrule="FREQ=SECONDLY"),
+        )
+
+
 def test_conditional_requires_predicate_and_cadence() -> None:
     """Ensure conditional schedules require predicate details and cadence."""
     with pytest.raises(ScheduleValidationError):
