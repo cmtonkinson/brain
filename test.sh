@@ -6,7 +6,11 @@ run_step() {
   shift
   echo ""
   echo "==> ${label}"
-  "$@"
+  if ! "$@"; then
+    local status=$?
+    echo "Step \"${label}\" failed with exit code ${status}."
+    exit "${status}"
+  fi
 }
 
 run_step "Linting and type checks" ./test/lint.sh
