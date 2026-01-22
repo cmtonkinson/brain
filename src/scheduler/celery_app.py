@@ -15,12 +15,9 @@ from scheduler.adapters.celery_callback_bridge import (
     CeleryCallbackRequest,
     handle_celery_callback,
 )
+from scheduler.agent_invoker import AgentExecutionInvoker
 from scheduler.callback_bridge import CallbackBridge, DispatcherEntrypoint
-from scheduler.execution_dispatcher import (
-    ExecutionDispatcher,
-    ExecutionInvocationResult,
-    ExecutionInvoker,
-)
+from scheduler.execution_dispatcher import ExecutionDispatcher
 from scheduler.failure_notifications import FailureNotificationService
 from services.database import get_sync_session
 from services.signal import SignalClient
@@ -48,25 +45,6 @@ def _session_factory():
     return get_sync_session()
 
 
-class _LoggingExecutionInvoker(ExecutionInvoker):
-    """Execution invoker that only logs the invocation result for now."""
-
-    def __init__(self) -> None:
-        self._logger = logging.getLogger("brain.scheduler.executions")
-
-    def invoke_execution(self, request) -> ExecutionInvocationResult:
-        self._logger.info(
-            "Scheduled execution stub invoked: schedule=%s, execution=%s",
-            request.execution.schedule_id,
-            request.execution.id,
-        )
-        return ExecutionInvocationResult(
-            status="success",
-            result_code="noop",
-            attention_required=False,
-        )
-
-
 class _DispatcherEntrypointAdapter(DispatcherEntrypoint):
     """Adapter that exposes the ExecutionDispatcher via the dispatcher protocol."""
 
@@ -87,7 +65,7 @@ _FAILURE_NOTIFIER = FailureNotificationService(
 )
 _DISPATCHER = ExecutionDispatcher(
     session_factory=_session_factory,
-    invoker=_LoggingExecutionInvoker(),
+    invoker=AgentExecutionInvoker(),
     failure_notifier=_FAILURE_NOTIFIER,
 )
 _BRIDGE = CallbackBridge(
