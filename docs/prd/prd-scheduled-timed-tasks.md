@@ -125,7 +125,7 @@ Schedules are identified by stable IDs.
 
 At execution time:
 - the scheduler triggers a task execution
-- execution calls the Brain agent via its public API
+- execution calls the Brain agent via its native API
 - agent receives:
   - task intent
   - actor context (scheduled job)
