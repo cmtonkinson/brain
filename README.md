@@ -69,8 +69,6 @@ flowchart TB
     Letta --> PostgresRedis
 ```
 
-Letta runs as a parallel service for archival memory and tool-augmented recall, proposing promotions to the Obsidian vault and persisting state in Postgres. Optional observability (Prometheus, Loki, Grafana) runs adjacent to the main Docker Compose stack.
-
 ## Data Tiers (Current State)
 **Tier 0 — Authoritative Information**
 - Obsidian vault (canonical notes, promoted memory)
@@ -106,3 +104,4 @@ Letta runs as a parallel service for archival memory and tool-augmented recall, 
 - Local voice (whisper.cpp + Piper, openWakeWord)
 - POTS phone support (Twilio Media Streams)
 - SMS fallback (Google Voice)
+
