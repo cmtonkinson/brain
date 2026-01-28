@@ -1,7 +1,19 @@
-# Brain
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-[![CI Tests](https://github.com/cmtonkinson/brain/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/cmtonkinson/brain/actions/workflows/tests.yml)
-![Python: 3.13](https://img.shields.io/badge/Python-3.13-blue.svg)
+<!-- Yes, inline HTML in a README. Gross. Sue me, I didn't want a huge image because it's not that interesting. -->
+<table>
+  <tr>
+    <h1>Brain</h1>
+  </tr>
+  <tr>
+    <td>
+      <img src="img/brain-purple-128.png" width="128" height="128" alt="Brain" />
+    </td>
+    <td>
+      <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" />
+      <img src="https://github.com/cmtonkinson/brain/actions/workflows/tests.yml/badge.svg?branch=main" alt="CI Tests" />
+      <img src="https://img.shields.io/badge/Python-3.13-blue.svg" alt="Python: 3.13" />
+    </td>
+  </tr>
+</table>
 
 An exocortex for attention, memory, and action. Brain is a local-first AI system grounded in data sovereignty and
 durable knowledge; "cognitive infrastructure" that prioritizes context, directs intent deliberately, and closes loops.
