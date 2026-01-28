@@ -9,8 +9,11 @@
     </td>
     <td>
       <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" />
+      <br />
       <img src="https://github.com/cmtonkinson/brain/actions/workflows/tests.yml/badge.svg?branch=main" alt="CI Tests" />
+      <br />
       <img src="https://img.shields.io/badge/Python-3.13-blue.svg" alt="Python: 3.13" />
+      <br />
     </td>
   </tr>
 </table>
