@@ -2,6 +2,9 @@
 <table>
   <tr>
     <h1>Brain</h1>
+    <p>
+      An exocortex for attention, memory, and action. Brain is a local-first AI system grounded in data sovereignty and durable knowledge; "cognitive infrastructure" that prioritizes context, directs intent deliberately, and closes loops.
+    </p>
   </tr>
   <tr>
     <td>
@@ -17,9 +20,6 @@
     </td>
   </tr>
 </table>
-
-An exocortex for attention, memory, and action. Brain is a local-first AI system grounded in data sovereignty and
-durable knowledge; "cognitive infrastructure" that prioritizes context, directs intent deliberately, and closes loops.
 
 ## Overview
 _Conceptually_, Brain has three parts:
