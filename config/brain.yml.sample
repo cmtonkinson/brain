@@ -42,6 +42,9 @@ scheduler:
   default_backoff_strategy: "exponential"
   backoff_base_seconds: 60
 
+commitments:
+  autonomous_transition_confidence_threshold: 0.8
+
 qdrant:
   url: "http://qdrant:6333"
 redis:

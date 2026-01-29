@@ -11,7 +11,6 @@ from __future__ import annotations
 from alembic import op
 import sqlalchemy as sa
 
-
 revision = "bdd7c89f9c03"
 down_revision = "0019_trace_id_consolidation"
 branch_labels = None

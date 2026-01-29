@@ -288,6 +288,22 @@ class SchedulerConfig(BaseModel):
         return value
 
 
+class CommitmentConfig(BaseModel):
+    """Commitment tracking configuration defaults."""
+
+    autonomous_transition_confidence_threshold: float = 0.8
+
+    @field_validator("autonomous_transition_confidence_threshold")
+    @classmethod
+    def validate_autonomous_transition_threshold(cls, value: float) -> float:
+        """Ensure autonomous transition threshold is between 0 and 1."""
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(
+                "commitments.autonomous_transition_confidence_threshold must be between 0 and 1."
+            )
+        return value
+
+
 class ServiceConfig(BaseModel):
     """Generic service URL wrapper."""
 
@@ -380,6 +396,9 @@ class Settings(BaseSettings):
 
     # Scheduler Configuration
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
+
+    # Commitment Tracking Configuration
+    commitments: CommitmentConfig = Field(default_factory=CommitmentConfig)
 
     @model_validator(mode="after")
     def validate_sender_allowlist(self) -> "Settings":

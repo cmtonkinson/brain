@@ -87,6 +87,8 @@ States:
 - `CANCELED`
 - `RENEGOTIATED`
 
+Commitments begin in `OPEN`.
+
 Transitions are explicit and auditable.
 
 ---
@@ -112,10 +114,18 @@ Commitments may be created from:
 - agent suggestions (with confirmation)
 
 Each commitment must store:
-- description
-- provenance (who/what created it)
-- due time or trigger
-- related artifacts (notes, messages)
+- description (single canonical text field)
+- provenance (who/what created it, and via which channel)
+- due_by (optional single datetime, stored in UTC; rendered in user timezone)
+- state (current lifecycle state)
+- priority_tier (`high` or `low`)
+- created_at / updated_at timestamps
+- next_schedule_id (link to the *next* scheduled reminder/check in the scheduling system)
+- related artifacts (notes, messages, threads)
+
+Notes:
+- Ownership is implicitly the operator (future support for external assignees is expected).
+- A derived summary field may be introduced later if descriptions become lengthy.
 
 ---
 
@@ -126,6 +136,32 @@ The system must:
 - record state transitions
 - timestamp all changes
 - associate outcomes with actions taken
+- gate autonomous state transitions by confidence
+- store transition history in normalized database table(s); no embedded state_history field on the commitment
+
+Suggested normalized table (minimum fields):
+- commitment_id
+- from_state
+- to_state
+- transitioned_at (UTC)
+- actor (user/system)
+- reason/context (text)
+- confidence (float)
+
+#### 6.2.1 Transition Authority
+- `MISSED` is applied autonomously when due time passes without closure.
+- All other transitions are eligible for autonomous application if their confidence meets or exceeds a configurable
+  threshold.
+- When confidence is below the threshold, the system must propose the transition and wait for user confirmation.
+- Confidence is assessed at transition time.
+- Initial implementation: confidence is forced to `0.0` at assessment time (TODO: replace with real confidence model).
+
+#### 6.2.2 Transition Rules
+- Valid states: `OPEN`, `COMPLETED`, `MISSED`, `CANCELED`, `RENEGOTIATED`.
+- No disallowed transitions (any state may transition to any other state).
+- User-initiated transitions override pending proposals and cancel any scheduled follow-ups.
+- `MISSED` is not terminal; it may transition to `COMPLETED`, `CANCELED`, or `RENEGOTIATED`.
+- `RENEGOTIATED` is terminal for the original commitment; a new linked commitment is created with revised terms.
 
 ---
 
@@ -135,6 +171,11 @@ If a commitment passes its due time without closure:
 - mark as `MISSED`
 - record context (what happened)
 - route signal via Attention Router (policy-controlled)
+
+Commitments with no `due_by`:
+- are valid
+- must still have a `next_schedule_id`
+- are never auto-marked `MISSED`
 
 ---
 
@@ -150,6 +191,12 @@ These prompts are:
 - respectful
 - non-judgmental
 - optional
+
+Prompt delivery rules:
+- Channel: Signal only (current implementation scope).
+- High priority: prompt immediately when triggered.
+- Low priority: batch prompts.
+- Commitments with no `due_by` only prompt on scheduled checks.
 
 ---
 
@@ -175,17 +222,25 @@ These prompts are:
 
 ---
 
+### 7.4 Configuration
+- Commitments are configured in `brain.yml` under `commitments`.
+- `commitments.autonomous_transition_confidence_threshold` controls autonomous transition eligibility.
+
+---
+
 ## 8. Observability & Audit
 
-For each commitment, store:
+For each commitment, store audit records in a normalized database table and mirror them into Obsidian:
 - creation source
-- full lifecycle history
+- full lifecycle history (state transitions)
 - resolution notes (optional)
 - related notifications
+- decision type (user vs system)
+- reason/context (free text)
+- evidence/inputs (links to related artifacts)
 
-Optional:
-- Obsidian “Commitment Log” notes
-- Weekly summaries of open vs closed loops
+Retention:
+- Configurable retention window; empty/0/null means indefinite.
 
 ---
 
@@ -193,15 +248,18 @@ Optional:
 
 ### 9.1 Periodic Reviews
 
-Support scheduled reviews (weekly/monthly):
-- open commitments
+Weekly reviews are generated automatically and include:
+- completed commitments
 - missed commitments
-- renegotiated commitments
-- patterns (overcommitment, delays)
+- commitments changed since the last review
+
+Review format:
+- structured data summary
+- natural language summary
 
 Reviews are surfaced as:
-- Obsidian notes
-- optional conversational prompts
+- Signal message (primary channel)
+- Obsidian weekly note (stored in a configurable folder; default `_brain/commitments`)
 
 ---
 
