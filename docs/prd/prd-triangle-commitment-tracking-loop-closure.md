@@ -108,24 +108,77 @@ Silence is not closure.
 ### 6.1 Commitment Creation
 
 Commitments may be created from:
-- user requests (“remind me…”)
+- user signal sources (Signal, local agent; future channels are valid by default)
 - scheduled tasks
 - ingestion outcomes
-- agent suggestions (with confirmation)
+- agent suggestions (subject to approval rules below)
 
 Each commitment must store:
-- description (single canonical text field)
+- description (single canonical text field; required)
 - provenance (who/what created it, and via which channel)
 - due_by (optional single datetime, stored in UTC; rendered in user timezone)
 - state (current lifecycle state)
 - priority_tier (`high` or `low`)
 - created_at / updated_at timestamps
-- next_schedule_id (link to the *next* scheduled reminder/check in the scheduling system)
+- next_schedule_id (nullable; only when a schedule exists)
 - related artifacts (notes, messages, threads)
 
 Notes:
 - Ownership is implicitly the operator (future support for external assignees is expected).
 - A derived summary field may be introduced later if descriptions become lengthy.
+
+#### 6.1.1 Creation Authority & Confidence
+- User-initiated signals create commitments directly.
+- Agent suggestions require user approval unless confidence meets or exceeds a configurable threshold.
+- Initial implementation: confidence is coerced to `0.0` at compare time (TODO: replace with a real model once historical
+  data exists). This intentionally disables autonomous creation in v1.
+
+#### 6.1.2 Scheduling Rules
+- No schedule is created when `due_by` is absent.
+- When `due_by` is present, a schedule may be created to support reminders/check-ins.
+- Commitments without `due_by` must be surfaced in the next review (see §9.1).
+
+#### 6.1.3 Validation & Dedupe
+- Minimum required input is `description`; other fields are optional at creation time.
+- Defaults: `state` is `OPEN`; `priority_tier` defaults to `low` unless explicitly signaled otherwise.
+- Fuzzy dedupe is performed at creation time; possible duplicates require user confirmation before creating a new
+  commitment.
+- A second duplicate check is performed during weekly review prep to surface missed duplicates for reconciliation.
+
+#### 6.1.4 Scheduler Linkage
+- Commitments are a separate domain from scheduling. Scheduling uses `TaskIntent` + `Schedule` to encode execution, and
+  commitments link to schedules, not to task intents directly.
+- Scheduler callbacks provide `schedule_id`; the commitment module resolves the commitment via its linkage table. The
+  scheduler remains agnostic of commitment foreign keys.
+- When a commitment is assigned `due_by` (at creation or later), create a new `TaskIntent` and `Schedule` immediately.
+- Commitment follow-ups are one-time schedules (reminders/checks/escalation points), not recurring schedules.
+- When `due_by` changes, update the existing schedule in place (no new schedule).
+- Commitments store `next_schedule_id` (nullable) as a convenience pointer to the next scheduled follow-up; full history
+  is tracked separately (see §6.1.5).
+
+#### 6.1.5 Commitment ↔ Schedule Linkage History
+Commitments require a 1:many linkage to schedules to preserve all follow-ups after they fire. A normalized linker table
+captures this history.
+
+Minimum fields:
+- commitment_id
+- schedule_id
+- purpose (`reminder`, `check_in`, `escalation`, `review_prompt`, etc.)
+- created_at (UTC)
+- created_by_actor_type / created_by_actor_id / created_by_channel
+- canceled_at (UTC, nullable)
+
+#### 6.1.6 Schedule Change History
+Updates to an existing schedule (e.g., `due_by` changes) must be recorded for auditability.
+
+Minimum fields:
+- commitment_id
+- schedule_id
+- old_due_by (UTC)
+- new_due_by (UTC)
+- change_reason (text)
+- changed_at (UTC)
+- changed_by_actor_type / changed_by_actor_id / changed_by_channel
 
 ---
 
@@ -174,8 +227,9 @@ If a commitment passes its due time without closure:
 
 Commitments with no `due_by`:
 - are valid
-- must still have a `next_schedule_id`
 - are never auto-marked `MISSED`
+- do not require a schedule
+- must be surfaced in the next review
 
 ---
 
@@ -196,7 +250,7 @@ Prompt delivery rules:
 - Channel: Signal only (current implementation scope).
 - High priority: prompt immediately when triggered.
 - Low priority: batch prompts.
-- Commitments with no `due_by` only prompt on scheduled checks.
+- Commitments with no `due_by` only prompt within the weekly review flow.
 
 ---
 
@@ -204,27 +258,27 @@ Prompt delivery rules:
 
 ### 7.1 Scheduling System
 - Commitments may schedule reminders or checks
-- Schedules reference commitment IDs
-- Schedule execution updates commitment state
+- Scheduler callbacks provide `schedule_id`; the commitment module resolves linkage via its own tables.
+- Scheduler callbacks invoke commitment module public interfaces only
+- Scheduler callbacks may trigger commitment evaluation logic but may not directly set commitment state
 
 ---
 
 ### 7.2 Attention Router
-- Controls when closure prompts surface
-- Batches low-urgency follow-ups
-- Escalates repeated misses carefully
+- All commitment-related outbound messaging must route through the Attention Router (no direct sends).
+- Signal is the only supported outbound channel in v1.
+- Priority mapping: `high` prompts immediately; `low` prompts are batched.
+- Missed commitments: `high` prompts immediately on miss; `low` prompts are batched.
+- No grace period for misses in v1.
+- No quiet-hours overrides in v1; the Attention Router enforces existing policies.
+- Repeated misses may escalate prompt frequency and may be summarized in weekly reviews.
 
 ---
 
-### 7.3 Memory Promotion
-- Stable commitments or patterns may be proposed as memory
-- Only Letta may promote patterns into durable memory
-
----
-
-### 7.4 Configuration
+### 7.3 Configuration
 - Commitments are configured in `brain.yml` under `commitments`.
 - `commitments.autonomous_transition_confidence_threshold` controls autonomous transition eligibility.
+- `commitments.autonomous_creation_confidence_threshold` controls autonomous creation eligibility (default: `0.9`).
 
 ---
 
@@ -252,6 +306,8 @@ Weekly reviews are generated automatically and include:
 - completed commitments
 - missed commitments
 - commitments changed since the last review
+- commitments with no `due_by`
+- potential duplicate commitments flagged during review prep
 
 Review format:
 - structured data summary
