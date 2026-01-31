@@ -281,55 +281,22 @@ Progress is recorded only when the agent determines that related data constitute
 
 ---
 
-### 6.6 Canonical Storage (Obsidian) and Rebuild
+### 6.6 Canonical Storage (Postgres) and Backup
 
-Obsidian is the canonical source of truth for commitments and commitment events. Postgres is the operational store and
-must be rebuildable from Obsidian logs.
+Postgres is the canonical Tier 0 source of truth for commitments, events, progress, provenance, and priority ranking.
+There is no dual-write, syncing, or rebuild path from Obsidian. Postgres must be backed up according to Tier 0 policy.
 
-#### 6.6.1 Obsidian Commitment Event Logs
-- One append-only JSONL file per commitment.
-- Stored under `obsidian.commitment_folder` (default: `commitments`) within the vault root.
-- Schedule linkage changes are *not* logged to Obsidian; schedules are derived operational data.
+#### 6.6.1 Backup Expectations
+- Backups are required for Tier 0 durability and recovery.
+- Backup frequency, retention, and restore procedures are defined by the system backup policy.
 
-Required event fields (minimum):
-- event_id (required for referential integrity after restore)
-- commitment_id
-- event_type
-- occurred_at (UTC)
-- actor_type / actor_id
-- origin_channel
-- provenance_id
-- confidence (float)
-- payload (event-specific)
+#### 6.6.2 Optional Obsidian Exports (Non-Canonical)
+- Exporting commitment data to Obsidian is out of scope for v1.
+- Any future export is read-only, best-effort, and does not affect source of truth.
 
-Event types (minimum):
-- `commitment_created`
-- `commitment_updated`
-- `commitment_state_transitioned`
-- `commitment_renegotiated`
-- `commitment_progress_recorded`
-- `commitment_artifact_attached`
-
-#### 6.6.2 Obsidian Progress Logs
-- One append-only JSONL file per commitment for progress records.
-- Same JSONL conventions as above.
-
-#### 6.6.3 Obsidian Provenance Logs
-- Provenance is also stored in Obsidian using JSONL conventions.
-- Commitment and progress records link to provenance via provenance_id.
-
-#### 6.6.4 Priority Ranking (Tier 0)
-- Priority ordering is persisted as a dedicated JSON file containing an ordered array of commitment IDs.
-- Sparse ranking is allowed (e.g., 10, 20, 30).
+#### 6.6.3 Priority Ranking (Tier 0)
+- Priority ordering is persisted in Postgres as a dedicated table or ordered list representation.
 - Re-ranking is a separate operation and is not represented as a commitment event.
-
-#### 6.6.5 Rebuild Behavior
-- Incremental rebuilds run on boot, nightly, and via manual trigger (full rebuild via explicit flag).
-- Rebuild checkpoint state is stored in a Postgres-backed KV config table (Tier 1).
-- Postgres is read-only during rebuild.
-- Obsidian write failure aborts the operation and triggers immediate, high-urgency notification.
-- Postgres write failure emits warning/log and relies on rebuild to heal.
-- If divergence is detected, log error and propose immediate rebuild.
 
 ---
 
@@ -362,14 +329,13 @@ Event types (minimum):
 - `commitments.dedupe_summary_length` controls dedupe summary word limit (default: `20`).
 - `commitments.review_day` controls weekly review day (default: `Saturday`).
 - `commitments.review_time` controls weekly review time (default: `10:00`).
-- `obsidian.commitment_folder` controls the vault folder for commitment logs (default: `commitments`).
 - All user-facing dates/times are interpreted in the operator-configured timezone.
 
 ---
 
 ## 8. Observability & Audit
 
-For each commitment, store audit records in normalized database tables and mirror canonical data into Obsidian:
+For each commitment, store audit records in normalized database tables:
 - creation source
 - full lifecycle history (state transitions)
 - resolution notes (optional)
@@ -400,7 +366,6 @@ Review format:
 
 Reviews are surfaced as:
 - Signal message (primary channel)
-- Obsidian weekly note stored under `obsidian.commitment_folder` (default: `commitments`)
 
 If there are no changes, the review still reports that there is nothing new to review and logs the confirmation.
 
@@ -451,8 +416,7 @@ Mitigation:
 - [ ] Loop-closure prompts integrated
 - [ ] Review summaries generated
 - [ ] Attention Router fully integrated
-- [ ] Obsidian canonical logs implemented (commitments, progress, provenance)
-- [ ] Postgres rebuild from Obsidian logs implemented
+- [ ] Tier 0 backup policy confirmed and operational
 
 ---
 
