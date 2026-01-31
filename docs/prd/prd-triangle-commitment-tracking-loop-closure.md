@@ -116,21 +116,23 @@ Each commitment must store:
 - provenance_id (links to provenance record)
 - due_by (optional single datetime, stored in UTC; rendered in user timezone)
 - state (current lifecycle state)
-- priority_rank (integer; strict ordering, no ties)
-- importance (optional, model or operator supplied)
-- urgency (optional, model derived)
-- effort_provided (optional; operator-specified)
-- effort_inferred (optional; model-specified)
+- importance (int 1-3; operator or model supplied; default: 2)
+- effort_provided (int 1-3; operator-specified; default: 2)
+- effort_inferred (int 1-3; model-specified; optional)
+- urgency (int 1-100; stored; derived from importance/effort/due_by)
 - renegotiated_from_id (nullable)
 - created_at / updated_at timestamps (UTC)
 - last_progress_at (UTC, nullable)
+- reviewed_at (UTC, nullable; set during weekly review)
 - next_schedule_id (nullable; only when a schedule exists)
 - related artifacts (notes, messages, threads)
 
 Notes:
 - Ownership is implicitly the operator (future support for external assignees is expected).
 - effort_provided takes precedence over effort_inferred.
-- Priority ordering is persisted as Tier 0 (see §6.4.4).
+- Urgency is recalculated whenever importance, effort, or due_by changes; recalculation should validate the active
+  follow-up schedule is still sensible.
+- TODO: Define provenance schema and subsystem contract; CTLC depends on it.
 - A derived summary field may be introduced later if descriptions become lengthy.
 
 #### 6.1.1 Creation Authority & Confidence
@@ -144,50 +146,31 @@ Notes:
 - When `due_by` is present, a schedule may be created to support reminders/check-ins.
 - Commitments without `due_by` must be surfaced in the next review (see §9.1).
 - Date-only `due_by` defaults to `23:59:59` in the operator’s configured timezone, then stored in UTC.
+- When `due_by` is absent, urgency calculation assumes `due_by = now + 7 days`.
 - No recurring commitment schedules in v1.
 
 #### 6.1.3 Validation & Dedupe
 - Minimum required input is `description`; other fields are optional at creation time.
-- Defaults: `state` is `OPEN`; priority_rank is computed at creation time.
+- Defaults: `state` is `OPEN`; importance and effort default to 2; urgency is computed at creation time.
 - Dedupe is LLM-driven using a configurable confidence threshold.
 - Dedupe proposals must include a short summary (default 20 words) and require operator confirmation via prompt/reply.
+- Dedupe evaluation is performed per-commitment using the full set of other commitments as comparison candidates.
+- Dedupe proposals are not persisted beyond surfacing and operator decision.
 - A second duplicate check is performed during weekly review prep to surface missed duplicates for reconciliation.
 
 #### 6.1.4 Scheduler Linkage
 - Commitments are a separate domain from scheduling. Scheduling uses `TaskIntent` + `Schedule` to encode execution, and
   commitments link to schedules, not to task intents directly.
-- Scheduler callbacks provide `schedule_id`; the commitment module resolves the commitment via its linkage table. The
+- Scheduler callbacks provide `schedule_id`; the commitment module resolves the commitment via `next_schedule_id`. The
   scheduler remains agnostic of commitment foreign keys.
 - When a commitment is assigned `due_by` (at creation or later), create a new `TaskIntent` and `Schedule` immediately.
 - Commitment follow-ups are one-time schedules (reminders/checks/escalation points), not recurring schedules.
 - When `due_by` changes, update the existing schedule in place (no new schedule).
 - When a commitment is canceled or renegotiated, remove any associated schedules.
-- Commitments store `next_schedule_id` (nullable) as a convenience pointer to the next scheduled follow-up; full history
-  is tracked separately (see §6.1.5).
-
-#### 6.1.5 Commitment ↔ Schedule Linkage History
-Commitments require a 1:many linkage to schedules to preserve all follow-ups after they fire. A normalized linker table
-captures this history (Tier 1 only).
-
-Minimum fields:
-- commitment_id
-- schedule_id
-- purpose (`reminder`, `check_in`, `escalation`, `review_prompt`, etc.)
-- created_at (UTC)
-- created_by_actor_type / created_by_actor_id / created_by_channel
-- canceled_at (UTC, nullable)
-
-#### 6.1.6 Schedule Change History
-Updates to an existing schedule (e.g., `due_by` changes) must be recorded for auditability (Tier 1 only).
-
-Minimum fields:
-- commitment_id
-- schedule_id
-- old_due_by (UTC)
-- new_due_by (UTC)
-- change_reason (text)
-- changed_at (UTC)
-- changed_by_actor_type / changed_by_actor_id / changed_by_channel
+- Commitments store `next_schedule_id` (nullable) as a convenience pointer to the next scheduled follow-up; the scheduler
+  service already maintains its own audit history.
+- At most one active follow-up schedule exists per commitment at any time.
+- CTLC uses the scheduler service interface only; it must not directly manipulate scheduler database tables.
 
 ---
 
@@ -220,7 +203,7 @@ Suggested normalized table (minimum fields):
 
 #### 6.2.2 Transition Rules
 - Valid states: `OPEN`, `COMPLETED`, `MISSED`, `CANCELED`, `RENEGOTIATED`.
-- Any state may transition to any other state, except `RENEGOTIATED` is terminal for the original commitment.
+- Any state may transition to any other state.
 - User-initiated transitions override pending proposals and cancel any scheduled follow-ups.
 - `MISSED` is not terminal; it may transition to `COMPLETED`, `CANCELED`, or `RENEGOTIATED`.
 - `RENEGOTIATED` creates a new linked commitment and inherits provenance and related artifacts by default.
@@ -283,7 +266,7 @@ Progress is recorded only when the agent determines that related data constitute
 
 ### 6.6 Canonical Storage (Postgres) and Backup
 
-Postgres is the canonical Tier 0 source of truth for commitments, events, progress, provenance, and priority ranking.
+Postgres is the canonical Tier 0 source of truth for commitments, events, progress, and provenance.
 There is no dual-write, syncing, or rebuild path from Obsidian. Postgres must be backed up according to Tier 0 policy.
 
 #### 6.6.1 Backup Expectations
@@ -294,9 +277,30 @@ There is no dual-write, syncing, or rebuild path from Obsidian. Postgres must be
 - Exporting commitment data to Obsidian is out of scope for v1.
 - Any future export is read-only, best-effort, and does not affect source of truth.
 
-#### 6.6.3 Priority Ranking (Tier 0)
-- Priority ordering is persisted in Postgres as a dedicated table or ordered list representation.
-- Re-ranking is a separate operation and is not represented as a commitment event.
+#### 6.6.3 Urgency Calculation (Tier 0)
+Urgency is stored and recalculated when importance, effort, or due_by changes.
+
+Inputs:
+- importance (int 1-3; default 2)
+- effort (int 1-3; default 2)
+- due_by (datetime, optional)
+- now (current time in UTC)
+
+Effort hours map:
+- 1 → 0.5 hours
+- 2 → 2 hours
+- 3 → 8 hours
+
+Time pressure:
+- time_left_hours = max(0, (due_by - now) in hours)
+- if due_by is null, assume due_by = now + 7 days for urgency calculation
+- time_pressure = clamp(1 - (time_left_hours / max(1, effort_hours * 4)), 0, 1)
+
+Urgency score:
+- base_importance = importance / 3
+- base_effort = effort / 3
+- urgency_raw = (0.4 * base_importance) + (0.4 * time_pressure) + (0.2 * base_effort)
+- urgency = round(1 + (urgency_raw * 99))  # 1-100
 
 ---
 
@@ -304,7 +308,7 @@ There is no dual-write, syncing, or rebuild path from Obsidian. Postgres must be
 
 ### 7.1 Scheduling System
 - Commitments may schedule reminders or checks
-- Scheduler callbacks provide `schedule_id`; the commitment module resolves linkage via its own tables.
+- Scheduler callbacks provide `schedule_id`; the commitment module resolves linkage via `next_schedule_id`.
 - Scheduler callbacks invoke commitment module public interfaces only
 - Scheduler callbacks may trigger commitment evaluation logic but may not directly set commitment state
 - Commitment schedules are derived from commitment data and are not canonical
@@ -368,6 +372,7 @@ Reviews are surfaced as:
 - Signal message (primary channel)
 
 If there are no changes, the review still reports that there is nothing new to review and logs the confirmation.
+`reviewed_at` is updated at least during weekly review, and may be updated by other explicit review prompts.
 
 ---
 

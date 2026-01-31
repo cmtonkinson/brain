@@ -86,12 +86,12 @@ flowchart TB
 
 ## Data Tiers (Current State)
 **Tier 0 — Authoritative Information**
-- Obsidian vault (canonical notes, promoted memory)
-- TODO: Add MinIO
 - Configuration/policy files under `~/.config/brain`
+- Obsidian vault (canonical knowledge, notes, promoted memory)
+- Postgres (operational state - scheduels, logs, etc.)
+- MinIO (raw artifacts)
 
 **Tier 1 — Durable System State**
-- Postgres (action logs, operational state)
 - Letta internal DB (archival memory state)
 - Signal CLI state (device + message metadata)
 
@@ -113,7 +113,7 @@ flowchart TB
 - Skill framework + capability registry
 - Attention router + interruption policy
 - Commitment tracking + loop closure
-- Requires: scheduled/background jobs, policy engine, etc
+- Requires scheduled/background jobs, policy engine, ingestion pipeline
 
 ### Phase 3: Voice + telephony + SMS (planned)
 - Local voice (whisper.cpp + Piper, openWakeWord)

@@ -113,6 +113,7 @@ If something does not compound, it is suspect.
 The system is composed of layers with **clear authority boundaries**.
 
 #### Tier 0 — Authoritative Truth (Must Be Backed Up)
+- Postgres (authoritative system state and commitments)
 - Obsidian vault (Markdown knowledge, promoted memory)
 - Object storage (raw blobs: HTML, PDFs, audio, images)
 
@@ -121,7 +122,7 @@ These are the canonical sources of truth.
 ---
 
 #### Tier 1 — Durable System State (Backed Up Pragmatically)
-- Agent memory store (Letta, e.g. Postgres)
+- Agent memory store (Letta internal state)
 - Scheduler / job state
 - Message linkage state (e.g. Signal CLI identity)
 

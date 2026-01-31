@@ -28,6 +28,7 @@ There is no ambiguous middle ground.
 #### Tier 0 — Authoritative, Human-Owned
 Must be backed up. Cannot be regenerated.
 
+- Postgres (authoritative system state and commitments)
 - Obsidian vault
   - Memory folder (promoted memories)
   - Notes, reflections, decisions
@@ -42,10 +43,9 @@ Loss here is **irrecoverable knowledge loss**.
 Important, but reconstructable with effort.
 
 - MinIO object storage (raw artifacts)
-- Commitment records
 - Schedule definitions
 - Message metadata
-- Letta Postgres state
+- Letta internal state
 
 Loss is painful but recoverable.
 
@@ -74,14 +74,15 @@ No automatic reverse flow.
 
 ---
 
-### 4. Obsidian Is the Canonical Memory
+### 4. Canonical Memory and System Authority
 
 If it matters long-term, it must:
 - exist in Obsidian
 - be readable by a human
 - carry provenance
 
-No database is allowed to become the “real brain.”
+Operational commitments, schedules, and other structured system state are canonical in Postgres. Obsidian is the
+canonical memory for promoted, human-readable knowledge.
 
 ---
 
