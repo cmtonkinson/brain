@@ -131,7 +131,8 @@ Notes:
 - Ownership is implicitly the operator (future support for external assignees is expected).
 - effort_provided takes precedence over effort_inferred.
 - Urgency is recalculated whenever importance, effort, or due_by changes; recalculation should validate the active
-  follow-up schedule is still sensible.
+  follow-up schedule is still sensible (e.g., due tomorrow with a follow-up scheduled days later is invalid; urgency
+  near 99 with a follow-up scheduled for next week is likely invalid).
 - TODO: Define provenance schema and subsystem contract; CTLC depends on it.
 - A derived summary field may be introduced later if descriptions become lengthy.
 
@@ -170,6 +171,7 @@ Notes:
 - Commitments store `next_schedule_id` (nullable) as a convenience pointer to the next scheduled follow-up; the scheduler
   service already maintains its own audit history.
 - At most one active follow-up schedule exists per commitment at any time.
+- Follow-up schedules are never shared across commitments.
 - CTLC uses the scheduler service interface only; it must not directly manipulate scheduler database tables.
 
 ---
@@ -333,6 +335,7 @@ Urgency score:
 - `commitments.dedupe_summary_length` controls dedupe summary word limit (default: `20`).
 - `commitments.review_day` controls weekly review day (default: `Saturday`).
 - `commitments.review_time` controls weekly review time (default: `10:00`).
+- `commitments.audit_retention_days` controls audit retention window in days (default: `0` for indefinite).
 - All user-facing dates/times are interpreted in the operator-configured timezone.
 
 ---
@@ -349,7 +352,7 @@ For each commitment, store audit records in normalized database tables:
 - evidence/inputs (links to related artifacts)
 
 Retention:
-- Configurable retention window; empty/0/null means indefinite.
+- Configurable retention window; `commitments.audit_retention_days` of `0` means indefinite.
 
 ---
 
@@ -372,7 +375,7 @@ Reviews are surfaced as:
 - Signal message (primary channel)
 
 If there are no changes, the review still reports that there is nothing new to review and logs the confirmation.
-`reviewed_at` is updated at least during weekly review, and may be updated by other explicit review prompts.
+`reviewed_at` is updated during the weekly review job.
 
 ---
 
