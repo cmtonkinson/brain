@@ -46,6 +46,7 @@ Brain must **close loops**, not just open them.
 - Enforcing productivity or moral judgment
 - Automatic punitive escalation
 - Optimizing for maximum task completion at all costs
+- Recurring commitment schedules (out of scope for v1)
 
 ---
 
@@ -71,7 +72,6 @@ A commitment is a promise that has:
 Examples:
 - “Follow up with Alex”
 - “Review proposal by Friday”
-- “Daily brief at 8am”
 - “Think about this article later”
 
 ---
@@ -80,10 +80,8 @@ Examples:
 
 States:
 - `OPEN`
-- `IN_PROGRESS`
 - `COMPLETED`
 - `MISSED`
-- `DEFERRED`
 - `CANCELED`
 - `RENEGOTIATED`
 
@@ -107,24 +105,32 @@ Silence is not closure.
 
 ### 6.1 Commitment Creation
 
-Commitments may be created from:
-- user signal sources (Signal, local agent; future channels are valid by default)
-- scheduled tasks
-- ingestion outcomes
+Commitments may be created from any inbound signals:
+- operator input (Signal, local agent)
+- MCP tools and skills
+- ingestion outcomes (email, iMessage, meeting transcripts, files, etc.)
 - agent suggestions (subject to approval rules below)
 
 Each commitment must store:
 - description (single canonical text field; required)
-- provenance (who/what created it, and via which channel)
+- provenance_id (links to provenance record)
 - due_by (optional single datetime, stored in UTC; rendered in user timezone)
 - state (current lifecycle state)
-- priority_tier (`high` or `low`)
-- created_at / updated_at timestamps
+- priority_rank (integer; strict ordering, no ties)
+- importance (optional, model or operator supplied)
+- urgency (optional, model derived)
+- effort_provided (optional; operator-specified)
+- effort_inferred (optional; model-specified)
+- renegotiated_from_id (nullable)
+- created_at / updated_at timestamps (UTC)
+- last_progress_at (UTC, nullable)
 - next_schedule_id (nullable; only when a schedule exists)
 - related artifacts (notes, messages, threads)
 
 Notes:
 - Ownership is implicitly the operator (future support for external assignees is expected).
+- effort_provided takes precedence over effort_inferred.
+- Priority ordering is persisted as Tier 0 (see §6.4.4).
 - A derived summary field may be introduced later if descriptions become lengthy.
 
 #### 6.1.1 Creation Authority & Confidence
@@ -137,12 +143,14 @@ Notes:
 - No schedule is created when `due_by` is absent.
 - When `due_by` is present, a schedule may be created to support reminders/check-ins.
 - Commitments without `due_by` must be surfaced in the next review (see §9.1).
+- Date-only `due_by` defaults to `23:59:59` in the operator’s configured timezone, then stored in UTC.
+- No recurring commitment schedules in v1.
 
 #### 6.1.3 Validation & Dedupe
 - Minimum required input is `description`; other fields are optional at creation time.
-- Defaults: `state` is `OPEN`; `priority_tier` defaults to `low` unless explicitly signaled otherwise.
-- Fuzzy dedupe is performed at creation time; possible duplicates require user confirmation before creating a new
-  commitment.
+- Defaults: `state` is `OPEN`; priority_rank is computed at creation time.
+- Dedupe is LLM-driven using a configurable confidence threshold.
+- Dedupe proposals must include a short summary (default 20 words) and require operator confirmation via prompt/reply.
 - A second duplicate check is performed during weekly review prep to surface missed duplicates for reconciliation.
 
 #### 6.1.4 Scheduler Linkage
@@ -153,12 +161,13 @@ Notes:
 - When a commitment is assigned `due_by` (at creation or later), create a new `TaskIntent` and `Schedule` immediately.
 - Commitment follow-ups are one-time schedules (reminders/checks/escalation points), not recurring schedules.
 - When `due_by` changes, update the existing schedule in place (no new schedule).
+- When a commitment is canceled or renegotiated, remove any associated schedules.
 - Commitments store `next_schedule_id` (nullable) as a convenience pointer to the next scheduled follow-up; full history
   is tracked separately (see §6.1.5).
 
 #### 6.1.5 Commitment ↔ Schedule Linkage History
 Commitments require a 1:many linkage to schedules to preserve all follow-ups after they fire. A normalized linker table
-captures this history.
+captures this history (Tier 1 only).
 
 Minimum fields:
 - commitment_id
@@ -169,7 +178,7 @@ Minimum fields:
 - canceled_at (UTC, nullable)
 
 #### 6.1.6 Schedule Change History
-Updates to an existing schedule (e.g., `due_by` changes) must be recorded for auditability.
+Updates to an existing schedule (e.g., `due_by` changes) must be recorded for auditability (Tier 1 only).
 
 Minimum fields:
 - commitment_id
@@ -211,17 +220,17 @@ Suggested normalized table (minimum fields):
 
 #### 6.2.2 Transition Rules
 - Valid states: `OPEN`, `COMPLETED`, `MISSED`, `CANCELED`, `RENEGOTIATED`.
-- No disallowed transitions (any state may transition to any other state).
+- Any state may transition to any other state, except `RENEGOTIATED` is terminal for the original commitment.
 - User-initiated transitions override pending proposals and cancel any scheduled follow-ups.
 - `MISSED` is not terminal; it may transition to `COMPLETED`, `CANCELED`, or `RENEGOTIATED`.
-- `RENEGOTIATED` is terminal for the original commitment; a new linked commitment is created with revised terms.
+- `RENEGOTIATED` creates a new linked commitment and inherits provenance and related artifacts by default.
 
 ---
 
 ### 6.3 Miss Detection
 
 If a commitment passes its due time without closure:
-- mark as `MISSED`
+- mark as `MISSED` immediately (no grace period)
 - record context (what happened)
 - route signal via Attention Router (policy-controlled)
 
@@ -248,9 +257,79 @@ These prompts are:
 
 Prompt delivery rules:
 - Channel: Signal only (current implementation scope).
-- High priority: prompt immediately when triggered.
-- Low priority: batch prompts.
+- Urgency is model-derived and mapped into the Attention Router.
 - Commitments with no `due_by` only prompt within the weekly review flow.
+
+---
+
+### 6.5 Commitment Progress
+
+Commitment progress is captured as a separate record to avoid mutating commitments for every related signal.
+
+Minimum CommitmentProgress fields:
+- progress_id
+- commitment_id
+- provenance_id
+- occurred_at (UTC)
+- summary (short)
+- snippet (optional)
+- metadata (optional)
+
+Commitments may include a derived `last_progress_at` field for efficient reasoning without extra joins.
+
+Progress is recorded only when the agent determines that related data constitutes actual progress.
+
+---
+
+### 6.6 Canonical Storage (Obsidian) and Rebuild
+
+Obsidian is the canonical source of truth for commitments and commitment events. Postgres is the operational store and
+must be rebuildable from Obsidian logs.
+
+#### 6.6.1 Obsidian Commitment Event Logs
+- One append-only JSONL file per commitment.
+- Stored under `obsidian.commitment_folder` (default: `commitments`) within the vault root.
+- Schedule linkage changes are *not* logged to Obsidian; schedules are derived operational data.
+
+Required event fields (minimum):
+- event_id (required for referential integrity after restore)
+- commitment_id
+- event_type
+- occurred_at (UTC)
+- actor_type / actor_id
+- origin_channel
+- provenance_id
+- confidence (float)
+- payload (event-specific)
+
+Event types (minimum):
+- `commitment_created`
+- `commitment_updated`
+- `commitment_state_transitioned`
+- `commitment_renegotiated`
+- `commitment_progress_recorded`
+- `commitment_artifact_attached`
+
+#### 6.6.2 Obsidian Progress Logs
+- One append-only JSONL file per commitment for progress records.
+- Same JSONL conventions as above.
+
+#### 6.6.3 Obsidian Provenance Logs
+- Provenance is also stored in Obsidian using JSONL conventions.
+- Commitment and progress records link to provenance via provenance_id.
+
+#### 6.6.4 Priority Ranking (Tier 0)
+- Priority ordering is persisted as a dedicated JSON file containing an ordered array of commitment IDs.
+- Sparse ranking is allowed (e.g., 10, 20, 30).
+- Re-ranking is a separate operation and is not represented as a commitment event.
+
+#### 6.6.5 Rebuild Behavior
+- Incremental rebuilds run on boot, nightly, and via manual trigger (full rebuild via explicit flag).
+- Rebuild checkpoint state is stored in a Postgres-backed KV config table (Tier 1).
+- Postgres is read-only during rebuild.
+- Obsidian write failure aborts the operation and triggers immediate, high-urgency notification.
+- Postgres write failure emits warning/log and relies on rebuild to heal.
+- If divergence is detected, log error and propose immediate rebuild.
 
 ---
 
@@ -261,15 +340,15 @@ Prompt delivery rules:
 - Scheduler callbacks provide `schedule_id`; the commitment module resolves linkage via its own tables.
 - Scheduler callbacks invoke commitment module public interfaces only
 - Scheduler callbacks may trigger commitment evaluation logic but may not directly set commitment state
+- Commitment schedules are derived from commitment data and are not canonical
 
 ---
 
 ### 7.2 Attention Router
 - All commitment-related outbound messaging must route through the Attention Router (no direct sends).
 - Signal is the only supported outbound channel in v1.
-- Priority mapping: `high` prompts immediately; `low` prompts are batched.
-- Missed commitments: `high` prompts immediately on miss; `low` prompts are batched.
-- No grace period for misses in v1.
+- Routing uses model-derived urgency (and other router inputs) rather than a static priority tier.
+- Missed commitments have no grace period and are routed immediately based on urgency.
 - No quiet-hours overrides in v1; the Attention Router enforces existing policies.
 - Repeated misses may escalate prompt frequency and may be summarized in weekly reviews.
 
@@ -279,12 +358,18 @@ Prompt delivery rules:
 - Commitments are configured in `brain.yml` under `commitments`.
 - `commitments.autonomous_transition_confidence_threshold` controls autonomous transition eligibility.
 - `commitments.autonomous_creation_confidence_threshold` controls autonomous creation eligibility (default: `0.9`).
+- `commitments.dedupe_confidence_threshold` controls dedupe proposal eligibility (default: `0.8`).
+- `commitments.dedupe_summary_length` controls dedupe summary word limit (default: `20`).
+- `commitments.review_day` controls weekly review day (default: `Saturday`).
+- `commitments.review_time` controls weekly review time (default: `10:00`).
+- `obsidian.commitment_folder` controls the vault folder for commitment logs (default: `commitments`).
+- All user-facing dates/times are interpreted in the operator-configured timezone.
 
 ---
 
 ## 8. Observability & Audit
 
-For each commitment, store audit records in a normalized database table and mirror them into Obsidian:
+For each commitment, store audit records in normalized database tables and mirror canonical data into Obsidian:
 - creation source
 - full lifecycle history (state transitions)
 - resolution notes (optional)
@@ -302,7 +387,7 @@ Retention:
 
 ### 9.1 Periodic Reviews
 
-Weekly reviews are generated automatically and include:
+Weekly reviews are generated automatically (via TaskIntent + Schedule) and include:
 - completed commitments
 - missed commitments
 - commitments changed since the last review
@@ -315,7 +400,9 @@ Review format:
 
 Reviews are surfaced as:
 - Signal message (primary channel)
-- Obsidian weekly note (stored in a configurable folder; default `_brain/commitments`)
+- Obsidian weekly note stored under `obsidian.commitment_folder` (default: `commitments`)
+
+If there are no changes, the review still reports that there is nothing new to review and logs the confirmation.
 
 ---
 
@@ -364,6 +451,8 @@ Mitigation:
 - [ ] Loop-closure prompts integrated
 - [ ] Review summaries generated
 - [ ] Attention Router fully integrated
+- [ ] Obsidian canonical logs implemented (commitments, progress, provenance)
+- [ ] Postgres rebuild from Obsidian logs implemented
 
 ---
 
