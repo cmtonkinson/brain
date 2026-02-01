@@ -6,7 +6,9 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import (
+    BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Enum,
@@ -17,6 +19,7 @@ from sqlalchemy import (
     Text,
     Time,
     Uuid,
+    UniqueConstraint,
     event,
 )
 from sqlalchemy.orm import declarative_base
@@ -62,6 +65,35 @@ IngestionStatusEnum = Enum(
     "complete",
     "failed",
     name="ingestion_status",
+    native_enum=False,
+)
+ArtifactTypeEnum = Enum(
+    "raw",
+    "extracted",
+    "normalized",
+    name="artifact_type",
+    native_enum=False,
+)
+IngestionStageEnum = Enum(
+    "store",
+    "extract",
+    "normalize",
+    "anchor",
+    name="ingestion_stage",
+    native_enum=False,
+)
+ArtifactParentStageEnum = Enum(
+    "store",
+    "extract",
+    "normalize",
+    name="artifact_parent_stage",
+    native_enum=False,
+)
+IngestionArtifactStatusEnum = Enum(
+    "success",
+    "failed",
+    "skipped",
+    name="ingestion_artifact_status",
     native_enum=False,
 )
 IntervalUnitEnum = Enum(
@@ -201,6 +233,98 @@ class Ingestion(Base):
     )
     status = Column(IngestionStatusEnum, nullable=False)
     last_error = Column(Text, nullable=True)
+
+
+class Artifact(Base):
+    """Metadata for raw or derived ingestion artifacts."""
+
+    __tablename__ = "artifacts"
+
+    object_key = Column(Text, primary_key=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    size_bytes = Column(BigInteger, nullable=False)
+    mime_type = Column(Text, nullable=True)
+    checksum = Column(Text, nullable=False)
+    artifact_type = Column(ArtifactTypeEnum, nullable=False)
+    first_ingested_at = Column(DateTime(timezone=True), nullable=False)
+    last_ingested_at = Column(DateTime(timezone=True), nullable=False)
+    parent_object_key = Column(Text, ForeignKey("artifacts.object_key"), nullable=True)
+    parent_stage = Column(ArtifactParentStageEnum, nullable=True)
+
+
+class IngestionArtifact(Base):
+    """Stage-level artifact outcome record for a specific ingestion."""
+
+    __tablename__ = "ingestion_artifacts"
+    __table_args__ = (
+        UniqueConstraint("ingestion_id", "stage", "object_key", name="uq_ingestion_stage_object"),
+        CheckConstraint(
+            "stage IN ('store', 'extract', 'normalize', 'anchor')",
+            name="ck_ingestion_artifacts_stage",
+        ),
+        CheckConstraint(
+            "status IN ('success', 'failed', 'skipped')",
+            name="ck_ingestion_artifacts_status",
+        ),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ingestion_id = Column(Uuid(as_uuid=True), ForeignKey("ingestions.id"), nullable=False)
+    stage = Column(IngestionStageEnum, nullable=False)
+    object_key = Column(Text, ForeignKey("artifacts.object_key"), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    status = Column(IngestionArtifactStatusEnum, nullable=False)
+    error = Column(Text, nullable=True)
+
+
+class ProvenanceRecord(Base):
+    """Provenance record anchored to a specific artifact object key."""
+
+    __tablename__ = "provenance_records"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    object_key = Column(Text, ForeignKey("artifacts.object_key"), nullable=False, unique=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class ProvenanceSource(Base):
+    """Deduplicated provenance source tied to an ingestion attempt."""
+
+    __tablename__ = "provenance_sources"
+    __table_args__ = (
+        UniqueConstraint(
+            "provenance_id",
+            "source_type",
+            "source_uri",
+            "source_actor",
+            name="uq_provenance_source_dedupe",
+        ),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provenance_id = Column(Uuid(as_uuid=True), ForeignKey("provenance_records.id"), nullable=False)
+    ingestion_id = Column(Uuid(as_uuid=True), ForeignKey("ingestions.id"), nullable=False)
+    source_type = Column(Text, nullable=False)
+    source_uri = Column(Text, nullable=True)
+    source_actor = Column(Text, nullable=True)
+    captured_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class NotificationEnvelope(Base):
@@ -740,3 +864,4 @@ class ReviewItem(Base):
     description = Column(String(500), nullable=False)
     last_error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    __table_args__ = ({"sqlite_autoincrement": True},)

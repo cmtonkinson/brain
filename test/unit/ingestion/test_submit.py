@@ -26,6 +26,11 @@ def _valid_request() -> IngestionRequest:
     )
 
 
+def _noop_enqueue(_: uuid.UUID, __: IngestionRequest) -> None:
+    """No-op enqueue hook for unit tests."""
+    return None
+
+
 def test_submit_ingestion_persists_queued_status(
     sqlite_session_factory: sessionmaker,
 ) -> None:
@@ -36,6 +41,7 @@ def test_submit_ingestion_persists_queued_status(
         _valid_request(),
         session_factory=sqlite_session_factory,
         now=now,
+        enqueue_stage1=_noop_enqueue,
     )
 
     with closing(sqlite_session_factory()) as session:
@@ -83,13 +89,37 @@ def test_submit_ingestion_generates_unique_ids(
         _valid_request(),
         session_factory=sqlite_session_factory,
         now=now,
+        enqueue_stage1=_noop_enqueue,
     )
     response_two = submit_ingestion(
         _valid_request(),
         session_factory=sqlite_session_factory,
         now=now,
+        enqueue_stage1=_noop_enqueue,
     )
 
     assert response_one.ingestion_id != response_two.ingestion_id
     assert isinstance(response_one.ingestion_id, uuid.UUID)
     assert isinstance(response_two.ingestion_id, uuid.UUID)
+
+
+def test_submit_ingestion_enqueues_stage1(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Submission should enqueue Stage 1 after persisting ingestion metadata."""
+    now = datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+    recorded: dict[str, object] = {}
+
+    def _record_enqueue(ingestion_id: uuid.UUID, request: IngestionRequest) -> None:
+        recorded["ingestion_id"] = ingestion_id
+        recorded["request"] = request
+
+    response = submit_ingestion(
+        _valid_request(),
+        session_factory=sqlite_session_factory,
+        now=now,
+        enqueue_stage1=_record_enqueue,
+    )
+
+    assert recorded["ingestion_id"] == response.ingestion_id
+    assert isinstance(recorded["request"], IngestionRequest)

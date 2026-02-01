@@ -23,6 +23,7 @@ def submit_ingestion(
     *,
     session_factory: Callable[[], Session] | None = None,
     now: datetime | None = None,
+    enqueue_stage1: Callable[[UUID, IngestionRequest], None] | None = None,
 ) -> IngestionResponse:
     """Validate and persist an ingestion attempt, returning its identifier."""
     session_factory = session_factory or get_sync_session
@@ -54,7 +55,14 @@ def submit_ingestion(
         session.add(ingestion)
         session.commit()
         session.refresh(ingestion)
-        return IngestionResponse(ingestion_id=ingestion.id)
+        response = IngestionResponse(ingestion_id=ingestion.id)
+
+    if enqueue_stage1 is None:
+        from ingestion.queue import enqueue_stage1_store
+
+        enqueue_stage1 = enqueue_stage1_store
+    enqueue_stage1(response.ingestion_id, request)
+    return response
 
 
 def _validate_submission_request(request: IngestionRequest) -> None:

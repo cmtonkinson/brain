@@ -36,6 +36,7 @@ from services.database import get_sync_engine, get_sync_session
 from services.signal import SignalClient
 from models import Schedule
 from scheduler.schedule_timing import compute_conditional_next_run
+from ingestion.stages.store import parse_stage1_payload, run_stage1_store
 
 LOGGER = logging.getLogger(__name__)
 
@@ -432,3 +433,23 @@ def evaluate_predicate(
         provider_attempt=provider_attempt,
         trace_id=trace_id,
     )
+
+
+@celery_app.task(
+    bind=True,
+    name="ingestion.stage1_store",
+    acks_late=True,
+    autoretry_for=(),
+    reject_on_worker_lost=True,
+)
+def stage1_store(self, payload: dict[str, object]) -> dict[str, object]:
+    """Execute Stage 1 store for an ingestion request payload."""
+    request = parse_stage1_payload(payload)
+    result = run_stage1_store(request)
+    LOGGER.info(
+        "Stage 1 store completed: ingestion=%s status=%s object_key=%s",
+        request.ingestion_id,
+        result.status,
+        result.object_key,
+    )
+    return {"status": result.status, "object_key": result.object_key, "error": result.error}
