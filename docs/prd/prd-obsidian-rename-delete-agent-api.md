@@ -78,6 +78,7 @@ Rename a note and/or move it to a different folder within the vault.
   - destination does not conflict (unless overwrite explicitly allowed)
 - Must support folder creation if missing (optional)
 - Must log changes
+- Must trigger an incremental indexer update after rename/move
 
 #### API (Conceptual)
 ```json
@@ -133,6 +134,7 @@ Deletion must consider:
 The agent should:
 - warn if the note is referenced elsewhere (best effort)
 - prefer archive/stub patterns over hard delete
+ - trigger an incremental indexer update after the operation
 
 ---
 

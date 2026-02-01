@@ -12,12 +12,13 @@
 Design and implement a **flexible, extensible ingestion pipeline** capable of accepting *any input* (URLs, files, audio, text, messages, screenshots, APIs) and deterministically transforming it into:
 
 1. durable raw storage (blob)
-2. extracted / normalized text
-3. structured metadata
-4. embeddings for semantic search
-5. optional summaries and derivatives
+2. extracted text
+3. normalized Markdown
+4. anchored Obsidian note
+5. incremental semantic index update
 
-The pipeline establishes a **single canonical path** for all inbound information entering Brain.
+The pipeline establishes a **single canonical path** for all inbound information entering Brain, with all metadata,
+history, and provenance persisted in Postgres (Tier 0, authoritative).
 
 ---
 
@@ -55,6 +56,7 @@ The ingestion pipeline is the foundation that enables everything else: memory, s
 - Complex ETL transformations beyond extraction/normalization
 - Full document management UI
 - Automatic memory promotion (handled separately by Letta)
+- Automatic summarization of ingested content
 
 ---
 
@@ -82,8 +84,8 @@ Produces an **ingestion request** with minimal assumptions.
 
 ---
 
-### Stage 1: Blob Storage (Authoritative)
-- Store raw input in the local object store
+### Stage 1: Store (Raw Blob)
+- Store raw input in the local object store (durable)
 - Never modify raw content
 - Assign deterministic object key
 
@@ -91,6 +93,8 @@ Outputs:
 - object key
 - size, mime type
 - checksum
+- object metadata persisted in Postgres (UTC timestamps)
+- Stage 1 dedupe: if the object already exists, mark the stage as skipped and end the ingestion
 
 ---
 
@@ -119,14 +123,13 @@ Outputs:
 Outputs:
 - normalized text artifact (blob)
 - normalization metadata
+- Provenance record created for the normalized blob only (for now)
 
 ---
 
-### Stage 4: Metadata Anchoring (Obsidian)
-- Create or update an Obsidian note that references:
-  - raw blob
-  - extracted blob
-  - normalized blob
+### Stage 4: Anchor (Obsidian)
+- Create an Obsidian note containing the normalized Markdown
+- The normalized blob remains immutable in object storage for audit/diff
 - Store:
   - source
   - timestamps
@@ -134,14 +137,14 @@ Outputs:
   - extraction confidence
   - tags / categories (if known)
 
-This note is the **human anchor**.
+This note is the **human anchor** and may be edited by the operator without mutating the blob.
 
 ---
 
-### Stage 5: Derived Indexing
+### Stage 5: Derived Indexing (Triggered by Anchor)
+- Trigger an incremental indexer update after anchoring
 - Generate embeddings from normalized text
 - Store vectors in Qdrant
-- Link vectors to the anchor note
 
 Derived and rebuildable.
 
@@ -157,27 +160,70 @@ All optional and discardable.
 
 ---
 
-## 6. Data Model (Conceptual)
+## 6. Data Model (Normalized, Postgres)
 
-### Ingestion Record
-```json
-{
-  "ingest_id": "uuid",
-  "source_type": "url | file | message | api",
-  "created_at": "...",
-  "raw_blob": {...},
-  "extracted_blob": {...},
-  "normalized_blob": {...},
-  "anchor_note": "path/to/note.md",
-  "status": "complete"
-}
-```
+All ingestion metadata is stored in Postgres (Tier 0). JSON/JSONB columns are not used.
 
-Stored in Postgres as Tier 1 system state.
+### `ingestions` (per attempt)
+- `id` UUID PK
+- `object_key` text NOT NULL
+- `source_type` text NOT NULL
+- `source_uri` text NULL
+- `source_actor` text NULL
+- `created_at` timestamptz NOT NULL (UTC)
+- `status` text NOT NULL (`queued|running|complete|failed`)
+- `last_error` text NULL
+
+### `ingestion_stage_runs`
+- `id` UUID PK
+- `ingestion_id` UUID NOT NULL FK → `ingestions.id`
+- `stage` text NOT NULL (`store|extract|normalize|anchor`)
+- `started_at` timestamptz NOT NULL (UTC)
+- `finished_at` timestamptz NULL
+- `status` text NOT NULL (`success|failed|skipped`)
+- `error` text NULL
+- `object_key` text NOT NULL
+- `input_object_key` text NULL
+- `output_object_key` text NULL
+
+### `object_metadata`
+- `object_key` text PK
+- `created_at` timestamptz NOT NULL (UTC)
+- `size_bytes` bigint NOT NULL
+- `mime_type` text NULL
+- `checksum` text NOT NULL
+- `first_ingested_at` timestamptz NOT NULL (UTC)
+- `last_ingested_at` timestamptz NOT NULL (UTC)
+
+### `provenance_records` (normalized artifacts only)
+- `id` UUID PK
+- `object_key` text NOT NULL UNIQUE FK → `object_metadata.object_key`
+- `created_at` timestamptz NOT NULL (UTC)
+- `updated_at` timestamptz NOT NULL (UTC)
+
+### `provenance_sources` (normalized, deduped)
+- `id` UUID PK
+- `provenance_id` UUID NOT NULL FK → `provenance_records.id`
+- `ingestion_id` UUID NOT NULL FK → `ingestions.id`
+- `source_type` text NOT NULL
+- `source_uri` text NULL
+- `source_actor` text NULL
+- `captured_at` timestamptz NOT NULL (UTC)
+
+Uniqueness constraint to avoid duplicate sources, for example:
+`UNIQUE (provenance_id, source_type, source_uri, source_actor)`
 
 ---
 
-## 7. Failure Handling
+## 7. Execution Model
+
+- All ingestion stages run asynchronously via the existing Postgres-backed job scheduler
+- Each stage is idempotent
+- Dedupe halts after Stage 1 (Store); Stage 1 is marked `skipped` and the ingestion is `complete`
+
+---
+
+## 8. Failure Handling
 
 - Partial failures must be recorded
 - Pipeline stages are restartable
@@ -186,20 +232,20 @@ Stored in Postgres as Tier 1 system state.
 
 ---
 
-## 8. Observability
+## 9. Observability
 
-For each ingestion:
+All metrics, traces, and logs flow through OpenTelemetry (OTEL).
+
+For each ingestion, persist in Postgres:
 - timestamps per stage
-- tools used
 - errors and warnings
-- size deltas
-- extraction confidence
+- stage outcomes
 
 Supports debugging and pipeline improvement.
 
 ---
 
-## 9. Security and Safety
+## 10. Security and Safety
 
 - Raw blobs never exposed to UI directly
 - Extraction tools sandboxed
@@ -208,7 +254,7 @@ Supports debugging and pipeline improvement.
 
 ---
 
-## 10. Extensibility
+## 11. Extensibility
 
 Pipeline must allow:
 - new extractors
@@ -220,7 +266,7 @@ Without modifying core stages.
 
 ---
 
-## 11. Success Metrics
+## 12. Success Metrics
 
 - All inbound content uses the same pipeline
 - Vault remains small and readable
@@ -229,14 +275,14 @@ Without modifying core stages.
 
 ---
 
-## 12. Definition of Done
+## 13. Definition of Done
 
 - [ ] Object store integration for raw artifacts
 - [ ] Extract/normalize pipeline implemented
 - [ ] Obsidian anchor notes created
 - [ ] Embeddings generated from normalized text
-- [ ] Ingestion records persisted
-- [ ] Observability and logging in place
+- [ ] Ingestion records persisted (Postgres, Tier 0)
+- [ ] Observability and logging in place via OTEL
 
 ---
 

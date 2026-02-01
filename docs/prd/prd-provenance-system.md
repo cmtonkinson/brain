@@ -63,16 +63,18 @@ A **ProvenanceRecord** captures how a piece of data was produced:
 - who or what produced it
 - which subsystem initiated it
 - whether it was direct capture, inference, or transformation
-- was this derived from some parent ProvenanceRecord?
+- whether it was derived from a parent ProvenanceRecord
 
-### 5.2 Provenance Input
-**ProvenanceInput** entries reference the specific source material used:
+### 5.2 Provenance Source
+**ProvenanceSource** entries reference the specific source material used, one row per source:
 - Signal message ID
 - email message ID
 - calendar event ID
 - Obsidian note path
-- Object store key
+- object store key
 - MCP operation reference
+
+Exact-duplicate sources are not re-appended.
 
 ### 5.3 Provenance Link
 **ProvenanceLink** entries connect provenance to artifacts (commitments, memory notes, decisions, etc.) and store the **confidence** of that artifact at creation time.
@@ -87,20 +89,26 @@ Minimum tables (names may be adjusted to match conventions):
 
 #### 6.2.1 `provenance_records`
 - `id` (UUID, PK)
+- `object_key` (string, unique; present for normalized ingestion artifacts)
 - `source_component` (string, required)
 - `origin_signal` (string, required)
 - `actor_type` (enum: `user`, `system`, `agent`, `external`)
 - `actor_reference` (string, optional)
 - `method` (enum: `captured`, `inferred`, `transformed`)
 - `created_at` (UTC)
+- `updated_at` (UTC)
 
-#### 6.2.2 `provenance_inputs`
+#### 6.2.2 `provenance_sources`
 - `id` (UUID, PK)
 - `provenance_id` (FK -> provenance_records.id)
-- `input_type` (string; e.g., `signal`, `email`, `calendar`, `file`, `obsidian`, `object_store`, `mcp`)
-- `reference` (string, required; opaque identifier)
-- `description` (text, optional)
-- `captured_at` (UTC, optional)
+- `ingestion_id` (FK -> ingestions.id; optional for non-ingestion provenance)
+- `source_type` (string; e.g., `signal`, `email`, `calendar`, `file`, `obsidian`, `object_store`, `mcp`)
+- `source_uri` (string, nullable)
+- `source_actor` (string, nullable)
+- `captured_at` (UTC)
+
+Uniqueness constraint for exact-deduping, e.g.:
+`UNIQUE (provenance_id, source_type, source_uri, source_actor)`
 
 #### 6.2.3 `provenance_links`
 - `id` (UUID, PK)
@@ -126,7 +134,7 @@ Notes:
 #### 6.3.1 Direct Capture
 When a user or system captures input (Signal message, email, file, etc.), create:
 - a ProvenanceRecord
-- one or more ProvenanceInputs
+- one or more ProvenanceSources
 - a ProvenanceLink to the resulting artifact(s)
 
 #### 6.3.2 Inference / Derivation
@@ -163,15 +171,11 @@ This is **read-only**, for human inspection only, and does not affect canonical 
 ## 7. Integration Points
 
 ### 7.1 Universal Ingestion Pipeline
-Subsystems will have the ability to register "hooks" against the ingestion pipeline to extract, transform, summarize,
-analyze, reason, and synthesize from/with incoming data.
+The ingestion pipeline creates ProvenanceRecords **only for normalized artifacts** (for now). The record is created
+after the Normalize stage, and sources are appended via `provenance_sources`, with exact duplicates ignored.
 
-Before a hook callback is invoked, the ingestion pipeline must create a new ProvenanceRecord for that data, and pass
-that record to the hook callback with whatever other parameters are necessary.
-
-If and when entities (memories, schedules, commitments, etc.) are subsequently created, by the called code, they must
-encode the provenance ID in their metadata. If derived data is created, then child ProvenanceRecords should be generated
-accordingly.
+If and when entities (memories, schedules, commitments, etc.) are subsequently created, they must encode the provenance
+ID in their metadata. If derived data is created, then child ProvenanceRecords should be generated accordingly.
 
 ### 7.2 Commitment Tracking (CTLC) Example:
 - `commitments.provenance_id` points to `provenance_records.id`

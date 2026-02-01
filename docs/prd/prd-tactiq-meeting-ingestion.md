@@ -9,9 +9,9 @@
 **Tactiq Meeting Notes Ingestion**
 
 ### Summary
-Integrate **Tactiq.io** as a first-class ingestion source for Brain, enabling automatic capture, processing, and organization of meeting transcripts, summaries, and action items.
+Integrate **Tactiq.io** as a first-class ingestion source for Brain, enabling automatic capture, processing, and organization of meeting transcripts and downstream proposals.
 
-This feature routes Tactiq outputs through the **Universal Ingestion Pipeline**, ensuring meeting knowledge is preserved as raw artifacts, normalized text, metadata, embeddings, and (optionally) summarized insights — without bypassing governance, memory promotion, or attention policies.
+This feature routes Tactiq outputs through the **Universal Ingestion Pipeline**, ensuring meeting knowledge is preserved as raw artifacts, normalized text, metadata, embeddings, and anchored Obsidian notes — without bypassing governance, memory promotion, or attention policies.
 
 ---
 
@@ -47,6 +47,7 @@ Brain needs a reliable way to **turn meetings into durable, structured knowledge
 - Real-time meeting participation
 - Automatic memory promotion without review
 - Acting on meeting content without policy gating
+- Automatic summarization of ingested meeting content
 
 ---
 
@@ -73,7 +74,7 @@ Extraction & Normalization
    ↓
 Obsidian Anchor Note (Meeting)
    ↓
-Derived Artifacts (embeddings, summaries)
+Derived Indexing (embeddings)
 ```
 
 ---
@@ -99,7 +100,7 @@ Each ingestion event must include:
 
 Store the following in the object store:
 - full transcript
-- Tactiq-generated summary (if provided)
+- Tactiq-generated summary (if provided, stored as raw artifact only)
 - speaker metadata (if available)
 - source metadata
 
@@ -125,8 +126,9 @@ Create a meeting note with:
 - participants
 - links to raw blobs
 - normalized transcript reference
-- optional high-level summary
 - tags (e.g. `meeting`, `source:tactiq`)
+
+Anchoring must trigger an incremental indexer update.
 
 Example location:
 ```

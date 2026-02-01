@@ -110,10 +110,11 @@ Raw artifacts are **Tier 1 inputs**.
 ### 6.3 Ingestion Integration
 
 Scraped content must flow through:
-- extraction (article text, tables, etc.)
-- normalization (Markdown)
-- Obsidian anchor creation
-- embeddings and optional summaries
+- Store (raw blob)
+- Extract (article text, tables, etc.)
+- Normalize (Markdown)
+- Anchor (Obsidian)
+- Incremental indexer update (embeddings)
 
 No direct scraping → memory promotion allowed.
 
