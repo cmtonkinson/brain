@@ -88,7 +88,7 @@ Produces an **ingestion request** with minimal assumptions.
 ### Stage 1: Store (Raw Blob)
 - Store raw input in the local object store (Tier 0, durable)
 - Never modify raw content
-- Assign deterministic object key
+- Assign deterministic, content-addressed object key
 
 Outputs:
 - raw artifact object key
@@ -142,9 +142,72 @@ Outputs:
 
 This note is the **human anchor** and may be edited by the operator without mutating the blob or back-propagating into blob storage. Divergence between the Obsidian note and the normalized blob is expected and accepted.
 
+#### Anchor Attachment Rendering (Obsidian)
+Obsidian cannot render opaque references to Brain state. For visual artifacts that Obsidian can natively render, the
+pipeline must materialize a copy in the vault and inline it in the anchor note.
+
+Rules:
+- Visual artifacts are stored in the vault under a configurable attachments directory (default: `_attachments/`).
+- Filenames must be `<object_key>.<extension>` (extension derived from mime type).
+- The anchor Markdown must inline the artifact with: `![](_attachments/<object_key>.<extension>)`.
+- Only allowlisted, Obsidian-renderable visual types are stored and inlined.
+- Non-visual artifacts are not copied into the vault and are not linked/inlined.
+- Non-visual artifacts must still be noted in the anchor with their original name/link/URI preserved best-effort.
+- Outbound text links to websites should be preserved best-effort.
+
+Allowlist is configurable; initial defaults should include `jpg`, `jpeg`, `png`, `gif`, and may include `pdf`/`svg`
+pending explicit policy.
+
 ---
 
-## 6. Data Model (Normalized, Postgres)
+## 6. Public API (Python Service)
+
+### Core Operations
+- `ingest.submit(request) -> ingestion_id`
+- `ingest.status(ingestion_id) -> IngestionStatus`
+- `ingest.results(ingestion_id) -> IngestionResults`
+
+### Hook Registration
+- `ingest.register_hook(stage, callback, filters=None) -> hook_id`
+- `ingest.unregister_hook(hook_id) -> bool`
+
+### Hook Semantics
+- Hooks run **after stage completion** only.
+- Hook invocation is **best-effort** (failures are logged; pipeline continues).
+- Hooks are **async/queued** (no blocking of the stage worker).
+- Hooks are **observational only** (they cannot emit artifacts).
+- Hook callback execution **ordering is not guaranteed**.
+- Callback receives a collection of **ProvenanceRecords** (one per artifact emitted by that stage run).
+
+### Hook Callback Signature
+```python
+def on_stage_complete(
+    ingestion_id: UUID,
+    stage: Stage,
+    records: Sequence[ProvenanceRecord],
+) -> None: ...
+```
+
+### Hook Filters (AND semantics)
+All filters are optional; when provided, they narrow the hook invocation set.
+- `mime_types: set[str] | None`
+- `source_types: set[str] | None`
+- `min_size_bytes: int | None`
+- `max_size_bytes: int | None`
+- `artifact_types: set[str] | None` (`raw|extracted|normalized`)
+- `source_uri_matches: set[str] | None` (prefix/substring match)
+
+### Ingestion Request (Minimal Fields)
+- `source_type`
+- `source_uri`
+- `source_actor`
+- `payload` (bytes or text) OR `existing_object_key`
+- `capture_time` (UTC)
+- `mime_type` (optional)
+
+---
+
+## 7. Data Model (Normalized, Postgres)
 
 All ingestion metadata is stored in Postgres (Tier 0). JSONB is allowed only for extractor/normalizer tool metadata.
 
@@ -199,16 +262,20 @@ Multiple rows per stage are allowed to support attachments and fan-out (e.g., a 
 ### `anchor_notes`
 - `id` UUID PK
 - `normalized_object_key` text NOT NULL UNIQUE FK → `artifacts.object_key`
+- `ingestion_id` UUID NOT NULL FK → `ingestions.id`
 - `note_uri` text NOT NULL
 - `note_title` text NULL
 - `created_at` timestamptz NOT NULL (UTC)
 - `updated_at` timestamptz NOT NULL (UTC)
 
-### `provenance_records` (normalized artifacts only)
+### `provenance_records` (all artifacts)
 - `id` UUID PK
-- `normalized_object_key` text NOT NULL UNIQUE FK → `artifacts.object_key`
+- `object_key` text NOT NULL UNIQUE FK → `artifacts.object_key`
 - `created_at` timestamptz NOT NULL (UTC)
 - `updated_at` timestamptz NOT NULL (UTC)
+
+Each stage output must generate a ProvenanceRecord for its artifact, referencing the prior stage output (or the intake
+source for Stage 1).
 
 ### `provenance_sources` (normalized, deduped)
 - `id` UUID PK
@@ -224,7 +291,7 @@ Uniqueness constraint to avoid duplicate sources, for example:
 
 ---
 
-## 7. Execution Model
+## 8. Execution Model
 
 - All ingestion stages run asynchronously via the existing Postgres-backed job scheduler
 - Each stage is idempotent
@@ -234,7 +301,7 @@ Uniqueness constraint to avoid duplicate sources, for example:
 
 ---
 
-## 7.1 Example: Fan-Out Ingestion (Message With Attachments)
+## 8.1 Example: Fan-Out Ingestion (Message With Attachments)
 
 Example: An iMessage contains text plus three photos.
 
@@ -253,7 +320,7 @@ Schema notes:
 
 ---
 
-## 8. Failure Handling
+## 9. Failure Handling
 
 - Partial failures must be recorded
 - Pipeline stages are restartable
@@ -262,7 +329,7 @@ Schema notes:
 
 ---
 
-## 9. Observability
+## 10. Observability
 
 All metrics, traces, and logs flow through OpenTelemetry (OTEL).
 
@@ -275,7 +342,7 @@ Supports debugging and pipeline improvement.
 
 ---
 
-## 10. Security and Safety
+## 11. Security and Safety
 
 - Raw blobs never exposed to UI directly
 - Extraction tools sandboxed
@@ -284,7 +351,7 @@ Supports debugging and pipeline improvement.
 
 ---
 
-## 11. Extensibility
+## 12. Extensibility
 
 Pipeline must allow:
 - new extractors
@@ -296,7 +363,7 @@ Without modifying core stages.
 
 ---
 
-## 12. Success Metrics
+## 13. Success Metrics
 
 - All inbound content uses the same pipeline
 - Vault remains small and readable
@@ -307,7 +374,7 @@ Without modifying core stages.
 
 ---
 
-## 13. Definition of Done
+## 14. Definition of Done
 
 - [ ] Object store integration for raw artifacts
 - [ ] Extract/normalize pipeline implemented
@@ -318,7 +385,7 @@ Without modifying core stages.
 
 ---
 
-## 14. Alignment with Brain Manifesto
+## 15. Alignment with Brain Manifesto
 
 - **Truth Is Explicit:** provenance and stages recorded
 - **Memory Is Curated:** ingestion ≠ memory
