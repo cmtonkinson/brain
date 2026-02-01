@@ -42,7 +42,6 @@ services that need to run directly on your host system:
 
 All other services are run with Docker Compose:
 - Durable working state and application logs are kept in **Postgres**
-- Object storage is provided by **MinIO**
 - Caching and queueing are handled by **Redis**
 - Semantic search for embeddings is powered by **Qdrant**
 - Memory (short- and long-term) is managed by **Letta**
@@ -66,7 +65,7 @@ flowchart TB
     Signal["Signal API (E2EE messaging)"]
     Qdrant["Qdrant (semantic search)"]
     PostgresRedis["Postgres + Redis<br/>(state, logs, cache)"]
-    MinIO["MinIO (raw artifacts)"]
+    ObjectStore["Local Object Store<br/>(raw artifacts)"]
     Letta["Letta (archival memory manager)"]
     CodeMode["Code-Mode (UTCP)"]
     subgraph MCP["Tier 1 tools & host APIs"]
@@ -77,7 +76,7 @@ flowchart TB
     BrainAgent --> Signal
     BrainAgent --> Qdrant
     BrainAgent --> PostgresRedis
-    BrainAgent --> MinIO
+    BrainAgent --> ObjectStore
     BrainAgent --> CodeMode --> MCPServers --> HostGateway
     Letta -.-> BrainAgent
     Letta --> Vault
@@ -89,11 +88,11 @@ flowchart TB
 - Configuration/policy files under `~/.config/brain`
 - Obsidian vault (canonical knowledge, notes, promoted memory)
 - Postgres (operational state - scheduels, logs, etc.)
-- MinIO (raw artifacts)
 
 **Tier 1 — Durable System State**
 - Letta internal DB (archival memory state)
 - Signal CLI state (device + message metadata)
+- Local object store (raw artifacts)
 
 **Tier 2 — Derived / Cache**
 - Qdrant embeddings and indexes
@@ -119,4 +118,3 @@ flowchart TB
 - Local voice (whisper.cpp + Piper, openWakeWord)
 - POTS phone support (Twilio Media Streams)
 - SMS fallback (Google Voice)
-

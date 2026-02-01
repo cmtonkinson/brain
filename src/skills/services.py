@@ -13,3 +13,4 @@ class SkillServices:
     obsidian: Any | None = None
     code_mode: Any | None = None
     signal: Any | None = None
+    object_store: Any | None = None

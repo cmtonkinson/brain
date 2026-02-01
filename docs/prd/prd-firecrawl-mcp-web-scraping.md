@@ -70,7 +70,7 @@ Firecrawl MCP Server
    ↓
 Web (HTTP / JS Render)
    ↓
-Raw Content → MinIO
+Raw Content → Object store
    ↓
 Universal Ingestion Pipeline
 ```
@@ -99,7 +99,7 @@ Each invocation must return:
 ### 6.2 Raw Artifact Handling
 
 For each scrape:
-- store raw HTML / rendered output in MinIO
+- store raw HTML / rendered output in the object store
 - record headers, status codes, timestamps
 - compute checksum for deduplication
 
@@ -197,7 +197,7 @@ Mitigation:
 
 - [ ] Firecrawl MCP server deployed
 - [ ] MCP tool schema defined
-- [ ] Raw artifacts stored in MinIO
+- [ ] Raw artifacts stored in the object store
 - [ ] Ingestion pipeline integration working
 - [ ] Policy gating enforced
 - [ ] Observability traces linked

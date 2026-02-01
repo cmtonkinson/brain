@@ -153,7 +153,7 @@ For each tool or skill call, record:
 
 Any state mutation must be recorded:
 - Obsidian writes (path + diff summary)
-- MinIO object creation
+- Object store writes
 - schedule changes
 - commitment state transitions
 - memory promotion proposals

@@ -166,6 +166,12 @@ class DatabaseConfig(BaseModel):
         return self
 
 
+class ObjectStoreConfig(BaseModel):
+    """Object store filesystem configuration."""
+
+    root_dir: str = "data/objects"
+
+
 class LlmConfig(BaseModel):
     """Language model routing and embedding settings."""
 
@@ -368,6 +374,9 @@ class Settings(BaseSettings):
 
     # Database Configuration
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+
+    # Object Storage
+    objects: ObjectStoreConfig = Field(default_factory=ObjectStoreConfig)
 
     # Service URLs
     qdrant: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="http://qdrant:6333"))

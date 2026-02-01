@@ -42,7 +42,7 @@ Loss here is **irrecoverable knowledge loss**.
 #### Tier 1 — Durable System State
 Important, but reconstructable with effort.
 
-- MinIO object storage (raw artifacts)
+- Local object storage (raw artifacts)
 - Schedule definitions
 - Message metadata
 - Letta internal state

@@ -12,6 +12,7 @@ from agent import AgentDeps, handle_signal_message
 from attention.envelope_schema import RoutingEnvelope
 from attention.router import RoutingResult
 from models import SignalMessage
+from services.object_store import ObjectStore
 from tools.memory import ConversationMemory
 
 
@@ -86,11 +87,12 @@ class DummySessionContext:
 
 
 @pytest.mark.asyncio
-async def test_agent_flow_smoke_logs_and_formats_signal(monkeypatch) -> None:
+async def test_agent_flow_smoke_logs_and_formats_signal(monkeypatch, tmp_path) -> None:
     """Exercise the agent flow from Signal intake to formatted reply."""
     obsidian = FakeObsidianClient()
     memory = ConversationMemory(obsidian)
     code_mode = FakeCodeModeManager()
+    object_store = ObjectStore(tmp_path)
     router = FakeRouter()
     agent = FakeAgent(response="# Greeting\nSee [link](https://example.com) and _italic_.")
 
@@ -118,6 +120,7 @@ async def test_agent_flow_smoke_logs_and_formats_signal(monkeypatch) -> None:
         obsidian=obsidian,
         memory=memory,
         code_mode=code_mode,
+        object_store=object_store,
         router=router,
         phone_number="+15550000000",
     )

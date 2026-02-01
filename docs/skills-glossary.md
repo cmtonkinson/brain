@@ -40,7 +40,7 @@ A Native Op is implemented directly by Brain’s runtime or internal services; i
 - Obsidian file operations
 - Qdrant vector writes
 - Signal message send
-- MinIO object storage
+- Local object storage
 
 ### MCP Op
 An MCP Op is a configuration wrapper around underlying functions exposed via `@UTCP/code_mode`. Examples of MCP functions that may be wrapped:

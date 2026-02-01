@@ -18,6 +18,7 @@ from scheduler.execution_dispatcher import (
     ExecutionInvocationScheduleDefinition,
 )
 from services.code_mode import CodeModeManager, create_code_mode_manager
+from services.object_store import ObjectStore
 from tools.memory import ConversationMemory
 from tools.obsidian import ObsidianClient
 
@@ -84,6 +85,7 @@ class AgentExecutionInvoker(ExecutionInvoker):
         self._obsidian = obsidian or ObsidianClient()
         self._memory = memory or ConversationMemory(self._obsidian)
         self._code_mode = code_mode or self._build_code_mode_manager()
+        self._object_store = ObjectStore(settings.objects.root_dir)
 
     def _build_code_mode_manager(self) -> CodeModeManager:
         """Create the Code-Mode manager used by the agent invocation."""
@@ -128,6 +130,7 @@ class AgentExecutionInvoker(ExecutionInvoker):
                 obsidian=self._obsidian,
                 memory=self._memory,
                 code_mode=self._code_mode,
+                object_store=self._object_store,
                 signal_sender=None,
                 channel="scheduled",
             )

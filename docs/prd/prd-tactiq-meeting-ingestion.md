@@ -67,7 +67,7 @@ Tactiq Export / Webhook / API
    ↓
 Universal Ingestion Pipeline
    ↓
-MinIO (raw transcript + metadata)
+Object store (raw transcript + metadata)
    ↓
 Extraction & Normalization
    ↓
@@ -97,7 +97,7 @@ Each ingestion event must include:
 
 ### 6.2 Raw Artifact Storage
 
-Store the following in MinIO:
+Store the following in the object store:
 - full transcript
 - Tactiq-generated summary (if provided)
 - speaker metadata (if available)
@@ -234,7 +234,7 @@ Mitigation:
 ## 13. Definition of Done
 
 - [ ] Tactiq ingestion source implemented
-- [ ] Raw artifacts stored in MinIO
+- [ ] Raw artifacts stored in the object store
 - [ ] Normalized transcripts generated
 - [ ] Obsidian meeting notes created
 - [ ] Commitment/memory proposals supported

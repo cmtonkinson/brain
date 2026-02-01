@@ -37,6 +37,9 @@ indexer:
   chunk_tokens: 1000
   collection: "obsidian"
 
+objects:
+  root_dir: "data/objects"
+
 scheduler:
   default_max_attempts: 3
   default_backoff_strategy: "exponential"

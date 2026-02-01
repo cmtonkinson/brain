@@ -31,6 +31,7 @@ from attention.routing_hooks import (
     build_skill_routing_hook,
 )
 from services.letta import LettaService
+from services.object_store import ObjectStore
 from prompts import render_prompt
 from tools.obsidian import ObsidianClient
 from tools.memory import ConversationMemory
@@ -97,6 +98,7 @@ class AgentDeps:
     obsidian: ObsidianClient
     memory: ConversationMemory
     code_mode: CodeModeManager
+    object_store: ObjectStore
     signal_sender: str | None = None  # Phone number of current message sender
     channel: str = "signal"
 
@@ -346,6 +348,7 @@ async def _execute_skill(
             obsidian=deps.obsidian,
             code_mode=deps.code_mode,
             signal=None,
+            object_store=deps.object_store,
         ),
     )
     router = AttentionRouter(signal_client=SignalClient())
@@ -960,6 +963,7 @@ async def handle_signal_message(
     obsidian: ObsidianClient,
     memory: ConversationMemory,
     code_mode: CodeModeManager,
+    object_store: ObjectStore,
     router: AttentionRouter,
     phone_number: str,
 ) -> None:
@@ -970,6 +974,7 @@ async def handle_signal_message(
         signal_msg: The incoming Signal message
         obsidian: Obsidian client
         memory: Conversation memory manager
+        object_store: Object store for blob persistence
         router: Attention router for outbound replies
         phone_number: The agent's phone number
     """
@@ -1026,6 +1031,7 @@ async def handle_signal_message(
             obsidian=obsidian,
             memory=memory,
             code_mode=code_mode,
+            object_store=object_store,
             signal_sender=sender,
             channel="signal",
         )
@@ -1078,6 +1084,7 @@ async def run_signal_loop(
     obsidian: ObsidianClient,
     memory: ConversationMemory,
     code_mode: CodeModeManager,
+    object_store: ObjectStore,
     poll_interval: float = 2.0,
 ) -> None:
     """Main loop for polling Signal messages.
@@ -1086,6 +1093,7 @@ async def run_signal_loop(
         agent: The Pydantic AI agent
         obsidian: Obsidian client
         memory: Conversation memory manager
+        object_store: Object store for blob persistence
         poll_interval: Seconds between polls
     """
     phone_number = settings.signal.phone_number
@@ -1118,7 +1126,14 @@ async def run_signal_loop(
 
             for msg in messages:
                 await handle_signal_message(
-                    agent, msg, obsidian, memory, code_mode, router, phone_number
+                    agent,
+                    msg,
+                    obsidian,
+                    memory,
+                    code_mode,
+                    object_store,
+                    router,
+                    phone_number,
                 )
 
         except Exception as e:
@@ -1133,12 +1148,14 @@ async def run_test_mode(
     agent: Agent[AgentDeps, str],
     message: str,
     code_mode: CodeModeManager,
+    object_store: ObjectStore,
 ) -> None:
     """Run a single message in test mode.
 
     Args:
         agent: The Pydantic AI agent
         message: The test message to process
+        object_store: Object store for blob persistence
     """
     obsidian = ObsidianClient()
     memory = ConversationMemory(obsidian)
@@ -1148,6 +1165,7 @@ async def run_test_mode(
         obsidian=obsidian,
         memory=memory,
         code_mode=code_mode,
+        object_store=object_store,
         signal_sender="test",
         channel="test",
     )
@@ -1259,8 +1277,10 @@ async def main() -> None:
     logger.info("Agent initialized")
 
     # Test mode
+    object_store = ObjectStore(settings.objects.root_dir)
+
     if args.test:
-        await run_test_mode(agent, args.test, code_mode)
+        await run_test_mode(agent, args.test, code_mode, object_store)
         return
 
     # Signal mode
@@ -1281,6 +1301,7 @@ async def main() -> None:
             obsidian,
             memory,
             code_mode,
+            object_store,
             poll_interval=args.poll_interval,
         )
     except KeyboardInterrupt:

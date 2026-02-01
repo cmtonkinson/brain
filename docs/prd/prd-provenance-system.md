@@ -71,7 +71,7 @@ A **ProvenanceRecord** captures how a piece of data was produced:
 - email message ID
 - calendar event ID
 - Obsidian note path
-- MinIO object ID
+- Object store key
 - MCP operation reference
 
 ### 5.3 Provenance Link
@@ -97,7 +97,7 @@ Minimum tables (names may be adjusted to match conventions):
 #### 6.2.2 `provenance_inputs`
 - `id` (UUID, PK)
 - `provenance_id` (FK -> provenance_records.id)
-- `input_type` (string; e.g., `signal`, `email`, `calendar`, `file`, `obsidian`, `minio`, `mcp`)
+- `input_type` (string; e.g., `signal`, `email`, `calendar`, `file`, `obsidian`, `object_store`, `mcp`)
 - `reference` (string, required; opaque identifier)
 - `description` (text, optional)
 - `captured_at` (UTC, optional)

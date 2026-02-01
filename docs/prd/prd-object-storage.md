@@ -1,4 +1,4 @@
-# PRD: Object Storage via MinIO
+# PRD: Local Object Storage
 ## Durable Blob Storage for Brain Ingestion and Artifacts
 
 ---
@@ -6,10 +6,10 @@
 ## 1. Overview
 
 ### Feature Name
-**Object Storage (MinIO Integration)**
+**Object Storage (Local Filesystem)**
 
 ### Summary
-Introduce **MinIO** as a local, S3-compatible object storage layer for Brain to store **raw, large, and machine-generated artifacts** ("blobs") such as web captures, documents, audio, images, and intermediate data.
+Introduce a **minimal, local, content-addressed object store** for Brain to store **raw, large, and machine-generated artifacts** ("blobs") such as web captures, documents, audio, images, and intermediate data.
 
 This establishes a clean separation between:
 - **Authoritative human knowledge** (Obsidian Markdown)
@@ -33,7 +33,7 @@ Obsidian is not designed to be a blob store:
 - frequent writes cause sync and diff issues
 - large artifacts reduce usability and portability
 
-A dedicated blob storage layer is required.
+A dedicated blob storage layer is required, but it should be **minimal, local, and dependency-light**.
 
 ---
 
@@ -41,10 +41,10 @@ A dedicated blob storage layer is required.
 
 ### Goals
 - Provide durable, local-first storage for large and binary artifacts
-- Support content-addressed and deterministic storage patterns
+- Support content-addressed, deterministic storage patterns
 - Integrate cleanly with ingestion pipelines
 - Preserve Obsidian as a lightweight, human-first knowledge base
-- Enable future migration to other S3-compatible backends
+- Avoid heavyweight object-store dependencies
 
 ### Non-Goals
 - Acting as a primary user-facing file browser
@@ -60,7 +60,7 @@ A dedicated blob storage layer is required.
 2. **Blobs are referenced, never embedded**
 3. **Raw artifacts are preserved**
 4. **Derived data is always rebuildable**
-5. **Storage choices must remain portable**
+5. **Storage must remain local and inspectable**
 
 ---
 
@@ -71,14 +71,14 @@ Ingestion Source (Web, File, Audio, Email)
    ↓
 Normalizer / Extractor
    ↓
-MinIO (Raw & Derived Blobs)
+Local Object Store (raw & derived blobs)
    ↓
 Metadata + References → Obsidian
    ↓
 Derived Indexing (Qdrant, Summaries)
 ```
 
-MinIO serves as the canonical store for non-Markdown artifacts.
+The local object store serves as the canonical store for non-Markdown artifacts.
 
 ---
 
@@ -86,26 +86,25 @@ MinIO serves as the canonical store for non-Markdown artifacts.
 
 ### 6.1 Object Storage Backend
 
-- Use **MinIO** running locally via Docker
-- Expose S3-compatible API
-- Support multiple logical buckets
-
-Recommended buckets:
-- `brain-raw` – raw ingested artifacts
-- `brain-derived` – processed artifacts (optional)
-- `brain-cache` – temporary or rebuildable data
-
----
+- Provide a minimal, Python-backed object store
+- Store objects on the local filesystem under a configurable root directory (`objects.root_dir`)
+- Avoid any external object-store dependencies (no MinIO, no S3)
 
 ### 6.2 Object Addressing
 
-Objects should be stored using:
-- content hashes (e.g. SHA-256)
-- or deterministic IDs derived from source + timestamp
+Objects must be stored using content hashing with deterministic keys:
 
-Example key:
+- **Object key format:** `b1:sha256:<hexdigest>`
+- **Digest input:** `"b1:\0" + content bytes`
+- **Filesystem layout:**
+  - Use the first two digest bytes as the first subdirectory
+  - Use the next two digest bytes as the second subdirectory
+  - Store the object as a file named `<hexdigest>`
+
+Example:
 ```
-brain-raw/web/sha256/ab12cd34...
+object_key: b1:sha256:abcdef...
+path: <root>/ab/cd/abcdef...
 ```
 
 This ensures:
@@ -113,12 +112,22 @@ This ensures:
 - immutability
 - reproducibility
 
----
+### 6.3 Object Store API
 
-### 6.3 Obsidian Integration
+Public API surface (Python):
+- `write(object) -> object_key`
+- `read(object_key) -> object`
+- `delete(object_key) -> bool`
+
+Semantics:
+- `write` and `delete` are **idempotent**
+- if the object exists, `write` returns the existing key without rewriting
+- `delete` returns `True` whether or not the object exists
+
+### 6.4 Obsidian Integration
 
 Obsidian notes must store:
-- references to objects (bucket + key)
+- references to objects (object key)
 - metadata (mime type, size, capture time, source)
 - optional human-readable summaries
 
@@ -126,17 +135,14 @@ Example frontmatter:
 
 ```yaml
 blob:
-  bucket: brain-raw
-  key: web/sha256/ab12cd34
+  object_key: b1:sha256:ab12cd34...
   mime: text/html
   size: 142312
 ```
 
 Obsidian never stores raw blob contents.
 
----
-
-### 6.4 Agent Responsibilities
+### 6.5 Agent Responsibilities
 
 The agent is responsible for:
 - fetching and storing blobs
@@ -148,9 +154,8 @@ The agent is responsible for:
 
 ## 7. Security and Access
 
-- MinIO runs locally and is not publicly exposed
-- Access credentials are managed via environment variables
-- Only Brain services may access MinIO
+- Object store resides on local disk and is not exposed over the network
+- Only Brain services may access object storage directly
 - UI clients never access object storage directly
 
 ---
@@ -171,12 +176,12 @@ Optional:
 
 ## 9. Backup and Recovery
 
-### Authoritative Data
-- MinIO buckets are **Tier 0** data
-- Must be backed up regularly
+### Data Classification
+- Object store data is **Tier 1** system state
+- Backup is **recommended** but not required to restore Tier 0 authority
 
 ### Recovery Strategy
-- Restore MinIO data before rebuilding derived stores
+- Restore object store data before rebuilding derived stores when available
 - Re-run indexing and embedding pipelines as needed
 
 ---
@@ -186,7 +191,7 @@ Optional:
 ### Risk: Blob Sprawl
 Mitigation:
 - content-addressed storage
-- clear bucket boundaries
+- clear storage layout
 - optional lifecycle policies later
 
 ### Risk: Vault Coupling
@@ -207,11 +212,10 @@ Mitigation:
 
 ## 12. Definition of Done
 
-- [ ] MinIO deployed via Docker
-- [ ] Buckets created and documented
+- [ ] Local object store implemented
 - [ ] Agent can store and retrieve blobs
 - [ ] Obsidian notes reference blobs correctly
-- [ ] Backup plan documented
+- [ ] Backup guidance documented
 
 ---
 

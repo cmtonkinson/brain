@@ -83,12 +83,12 @@ Produces an **ingestion request** with minimal assumptions.
 ---
 
 ### Stage 1: Blob Storage (Authoritative)
-- Store raw input in MinIO
+- Store raw input in the local object store
 - Never modify raw content
 - Assign deterministic object key
 
 Outputs:
-- blob reference (bucket + key)
+- object key
 - size, mime type
 - checksum
 
@@ -231,7 +231,7 @@ Without modifying core stages.
 
 ## 12. Definition of Done
 
-- [ ] MinIO integration for raw artifacts
+- [ ] Object store integration for raw artifacts
 - [ ] Extract/normalize pipeline implemented
 - [ ] Obsidian anchor notes created
 - [ ] Embeddings generated from normalized text
