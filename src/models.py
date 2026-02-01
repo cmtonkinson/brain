@@ -1,6 +1,7 @@
 """Data models for Brain assistant."""
 
 from datetime import datetime, timezone
+import uuid
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     Time,
+    Uuid,
     event,
 )
 from sqlalchemy.orm import declarative_base
@@ -52,6 +54,14 @@ ExecutionStatusEnum = Enum(
     "retry_scheduled",
     "canceled",
     name="execution_status",
+    native_enum=False,
+)
+IngestionStatusEnum = Enum(
+    "queued",
+    "running",
+    "complete",
+    "failed",
+    name="ingestion_status",
     native_enum=False,
 )
 IntervalUnitEnum = Enum(
@@ -173,6 +183,24 @@ class IndexedChunk(Base):
     qdrant_id = Column(String(64), nullable=False)
     chunk_chars = Column(Integer, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class Ingestion(Base):
+    """Ingestion attempt metadata for intake submissions."""
+
+    __tablename__ = "ingestions"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_type = Column(String(200), nullable=False)
+    source_uri = Column(Text, nullable=True)
+    source_actor = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    status = Column(IngestionStatusEnum, nullable=False)
+    last_error = Column(Text, nullable=True)
 
 
 class NotificationEnvelope(Base):
