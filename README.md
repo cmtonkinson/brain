@@ -88,11 +88,11 @@ flowchart TB
 - Configuration/policy files under `~/.config/brain`
 - Obsidian vault (canonical knowledge, notes, promoted memory)
 - Postgres (operational state - scheduels, logs, etc.)
+- Local object store root_dir (raw artifacts)
 
 **Tier 1 — Durable System State**
 - Letta internal DB (archival memory state)
 - Signal CLI state (device + message metadata)
-- Local object store (raw artifacts)
 
 **Tier 2 — Derived / Cache**
 - Qdrant embeddings and indexes

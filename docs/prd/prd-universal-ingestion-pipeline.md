@@ -11,11 +11,10 @@
 ### Summary
 Design and implement a **flexible, extensible ingestion pipeline** capable of accepting *any input* (URLs, files, audio, text, messages, screenshots, APIs) and deterministically transforming it into:
 
-1. durable raw storage (blob)
+1. durable raw storage (Tier 0 blob)
 2. extracted text
 3. normalized Markdown
-4. anchored Obsidian note
-5. incremental semantic index update
+4. anchored Obsidian note (which implicitly triggers indexing)
 
 The pipeline establishes a **single canonical path** for all inbound information entering Brain, with all metadata,
 history, and provenance persisted in Postgres (Tier 0, authoritative).
@@ -50,6 +49,7 @@ The ingestion pipeline is the foundation that enables everything else: memory, s
 - Enable replay and reprocessing
 - Make ingestion observable and auditable
 - Keep Obsidian human-first and lightweight
+- Allow Obsidian anchor notes to be edited without mutating stored blobs
 
 ### Non-Goals
 - Real-time streaming ingestion (initially)
@@ -57,16 +57,17 @@ The ingestion pipeline is the foundation that enables everything else: memory, s
 - Full document management UI
 - Automatic memory promotion (handled separately by Letta)
 - Automatic summarization of ingested content
+- Enforcing parity between Obsidian anchors and normalized blobs
 
 ---
 
 ## 4. Design Principles
 
-1. **Everything enters the system through ingestion**
-2. **Raw artifacts are preserved**
-3. **Derived artifacts are disposable**
-4. **Metadata is the spine**
-5. **Humans read Markdown, machines read structure**
+1. **Raw artifacts are preserved (Tier 0)**
+2. **Derived artifacts are disposable**
+3. **Metadata is the spine**
+4. **Humans read Markdown, machines read structure**
+5. **Anchors are editable and may diverge from stored blobs**
 
 ---
 
@@ -85,16 +86,16 @@ Produces an **ingestion request** with minimal assumptions.
 ---
 
 ### Stage 1: Store (Raw Blob)
-- Store raw input in the local object store (durable)
+- Store raw input in the local object store (Tier 0, durable)
 - Never modify raw content
 - Assign deterministic object key
 
 Outputs:
-- object key
+- raw artifact object key
 - size, mime type
 - checksum
-- object metadata persisted in Postgres (UTC timestamps)
-- Stage 1 dedupe: if the object already exists, mark the stage as skipped and end the ingestion
+- artifact metadata persisted in Postgres (UTC timestamps)
+- Stage 1 dedupe: if the raw artifact already exists, mark the stage as skipped and record provenance context
 
 ---
 
@@ -110,7 +111,7 @@ Examples:
 - Image → OCR (optional)
 
 Outputs:
-- extracted text artifact (stored as blob)
+- extracted text artifacts (stored as blobs; multiple outputs supported)
 - extraction metadata
 
 ---
@@ -121,9 +122,9 @@ Outputs:
 - Strip noise (ads, nav, boilerplate)
 
 Outputs:
-- normalized text artifact (blob)
+- normalized text artifacts (blobs; multiple outputs supported)
 - normalization metadata
-- Provenance record created for the normalized blob only (for now)
+- Provenance record created for the normalized blob
 
 ---
 
@@ -136,37 +137,19 @@ Outputs:
   - mime type
   - extraction confidence
   - tags / categories (if known)
+  - Obsidian note URI/path
+- Anchoring implicitly triggers the incremental indexer update
 
-This note is the **human anchor** and may be edited by the operator without mutating the blob.
-
----
-
-### Stage 5: Derived Indexing (Triggered by Anchor)
-- Trigger an incremental indexer update after anchoring
-- Generate embeddings from normalized text
-- Store vectors in Qdrant
-
-Derived and rebuildable.
-
----
-
-### Stage 6: Optional Derivatives
-- Summaries
-- Entity extraction
-- Topic classification
-- Skill-specific artifacts
-
-All optional and discardable.
+This note is the **human anchor** and may be edited by the operator without mutating the blob or back-propagating into blob storage. Divergence between the Obsidian note and the normalized blob is expected and accepted.
 
 ---
 
 ## 6. Data Model (Normalized, Postgres)
 
-All ingestion metadata is stored in Postgres (Tier 0). JSON/JSONB columns are not used.
+All ingestion metadata is stored in Postgres (Tier 0). JSONB is allowed only for extractor/normalizer tool metadata.
 
 ### `ingestions` (per attempt)
 - `id` UUID PK
-- `object_key` text NOT NULL
 - `source_type` text NOT NULL
 - `source_uri` text NULL
 - `source_actor` text NULL
@@ -174,30 +157,56 @@ All ingestion metadata is stored in Postgres (Tier 0). JSON/JSONB columns are no
 - `status` text NOT NULL (`queued|running|complete|failed`)
 - `last_error` text NULL
 
-### `ingestion_stage_runs`
-- `id` UUID PK
-- `ingestion_id` UUID NOT NULL FK → `ingestions.id`
-- `stage` text NOT NULL (`store|extract|normalize|anchor`)
-- `started_at` timestamptz NOT NULL (UTC)
-- `finished_at` timestamptz NULL
-- `status` text NOT NULL (`success|failed|skipped`)
-- `error` text NULL
-- `object_key` text NOT NULL
-- `input_object_key` text NULL
-- `output_object_key` text NULL
-
-### `object_metadata`
+### `artifacts` (all stage outputs)
 - `object_key` text PK
 - `created_at` timestamptz NOT NULL (UTC)
 - `size_bytes` bigint NOT NULL
 - `mime_type` text NULL
 - `checksum` text NOT NULL
+- `artifact_type` text NOT NULL (`raw|extracted|normalized`)
 - `first_ingested_at` timestamptz NOT NULL (UTC)
 - `last_ingested_at` timestamptz NOT NULL (UTC)
+- `parent_object_key` text NULL FK → `artifacts.object_key`
+- `parent_stage` text NULL (`store|extract|normalize`)
+Derived artifacts must reference the prior stage output they were produced from.
+
+### `ingestion_artifacts` (per ingestion, per stage output)
+- `id` UUID PK
+- `ingestion_id` UUID NOT NULL FK → `ingestions.id`
+- `stage` text NOT NULL (`store|extract|normalize|anchor`)
+- `object_key` text NULL FK → `artifacts.object_key`
+- `created_at` timestamptz NOT NULL (UTC)
+- `status` text NOT NULL (`success|failed|skipped`)
+- `error` text NULL
+- Uniqueness constraint: `UNIQUE (ingestion_id, stage, object_key)`
+Multiple rows per stage are allowed to support attachments and fan-out (e.g., a message with several photos).
+
+### `extraction_metadata`
+- `object_key` text PK FK → `artifacts.object_key`
+- `method` text NOT NULL
+- `confidence` numeric NULL
+- `page_count` int NULL
+- `created_at` timestamptz NOT NULL (UTC)
+- `tool_metadata` jsonb NULL
+
+### `normalization_metadata`
+- `object_key` text PK FK → `artifacts.object_key`
+- `method` text NOT NULL
+- `confidence` numeric NULL
+- `created_at` timestamptz NOT NULL (UTC)
+- `tool_metadata` jsonb NULL
+
+### `anchor_notes`
+- `id` UUID PK
+- `normalized_object_key` text NOT NULL UNIQUE FK → `artifacts.object_key`
+- `note_uri` text NOT NULL
+- `note_title` text NULL
+- `created_at` timestamptz NOT NULL (UTC)
+- `updated_at` timestamptz NOT NULL (UTC)
 
 ### `provenance_records` (normalized artifacts only)
 - `id` UUID PK
-- `object_key` text NOT NULL UNIQUE FK → `object_metadata.object_key`
+- `normalized_object_key` text NOT NULL UNIQUE FK → `artifacts.object_key`
 - `created_at` timestamptz NOT NULL (UTC)
 - `updated_at` timestamptz NOT NULL (UTC)
 
@@ -219,7 +228,28 @@ Uniqueness constraint to avoid duplicate sources, for example:
 
 - All ingestion stages run asynchronously via the existing Postgres-backed job scheduler
 - Each stage is idempotent
-- Dedupe halts after Stage 1 (Store); Stage 1 is marked `skipped` and the ingestion is `complete`
+- Single pipeline worker (no threading) for now, so locking is out of scope
+- Dedupe is enforced at Stage 1 (Store); Stage 1 is marked `skipped` when the raw artifact already exists
+- Normalization and anchoring always run from the current ingestion context (no short-circuit to anchor on duplicates)
+
+---
+
+## 7.1 Example: Fan-Out Ingestion (Message With Attachments)
+
+Example: An iMessage contains text plus three photos.
+
+Flow:
+- Stage 0 Intake: 1 ingestion created
+- Stage 1 Store: 4 raw artifacts (message JSON + 3 photos)
+- Stage 2 Extraction:
+  - 1 extracted text artifact from the message body
+  - 3 OCR text artifacts (one per photo)
+- Stage 3 Normalization: 4 normalized artifacts (one per extracted output)
+- Stage 4 Anchor: 1 Obsidian note that embeds links/references to the 4 normalized artifacts
+
+Schema notes:
+- Each derived artifact stores `parent_object_key` pointing to its prior-stage artifact.
+- `ingestion_artifacts` has multiple rows per stage, all tied to the same `ingestion_id`.
 
 ---
 
@@ -272,6 +302,8 @@ Without modifying core stages.
 - Vault remains small and readable
 - Derived stores can be rebuilt without loss
 - Debugging ingestion failures is straightforward
+- Tier 0 object store remains authoritative for raw blobs
+- Obsidian anchors remain editable without corrupting blob provenance
 
 ---
 
@@ -286,7 +318,7 @@ Without modifying core stages.
 
 ---
 
-## 13. Alignment with Brain Manifesto
+## 14. Alignment with Brain Manifesto
 
 - **Truth Is Explicit:** provenance and stages recorded
 - **Memory Is Curated:** ingestion ≠ memory

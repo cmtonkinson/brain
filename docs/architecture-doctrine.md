@@ -26,41 +26,33 @@ There is no ambiguous middle ground.
 ### 2. Data Classes
 
 #### Tier 0 — Authoritative, Human-Owned
-Must be backed up. Cannot be regenerated.
-
-- Postgres (authoritative system state and commitments)
-- Obsidian vault
-  - Memory folder (promoted memories)
-  - Notes, reflections, decisions
-- User-authored documents
+Must be backed up & cannot be regenerated. Loss here is **irrecoverable knowledge loss**.
 - Explicit configuration and policy files
-
-Loss here is **irrecoverable knowledge loss**.
+- Obsidian vault
+  - User-authored documents
+  - Memory folder (promoted memories)
+  - Conversation history
+  - Notes, reflections, decisions
+- Postgres (authoritative system state and commitments)
+- Local object storage (raw artifacts)
 
 ---
 
 #### Tier 1 — Durable System State
-Important, but reconstructable with effort.
-
-- Local object storage (raw artifacts)
+Important, but reconstructable with effort. Loss is painful but recoverable.
 - Schedule definitions
 - Message metadata
 - Letta internal state
 
-Loss is painful but recoverable.
-
 ---
 
 #### Tier 2 — Derived / Cached
-Always disposable.
-
+Always disposable. Never back these up unless for convenience.
 - Embeddings (Qdrant)
 - Summaries
 - Indexes
 - Extracted/normalized text
 - Search caches
-
-Never back these up unless for convenience.
 
 ---
 
