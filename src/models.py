@@ -15,6 +15,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
     Time,
@@ -22,6 +23,7 @@ from sqlalchemy import (
     UniqueConstraint,
     event,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base
 
 from config import settings
@@ -254,6 +256,28 @@ class Artifact(Base):
     last_ingested_at = Column(DateTime(timezone=True), nullable=False)
     parent_object_key = Column(Text, ForeignKey("artifacts.object_key"), nullable=True)
     parent_stage = Column(ArtifactParentStageEnum, nullable=True)
+
+
+class ExtractionMetadata(Base):
+    """Extraction metadata recorded for derived artifacts."""
+
+    __tablename__ = "extraction_metadata"
+
+    object_key = Column(Text, ForeignKey("artifacts.object_key"), primary_key=True)
+    method = Column(Text, nullable=False)
+    confidence = Column(Float, nullable=True)
+    page_count = Column(Integer, nullable=True)
+    tool_metadata = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
 
 
 class IngestionArtifact(Base):

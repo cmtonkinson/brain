@@ -36,6 +36,7 @@ from services.database import get_sync_engine, get_sync_session
 from services.signal import SignalClient
 from models import Schedule
 from scheduler.schedule_timing import compute_conditional_next_run
+from ingestion.stages.extract import parse_stage2_payload, run_stage2_extraction
 from ingestion.stages.store import parse_stage1_payload, run_stage1_store
 
 LOGGER = logging.getLogger(__name__)
@@ -452,4 +453,38 @@ def stage1_store(self, payload: dict[str, object]) -> dict[str, object]:
         result.status,
         result.object_key,
     )
+    if result.status in {"success", "skipped"} and result.object_key:
+        from ingestion.queue import enqueue_stage2_extract
+
+        try:
+            enqueue_stage2_extract(request.ingestion_id)
+        except Exception:
+            LOGGER.exception(
+                "Failed to enqueue Stage 2 extraction: ingestion=%s", request.ingestion_id
+            )
     return {"status": result.status, "object_key": result.object_key, "error": result.error}
+
+
+@celery_app.task(
+    bind=True,
+    name="ingestion.stage2_extract",
+    acks_late=True,
+    autoretry_for=(),
+    reject_on_worker_lost=True,
+)
+def stage2_extract(self, payload: dict[str, object]) -> dict[str, object]:
+    """Execute Stage 2 extraction for an ingestion request payload."""
+    ingestion_id = parse_stage2_payload(payload)
+    result = run_stage2_extraction(ingestion_id)
+    LOGGER.info(
+        "Stage 2 extraction completed: ingestion=%s extracted=%s failures=%s",
+        ingestion_id,
+        result.extracted_artifacts,
+        result.failures,
+    )
+    return {
+        "status": "completed" if result.failures == 0 else "partial_failure",
+        "extracted_artifacts": result.extracted_artifacts,
+        "failures": result.failures,
+        "errors": result.errors,
+    }
