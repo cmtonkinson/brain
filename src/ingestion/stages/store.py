@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from ingestion.provenance import ProvenanceSourceInput, record_provenance
+from ingestion.stage_recorder import StageRecorder
 from ingestion.store import _checksum_from_object_key, store_raw_artifact
 from models import Artifact, IngestionArtifact
 from services.database import get_sync_session
@@ -64,21 +65,8 @@ def run_stage1_store(
     object_key: str | None = None
     error: str | None = None
 
-    if request.payload is not None:
-        result = store_raw_artifact(
-            request.payload,
-            mime_type=request.mime_type,
-            ingested_at=ingested_at,
-            session_factory=session_factory,
-            object_store=store,
-        )
-        object_key = result.object_key
-        if result.created:
-            status = "success"
-        else:
-            status = "skipped"
-            error = "raw artifact already exists"
-    else:
+    # Check for missing existing key before starting stage recording
+    if request.payload is None:
         object_key = request.existing_object_key
         if object_key is None:
             raise ValueError("existing_object_key must be provided when payload is absent")
@@ -87,6 +75,7 @@ def run_stage1_store(
         except (FileNotFoundError, ValueError):
             status = "failed"
             error = f"raw artifact not found for object_key: {object_key}"
+            # Record failure without stage tracking since this is a pre-check
             return _record_stage_outcome(
                 session_factory=session_factory,
                 ingestion_id=request.ingestion_id,
@@ -95,15 +84,35 @@ def run_stage1_store(
                 error=error,
                 created_at=timestamp,
             )
-        _ensure_artifact_for_existing_key(
-            session_factory=session_factory,
-            object_key=object_key,
-            payload=data,
-            mime_type=request.mime_type,
-            ingested_at=ingested_at,
-            created_at=timestamp,
-        )
-        status = "success"
+
+    recorder = StageRecorder(session_factory=session_factory)
+
+    with recorder.record_stage(request.ingestion_id, "store", now=timestamp):
+        if request.payload is not None:
+            result = store_raw_artifact(
+                request.payload,
+                mime_type=request.mime_type,
+                ingested_at=ingested_at,
+                session_factory=session_factory,
+                object_store=store,
+            )
+            object_key = result.object_key
+            if result.created:
+                status = "success"
+            else:
+                status = "skipped"
+                error = "raw artifact already exists"
+        else:
+            # We already validated object_key and read data above
+            _ensure_artifact_for_existing_key(
+                session_factory=session_factory,
+                object_key=object_key,
+                payload=data,
+                mime_type=request.mime_type,
+                ingested_at=ingested_at,
+                created_at=timestamp,
+            )
+            status = "success"
 
     result = _record_stage_outcome(
         session_factory=session_factory,

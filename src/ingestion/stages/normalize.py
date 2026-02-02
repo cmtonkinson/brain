@@ -19,6 +19,7 @@ from ingestion.normalizers import (
 )
 from ingestion.normalizers.text import DefaultTextNormalizer
 from ingestion.provenance import ProvenanceSourceInput, record_provenance
+from ingestion.stage_recorder import StageRecorder
 from ingestion.store import _checksum_from_object_key
 from models import (
     Artifact,
@@ -73,23 +74,47 @@ class Stage3NormalizationRunner:
         errors: list[str] = []
         failures = 0
         normalized_artifacts = 0
+        recorder = StageRecorder(session_factory=self._session_factory)
 
-        for extracted in self._load_extracted_artifacts(ingestion_id):
-            try:
-                count, artifact_errors = self._process_extracted_artifact(
-                    context=self._build_context(extracted, ingestion),
-                    ingestion=ingestion,
-                    timestamp=timestamp,
-                )
-            except Exception as exc:
-                message = f"artifact={extracted.object_key} error={exc}"
-                self._record_ingestion_failure(ingestion_id, message, timestamp)
-                errors.append(message)
-                failures += 1
+        # Note: We don't use the context manager here because we need to handle
+        # per-artifact failures specially - we want to mark the stage as failed
+        # while still allowing the pipeline to continue with successful artifacts.
+        run_id = recorder._start_stage_run(ingestion_id, "normalize", timestamp)
+
+        try:
+            for extracted in self._load_extracted_artifacts(ingestion_id):
+                try:
+                    count, artifact_errors = self._process_extracted_artifact(
+                        context=self._build_context(extracted, ingestion),
+                        ingestion=ingestion,
+                        timestamp=timestamp,
+                    )
+                except Exception as exc:
+                    message = f"artifact={extracted.object_key} error={exc}"
+                    self._record_ingestion_failure(ingestion_id, message, timestamp)
+                    errors.append(message)
+                    failures += 1
+                else:
+                    normalized_artifacts += count
+                    failures += len(artifact_errors)
+                    errors.extend(artifact_errors)
+
+            # Determine stage status based on whether any failures occurred
+            finish_timestamp = now or datetime.now(timezone.utc)
+            if failures > 0:
+                error_summary = f"{failures} artifact(s) failed normalization"
+                recorder._finish_stage_run(run_id, "failed", error_summary, finish_timestamp)
+                # Note: We do NOT update ingestion status to failed here, as we want
+                # the pipeline to continue processing successful artifacts
             else:
-                normalized_artifacts += count
-                failures += len(artifact_errors)
-                errors.extend(artifact_errors)
+                recorder._finish_stage_run(run_id, "success", None, finish_timestamp)
+
+        except Exception as exc:
+            # Unexpected error during stage execution - fail the stage and re-raise
+            finish_timestamp = now or datetime.now(timezone.utc)
+            recorder._finish_stage_run(run_id, "failed", str(exc), finish_timestamp)
+            recorder._update_ingestion_status(ingestion_id, "failed", str(exc))
+            raise
 
         return Stage3NormalizationResult(
             ingestion_id=ingestion_id,

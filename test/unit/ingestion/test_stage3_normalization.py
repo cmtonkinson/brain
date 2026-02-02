@@ -227,3 +227,22 @@ def test_stage3_normalization_partial_failure_records_failure(tmp_path, sqlite_s
         assert len(stage_rows) == 2
         assert any(row.status == "failed" for row in stage_rows)
         assert any(row.status == "success" for row in stage_rows)
+
+        # Verify that the stage run is marked as failed due to per-artifact failures
+        from models import IngestionStageRun
+
+        stage_run = (
+            session.query(IngestionStageRun)
+            .filter(
+                IngestionStageRun.ingestion_id == ingestion.id,
+                IngestionStageRun.stage == "normalize",
+            )
+            .order_by(IngestionStageRun.created_at.desc())
+            .first()
+        )
+        assert stage_run is not None
+        assert stage_run.status == "failed"
+        assert "artifact(s) failed normalization" in stage_run.error
+        assert stage_run.started_at is not None
+        assert stage_run.finished_at is not None
+        assert stage_run.finished_at >= stage_run.started_at

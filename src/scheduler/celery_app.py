@@ -36,6 +36,8 @@ from services.database import get_sync_engine, get_sync_session
 from services.signal import SignalClient
 from models import Schedule
 from scheduler.schedule_timing import compute_conditional_next_run
+from ingestion.retry import check_should_retry_stage
+from ingestion.stage_recorder import StageRecorder
 from ingestion.stages.anchor import parse_stage4_payload, run_stage4_anchor
 from ingestion.stages.extract import parse_stage2_payload, run_stage2_extraction
 from ingestion.hook_dispatch import dispatch_stage_hooks
@@ -449,6 +451,25 @@ def evaluate_predicate(
 def stage1_store(self, payload: dict[str, object]) -> dict[str, object]:
     """Execute Stage 1 store for an ingestion request payload."""
     request = parse_stage1_payload(payload)
+
+    # Check retry policy
+    decision = check_should_retry_stage(str(request.ingestion_id), "store")
+    if not decision.should_run:
+        LOGGER.info(
+            "Skipping Stage 1 store: ingestion=%s reason=%s",
+            request.ingestion_id,
+            decision.reason,
+        )
+        # Record stage skip to maintain audit trail
+        recorder = StageRecorder()
+        recorder.record_skipped_stage(
+            request.ingestion_id,
+            "store",
+            decision.reason,
+            now=datetime.now(timezone.utc),
+        )
+        return {"status": "skipped", "reason": decision.reason}
+
     result = run_stage1_store(request)
     LOGGER.info(
         "Stage 1 store completed: ingestion=%s status=%s object_key=%s",
@@ -486,6 +507,25 @@ def stage1_store(self, payload: dict[str, object]) -> dict[str, object]:
 def stage2_extract(self, payload: dict[str, object]) -> dict[str, object]:
     """Execute Stage 2 extraction for an ingestion request payload."""
     ingestion_id = parse_stage2_payload(payload)
+
+    # Check retry policy
+    decision = check_should_retry_stage(str(ingestion_id), "extract")
+    if not decision.should_run:
+        LOGGER.info(
+            "Skipping Stage 2 extraction: ingestion=%s reason=%s",
+            ingestion_id,
+            decision.reason,
+        )
+        # Record stage skip to maintain audit trail
+        recorder = StageRecorder()
+        recorder.record_skipped_stage(
+            ingestion_id,
+            "extract",
+            decision.reason,
+            now=datetime.now(timezone.utc),
+        )
+        return {"status": "skipped", "reason": decision.reason}
+
     result = run_stage2_extraction(ingestion_id)
     LOGGER.info(
         "Stage 2 extraction completed: ingestion=%s extracted=%s failures=%s",
@@ -526,6 +566,25 @@ def stage2_extract(self, payload: dict[str, object]) -> dict[str, object]:
 def stage3_normalize(self, payload: dict[str, object]) -> dict[str, object]:
     """Execute Stage 3 normalization for an ingestion payload."""
     ingestion_id = parse_stage3_payload(payload)
+
+    # Check retry policy
+    decision = check_should_retry_stage(str(ingestion_id), "normalize")
+    if not decision.should_run:
+        LOGGER.info(
+            "Skipping Stage 3 normalization: ingestion=%s reason=%s",
+            ingestion_id,
+            decision.reason,
+        )
+        # Record stage skip to maintain audit trail
+        recorder = StageRecorder()
+        recorder.record_skipped_stage(
+            ingestion_id,
+            "normalize",
+            decision.reason,
+            now=datetime.now(timezone.utc),
+        )
+        return {"status": "skipped", "reason": decision.reason}
+
     result = run_stage3_normalization(ingestion_id)
     LOGGER.info(
         "Stage 3 normalization completed: ingestion=%s normalized=%s failures=%s",
@@ -566,6 +625,25 @@ def stage3_normalize(self, payload: dict[str, object]) -> dict[str, object]:
 def stage4_anchor(self, payload: dict[str, object]) -> dict[str, object]:
     """Execute Stage 4 anchoring for an ingestion payload."""
     ingestion_id = parse_stage4_payload(payload)
+
+    # Check retry policy
+    decision = check_should_retry_stage(str(ingestion_id), "anchor")
+    if not decision.should_run:
+        LOGGER.info(
+            "Skipping Stage 4 anchor: ingestion=%s reason=%s",
+            ingestion_id,
+            decision.reason,
+        )
+        # Record stage skip to maintain audit trail
+        recorder = StageRecorder()
+        recorder.record_skipped_stage(
+            ingestion_id,
+            "anchor",
+            decision.reason,
+            now=datetime.now(timezone.utc),
+        )
+        return {"status": "skipped", "reason": decision.reason}
+
     result = run_stage4_anchor(ingestion_id)
     LOGGER.info(
         "Stage 4 anchor completed: ingestion=%s anchored=%s failures=%s",

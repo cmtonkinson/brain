@@ -1,77 +1,97 @@
-# Brain configuration defaults (non-secret).
-# Override in ~/.config/brain/brain.yml or /config/brain.yml.
+# Brain configuration sample
+# All values shown here have defaults in src/config.py
+# Only uncomment and set values you want to override
+#
+# SECRETS go in ~/.config/brain/secrets.yml (see secrets.yml.sample)
 
-log_level: "INFO"
-log_level_otel: "INFO"
+# Logging
+# log_level: "INFO"
+# log_level_otel: "INFO"
 
-obsidian:
-  url: "http://host.docker.internal:27123"
-
-llm:
-  model: "anthropic:claude-sonnet-4-20250514"
-  base_url: null
-  timeout: 600
-  embed_model: "mxbai-embed-large"
-  embed_base_url: "http://host.docker.internal:11434"
-
-signal:
-  url: "http://signal-api:8080"
-
-letta:
-  agent_name: "brain"
-  model: "ollama/llama3.1:8b"
-  embed_model: "ollama/mxbai-embed-large:latest"
-  bootstrap_on_start: false
-
-conversation:
-  folder: "Brain/Conversations"
-  default_channel: "signal"
-  summary_every_turns: 7
-
-utcp:
-  config_path: "~/.config/brain/utcp.json"
-  code_mode_timeout: 30
-
-indexer:
-  interval_seconds: 0
-  chunk_tokens: 1000
-  collection: "obsidian"
-
-objects:
-  root_dir: "data/objects"
-
-anchoring:
-  attachments_dir: "_attachments/"
-  visual_allowlist:
-    - "jpg"
-    - "jpeg"
-    - "png"
-    - "gif"
-
-scheduler:
-  default_max_attempts: 3
-  default_backoff_strategy: "exponential"
-  backoff_base_seconds: 60
-
-commitments:
-  autonomous_transition_confidence_threshold: 0.8
-
-qdrant:
-  url: "http://qdrant:6333"
-redis:
-  url: "redis://redis:6379"
-user:
-  name: "user"
-  home_dir: "/Users/you"
-  timezone: "America/New_York"
-  test_calendar_name: null
-  test_reminder_list_name: null
-
-# Required (set in ~/.config/brain/brain.yml or ~/.config/brain/secrets.yml):
+# Obsidian configuration
 # obsidian:
-#   vault_path: "/Users/you/Documents/Vault"
-#   api_key: "your-obsidian-api-key"
+#   url: "http://host.docker.internal:27123"
+#   vault_path: "/Users/you/Documents/Vault"  # REQUIRED - set in user config
+#   root_folder: null  # Optional - used by memory.py for conversation paths
+#   conversation_folder: null  # Optional - used by memory.py
+#   summary_folder: null  # Optional - used by memory.py
+
+# LLM configuration
+# llm:
+#   model: "anthropic:claude-sonnet-4-20250514"
+#   base_url: null
+#   timeout: 600
+#   embed_model: "mxbai-embed-large"
+#   embed_base_url: "http://host.docker.internal:11434"
+
+# Database configuration
+# database:
+#   url: null  # Auto-generated from postgres_password if not set
+
+# Signal configuration
 # signal:
-#   allowed_senders_by_channel:
-#     signal:
-#       - "+15551234567"
+#   url: "http://signal-api:8080"
+#   allowed_senders: []  # Deprecated - use allowed_senders_by_channel
+
+# Letta service configuration
+# letta:
+#   base_url: null
+#   agent_name: "brain"
+#   model: "ollama/llama3.1:8b"
+#   embed_model: "ollama/mxbai-embed-large:latest"
+#   bootstrap_on_start: false
+
+# Conversation storage
+# conversation:
+#   default_channel: "signal"
+#   summary_every_turns: 7
+
+# UTCP Code-Mode configuration
+# utcp:
+#   config_path: "~/.config/brain/utcp.json"
+#   code_mode_timeout: 30
+
+# Indexer configuration
+# indexer:
+#   interval_seconds: 0  # 0 = disabled
+#   chunk_tokens: 1000
+#   collection: "obsidian"
+
+# Object storage
+# objects:
+#   root_dir: "data/objects"
+
+# Anchoring configuration (Stage 4 Obsidian notes)
+# anchoring:
+#   attachments_dir: "_attachments/"
+#   visual_allowlist:
+#     - "jpg"
+#     - "jpeg"
+#     - "png"
+#     - "gif"
+
+# Scheduler configuration
+# scheduler:
+#   default_max_attempts: 3
+#   default_backoff_strategy: "exponential"  # fixed, exponential, or none
+#   backoff_base_seconds: 60
+#   failure_notification_threshold: 3
+#   failure_notification_throttle_seconds: 3600
+
+# Commitment tracking configuration
+# commitments:
+#   autonomous_transition_confidence_threshold: 0.8
+
+# Service URLs
+# qdrant:
+#   url: "http://qdrant:6333"
+# redis:
+#   url: "redis://redis:6379"
+
+# User configuration
+# user:
+#   name: "user"
+#   home_dir: "/Users/you"  # Should match filesystem MCP allowed directories
+#   timezone: "America/New_York"
+#   test_calendar_name: null
+#   test_reminder_list_name: null

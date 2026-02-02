@@ -94,7 +94,6 @@ def _env_settings_source():
         "LITELLM_MODEL": ("llm.model", "str"),
         "OLLAMA_URL": ("llm.embed_base_url", "str"),
         "OLLAMA_EMBED_MODEL": ("llm.embed_model", "str"),
-        "USER": ("user.name", "str"),
         "USER_TIMEZONE": ("user.timezone", "str"),
         "UTCP_CONFIG_PATH": ("utcp.config_path", "str"),
     }

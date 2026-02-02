@@ -75,7 +75,7 @@ def test_yaml_precedence(monkeypatch, tmp_path):
             "LLM_TIMEOUT",
         ],
     )
-    monkeypatch.setenv("USER", "env-user")
+    monkeypatch.setenv("USER", "env-user")  # Should be ignored (not mapped)
     monkeypatch.setenv("LLM_TIMEOUT", "400")
 
     monkeypatch.setattr(config_module, "_DEFAULT_CONFIG_PATH", defaults)
@@ -84,7 +84,7 @@ def test_yaml_precedence(monkeypatch, tmp_path):
 
     settings = config_module.Settings()
 
-    assert settings.user.name == "env-user"
+    assert settings.user.name == "secrets-override"  # USER env var no longer mapped
     assert settings.llm.timeout == 400
     assert settings.qdrant.url == "http://secrets"
 

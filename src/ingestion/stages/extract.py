@@ -14,6 +14,8 @@ from config import settings
 from ingestion.extractors import ExtractedArtifact, ExtractorContext, ExtractorRegistry
 from ingestion.extractors.text import TextExtractor
 from ingestion.provenance import ProvenanceSourceInput, record_provenance
+from ingestion.sandbox import SandboxExecutor
+from ingestion.stage_recorder import StageRecorder
 from ingestion.store import _checksum_from_object_key
 from models import (
     Artifact,
@@ -77,11 +79,13 @@ class Stage2ExtractionRunner:
         session_factory: Callable[[], Session] | None = None,
         object_store: ObjectStore | None = None,
         registry: ExtractorRegistry | None = None,
+        sandbox: SandboxExecutor | None = None,
     ) -> None:
-        """Initialize the runner with database, storage, and extractor wiring."""
+        """Initialize the runner with database, storage, extractor wiring, and sandbox."""
         self._session_factory = session_factory or get_sync_session
         self._object_store = object_store or ObjectStore(settings.objects.root_dir)
         self._registry = registry or ExtractorRegistry([TextExtractor()])
+        self._sandbox = sandbox or SandboxExecutor()
 
     def run(self, ingestion_id: UUID, *, now: datetime | None = None) -> Stage2ExtractionResult:
         """Run extraction for every eligible raw artifact under the ingestion."""
@@ -90,16 +94,47 @@ class Stage2ExtractionRunner:
         failures: int = 0
         errors: list[str] = []
         extracted_artifacts = 0
+        recorder = StageRecorder(session_factory=self._session_factory)
 
-        for raw in self._load_raw_artifacts(ingestion_id):
-            context = self._build_context(raw, ingestion)
-            try:
-                extracted_artifacts += self._process_raw_artifact(context, ingestion, timestamp)
-            except Exception as exc:
-                failures += 1
-                message = f"artifact={raw.object_key} error={exc}"
-                errors.append(message)
-                self._record_ingestion_failure(ingestion_id, message, timestamp)
+        # Note: We don't use the context manager here because we need to handle
+        # per-artifact failures specially - we want to mark the stage as failed
+        # while still allowing the pipeline to continue with successful artifacts.
+        run_id = recorder._start_stage_run(ingestion_id, "extract", timestamp)
+
+        # Update ingestion status to running (Stage recorder would do this for Stage 1)
+        # For Stage 2+, we just process artifacts
+        try:
+            for raw in self._load_raw_artifacts(ingestion_id):
+                context = self._build_context(raw, ingestion)
+                try:
+                    success_count, failure_count, artifact_errors = self._process_raw_artifact(
+                        context, ingestion, timestamp
+                    )
+                    extracted_artifacts += success_count
+                    failures += failure_count
+                    errors.extend(artifact_errors)
+                except Exception as exc:
+                    failures += 1
+                    message = f"artifact={raw.object_key} error={exc}"
+                    errors.append(message)
+                    self._record_ingestion_failure(ingestion_id, message, timestamp)
+
+            # Determine stage status based on whether any failures occurred
+            finish_timestamp = now or datetime.now(timezone.utc)
+            if failures > 0:
+                error_summary = f"{failures} artifact(s) failed extraction"
+                recorder._finish_stage_run(run_id, "failed", error_summary, finish_timestamp)
+                # Note: We do NOT update ingestion status to failed here, as we want
+                # the pipeline to continue processing successful artifacts
+            else:
+                recorder._finish_stage_run(run_id, "success", None, finish_timestamp)
+
+        except Exception as exc:
+            # Unexpected error during stage execution - fail the stage and re-raise
+            finish_timestamp = now or datetime.now(timezone.utc)
+            recorder._finish_stage_run(run_id, "failed", str(exc), finish_timestamp)
+            recorder._update_ingestion_status(ingestion_id, "failed", str(exc))
+            raise
 
         return Stage2ExtractionResult(
             ingestion_id=ingestion_id,
@@ -156,21 +191,41 @@ class Stage2ExtractionRunner:
         context: ExtractorContext,
         ingestion: Ingestion,
         timestamp: datetime,
-    ) -> int:
-        """Process a single raw artifact through matching extractors."""
+    ) -> tuple[int, int, list[str]]:
+        """Process a single raw artifact through matching extractors with sandbox isolation.
+
+        Returns:
+            Tuple of (success_count, failure_count, error_messages).
+        """
         extractors = self._registry.match(context)
         if not extractors:
-            return 0
+            return 0, 0, []
         count = 0
+        failures = 0
+        errors: list[str] = []
         for extractor in extractors:
-            extracted = extractor.extract(context)
+            # Execute extraction in sandbox
+            sandbox_result = self._sandbox.execute(extractor.extract, context)
+
+            if not sandbox_result.success:
+                # Sandbox failure - record but continue with other extractors
+                error_msg = f"artifact={context.raw_object_key} error={sandbox_result.error}"
+                self._record_ingestion_failure(ingestion.id, error_msg, timestamp)
+                failures += 1
+                errors.append(error_msg)
+                continue
+
+            extracted = sandbox_result.result
+            if not extracted:
+                continue
+
             for artifact in extracted:
                 object_key = self._persist_extracted_artifact(artifact, context, timestamp)
                 self._record_ingestion_success(ingestion.id, object_key, timestamp)
                 self._persist_extraction_metadata(object_key, artifact, timestamp)
                 self._persist_provenance(ingestion, object_key, artifact, timestamp)
                 count += 1
-        return count
+        return count, failures, errors
 
     def _persist_extracted_artifact(
         self,

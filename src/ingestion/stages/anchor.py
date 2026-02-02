@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from config import settings
+from ingestion.stage_recorder import StageRecorder
 from models import (
     AnchorNote,
     Artifact,
@@ -92,6 +93,11 @@ class Stage4AnchoringRunner:
         ingestion = self._load_ingestion(ingestion_id)
         candidates = self._load_unanchored_normalized_artifacts(ingestion_id)
         if not candidates:
+            # Record skipped stage if no candidates
+            recorder = StageRecorder(session_factory=self._session_factory)
+            recorder.record_skipped_stage(
+                ingestion_id, "anchor", "no normalized artifacts to anchor", now=timestamp
+            )
             return Stage4AnchorResult(
                 ingestion_id=ingestion_id,
                 anchored_artifacts=0,
@@ -105,45 +111,50 @@ class Stage4AnchoringRunner:
         anchored = 0
         failures = 0
         errors: list[str] = []
+        recorder = StageRecorder(session_factory=self._session_factory)
 
-        for index, candidate in enumerate(candidates, start=1):
-            payload = self._object_store.read(candidate.object_key)
-            try:
-                section = self._build_artifact_section(
-                    candidate=candidate,
-                    ingestion=ingestion,
-                    payload=payload,
-                    sequence=index,
-                )
-                if not note_exists and not note_created_this_run:
-                    content = f"{self._build_intro(ingestion, timestamp)}{section}"
-                    self._create_note(note_path, content)
-                    note_created_this_run = True
-                    note_exists = True
-                else:
-                    appended = f"\n\n---\n\n{section}"
-                    self._append_note(note_path, appended)
-            except Exception as exc:
-                message = f"artifact={candidate.object_key} error={exc}"
-                LOGGER.exception("Failed to write anchor note section: %s", message)
-                errors.append(message)
-                failures += 1
-                self._record_ingestion_failure(
-                    ingestion_id, candidate.object_key, message, timestamp
-                )
-                continue
-            try:
-                self._persist_anchor_note(ingestion_id, candidate.object_key, note_path, timestamp)
-                self._record_ingestion_success(ingestion_id, candidate.object_key, timestamp)
-                anchored += 1
-            except Exception as exc:
-                message = f"artifact={candidate.object_key} error={exc}"
-                LOGGER.exception("Failed to persist anchor metadata: %s", message)
-                errors.append(message)
-                failures += 1
-                self._record_ingestion_failure(
-                    ingestion_id, candidate.object_key, message, timestamp
-                )
+        with recorder.record_stage(ingestion_id, "anchor", now=timestamp):
+            for index, candidate in enumerate(candidates, start=1):
+                payload = self._object_store.read(candidate.object_key)
+                try:
+                    section = self._build_artifact_section(
+                        candidate=candidate,
+                        ingestion=ingestion,
+                        payload=payload,
+                        sequence=index,
+                    )
+                    if not note_exists and not note_created_this_run:
+                        content = f"{self._build_intro(ingestion, timestamp)}{section}"
+                        self._create_note(note_path, content)
+                        note_created_this_run = True
+                        note_exists = True
+                    else:
+                        appended = f"\n\n---\n\n{section}"
+                        self._append_note(note_path, appended)
+                except Exception as exc:
+                    message = f"artifact={candidate.object_key} error={exc}"
+                    LOGGER.exception("Failed to write anchor note section: %s", message)
+                    errors.append(message)
+                    failures += 1
+                    self._record_ingestion_failure(
+                        ingestion_id, candidate.object_key, message, timestamp
+                    )
+                    continue
+                try:
+                    self._persist_anchor_note(
+                        ingestion_id, candidate.object_key, note_path, timestamp
+                    )
+                    self._record_ingestion_success(ingestion_id, candidate.object_key, timestamp)
+                    anchored += 1
+                except Exception as exc:
+                    message = f"artifact={candidate.object_key} error={exc}"
+                    LOGGER.exception("Failed to persist anchor metadata: %s", message)
+                    errors.append(message)
+                    failures += 1
+                    self._record_ingestion_failure(
+                        ingestion_id, candidate.object_key, message, timestamp
+                    )
+
         return Stage4AnchorResult(
             ingestion_id=ingestion_id,
             anchored_artifacts=anchored,

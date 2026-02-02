@@ -183,3 +183,22 @@ def test_stage2_extraction_partial_failure(tmp_path, sqlite_session_factory):
         assert len(metadata) == 1
         provenance = session.query(ProvenanceRecord).all()
         assert len(provenance) == 1
+
+        # Verify that the stage run is marked as failed due to per-artifact failures
+        from models import IngestionStageRun
+
+        stage_run = (
+            session.query(IngestionStageRun)
+            .filter(
+                IngestionStageRun.ingestion_id == ingestion.id,
+                IngestionStageRun.stage == "extract",
+            )
+            .order_by(IngestionStageRun.created_at.desc())
+            .first()
+        )
+        assert stage_run is not None
+        assert stage_run.status == "failed"
+        assert "artifact(s) failed extraction" in stage_run.error
+        assert stage_run.started_at is not None
+        assert stage_run.finished_at is not None
+        assert stage_run.finished_at >= stage_run.started_at

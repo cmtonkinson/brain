@@ -315,6 +315,8 @@ def test_persist_schedule_evaluation_updates_next_run(
 
 def test_stage2_extract_task_enqueues_stage3(monkeypatch) -> None:
     """Ensure the Stage 2 Celery task enqueues Stage 3 after extraction."""
+    from ingestion.retry import StageRetryDecision
+
     ingestion_id = uuid4()
     recorded: list[UUID] = []
 
@@ -329,8 +331,12 @@ def test_stage2_extract_task_enqueues_stage3(monkeypatch) -> None:
     def fake_enqueue(ingestion_id_arg: UUID, *, send_task=None) -> None:
         recorded.append(ingestion_id_arg)
 
+    def fake_retry_check(ingestion_id_arg: str, stage: str) -> StageRetryDecision:
+        return StageRetryDecision(should_run=True, reason="test")
+
     monkeypatch.setattr(celery_app, "run_stage2_extraction", fake_run)
     monkeypatch.setattr("ingestion.queue.enqueue_stage3_normalize", fake_enqueue)
+    monkeypatch.setattr("scheduler.celery_app.check_should_retry_stage", fake_retry_check)
     payload = {"ingestion_id": str(ingestion_id)}
 
     response = celery_app.stage2_extract.run(payload)

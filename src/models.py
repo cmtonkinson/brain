@@ -387,6 +387,35 @@ class IngestionEmbeddingDispatch(Base):
     )
 
 
+class IngestionStageRun(Base):
+    """Per-stage outcome record tracking timing, status, and errors for each ingestion attempt."""
+
+    __tablename__ = "ingestion_stage_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "stage IN ('store', 'extract', 'normalize', 'anchor')",
+            name="ck_ingestion_stage_runs_stage",
+        ),
+        CheckConstraint(
+            "status IN ('success', 'failed', 'skipped')",
+            name="ck_ingestion_stage_runs_status",
+        ),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ingestion_id = Column(Uuid(as_uuid=True), ForeignKey("ingestions.id"), nullable=False)
+    stage = Column(IngestionStageEnum, nullable=False)
+    status = Column(IngestionArtifactStatusEnum, nullable=False)
+    error = Column(Text, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
 class ProvenanceRecord(Base):
     """Provenance record anchored to a specific artifact object key."""
 
