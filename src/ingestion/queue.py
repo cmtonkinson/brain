@@ -11,6 +11,9 @@ from ingestion.schema import IngestionRequest
 
 _STAGE1_TASK = "ingestion.stage1_store"
 _STAGE2_TASK = "ingestion.stage2_extract"
+_STAGE3_TASK = "ingestion.stage3_normalize"
+_STAGE4_TASK = "ingestion.stage4_anchor"
+_HOOK_DISPATCH_TASK = "ingestion.dispatch_hooks"
 
 
 def _get_celery_app():
@@ -67,6 +70,55 @@ def enqueue_stage2_extract(
 
 def build_stage2_payload(*, ingestion_id: UUID) -> dict[str, object]:
     """Serialize a Stage 2 payload into a JSON-safe dict."""
+    return {"ingestion_id": str(ingestion_id)}
+
+
+def enqueue_stage3_normalize(
+    ingestion_id: UUID,
+    *,
+    send_task: Callable[..., object] | None = None,
+) -> None:
+    """Enqueue the Stage 3 normalization job for the ingestion."""
+    payload = build_stage3_payload(ingestion_id=ingestion_id)
+    sender = send_task or _get_celery_app().send_task
+    sender(_STAGE3_TASK, args=(payload,))
+
+
+def build_stage3_payload(*, ingestion_id: UUID) -> dict[str, object]:
+    """Serialize a Stage 3 payload into a JSON-safe dict."""
+    return {"ingestion_id": str(ingestion_id)}
+
+
+def enqueue_stage4_anchor(
+    ingestion_id: UUID,
+    *,
+    send_task: Callable[..., object] | None = None,
+) -> None:
+    """Enqueue the Stage 4 anchor job for the ingestion."""
+    payload = build_stage4_payload(ingestion_id=ingestion_id)
+    sender = send_task or _get_celery_app().send_task
+    sender(_STAGE4_TASK, args=(payload,))
+
+
+def enqueue_hook_dispatch(
+    ingestion_id: UUID,
+    stage: str,
+    *,
+    send_task: Callable[..., object] | None = None,
+) -> None:
+    """Enqueue the hook dispatch job for a completed stage."""
+    payload = build_hook_dispatch_payload(ingestion_id=ingestion_id, stage=stage)
+    sender = send_task or _get_celery_app().send_task
+    sender(_HOOK_DISPATCH_TASK, args=(payload,))
+
+
+def build_hook_dispatch_payload(*, ingestion_id: UUID, stage: str) -> dict[str, object]:
+    """Serialize a hook dispatch payload for Celery."""
+    return {"ingestion_id": str(ingestion_id), "stage": stage}
+
+
+def build_stage4_payload(*, ingestion_id: UUID) -> dict[str, object]:
+    """Serialize a Stage 4 payload into a JSON-safe dict."""
     return {"ingestion_id": str(ingestion_id)}
 
 

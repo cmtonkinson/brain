@@ -294,6 +294,13 @@ class SchedulerConfig(BaseModel):
         return value
 
 
+class AnchoringConfig(BaseModel):
+    """Anchoring configuration for Stage 4 Obsidian notes."""
+
+    attachments_dir: str = "_attachments/"
+    visual_allowlist: list[str] = Field(default_factory=lambda: ["jpg", "jpeg", "png", "gif"])
+
+
 class CommitmentConfig(BaseModel):
     """Commitment tracking configuration defaults."""
 
@@ -377,6 +384,7 @@ class Settings(BaseSettings):
 
     # Object Storage
     objects: ObjectStoreConfig = Field(default_factory=ObjectStoreConfig)
+    anchoring: AnchoringConfig = Field(default_factory=AnchoringConfig)
 
     # Service URLs
     qdrant: ServiceConfig = Field(default_factory=lambda: ServiceConfig(url="http://qdrant:6333"))

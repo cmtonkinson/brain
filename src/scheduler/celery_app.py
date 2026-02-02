@@ -7,7 +7,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from typing import Any, Callable
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
@@ -36,7 +36,10 @@ from services.database import get_sync_engine, get_sync_session
 from services.signal import SignalClient
 from models import Schedule
 from scheduler.schedule_timing import compute_conditional_next_run
+from ingestion.stages.anchor import parse_stage4_payload, run_stage4_anchor
 from ingestion.stages.extract import parse_stage2_payload, run_stage2_extraction
+from ingestion.hook_dispatch import dispatch_stage_hooks
+from ingestion.stages.normalize import parse_stage3_payload, run_stage3_normalization
 from ingestion.stages.store import parse_stage1_payload, run_stage1_store
 
 LOGGER = logging.getLogger(__name__)
@@ -462,6 +465,14 @@ def stage1_store(self, payload: dict[str, object]) -> dict[str, object]:
             LOGGER.exception(
                 "Failed to enqueue Stage 2 extraction: ingestion=%s", request.ingestion_id
             )
+    try:
+        from ingestion.queue import enqueue_hook_dispatch
+
+        enqueue_hook_dispatch(request.ingestion_id, "store")
+    except Exception:
+        LOGGER.exception(
+            "Failed to enqueue hook dispatch: ingestion=%s stage=store", request.ingestion_id
+        )
     return {"status": result.status, "object_key": result.object_key, "error": result.error}
 
 
@@ -482,9 +493,142 @@ def stage2_extract(self, payload: dict[str, object]) -> dict[str, object]:
         result.extracted_artifacts,
         result.failures,
     )
+    if result.extracted_artifacts > 0:
+        from ingestion.queue import enqueue_stage3_normalize
+
+        try:
+            enqueue_stage3_normalize(ingestion_id)
+        except Exception:
+            LOGGER.exception("Failed to enqueue Stage 3 normalization: ingestion=%s", ingestion_id)
+    try:
+        from ingestion.queue import enqueue_hook_dispatch
+
+        enqueue_hook_dispatch(ingestion_id, "extract")
+    except Exception:
+        LOGGER.exception(
+            "Failed to enqueue hook dispatch: ingestion=%s stage=extract", ingestion_id
+        )
     return {
         "status": "completed" if result.failures == 0 else "partial_failure",
         "extracted_artifacts": result.extracted_artifacts,
         "failures": result.failures,
         "errors": result.errors,
+    }
+
+
+@celery_app.task(
+    bind=True,
+    name="ingestion.stage3_normalize",
+    acks_late=True,
+    autoretry_for=(),
+    reject_on_worker_lost=True,
+)
+def stage3_normalize(self, payload: dict[str, object]) -> dict[str, object]:
+    """Execute Stage 3 normalization for an ingestion payload."""
+    ingestion_id = parse_stage3_payload(payload)
+    result = run_stage3_normalization(ingestion_id)
+    LOGGER.info(
+        "Stage 3 normalization completed: ingestion=%s normalized=%s failures=%s",
+        ingestion_id,
+        result.normalized_artifacts,
+        result.failures,
+    )
+    if result.normalized_artifacts > 0:
+        from ingestion.queue import enqueue_stage4_anchor
+
+        try:
+            enqueue_stage4_anchor(ingestion_id)
+        except Exception:
+            LOGGER.exception("Failed to enqueue Stage 4 anchor: ingestion=%s", ingestion_id)
+    try:
+        from ingestion.queue import enqueue_hook_dispatch
+
+        enqueue_hook_dispatch(ingestion_id, "normalize")
+    except Exception:
+        LOGGER.exception(
+            "Failed to enqueue hook dispatch: ingestion=%s stage=normalize", ingestion_id
+        )
+    return {
+        "status": "completed" if result.failures == 0 else "partial_failure",
+        "normalized_artifacts": result.normalized_artifacts,
+        "failures": result.failures,
+        "errors": result.errors,
+    }
+
+
+@celery_app.task(
+    bind=True,
+    name="ingestion.stage4_anchor",
+    acks_late=True,
+    autoretry_for=(),
+    reject_on_worker_lost=True,
+)
+def stage4_anchor(self, payload: dict[str, object]) -> dict[str, object]:
+    """Execute Stage 4 anchoring for an ingestion payload."""
+    ingestion_id = parse_stage4_payload(payload)
+    result = run_stage4_anchor(ingestion_id)
+    LOGGER.info(
+        "Stage 4 anchor completed: ingestion=%s anchored=%s failures=%s",
+        ingestion_id,
+        result.anchored_artifacts,
+        result.failures,
+    )
+    try:
+        from ingestion.index_handoff import (
+            dispatch_embeddings_for_ingestion,
+            trigger_index_update,
+        )
+
+        index_outcome = trigger_index_update(ingestion_id)
+        LOGGER.info(
+            "Index update initiation recorded: ingestion=%s status=%s",
+            ingestion_id,
+            index_outcome.status,
+        )
+        embedding_outcomes = dispatch_embeddings_for_ingestion(ingestion_id)
+        LOGGER.info(
+            "Embeddings dispatch recorded: ingestion=%s artifacts=%s failures=%s",
+            ingestion_id,
+            len(embedding_outcomes),
+            sum(1 for entry in embedding_outcomes if entry.status == "failed"),
+        )
+    except Exception:
+        LOGGER.exception("Index/embeddings handoff failed for ingestion=%s", ingestion_id)
+    try:
+        from ingestion.queue import enqueue_hook_dispatch
+
+        enqueue_hook_dispatch(ingestion_id, "anchor")
+    except Exception:
+        LOGGER.exception("Failed to enqueue hook dispatch: ingestion=%s stage=anchor", ingestion_id)
+    return {
+        "status": "completed" if result.failures == 0 else "partial_failure",
+        "anchored_artifacts": result.anchored_artifacts,
+        "failures": result.failures,
+        "errors": list(result.errors),
+    }
+
+
+@celery_app.task(
+    bind=True,
+    name="ingestion.dispatch_hooks",
+    acks_late=True,
+    autoretry_for=(),
+    reject_on_worker_lost=True,
+)
+def dispatch_hooks(self, payload: dict[str, object]) -> dict[str, object]:
+    """Execute hook dispatch for a completed ingestion stage."""
+    ingestion_id_raw = payload.get("ingestion_id")
+    stage = payload.get("stage")
+    ingestion_id = UUID(ingestion_id_raw) if isinstance(ingestion_id_raw, str) else None
+    if ingestion_id is None or not isinstance(stage, str):
+        raise ValueError("invalid hook dispatch payload")
+    result = dispatch_stage_hooks(ingestion_id, stage)
+    LOGGER.info(
+        "Hook dispatch completed: ingestion=%s stage=%s hooks=%s",
+        ingestion_id,
+        stage,
+        result.hooks_dispatched,
+    )
+    return {
+        "hooks_dispatched": result.hooks_dispatched,
     }

@@ -280,6 +280,27 @@ class ExtractionMetadata(Base):
     )
 
 
+class NormalizationMetadata(Base):
+    """Normalization metadata recorded for canonical Markdown artifacts."""
+
+    __tablename__ = "normalization_metadata"
+
+    object_key = Column(Text, ForeignKey("artifacts.object_key"), primary_key=True)
+    method = Column(Text, nullable=False)
+    confidence = Column(Float, nullable=True)
+    tool_metadata = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
 class IngestionArtifact(Base):
     """Stage-level artifact outcome record for a specific ingestion."""
 
@@ -307,6 +328,63 @@ class IngestionArtifact(Base):
     )
     status = Column(IngestionArtifactStatusEnum, nullable=False)
     error = Column(Text, nullable=True)
+
+
+class AnchorNote(Base):
+    """Mapping between normalized artifacts and Obsidian anchor notes."""
+
+    __tablename__ = "anchor_notes"
+
+    normalized_object_key = Column(
+        Text,
+        ForeignKey("artifacts.object_key"),
+        primary_key=True,
+    )
+    ingestion_id = Column(Uuid(as_uuid=True), ForeignKey("ingestions.id"), nullable=False)
+    note_uri = Column(Text, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class IngestionIndexUpdate(Base):
+    """Audit record that tracks ingestion-triggered index-update attempts."""
+
+    __tablename__ = "ingestion_index_updates"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ingestion_id = Column(Uuid(as_uuid=True), ForeignKey("ingestions.id"), nullable=False)
+    status = Column(IngestionArtifactStatusEnum, nullable=False)
+    error = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class IngestionEmbeddingDispatch(Base):
+    """Per-artifact record of embeddings dispatch attempts for an ingestion."""
+
+    __tablename__ = "ingestion_embedding_dispatches"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ingestion_id = Column(Uuid(as_uuid=True), ForeignKey("ingestions.id"), nullable=False)
+    normalized_object_key = Column(Text, ForeignKey("artifacts.object_key"), nullable=False)
+    status = Column(IngestionArtifactStatusEnum, nullable=False)
+    error = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
 
 
 class ProvenanceRecord(Base):

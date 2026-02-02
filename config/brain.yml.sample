@@ -40,6 +40,14 @@ indexer:
 objects:
   root_dir: "data/objects"
 
+anchoring:
+  attachments_dir: "_attachments/"
+  visual_allowlist:
+    - "jpg"
+    - "jpeg"
+    - "png"
+    - "gif"
+
 scheduler:
   default_max_attempts: 3
   default_backoff_strategy: "exponential"

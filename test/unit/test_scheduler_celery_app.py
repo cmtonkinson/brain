@@ -2,8 +2,15 @@
 
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import sessionmaker
+
+from ingestion.stages.extract import Stage2ExtractionResult
+
+import os
+
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
 import scheduler.celery_app as celery_app
 from scheduler import data_access
@@ -304,3 +311,29 @@ def test_persist_schedule_evaluation_updates_next_run(
         return value.replace(tzinfo=None)
 
     assert _naive(refreshed.next_run_at) == _naive(evaluation_time + timedelta(minutes=10))
+
+
+def test_stage2_extract_task_enqueues_stage3(monkeypatch) -> None:
+    """Ensure the Stage 2 Celery task enqueues Stage 3 after extraction."""
+    ingestion_id = uuid4()
+    recorded: list[UUID] = []
+
+    def fake_run(ingestion_id_arg: UUID) -> Stage2ExtractionResult:
+        return Stage2ExtractionResult(
+            ingestion_id=ingestion_id_arg,
+            extracted_artifacts=1,
+            failures=0,
+            errors=(),
+        )
+
+    def fake_enqueue(ingestion_id_arg: UUID, *, send_task=None) -> None:
+        recorded.append(ingestion_id_arg)
+
+    monkeypatch.setattr(celery_app, "run_stage2_extraction", fake_run)
+    monkeypatch.setattr("ingestion.queue.enqueue_stage3_normalize", fake_enqueue)
+    payload = {"ingestion_id": str(ingestion_id)}
+
+    response = celery_app.stage2_extract.run(payload)
+
+    assert response["status"] == "completed"
+    assert recorded == [ingestion_id]
