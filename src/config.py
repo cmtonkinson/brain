@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -304,6 +305,10 @@ class CommitmentConfig(BaseModel):
     """Commitment tracking configuration defaults."""
 
     autonomous_transition_confidence_threshold: float = 0.8
+    audit_retention_days: int = 0
+    review_day: str = "Saturday"
+    review_time: str = "10:00"
+    batch_reminder_time: str = "06:00"
 
     @field_validator("autonomous_transition_confidence_threshold")
     @classmethod
@@ -314,6 +319,51 @@ class CommitmentConfig(BaseModel):
                 "commitments.autonomous_transition_confidence_threshold must be between 0 and 1."
             )
         return value
+
+    @field_validator("audit_retention_days")
+    @classmethod
+    def validate_audit_retention_days(cls, value: int) -> int:
+        """Ensure audit retention days is non-negative."""
+        if value < 0:
+            raise ValueError("commitments.audit_retention_days must be >= 0.")
+        return value
+
+    @field_validator("review_day")
+    @classmethod
+    def validate_review_day(cls, value: str) -> str:
+        """Ensure review_day is a supported weekday name."""
+        normalized = value.strip().lower()
+        if normalized not in {
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        }:
+            raise ValueError("commitments.review_day must be a weekday name.")
+        return value.strip()
+
+    @field_validator("review_time")
+    @classmethod
+    def validate_review_time(cls, value: str) -> str:
+        """Ensure review_time uses HH:MM 24-hour format."""
+        try:
+            datetime.strptime(value.strip(), "%H:%M")
+        except ValueError as exc:
+            raise ValueError("commitments.review_time must be HH:MM.") from exc
+        return value.strip()
+
+    @field_validator("batch_reminder_time")
+    @classmethod
+    def validate_batch_reminder_time(cls, value: str) -> str:
+        """Ensure batch_reminder_time uses HH:MM 24-hour format."""
+        try:
+            datetime.strptime(value.strip(), "%H:%M")
+        except ValueError as exc:
+            raise ValueError("commitments.batch_reminder_time must be HH:MM.") from exc
+        return value.strip()
 
 
 class ServiceConfig(BaseModel):

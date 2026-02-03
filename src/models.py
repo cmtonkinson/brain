@@ -26,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base
 
+from commitments.constants import COMMITMENT_STATES
 from config import settings
 from time_utils import to_local
 
@@ -150,6 +151,18 @@ ScheduleAuditEventTypeEnum = Enum(
     "delete",
     "run_now",
     name="schedule_audit_event_type",
+    native_enum=False,
+)
+_COMMITMENT_STATE_VALUES = "', '".join(COMMITMENT_STATES)
+CommitmentStateEnum = Enum(
+    *COMMITMENT_STATES,
+    name="commitment_state",
+    native_enum=False,
+)
+CommitmentTransitionActorEnum = Enum(
+    "user",
+    "system",
+    name="commitment_transition_actor",
     native_enum=False,
 )
 
@@ -456,6 +469,147 @@ class ProvenanceSource(Base):
     source_uri = Column(Text, nullable=True)
     source_actor = Column(Text, nullable=True)
     captured_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class Commitment(Base):
+    """Commitment record tracking obligations and their lifecycle."""
+
+    __tablename__ = "commitments"
+    __table_args__ = (
+        CheckConstraint(
+            f"state IN ('{_COMMITMENT_STATE_VALUES}')",
+            name="ck_commitments_state",
+        ),
+        CheckConstraint("importance BETWEEN 1 AND 3", name="ck_commitments_importance"),
+        CheckConstraint("effort_provided BETWEEN 1 AND 3", name="ck_commitments_effort_provided"),
+    )
+
+    commitment_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+    )
+    description = Column(Text, nullable=False)
+    provenance_id = Column(Uuid(as_uuid=True), ForeignKey("provenance_records.id"), nullable=True)
+    state = Column(CommitmentStateEnum, nullable=False, default="OPEN")
+    importance = Column(Integer, nullable=False, default=2)
+    effort_provided = Column(Integer, nullable=False, default=2)
+    effort_inferred = Column(Integer, nullable=True)
+    urgency = Column(Integer, nullable=True)
+    due_by = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    last_progress_at = Column(DateTime(timezone=True), nullable=True)
+    last_modified_at = Column(DateTime(timezone=True), nullable=True)
+    ever_missed_at = Column(DateTime(timezone=True), nullable=True)
+    presented_for_review_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    next_schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=True)
+
+
+class CommitmentProgress(Base):
+    """Progress event recorded against a commitment."""
+
+    __tablename__ = "commitment_progress"
+
+    progress_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+    )
+    commitment_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("commitments.commitment_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provenance_id = Column(
+        Uuid(as_uuid=True),
+        ForeignKey("provenance_records.id"),
+        nullable=False,
+    )
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    summary = Column(Text, nullable=False)
+    snippet = Column(Text, nullable=True)
+    metadata_ = Column("metadata", JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+
+
+class CommitmentStateTransition(Base):
+    """Audit record for a commitment state transition."""
+
+    __tablename__ = "commitment_state_transitions"
+    __table_args__ = (
+        CheckConstraint(
+            f"from_state IN ('{_COMMITMENT_STATE_VALUES}')",
+            name="ck_commitment_state_transitions_from_state",
+        ),
+        CheckConstraint(
+            f"to_state IN ('{_COMMITMENT_STATE_VALUES}')",
+            name="ck_commitment_state_transitions_to_state",
+        ),
+        CheckConstraint(
+            "actor IN ('user', 'system')",
+            name="ck_commitment_state_transitions_actor",
+        ),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0.00 AND confidence <= 1.00)",
+            name="ck_commitment_state_transitions_confidence",
+        ),
+    )
+
+    transition_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+    )
+    commitment_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("commitments.commitment_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    from_state = Column(CommitmentStateEnum, nullable=False)
+    to_state = Column(CommitmentStateEnum, nullable=False)
+    transitioned_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    actor = Column(CommitmentTransitionActorEnum, nullable=False)
+    reason = Column(Text, nullable=True)
+    context = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    confidence = Column(Float, nullable=True)
+    provenance_id = Column(
+        Uuid(as_uuid=True),
+        ForeignKey("provenance_records.id"),
+        nullable=True,
+    )
+
+
+class CommitmentScheduleLink(Base):
+    """Link record between commitments and schedules."""
+
+    __tablename__ = "commitment_schedules"
+
+    commitment_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("commitments.commitment_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    schedule_id = Column(
+        Integer,
+        ForeignKey("schedules.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    is_active = Column(Boolean, nullable=False, default=True)
 
 
 class NotificationEnvelope(Base):

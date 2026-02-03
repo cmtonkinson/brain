@@ -81,6 +81,10 @@
 # Commitment tracking configuration
 # commitments:
 #   autonomous_transition_confidence_threshold: 0.8
+#   audit_retention_days: 0
+#   review_day: "Saturday"
+#   review_time: "10:00"
+#   batch_reminder_time: "06:00"
 
 # Service URLs
 # qdrant:
