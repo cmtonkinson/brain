@@ -83,7 +83,6 @@ States:
 - `COMPLETED`
 - `MISSED`
 - `CANCELED`
-- `RENEGOTIATED`
 
 Commitments begin in `OPEN`.
 
@@ -113,19 +112,21 @@ Commitments may be created from any inbound signals:
 
 Each commitment must store:
 - description (single canonical text field; required)
-- provenance_id (links to provenance record)
+- provenance_id (links to provenance record; see src/ingestion/provenance.py)
 - due_by (optional single datetime, stored in UTC; rendered in user timezone)
-- state (current lifecycle state)
+- state (current lifecycle state: OPEN | COMPLETED | MISSED | CANCELED)
 - importance (int 1-3; operator or model supplied; default: 2)
 - effort_provided (int 1-3; operator-specified; default: 2)
 - effort_inferred (int 1-3; model-specified; optional)
-- urgency (int 1-100; stored; derived from importance/effort/due_by)
-- renegotiated_from_id (nullable)
+- urgency (int 1-100; stored; derived from importance/effort/due_by; experimental)
 - created_at / updated_at timestamps (UTC)
 - last_progress_at (UTC, nullable)
-- reviewed_at (UTC, nullable; set during weekly review)
-- next_schedule_id (nullable; only when a schedule exists)
-- related artifacts (notes, messages, threads)
+- last_modified_at (UTC, nullable; updated when description/due_by/importance/effort changes)
+- ever_missed_at (UTC, nullable; set once when first marked MISSED; for analytics)
+- presented_for_review_at (UTC, nullable; updated each time commitment appears in review)
+- reviewed_at (UTC, nullable; updated when operator engages with commitment in review)
+- next_schedule_id (nullable; foreign key to active schedule)
+- related artifacts (notes, messages, threads) [TBD: schema deferred]
 
 Notes:
 - Ownership is implicitly the operator (future support for external assignees is expected).
@@ -133,7 +134,10 @@ Notes:
 - Urgency is recalculated whenever importance, effort, or due_by changes; recalculation should validate the active
   follow-up schedule is still sensible (e.g., due tomorrow with a follow-up scheduled days later is invalid; urgency
   near 99 with a follow-up scheduled for next week is likely invalid).
-- TODO: Define provenance schema and subsystem contract; CTLC depends on it.
+- Provenance system implemented in src/ingestion/provenance.py
+- Urgency calculation (§6.6.3) is experimental and subject to tuning based on real-world usage
+- `last_modified_at` tracks substantive changes (description, due_by, importance, effort) for renegotiation analysis
+- `ever_missed_at` is immutable once set; provides "has ever been late" signal for pattern analysis
 - A derived summary field may be introduced later if descriptions become lengthy.
 
 #### 6.1.1 Creation Authority & Confidence
@@ -162,17 +166,46 @@ Notes:
 #### 6.1.4 Scheduler Linkage
 - Commitments are a separate domain from scheduling. Scheduling uses `TaskIntent` + `Schedule` to encode execution, and
   commitments link to schedules, not to task intents directly.
-- Scheduler callbacks provide `schedule_id`; the commitment module resolves the commitment via `next_schedule_id`. The
-  scheduler remains agnostic of commitment foreign keys.
+- Scheduler callbacks provide `schedule_id`; the commitment module resolves the commitment via the linking table.
+  The scheduler remains agnostic of commitment foreign keys.
 - When a commitment is assigned `due_by` (at creation or later), create a new `TaskIntent` and `Schedule` immediately.
 - Commitment follow-ups are one-time schedules (reminders/checks/escalation points), not recurring schedules.
 - When `due_by` changes, update the existing schedule in place (no new schedule).
-- When a commitment is canceled or renegotiated, remove any associated schedules.
+- When a commitment is canceled or completed, remove any associated schedules.
 - Commitments store `next_schedule_id` (nullable) as a convenience pointer to the next scheduled follow-up; the scheduler
   service already maintains its own audit history.
 - At most one active follow-up schedule exists per commitment at any time.
 - Follow-up schedules are never shared across commitments.
 - CTLC uses the scheduler service interface only; it must not directly manipulate scheduler database tables.
+
+**Scheduler Callback Edge Cases:**
+TODO: Document cleanup logic for stale schedules when user transitions override pending schedules
+(e.g., callback fires and marks MISSED, then user immediately marks COMPLETED before callback completes).
+Comprehensive logging should make diagnosis straightforward if this occurs in practice.
+
+**Linking Table Schema:**
+Use a bidirectional linking table to maintain referential integrity between commitments and schedules:
+
+```sql
+CREATE TABLE commitment_schedules (
+    commitment_id BIGINT NOT NULL REFERENCES commitments(commitment_id) ON DELETE CASCADE,
+    schedule_id BIGINT NOT NULL REFERENCES schedules(schedule_id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    PRIMARY KEY (commitment_id, schedule_id)
+);
+
+CREATE INDEX idx_cs_schedule_id ON commitment_schedules(schedule_id) WHERE is_active = TRUE;
+CREATE INDEX idx_cs_commitment_id ON commitment_schedules(commitment_id) WHERE is_active = TRUE;
+```
+
+When callbacks fire with `schedule_id`, resolve via:
+```sql
+SELECT c.* FROM commitments c
+JOIN commitment_schedules cs ON c.commitment_id = cs.commitment_id
+WHERE cs.schedule_id = ? AND cs.is_active = TRUE;
+```
 
 ---
 
@@ -204,11 +237,61 @@ Suggested normalized table (minimum fields):
 - Initial implementation: confidence is forced to `0.0` at assessment time (TODO: replace with real confidence model).
 
 #### 6.2.2 Transition Rules
-- Valid states: `OPEN`, `COMPLETED`, `MISSED`, `CANCELED`, `RENEGOTIATED`.
+- Valid states: `OPEN`, `COMPLETED`, `MISSED`, `CANCELED`.
 - Any state may transition to any other state.
 - User-initiated transitions override pending proposals and cancel any scheduled follow-ups.
-- `MISSED` is not terminal; it may transition to `COMPLETED`, `CANCELED`, or `RENEGOTIATED`.
-- `RENEGOTIATED` creates a new linked commitment and inherits provenance and related artifacts by default.
+- `MISSED` is not terminal; it may transition to `COMPLETED`, `CANCELED`, or back to `OPEN`.
+- State changes to description, due_by, importance, or effort update `last_modified_at` for renegotiation tracking.
+
+#### 6.2.3 State Transition Audit Table
+
+All state transitions are recorded in a normalized audit table for observability and analysis:
+
+```sql
+CREATE TABLE commitment_state_transitions (
+    transition_id BIGSERIAL PRIMARY KEY,
+    commitment_id BIGINT NOT NULL REFERENCES commitments(commitment_id) ON DELETE CASCADE,
+    from_state VARCHAR(20) NOT NULL,
+    to_state VARCHAR(20) NOT NULL,
+    transitioned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    actor VARCHAR(20) NOT NULL, -- 'user' | 'system'
+    reason TEXT,
+    context JSONB, -- structured data about the transition
+    confidence NUMERIC(3,2), -- 0.00 to 1.00, nullable
+    provenance_id BIGINT REFERENCES provenance(provenance_id),
+
+    CONSTRAINT valid_states CHECK (
+        from_state IN ('OPEN', 'COMPLETED', 'MISSED', 'CANCELED')
+        AND to_state IN ('OPEN', 'COMPLETED', 'MISSED', 'CANCELED')
+    ),
+    CONSTRAINT valid_actor CHECK (actor IN ('user', 'system')),
+    CONSTRAINT valid_confidence CHECK (
+        confidence IS NULL OR (confidence >= 0.00 AND confidence <= 1.00)
+    )
+);
+
+-- Primary access pattern: Get history for a commitment
+CREATE INDEX idx_cst_commitment_id
+    ON commitment_state_transitions(commitment_id, transitioned_at DESC);
+
+-- Query for all transitions by state
+CREATE INDEX idx_cst_to_state
+    ON commitment_state_transitions(to_state, transitioned_at DESC);
+
+-- Audit queries: Find all system-initiated transitions
+CREATE INDEX idx_cst_actor
+    ON commitment_state_transitions(actor, transitioned_at DESC);
+
+-- Analytics: Confidence-based queries
+CREATE INDEX idx_cst_confidence
+    ON commitment_state_transitions(confidence) WHERE confidence IS NOT NULL;
+```
+
+Retention enforcement (if `audit_retention_days > 0`):
+```sql
+DELETE FROM commitment_state_transitions
+WHERE transitioned_at < NOW() - INTERVAL '? days';
+```
 
 ---
 
@@ -231,9 +314,9 @@ Commitments with no `due_by`:
 
 For missed or long-running commitments, Brain may:
 - ask what happened
-- suggest deferral
-- suggest renegotiation
+- suggest due date changes
 - suggest cancellation
+- surface for review
 
 These prompts are:
 - respectful
@@ -304,6 +387,10 @@ Urgency score:
 - urgency_raw = (0.4 * base_importance) + (0.4 * time_pressure) + (0.2 * base_effort)
 - urgency = round(1 + (urgency_raw * 99))  # 1-100
 
+**Note:** This urgency calculation is experimental and subject to tuning based on real-world usage patterns.
+The weights (0.4, 0.4, 0.2) and time buffer multiplier (4x effort) are initial estimates and may be adjusted
+as data accumulates.
+
 ---
 
 ## 7. Integration Points
@@ -335,6 +422,7 @@ Urgency score:
 - `commitments.dedupe_summary_length` controls dedupe summary word limit (default: `20`).
 - `commitments.review_day` controls weekly review day (default: `Saturday`).
 - `commitments.review_time` controls weekly review time (default: `10:00`).
+- `commitments.batch_reminder_time` controls daily batch reminder delivery time (default: `06:00`).
 - `commitments.audit_retention_days` controls audit retention window in days (default: `0` for indefinite).
 - All user-facing dates/times are interpreted in the operator-configured timezone.
 
@@ -363,7 +451,7 @@ Retention:
 Weekly reviews are generated automatically (via TaskIntent + Schedule) and include:
 - completed commitments
 - missed commitments
-- commitments changed since the last review
+- commitments changed since the last review (via `last_modified_at`)
 - commitments with no `due_by`
 - potential duplicate commitments flagged during review prep
 
@@ -375,7 +463,11 @@ Reviews are surfaced as:
 - Signal message (primary channel)
 
 If there are no changes, the review still reports that there is nothing new to review and logs the confirmation.
-`reviewed_at` is updated during the weekly review job.
+
+Each commitment included in a review has `presented_for_review_at` updated to the review generation time.
+When the operator engages with the review, `reviewed_at` is updated to reflect actual review completion.
+
+Commitments where `presented_for_review_at > reviewed_at` indicate presentation without engagement.
 
 ---
 
@@ -400,8 +492,9 @@ Mitigation:
 
 ### Risk: Notification Fatigue
 Mitigation:
-- attention routing
-- batching
+- attention routing with urgency-based prioritization
+- daily batching at configurable time (default 06:00 via `commitments.batch_reminder_time`)
+- weekly review consolidation
 - prioritization by impact
 
 ---
@@ -418,13 +511,17 @@ Mitigation:
 
 ## 12. Definition of Done
 
-- [ ] Commitment data model defined
+- [x] Provenance system implemented (src/ingestion/provenance.py)
+- [ ] Commitment data model defined (including tracking timestamps)
+- [ ] Commitment-schedule linking table implemented
+- [ ] State transition audit table implemented
 - [ ] Lifecycle state tracking implemented
 - [ ] Miss detection working
 - [ ] Loop-closure prompts integrated
-- [ ] Review summaries generated
+- [ ] Review summaries generated (with presented_for_review_at / reviewed_at)
 - [ ] Attention Router fully integrated
-- [ ] Tier 0 backup policy confirmed and operational
+- [ ] Batch reminder scheduling configured
+- [ ] Urgency calculation implemented (marked experimental)
 
 ---
 
