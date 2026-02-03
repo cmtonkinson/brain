@@ -9,5 +9,5 @@ docker-compose \
   --no-deps \
   --build \
   --remove-orphans \
-  agent
+  agent celery-worker celery-beat
 
