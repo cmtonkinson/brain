@@ -115,3 +115,26 @@ def test_multiple_transitions_record_sequence(sqlite_session_factory: sessionmak
     assert transitions[0].to_state == "CANCELED"
     assert transitions[1].from_state == "OPEN"
     assert transitions[1].to_state == "COMPLETED"
+
+
+def test_transition_completion_hook_invoked(sqlite_session_factory: sessionmaker) -> None:
+    """Completion hook should run for COMPLETED/CANCELED transitions."""
+    repo = CommitmentRepository(sqlite_session_factory)
+    commitment = repo.create(CommitmentCreateInput(description="Hook test"))
+    called: list[int] = []
+
+    def _hook(commitment_id: int) -> None:
+        called.append(commitment_id)
+
+    service = CommitmentStateTransitionService(
+        sqlite_session_factory,
+        on_completion_hook=_hook,
+    )
+
+    service.transition(
+        commitment_id=commitment.commitment_id,
+        to_state="COMPLETED",
+        actor="system",
+    )
+
+    assert called == [commitment.commitment_id]

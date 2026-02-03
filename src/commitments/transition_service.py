@@ -21,9 +21,15 @@ from time_utils import to_utc
 class CommitmentStateTransitionService:
     """Service for atomically updating commitment state and audit records."""
 
-    def __init__(self, session_factory: Callable[[], Session]) -> None:
+    def __init__(
+        self,
+        session_factory: Callable[[], Session],
+        *,
+        on_completion_hook: Callable[[int], None] | None = None,
+    ) -> None:
         """Initialize the service with a SQLAlchemy session factory."""
         self._session_factory = session_factory
+        self._on_completion_hook = on_completion_hook
 
     def transition(
         self,
@@ -38,6 +44,7 @@ class CommitmentStateTransitionService:
         now: datetime | None = None,
     ) -> CommitmentStateTransition:
         """Update commitment state and record the transition in one transaction."""
+        run_completion_hook = to_state in {"COMPLETED", "CANCELED"}
         with closing(self._session_factory()) as session:
             session.expire_on_commit = False
             try:
@@ -71,5 +78,8 @@ class CommitmentStateTransitionService:
             except Exception:
                 session.rollback()
                 raise
+
+        if run_completion_hook and self._on_completion_hook is not None:
+            self._on_completion_hook(commitment_id)
 
         return transition
