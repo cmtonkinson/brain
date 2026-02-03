@@ -3,7 +3,6 @@
 The agent discovers skills through the registry loader (`SkillRegistryLoader`), which reads
 `config/skill-registry.json` and applies overlays. Ops are loaded from
 `config/op-registry.json` and are only invoked through skills. The agent exposes:
-
 - `list_skills` to list skills by status and capability.
 - `run_skill` to execute a skill by name/version via the runtime wrapper.
 

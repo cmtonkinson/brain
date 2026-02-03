@@ -24,7 +24,7 @@
       },
       "capabilities": ["obsidian.read", "vault.search"],
       "side_effects": [],
-      "autonomy": "L1",
+      "autonomy": "L3",
       "owners": ["core"],
       "rate_limit": {"max_per_minute": 10},
       "entrypoint": {
@@ -69,7 +69,7 @@
       },
       "capabilities": ["obsidian.read"],
       "side_effects": [],
-      "autonomy": "L1",
+      "autonomy": "L3",
       "owners": ["core"],
       "rate_limit": {"max_per_minute": 10},
       "entrypoint": {

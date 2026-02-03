@@ -37,10 +37,9 @@ There are two types of Ops: **MCP** and **native**, explained below. Both MCP an
 
 ### Native Op
 A Native Op is implemented directly by Brain’s runtime or internal services; in other words, it's agent Python code. Examples:
-- Obsidian file operations
-- Qdrant vector writes
+- Obsidian file read
+- Qdrant vector search
 - Signal message send
-- Local object storage
 
 ### MCP Op
 An MCP Op is a configuration wrapper around underlying functions exposed via `@UTCP/code_mode`. Examples of MCP functions that may be wrapped:
@@ -51,7 +50,11 @@ An MCP Op is a configuration wrapper around underlying functions exposed via `@U
 ### Call Target
 A **Call Target** is any Skill or Op, that is to say, an executable unit a Skill may invoke.
 
-Logic Skills must explicitly declare all allowed Call Targets, while Pipeline Skills implicitly declare their Call Targets.
+Logic Skills MUST explicitly declare all Call Targets which may be invoked
+during its execution so that the policy engine can work correctly. If a Skill
+attempts invocation of an undeclared Call Target, the policy engine will reject it and the Skill will immediately fail & return. Note that only Call Targets invoked directly by the Skill must be listed (if Skill A invokes Skill B and Op C, and Skill B invokes Op D, Skill A need only declare Skill B and Op C).
+
+Pipeline Skills, given their nature, already self-declare their Call Targets; no supplemental declarations are needed.
 
 ---
 ## Design Invariants

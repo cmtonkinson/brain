@@ -342,7 +342,7 @@ async def _execute_skill(
         allowed_capabilities=allowed,
         actor=deps.signal_sender,
         channel=deps.channel,
-        max_autonomy=AutonomyLevel.L1,
+        max_autonomy=AutonomyLevel.L3,
         confirmed=confirmed,
         services=SkillServices(
             obsidian=deps.obsidian,
