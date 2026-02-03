@@ -305,6 +305,9 @@ class CommitmentConfig(BaseModel):
     """Commitment tracking configuration defaults."""
 
     autonomous_transition_confidence_threshold: float = 0.8
+    autonomous_creation_confidence_threshold: float = 0.9
+    dedupe_confidence_threshold: float = 0.8
+    dedupe_summary_length: int = 20
     audit_retention_days: int = 0
     review_day: str = "Saturday"
     review_time: str = "10:00"
@@ -318,6 +321,32 @@ class CommitmentConfig(BaseModel):
             raise ValueError(
                 "commitments.autonomous_transition_confidence_threshold must be between 0 and 1."
             )
+        return value
+
+    @field_validator("autonomous_creation_confidence_threshold")
+    @classmethod
+    def validate_autonomous_creation_threshold(cls, value: float) -> float:
+        """Ensure autonomous creation threshold is between 0 and 1."""
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(
+                "commitments.autonomous_creation_confidence_threshold must be between 0 and 1."
+            )
+        return value
+
+    @field_validator("dedupe_confidence_threshold")
+    @classmethod
+    def validate_dedupe_confidence_threshold(cls, value: float) -> float:
+        """Ensure dedupe confidence threshold is between 0 and 1."""
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("commitments.dedupe_confidence_threshold must be between 0 and 1.")
+        return value
+
+    @field_validator("dedupe_summary_length")
+    @classmethod
+    def validate_dedupe_summary_length(cls, value: int) -> int:
+        """Ensure dedupe summary length is a positive integer."""
+        if value < 1:
+            raise ValueError("commitments.dedupe_summary_length must be >= 1.")
         return value
 
     @field_validator("audit_retention_days")

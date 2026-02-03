@@ -81,6 +81,9 @@
 # Commitment tracking configuration
 # commitments:
 #   autonomous_transition_confidence_threshold: 0.8
+#   autonomous_creation_confidence_threshold: 0.9
+#   dedupe_confidence_threshold: 0.8
+#   dedupe_summary_length: 20
 #   audit_retention_days: 0
 #   review_day: "Saturday"
 #   review_time: "10:00"

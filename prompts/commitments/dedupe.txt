@@ -1,0 +1,19 @@
+You are comparing a new commitment to existing OPEN commitments to detect duplicates.
+
+New commitment:
+{new_description}
+
+Existing OPEN commitments (id: description):
+{candidates}
+
+Respond ONLY with compact JSON in the following schema:
+{{
+  "duplicate_commitment_id": <int or null>,
+  "confidence": <number between 0 and 1>,
+  "summary": "<short reason, <= {summary_word_limit} words>"
+}}
+
+Rules:
+- If no existing commitment is a duplicate, set duplicate_commitment_id to null and confidence to 0.0.
+- If a duplicate is likely, choose the single best matching commitment id.
+- The summary must be <= {summary_word_limit} words.
