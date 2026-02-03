@@ -18,9 +18,7 @@ from attention.assessment_engine import (
 from attention.audit import AttentionAuditLogger
 from attention.channel_selection import ChannelSelectionInputs, select_channel
 from attention.decision_records import DecisionRecordInput, persist_decision_record
-from attention.envelope_rendering import render_envelope_metadata
 from attention.envelope_schema import (
-    EnvelopeDecision,
     NotificationEnvelope,
     RoutingEnvelope,
     RoutingIntent,
@@ -102,7 +100,6 @@ class AttentionRouter:
         decision_record_id: int | None = None
         final_decision: str = "LOG_ONLY"
         primary_channel: str | None = None
-        metadata_text: str | None = None
         base_assessment_value: str = BaseAssessmentOutcome.SUPPRESS.value
         policy_outcome: str | None = None
 
@@ -238,7 +235,6 @@ class AttentionRouter:
                     decided_at=envelope.timestamp,
                 )
 
-                metadata_text = _prepare_channel_metadata(session, envelope_id, primary_channel)
                 base_assessment_value = base_assessment.outcome.value
                 policy_outcome = policy_decision.policy_outcome
                 decision_record_id = decision_record.record_id
@@ -262,7 +258,6 @@ class AttentionRouter:
                 envelope,
                 primary_channel,
                 envelope_id,
-                metadata_text,
                 base_assessment_value,
                 policy_outcome,
                 final_decision,
@@ -406,26 +401,11 @@ def _apply_rate_limit(
     return decision.decision
 
 
-def _prepare_channel_metadata(
-    session: Session,
-    envelope_id: int | None,
-    channel: str | None,
-) -> str | None:
-    """Render metadata for the allowed delivery channel."""
-    if envelope_id is None or channel != "signal":
-        return None
-    metadata = render_envelope_metadata(session, envelope_id, channel)
-    if metadata.decision != EnvelopeDecision.ACCEPT.value:
-        return None
-    return metadata.metadata
-
-
 async def _deliver_primary_channel(
     signal_client: SignalClient,
     envelope: RoutingEnvelope,
     channel: str | None,
     envelope_id: int | None,
-    metadata: str | None,
     base_assessment: str,
     policy_outcome: str | None,
     final_decision: str,
@@ -442,16 +422,12 @@ async def _deliver_primary_channel(
         logger.error("Signal payload missing for signal delivery.")
         return False
 
-    message = envelope.signal_payload.message
-    if metadata:
-        message = f"{message}\n\n{metadata}"
-
     token = activate_router_context()
     try:
         ok = await signal_client.send_message(
             envelope.signal_payload.from_number,
             envelope.signal_payload.to_number,
-            message,
+            envelope.signal_payload.message,
             source_component=envelope.notification.source_component,
         )
         if ok and envelope_id is not None:
