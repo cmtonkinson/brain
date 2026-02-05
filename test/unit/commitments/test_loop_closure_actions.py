@@ -17,7 +17,11 @@ from commitments.miss_detection_scheduling import MissDetectionScheduleService
 from commitments.repository import CommitmentCreateInput, CommitmentRepository
 from commitments.schedule_link_service import CommitmentScheduleLinkService
 from commitments.transition_service import CommitmentStateTransitionService
-from models import CommitmentStateTransition, Schedule
+from commitments.transition_proposal_repository import (
+    CommitmentTransitionProposalCreateInput,
+    CommitmentTransitionProposalRepository,
+)
+from models import CommitmentStateTransition, CommitmentTransitionProposal, Schedule
 from test.helpers.scheduler_adapter_stub import RecordingSchedulerAdapter
 from time_utils import to_local
 
@@ -329,3 +333,86 @@ def test_resolved_commitment_is_noop(sqlite_session_factory: sessionmaker) -> No
     )
 
     assert result.status == "noop"
+
+
+def test_loop_closure_approves_matching_proposal(sqlite_session_factory: sessionmaker) -> None:
+    """Loop-closure completion should approve matching pending proposals."""
+    now = datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc)
+    commitment_id = _create_commitment(
+        sqlite_session_factory,
+        description="Proposal approve",
+        due_by=now + timedelta(hours=1),
+    )
+    _transition_to_missed(sqlite_session_factory, commitment_id, now)
+    proposal_repo = CommitmentTransitionProposalRepository(sqlite_session_factory)
+    proposal = proposal_repo.create(
+        CommitmentTransitionProposalCreateInput(
+            commitment_id=commitment_id,
+            from_state="MISSED",
+            to_state="COMPLETED",
+            actor="system",
+            confidence=0.2,
+            threshold=0.9,
+            reason="unit",
+        )
+    )
+    service = LoopClosureActionService(
+        sqlite_session_factory,
+        RecordingSchedulerAdapter(),
+        now_provider=lambda: now,
+    )
+
+    result = service.apply_intent(
+        LoopClosureActionRequest(
+            commitment_id=commitment_id,
+            intent=LoopClosureIntent(intent="complete"),
+            prompt="Prompt text",
+            response="done",
+        )
+    )
+
+    assert result.status == "completed"
+    with sqlite_session_factory() as session:
+        refreshed = session.get(CommitmentTransitionProposal, proposal.proposal_id)
+        assert refreshed is not None
+        assert refreshed.status == "approved"
+
+
+def test_loop_closure_cancels_nonmatching_proposal(sqlite_session_factory: sessionmaker) -> None:
+    """Loop-closure review should cancel pending proposals that do not match intent."""
+    now = datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc)
+    commitment_id = _create_commitment(
+        sqlite_session_factory,
+        description="Proposal cancel",
+        due_by=now + timedelta(hours=1),
+    )
+    _transition_to_missed(sqlite_session_factory, commitment_id, now)
+    proposal_repo = CommitmentTransitionProposalRepository(sqlite_session_factory)
+    proposal_repo.create(
+        CommitmentTransitionProposalCreateInput(
+            commitment_id=commitment_id,
+            from_state="MISSED",
+            to_state="COMPLETED",
+            actor="system",
+            confidence=0.2,
+            threshold=0.9,
+            reason="unit",
+        )
+    )
+    service = LoopClosureActionService(
+        sqlite_session_factory,
+        RecordingSchedulerAdapter(),
+        now_provider=lambda: now,
+    )
+
+    result = service.apply_intent(
+        LoopClosureActionRequest(
+            commitment_id=commitment_id,
+            intent=LoopClosureIntent(intent="review"),
+            prompt="Prompt text",
+            response="review",
+        )
+    )
+
+    assert result.status == "reviewed"
+    assert proposal_repo.get_pending_for_commitment(commitment_id) is None

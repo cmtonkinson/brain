@@ -165,6 +165,14 @@ CommitmentTransitionActorEnum = Enum(
     name="commitment_transition_actor",
     native_enum=False,
 )
+CommitmentTransitionProposalStatusEnum = Enum(
+    "pending",
+    "approved",
+    "rejected",
+    "canceled",
+    name="commitment_transition_proposal_status",
+    native_enum=False,
+)
 
 
 # Database models
@@ -595,6 +603,65 @@ class CommitmentStateTransition(Base):
     reason = Column(Text, nullable=True)
     context = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
     confidence = Column(Float, nullable=True)
+    provenance_id = Column(
+        Uuid(as_uuid=True),
+        ForeignKey("provenance_records.id"),
+        nullable=True,
+    )
+
+
+class CommitmentTransitionProposal(Base):
+    """Proposed commitment transition awaiting user confirmation."""
+
+    __tablename__ = "commitment_transition_proposals"
+    __table_args__ = (
+        CheckConstraint(
+            f"from_state IN ('{_COMMITMENT_STATE_VALUES}')",
+            name="ck_commitment_transition_proposals_from_state",
+        ),
+        CheckConstraint(
+            f"to_state IN ('{_COMMITMENT_STATE_VALUES}')",
+            name="ck_commitment_transition_proposals_to_state",
+        ),
+        CheckConstraint(
+            "actor IN ('user', 'system')",
+            name="ck_commitment_transition_proposals_actor",
+        ),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0.00 AND confidence <= 1.00)",
+            name="ck_commitment_transition_proposals_confidence",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'canceled')",
+            name="ck_commitment_transition_proposals_status",
+        ),
+    )
+
+    proposal_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+    )
+    commitment_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("commitments.commitment_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    from_state = Column(CommitmentStateEnum, nullable=False)
+    to_state = Column(CommitmentStateEnum, nullable=False)
+    actor = Column(CommitmentTransitionActorEnum, nullable=False)
+    confidence = Column(Float, nullable=True)
+    threshold = Column(Float, nullable=False)
+    reason = Column(Text, nullable=True)
+    context = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    proposed_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    status = Column(CommitmentTransitionProposalStatusEnum, nullable=False, default="pending")
+    decided_at = Column(DateTime(timezone=True), nullable=True)
+    decided_by = Column(CommitmentTransitionActorEnum, nullable=True)
+    decision_reason = Column(Text, nullable=True)
     provenance_id = Column(
         Uuid(as_uuid=True),
         ForeignKey("provenance_records.id"),

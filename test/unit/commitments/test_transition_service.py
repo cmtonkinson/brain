@@ -14,6 +14,10 @@ from commitments.repository import (
     CommitmentUpdateInput,
 )
 from commitments.state_transition_repository import CommitmentStateTransitionRepository
+from commitments.transition_proposal_repository import (
+    CommitmentTransitionProposalCreateInput,
+    CommitmentTransitionProposalRepository,
+)
 from commitments.transition_service import CommitmentStateTransitionService
 
 
@@ -140,18 +144,19 @@ def test_transition_completion_hook_invoked(sqlite_session_factory: sessionmaker
     assert called == [commitment.commitment_id]
 
 
-def test_transition_blocks_without_confidence(sqlite_session_factory: sessionmaker) -> None:
-    """System transitions without confidence should be blocked."""
+def test_transition_returns_proposal_without_confidence(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """System transitions without confidence should return a proposal."""
     repo = CommitmentRepository(sqlite_session_factory)
     commitment = repo.create(CommitmentCreateInput(description="Needs confidence"))
     service = CommitmentStateTransitionService(sqlite_session_factory)
 
-    with pytest.raises(ValueError, match="Transition blocked"):
-        service.transition(
-            commitment_id=commitment.commitment_id,
-            to_state="COMPLETED",
-            actor="system",
-        )
+    proposal = service.transition(
+        commitment_id=commitment.commitment_id,
+        to_state="COMPLETED",
+        actor="system",
+    )
 
     refreshed = repo.get_by_id(commitment.commitment_id)
     assert refreshed is not None
@@ -161,6 +166,13 @@ def test_transition_blocks_without_confidence(sqlite_session_factory: sessionmak
         commitment.commitment_id
     )
     assert transitions == []
+
+    pending = CommitmentTransitionProposalRepository(
+        sqlite_session_factory
+    ).get_pending_for_commitment(commitment.commitment_id)
+    assert pending is not None
+    assert pending.proposal_id == proposal.proposal_id
+    assert pending.to_state == "COMPLETED"
 
 
 def test_missed_transition_allows_without_confidence(sqlite_session_factory: sessionmaker) -> None:
@@ -176,3 +188,31 @@ def test_missed_transition_allows_without_confidence(sqlite_session_factory: ses
     )
 
     assert transition.to_state == "MISSED"
+
+
+def test_user_transition_cancels_pending_proposals(sqlite_session_factory: sessionmaker) -> None:
+    """User transitions should cancel any pending proposals."""
+    repo = CommitmentRepository(sqlite_session_factory)
+    commitment = repo.create(CommitmentCreateInput(description="Cancel pending"))
+    proposal_repo = CommitmentTransitionProposalRepository(sqlite_session_factory)
+    proposal_repo.create(
+        CommitmentTransitionProposalCreateInput(
+            commitment_id=commitment.commitment_id,
+            from_state="OPEN",
+            to_state="COMPLETED",
+            actor="system",
+            confidence=0.2,
+            threshold=0.9,
+            reason="unit_test",
+        )
+    )
+    service = CommitmentStateTransitionService(sqlite_session_factory)
+
+    service.transition(
+        commitment_id=commitment.commitment_id,
+        to_state="CANCELED",
+        actor="user",
+    )
+
+    pending = proposal_repo.get_pending_for_commitment(commitment.commitment_id)
+    assert pending is None

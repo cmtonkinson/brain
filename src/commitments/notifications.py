@@ -19,6 +19,7 @@ from attention.envelope_schema import (
 from attention.router import AttentionRouter, RoutingResult
 from attention.routing_envelope import DEFAULT_ROUTING_VERSION, DEFAULT_SIGNAL_CONFIDENCE
 from commitments.loop_closure_prompts import generate_loop_closure_prompt
+from commitments.transition_proposal_prompts import generate_transition_proposal_prompt
 from config import settings
 from models import Commitment
 from time_utils import to_local
@@ -38,6 +39,7 @@ class CommitmentNotificationType(str, Enum):
     REVIEW = "REVIEW"
     BATCH = "BATCH"
     LOOP_CLOSURE = "LOOP_CLOSURE"
+    TRANSITION_PROPOSAL = "TRANSITION_PROPOSAL"
 
 
 @dataclass(frozen=True)
@@ -102,6 +104,35 @@ def submit_loop_closure_prompt_notification(
     notification = CommitmentNotification(
         commitment_id=commitment.commitment_id,
         notification_type=CommitmentNotificationType.LOOP_CLOSURE,
+        message=prompt,
+        urgency=commitment.urgency,
+    )
+    return submit_commitment_notification(
+        router,
+        notification,
+        owner=owner,
+        now=now,
+    )
+
+
+def submit_transition_proposal_notification(
+    router: AttentionRouter,
+    commitment: Commitment,
+    *,
+    from_state: str,
+    to_state: str,
+    owner: str | None = None,
+    now: datetime | None = None,
+) -> RoutingResult:
+    """Submit a transition proposal notification via the attention router."""
+    prompt = generate_transition_proposal_prompt(
+        description=commitment.description,
+        from_state=from_state,
+        to_state=to_state,
+    )
+    notification = CommitmentNotification(
+        commitment_id=commitment.commitment_id,
+        notification_type=CommitmentNotificationType.TRANSITION_PROPOSAL,
         message=prompt,
         urgency=commitment.urgency,
     )

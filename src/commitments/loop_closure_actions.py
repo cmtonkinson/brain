@@ -13,6 +13,9 @@ from commitments.loop_closure_parser import LoopClosureIntent
 from commitments.miss_detection_scheduling import MissDetectionScheduleService
 from commitments.repository import CommitmentRepository, CommitmentUpdateInput
 from commitments.transition_service import CommitmentStateTransitionService
+from commitments.transition_proposal_repository import (
+    CommitmentTransitionProposalRepository,
+)
 from scheduler.adapter_interface import SchedulerAdapter
 from time_utils import to_utc
 
@@ -56,6 +59,7 @@ class LoopClosureActionService:
         self._session_factory = session_factory
         self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
         self._commitment_repo = CommitmentRepository(session_factory)
+        self._proposal_repo = CommitmentTransitionProposalRepository(session_factory)
         self._transition_service = CommitmentStateTransitionService(session_factory)
         self._schedule_service = MissDetectionScheduleService(
             session_factory,
@@ -80,6 +84,11 @@ class LoopClosureActionService:
             )
 
         intent_type = request.intent.intent
+        self._reconcile_pending_proposals(
+            commitment_id=commitment.commitment_id,
+            intent_type=intent_type,
+            actor=request.actor,
+        )
         if intent_type == "complete":
             self._transition_service.transition(
                 commitment_id=commitment.commitment_id,
@@ -166,6 +175,34 @@ class LoopClosureActionService:
             request.response,
         )
 
+    def _reconcile_pending_proposals(
+        self,
+        *,
+        commitment_id: int,
+        intent_type: str,
+        actor: str,
+    ) -> None:
+        """Approve or cancel pending proposals based on the loop-closure intent."""
+        pending = self._proposal_repo.get_pending_for_commitment(commitment_id)
+        if pending is None:
+            return
+        desired_state = _intent_to_state(intent_type)
+        decided_at = self._now_provider()
+        if desired_state is not None and pending.to_state == desired_state:
+            self._proposal_repo.mark_approved(
+                pending.proposal_id,
+                decided_by=actor,
+                decided_at=decided_at,
+                reason="loop_closure_confirmed",
+            )
+            return
+        self._proposal_repo.cancel_pending_for_commitment(
+            commitment_id,
+            decided_by=actor,
+            decided_at=decided_at,
+            reason="user_override",
+        )
+
 
 def _normalize_due_by(value: date | datetime | None) -> date | datetime | None:
     """Normalize due_by inputs, preserving date-only values for repository handling."""
@@ -179,6 +216,15 @@ def _build_action_context(request: LoopClosureActionRequest) -> dict[str, object
         "response": request.response,
         "intent": request.intent.intent,
     }
+
+
+def _intent_to_state(intent_type: str) -> str | None:
+    """Map loop-closure intents to target states when applicable."""
+    if intent_type == "complete":
+        return "COMPLETED"
+    if intent_type == "cancel":
+        return "CANCELED"
+    return None
 
 
 __all__ = [
