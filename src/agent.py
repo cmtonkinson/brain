@@ -13,7 +13,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Callable, cast
 
 from pydantic_ai import Agent, RunContext
 
@@ -755,6 +755,7 @@ async def handle_signal_message(
     object_store: ObjectStore,
     router: AttentionRouter,
     phone_number: str,
+    signal_commitment_extractor: Callable | None = None,
 ) -> None:
     """Handle an incoming Signal message.
 
@@ -766,6 +767,7 @@ async def handle_signal_message(
         object_store: Object store for blob persistence
         router: Attention router for outbound replies
         phone_number: The agent's phone number
+        signal_commitment_extractor: Optional extractor for creating commitments from messages
     """
     sender = signal_msg.sender
     message = signal_msg.message
@@ -846,6 +848,19 @@ async def handle_signal_message(
         )
         logger.info("Outgoing message to %s: %s", sender, _preview(response))
 
+        # Extract commitments from message exchange
+        if signal_commitment_extractor:
+            try:
+                await asyncio.to_thread(
+                    signal_commitment_extractor,
+                    message,
+                    response,
+                    sender,
+                    signal_msg.timestamp,
+                )
+            except Exception:
+                logger.exception("Failed to extract commitments from Signal message")
+
         # Send reply via Attention Router
         send_start = time.perf_counter()
         outbound = build_signal_reply_envelope(
@@ -884,6 +899,7 @@ async def run_signal_loop(
     code_mode: CodeModeManager,
     object_store: ObjectStore,
     poll_interval: float = 2.0,
+    signal_commitment_extractor: Callable | None = None,
 ) -> None:
     """Main loop for polling Signal messages.
 
@@ -893,6 +909,7 @@ async def run_signal_loop(
         memory: Conversation memory manager
         object_store: Object store for blob persistence
         poll_interval: Seconds between polls
+        signal_commitment_extractor: Optional extractor for creating commitments from messages
     """
     phone_number = settings.signal.phone_number
     if not phone_number:
@@ -932,6 +949,7 @@ async def run_signal_loop(
                     object_store,
                     router,
                     phone_number,
+                    signal_commitment_extractor=signal_commitment_extractor,
                 )
 
         except Exception as e:
@@ -1077,6 +1095,21 @@ async def main() -> None:
     # Test mode
     object_store = ObjectStore(settings.objects.root_dir)
 
+    # Initialize agent hooks and services
+    agent_services = {}
+    try:
+        from agent_init import initialize_agent_hooks
+        from llm import LLMClient
+
+        llm_client = LLMClient()
+        agent_services = initialize_agent_hooks(
+            session_factory=get_sync_session,
+            object_store=object_store,
+            llm_client=llm_client,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to initialize agent hooks: {e}", exc_info=True)
+
     if args.test:
         await run_test_mode(agent, args.test, code_mode, object_store)
         return
@@ -1101,6 +1134,7 @@ async def main() -> None:
             code_mode,
             object_store,
             poll_interval=args.poll_interval,
+            signal_commitment_extractor=agent_services.get("signal_commitment_extractor"),
         )
     except KeyboardInterrupt:
         logger.info("Shutting down...")
