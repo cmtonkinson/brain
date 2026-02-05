@@ -26,7 +26,7 @@ def test_transition_updates_state_and_creates_audit(sqlite_session_factory: sess
     transition = service.transition(
         commitment_id=commitment.commitment_id,
         to_state="COMPLETED",
-        actor="system",
+        actor="user",
         reason="done",
         context={"source": "unit"},
         confidence=1.0,
@@ -39,7 +39,7 @@ def test_transition_updates_state_and_creates_audit(sqlite_session_factory: sess
 
     assert transition.from_state == "OPEN"
     assert transition.to_state == "COMPLETED"
-    assert transition.actor == "system"
+    assert transition.actor == "user"
 
     transitions = CommitmentStateTransitionRepository(sqlite_session_factory).list_for_commitment(
         commitment.commitment_id
@@ -56,8 +56,8 @@ def test_transition_rollback_on_audit_failure(sqlite_session_factory: sessionmak
     with pytest.raises(IntegrityError):
         service.transition(
             commitment_id=commitment.commitment_id,
-            to_state="COMPLETED",
-            actor="invalid",
+            to_state="INVALID",
+            actor="user",
         )
 
     refreshed = repo.get_by_id(commitment.commitment_id)
@@ -75,7 +75,7 @@ def test_transition_invalid_commitment_id_raises(sqlite_session_factory: session
     service = CommitmentStateTransitionService(sqlite_session_factory)
 
     with pytest.raises(ValueError):
-        service.transition(commitment_id=9999, to_state="COMPLETED", actor="system")
+        service.transition(commitment_id=9999, to_state="COMPLETED", actor="user")
 
 
 def test_direct_state_update_is_rejected(sqlite_session_factory: sessionmaker) -> None:
@@ -99,12 +99,12 @@ def test_multiple_transitions_record_sequence(sqlite_session_factory: sessionmak
     service.transition(
         commitment_id=commitment.commitment_id,
         to_state="COMPLETED",
-        actor="system",
+        actor="user",
     )
     service.transition(
         commitment_id=commitment.commitment_id,
         to_state="CANCELED",
-        actor="system",
+        actor="user",
     )
 
     transitions = CommitmentStateTransitionRepository(sqlite_session_factory).list_for_commitment(
@@ -134,7 +134,45 @@ def test_transition_completion_hook_invoked(sqlite_session_factory: sessionmaker
     service.transition(
         commitment_id=commitment.commitment_id,
         to_state="COMPLETED",
-        actor="system",
+        actor="user",
     )
 
     assert called == [commitment.commitment_id]
+
+
+def test_transition_blocks_without_confidence(sqlite_session_factory: sessionmaker) -> None:
+    """System transitions without confidence should be blocked."""
+    repo = CommitmentRepository(sqlite_session_factory)
+    commitment = repo.create(CommitmentCreateInput(description="Needs confidence"))
+    service = CommitmentStateTransitionService(sqlite_session_factory)
+
+    with pytest.raises(ValueError, match="Transition blocked"):
+        service.transition(
+            commitment_id=commitment.commitment_id,
+            to_state="COMPLETED",
+            actor="system",
+        )
+
+    refreshed = repo.get_by_id(commitment.commitment_id)
+    assert refreshed is not None
+    assert refreshed.state == "OPEN"
+
+    transitions = CommitmentStateTransitionRepository(sqlite_session_factory).list_for_commitment(
+        commitment.commitment_id
+    )
+    assert transitions == []
+
+
+def test_missed_transition_allows_without_confidence(sqlite_session_factory: sessionmaker) -> None:
+    """System MISSED transitions should be allowed without confidence."""
+    repo = CommitmentRepository(sqlite_session_factory)
+    commitment = repo.create(CommitmentCreateInput(description="Missed allowed"))
+    service = CommitmentStateTransitionService(sqlite_session_factory)
+
+    transition = service.transition(
+        commitment_id=commitment.commitment_id,
+        to_state="MISSED",
+        actor="system",
+    )
+
+    assert transition.to_state == "MISSED"

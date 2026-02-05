@@ -514,6 +514,19 @@ class Commitment(Base):
     next_schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=True)
 
 
+class CommitmentReviewRun(Base):
+    """Audit record tracking a weekly review run timestamp."""
+
+    __tablename__ = "commitment_review_runs"
+
+    id = Column(Integer, primary_key=True)
+    run_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
 class CommitmentProgress(Base):
     """Progress event recorded against a commitment."""
 

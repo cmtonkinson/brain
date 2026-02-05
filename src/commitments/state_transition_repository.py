@@ -73,6 +73,14 @@ class CommitmentStateTransitionRepository:
 
         return self._execute(handler)
 
+    def delete_older_than(self, cutoff: datetime) -> int:
+        """Delete transition records older than the cutoff timestamp."""
+
+        def handler(session: Session) -> int:
+            return delete_transitions_older_than(session, cutoff)
+
+        return self._execute(handler)
+
     def _execute(self, handler):
         """Execute repository work inside a managed session."""
         with closing(self._session_factory()) as session:
@@ -99,6 +107,18 @@ def build_retention_cleanup_query(days: int):
 def _normalize_timestamp(value: datetime) -> datetime:
     """Normalize a datetime value to UTC."""
     return to_utc(value)
+
+
+def delete_transitions_older_than(session: Session, cutoff: datetime) -> int:
+    """Delete transition records older than the cutoff timestamp."""
+    normalized_cutoff = _normalize_timestamp(cutoff)
+    deleted = (
+        session.query(CommitmentStateTransition)
+        .filter(CommitmentStateTransition.transitioned_at < normalized_cutoff)
+        .delete(synchronize_session=False)
+    )
+    session.flush()
+    return int(deleted or 0)
 
 
 def create_transition_record(

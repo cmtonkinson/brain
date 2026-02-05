@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from datetime import datetime, timezone
 
+from commitments.scheduled_tasks import CommitmentScheduledTaskResult
 from scheduler.agent_invoker import AgentExecutionInvoker
 from scheduler.execution_dispatcher import (
     ExecutionInvocationRequest,
@@ -19,6 +20,8 @@ from scheduler.execution_dispatcher import (
 
 
 class _FakeAgent:
+    """Fake agent used for execution invoker tests."""
+
     def __init__(self, response: str | None = "ok", *, raise_exc: bool = False):
         self.response = response
         self.raise_exc = raise_exc
@@ -32,6 +35,8 @@ class _FakeAgent:
 
 
 class _FakeMemory:
+    """Fake memory store used for execution invoker tests."""
+
     async def log_message(self, *args, **kwargs):
         del args, kwargs
 
@@ -52,16 +57,39 @@ class _FakeMemory:
 
 
 class _FakeCodeMode:
+    """Fake code mode manager used for execution invoker tests."""
+
     client = None
     config_path = None
     timeout = 0
 
 
 class _DummyObsidian:
+    """Dummy Obsidian client placeholder."""
+
+
+class _StubCommitmentHandler:
+    """Stub commitment handler for scheduled task tests."""
+
+    def __init__(self, result: CommitmentScheduledTaskResult) -> None:
+        self.result = result
+        self.calls: list[tuple[object, ...]] = []
+
+    def handle(  # noqa: ANN001
+        self,
+        *,
+        origin_reference,
+        schedule_id,
+        trace_id,
+        scheduled_for,
+    ) -> CommitmentScheduledTaskResult | None:
+        self.calls.append((origin_reference, schedule_id, trace_id, scheduled_for))
+        return self.result
+
     pass
 
 
-def _build_request() -> ExecutionInvocationRequest:
+def _build_request(origin_reference: str = "origin") -> ExecutionInvocationRequest:
     now = datetime(2025, 2, 7, 10, 0, tzinfo=timezone.utc)
     execution = ExecutionInvocationExecution(
         id=1,
@@ -77,7 +105,7 @@ def _build_request() -> ExecutionInvocationRequest:
     task_intent = ExecutionInvocationTaskIntent(
         summary="summary",
         details="details",
-        origin_reference="origin",
+        origin_reference=origin_reference,
     )
     definition = ExecutionInvocationScheduleDefinition(
         run_at=now,
@@ -148,3 +176,27 @@ def test_agent_execution_invoker_captures_errors() -> None:
     assert result.status == "failure"
     assert result.error is not None
     assert result.error.error_code == "agent_error"
+
+
+def test_agent_execution_invoker_uses_commitment_handler() -> None:
+    """Commitment handlers should short-circuit the agent invocation path."""
+    handler = _StubCommitmentHandler(
+        CommitmentScheduledTaskResult(
+            status="success",
+            message="handled",
+            attention_required=False,
+        )
+    )
+    invoker = AgentExecutionInvoker(
+        agent=_FakeAgent(None, raise_exc=True),
+        obsidian=_DummyObsidian(),
+        memory=_FakeMemory(),
+        code_mode=_FakeCodeMode(),
+        commitment_handler=handler,
+    )
+
+    result = invoker.invoke_execution(_build_request("commitments.daily_batch"))
+
+    assert result.status == "success"
+    assert result.message == "handled"
+    assert len(handler.calls) == 1

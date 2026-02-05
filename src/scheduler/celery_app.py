@@ -71,12 +71,17 @@ celery_app.conf.beat_dburi = _env("CELERY_BEAT_DB_URI", _DEFAULT_BEAT_DBURI)
 
 _RETRY_SCAN_INTERVAL_SECONDS = float(_env("SCHEDULER_RETRY_SCAN_INTERVAL_SECONDS", "60"))
 _RETRY_SCAN_BATCH_SIZE = int(_env("SCHEDULER_RETRY_SCAN_BATCH_SIZE", "100"))
+_AUDIT_RETENTION_INTERVAL_SECONDS = 86400
 beat_schedule = celery_app.conf.get("beat_schedule")
 if beat_schedule is None:
     beat_schedule = {}
 beat_schedule["scheduler.enqueue_retry_callbacks"] = {
     "task": "scheduler.enqueue_retry_callbacks",
     "schedule": _RETRY_SCAN_INTERVAL_SECONDS,
+}
+beat_schedule["commitments.audit_retention_cleanup"] = {
+    "task": "commitments.audit_retention_cleanup",
+    "schedule": _AUDIT_RETENTION_INTERVAL_SECONDS,
 }
 celery_app.conf.beat_schedule = beat_schedule
 
@@ -106,7 +111,10 @@ _FAILURE_NOTIFIER = FailureNotificationService(
 )
 _DISPATCHER = ExecutionDispatcher(
     session_factory=_session_factory,
-    invoker=AgentExecutionInvoker(),
+    invoker=AgentExecutionInvoker(
+        session_factory=_session_factory,
+        router=_ROUTER,
+    ),
     failure_notifier=_FAILURE_NOTIFIER,
 )
 _BRIDGE = CallbackBridge(
@@ -421,6 +429,20 @@ def enqueue_retry_callbacks() -> dict[str, int]:
         now=datetime.now(timezone.utc),
         batch_size=_RETRY_SCAN_BATCH_SIZE,
     )
+
+
+@celery_app.task(name="commitments.audit_retention_cleanup")
+def audit_retention_cleanup() -> dict[str, int]:
+    """Enforce commitment audit retention policy."""
+    from commitments.audit_retention import enforce_transition_audit_retention
+    from config import settings
+
+    deleted = enforce_transition_audit_retention(
+        _session_factory,
+        retention_days=int(settings.commitments.audit_retention_days),
+        now=datetime.now(timezone.utc),
+    )
+    return {"deleted": deleted}
 
 
 @celery_app.task(bind=True, name="scheduler.evaluate_predicate")

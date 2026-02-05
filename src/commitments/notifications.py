@@ -18,7 +18,10 @@ from attention.envelope_schema import (
 )
 from attention.router import AttentionRouter, RoutingResult
 from attention.routing_envelope import DEFAULT_ROUTING_VERSION, DEFAULT_SIGNAL_CONFIDENCE
+from commitments.loop_closure_prompts import generate_loop_closure_prompt
 from config import settings
+from models import Commitment
+from time_utils import to_local
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,68 @@ class CommitmentNotification:
     message: str
     urgency: int | None = None
     channel: str = "signal"
+
+
+def build_missed_commitment_message(commitment: Commitment) -> str:
+    """Build a human-readable message for missed commitments."""
+    description = commitment.description.strip()
+    due_by = commitment.due_by
+    if due_by is None:
+        return f'Missed: "{description}" was not completed before its due time.'
+    local_due = to_local(due_by)
+    formatted = local_due.isoformat()
+    return f'Missed: "{description}" was due by {formatted} and was not completed.'
+
+
+def submit_missed_commitment_notification(
+    router: AttentionRouter,
+    commitment: Commitment,
+    *,
+    owner: str | None = None,
+    now: datetime | None = None,
+) -> RoutingResult:
+    """Submit a MISSED commitment notification via the attention router."""
+    message = build_missed_commitment_message(commitment)
+    notification = CommitmentNotification(
+        commitment_id=commitment.commitment_id,
+        notification_type=CommitmentNotificationType.MISSED,
+        message=message,
+        urgency=commitment.urgency,
+    )
+    return submit_commitment_notification(
+        router,
+        notification,
+        owner=owner,
+        now=now,
+    )
+
+
+def submit_loop_closure_prompt_notification(
+    router: AttentionRouter,
+    commitment: Commitment,
+    *,
+    owner: str | None = None,
+    now: datetime | None = None,
+) -> RoutingResult | None:
+    """Submit a loop-closure prompt notification when due_by is present."""
+    prompt = generate_loop_closure_prompt(
+        description=commitment.description,
+        due_by=commitment.due_by,
+    )
+    if prompt is None:
+        return None
+    notification = CommitmentNotification(
+        commitment_id=commitment.commitment_id,
+        notification_type=CommitmentNotificationType.LOOP_CLOSURE,
+        message=prompt,
+        urgency=commitment.urgency,
+    )
+    return submit_commitment_notification(
+        router,
+        notification,
+        owner=owner,
+        now=now,
+    )
 
 
 def normalize_urgency_priority(urgency: int | None) -> float:

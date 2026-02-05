@@ -174,7 +174,7 @@ def test_transition_hook_removes_schedule(sqlite_session_factory: sessionmaker) 
     transition_service.transition(
         commitment_id=commitment_id,
         to_state="COMPLETED",
-        actor="system",
+        actor="user",
     )
 
     link_service = CommitmentScheduleLinkService(sqlite_session_factory)

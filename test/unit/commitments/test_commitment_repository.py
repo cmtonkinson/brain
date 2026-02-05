@@ -92,6 +92,37 @@ def test_update_persists_description(sqlite_session_factory: sessionmaker) -> No
     assert updated.description == "Draft full outline"
 
 
+def test_update_description_sets_last_modified(sqlite_session_factory: sessionmaker) -> None:
+    """Updating a description sets last_modified_at for renegotiation tracking."""
+    repo = CommitmentRepository(sqlite_session_factory)
+    created = repo.create(CommitmentCreateInput(description="Outline report"))
+    timestamp = datetime(2025, 2, 1, 9, 0, 0, tzinfo=timezone.utc)
+
+    updated = repo.update(
+        created.commitment_id,
+        CommitmentUpdateInput(description="Draft report"),
+        now=timestamp,
+    )
+
+    assert _coerce_utc(updated.last_modified_at) == timestamp
+
+
+def test_update_respects_explicit_last_modified(sqlite_session_factory: sessionmaker) -> None:
+    """Explicit last_modified_at values are preserved during urgency updates."""
+    repo = CommitmentRepository(sqlite_session_factory)
+    created = repo.create(CommitmentCreateInput(description="Refine spec"))
+    explicit = datetime(2025, 2, 2, 10, 0, 0, tzinfo=timezone.utc)
+    update_time = datetime(2025, 2, 3, 10, 0, 0, tzinfo=timezone.utc)
+
+    updated = repo.update(
+        created.commitment_id,
+        CommitmentUpdateInput(effort_provided=3, last_modified_at=explicit),
+        now=update_time,
+    )
+
+    assert _coerce_utc(updated.last_modified_at) == explicit
+
+
 def test_delete_removes_commitment(sqlite_session_factory: sessionmaker) -> None:
     """Deleting a commitment removes it from persistence."""
     repo = CommitmentRepository(sqlite_session_factory)

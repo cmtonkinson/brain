@@ -103,8 +103,8 @@ def test_update_importance_recalculates_urgency_and_last_modified(
     assert updated.last_modified_at == updated_at
 
 
-def test_update_description_does_not_recalculate(sqlite_session_factory: sessionmaker) -> None:
-    """Updating description should not recalculate urgency or last_modified_at."""
+def test_update_description_updates_last_modified(sqlite_session_factory: sessionmaker) -> None:
+    """Updating description should not recalculate urgency but should update last_modified_at."""
     repo = CommitmentRepository(sqlite_session_factory)
     now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
     due_by = now + timedelta(hours=4)
@@ -113,14 +113,15 @@ def test_update_description_does_not_recalculate(sqlite_session_factory: session
         now=now,
     )
 
+    updated_at = now + timedelta(hours=1)
     updated = repo.update(
         commitment.commitment_id,
         CommitmentUpdateInput(description="Still no recalc"),
-        now=now + timedelta(hours=1),
+        now=updated_at,
     )
 
     assert updated.urgency == commitment.urgency
-    assert updated.last_modified_at == commitment.last_modified_at
+    assert updated.last_modified_at == updated_at
 
 
 def test_high_urgency_far_schedule_logs_warning(

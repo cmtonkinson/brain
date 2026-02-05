@@ -75,43 +75,7 @@ class CommitmentRepository:
         """Create and persist a commitment record."""
 
         def handler(session: Session) -> Commitment:
-            timestamp = _normalize_timestamp(now or datetime.now(timezone.utc))
-            due_by = _normalize_due_by(payload.due_by)
-            urgency = compute_urgency(
-                payload.importance,
-                payload.effort_provided,
-                due_by,
-                timestamp,
-            )
-            commitment = Commitment(
-                description=payload.description,
-                provenance_id=payload.provenance_id,
-                state=payload.state,
-                importance=payload.importance,
-                effort_provided=payload.effort_provided,
-                effort_inferred=payload.effort_inferred,
-                urgency=urgency,
-                due_by=due_by,
-                created_at=timestamp,
-                updated_at=timestamp,
-                last_progress_at=_normalize_optional_timestamp(payload.last_progress_at),
-                last_modified_at=_normalize_optional_timestamp(payload.last_modified_at),
-                ever_missed_at=_normalize_optional_timestamp(payload.ever_missed_at),
-                presented_for_review_at=_normalize_optional_timestamp(
-                    payload.presented_for_review_at
-                ),
-                reviewed_at=_normalize_optional_timestamp(payload.reviewed_at),
-                next_schedule_id=payload.next_schedule_id,
-            )
-            session.add(commitment)
-            session.flush()
-            _maybe_log_urgency_warning(
-                commitment.commitment_id,
-                urgency,
-                session=session,
-                now=timestamp,
-            )
-            return commitment
+            return create_commitment_record(session, payload, now=now)
 
         return self._execute(handler)
 
@@ -136,6 +100,7 @@ class CommitmentRepository:
         def handler(session: Session) -> Commitment:
             commitment = _fetch_commitment(session, commitment_id)
             affects_urgency = _updates_affect_urgency(updates)
+            affects_last_modified = _updates_affect_last_modified(updates)
             _apply_updates(commitment, updates, allow_state_change=allow_state_change)
             timestamp = _normalize_timestamp(now or datetime.now(timezone.utc))
             commitment.updated_at = timestamp
@@ -147,13 +112,16 @@ class CommitmentRepository:
                     normalized_due_by,
                     timestamp,
                 )
-                commitment.last_modified_at = timestamp
+                if updates.last_modified_at is UNSET:
+                    commitment.last_modified_at = timestamp
                 _maybe_log_urgency_warning(
                     commitment.commitment_id,
                     commitment.urgency,
                     session=session,
                     now=timestamp,
                 )
+            if affects_last_modified and updates.last_modified_at is UNSET and not affects_urgency:
+                commitment.last_modified_at = timestamp
             session.flush()
             return commitment
 
@@ -181,6 +149,50 @@ class CommitmentRepository:
                 session.rollback()
                 raise
         return result
+
+
+def create_commitment_record(
+    session: Session,
+    payload: CommitmentCreateInput,
+    *,
+    now: datetime | None = None,
+) -> Commitment:
+    """Create and flush a commitment record within an existing session."""
+    timestamp = _normalize_timestamp(now or datetime.now(timezone.utc))
+    due_by = _normalize_due_by(payload.due_by)
+    urgency = compute_urgency(
+        payload.importance,
+        payload.effort_provided,
+        due_by,
+        timestamp,
+    )
+    commitment = Commitment(
+        description=payload.description,
+        provenance_id=payload.provenance_id,
+        state=payload.state,
+        importance=payload.importance,
+        effort_provided=payload.effort_provided,
+        effort_inferred=payload.effort_inferred,
+        urgency=urgency,
+        due_by=due_by,
+        created_at=timestamp,
+        updated_at=timestamp,
+        last_progress_at=_normalize_optional_timestamp(payload.last_progress_at),
+        last_modified_at=_normalize_optional_timestamp(payload.last_modified_at),
+        ever_missed_at=_normalize_optional_timestamp(payload.ever_missed_at),
+        presented_for_review_at=_normalize_optional_timestamp(payload.presented_for_review_at),
+        reviewed_at=_normalize_optional_timestamp(payload.reviewed_at),
+        next_schedule_id=payload.next_schedule_id,
+    )
+    session.add(commitment)
+    session.flush()
+    _maybe_log_urgency_warning(
+        commitment.commitment_id,
+        urgency,
+        session=session,
+        now=timestamp,
+    )
+    return commitment
 
 
 def _fetch_commitment(session: Session, commitment_id: int) -> Commitment:
@@ -260,6 +272,17 @@ def _updates_affect_urgency(updates: CommitmentUpdateInput) -> bool:
     return (
         updates.importance is not UNSET
         or updates.effort_provided is not UNSET
+        or updates.due_by is not UNSET
+    )
+
+
+def _updates_affect_last_modified(updates: CommitmentUpdateInput) -> bool:
+    """Return True when the update touches fields tracked for renegotiation."""
+    return (
+        updates.description is not UNSET
+        or updates.importance is not UNSET
+        or updates.effort_provided is not UNSET
+        or updates.effort_inferred is not UNSET
         or updates.due_by is not UNSET
     )
 

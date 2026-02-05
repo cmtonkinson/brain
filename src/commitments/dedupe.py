@@ -61,6 +61,33 @@ def resolve_dedupe_summary_length() -> int:
     return settings.commitments.dedupe_summary_length
 
 
+def compare_with_llm(
+    *,
+    description: str,
+    candidates: list[DedupeCandidate],
+    client: LLMClient | None = None,
+    summary_word_limit: int | None = None,
+) -> DedupeMatch:
+    """Compare a commitment description against candidates using the dedupe prompt."""
+    if not candidates:
+        raise ValueError("At least one candidate is required for dedupe comparison.")
+    resolved_word_limit = (
+        resolve_dedupe_summary_length() if summary_word_limit is None else summary_word_limit
+    )
+    resolved_client = client or llm_client
+    return _compare_with_llm(
+        description=description,
+        candidates=candidates,
+        summary_word_limit=resolved_word_limit,
+        client=resolved_client,
+    )
+
+
+def cap_summary_words(summary: str, max_words: int) -> str:
+    """Cap summary length to the configured word limit."""
+    return _cap_summary_words(summary, max_words)
+
+
 def list_open_commitments(
     session_factory: Callable[[], Session],
 ) -> list[DedupeCandidate]:
@@ -111,7 +138,7 @@ def generate_dedupe_proposal(
         return None
 
     candidate = _find_candidate(candidate_list, match.commitment_id)
-    capped_summary = _cap_summary_words(match.summary, resolved_word_limit)
+    capped_summary = cap_summary_words(match.summary, resolved_word_limit)
     return DedupeProposal(
         candidate=candidate,
         confidence=match.confidence,
@@ -230,6 +257,8 @@ def _cap_summary_words(summary: str, max_words: int) -> str:
 
 
 __all__ = [
+    "cap_summary_words",
+    "compare_with_llm",
     "DedupeCandidate",
     "DedupeDecisionOutcome",
     "DedupeMatch",

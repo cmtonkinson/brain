@@ -8,6 +8,10 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from agent import Agent, AgentDeps, _ensure_llm_env, _extract_agent_response, create_agent
+from commitments.scheduled_tasks import (
+    CommitmentScheduledTaskHandler,
+    CommitmentScheduledTaskResult,
+)
 from config import settings
 from prompts import render_prompt
 from scheduler.execution_dispatcher import (
@@ -21,6 +25,9 @@ from services.code_mode import CodeModeManager, create_code_mode_manager
 from services.object_store import ObjectStore
 from tools.memory import ConversationMemory
 from tools.obsidian import ObsidianClient
+from attention.router import AttentionRouter
+from llm import LLMClient
+from sqlalchemy.orm import Session
 
 LOGGER = logging.getLogger(__name__)
 
@@ -78,6 +85,10 @@ class AgentExecutionInvoker(ExecutionInvoker):
         obsidian: ObsidianClient | None = None,
         memory: ConversationMemory | None = None,
         code_mode: CodeModeManager | None = None,
+        session_factory: Callable[[], Session] | None = None,
+        router: AttentionRouter | None = None,
+        commitment_handler: CommitmentScheduledTaskHandler | None = None,
+        llm_client: LLMClient | None = None,
     ) -> None:
         """Initialize the invoker with cached dependencies."""
         _ensure_llm_env()
@@ -86,6 +97,17 @@ class AgentExecutionInvoker(ExecutionInvoker):
         self._memory = memory or ConversationMemory(self._obsidian)
         self._code_mode = code_mode or self._build_code_mode_manager()
         self._object_store = ObjectStore(settings.objects.root_dir)
+        if commitment_handler is not None:
+            self._commitment_handler = commitment_handler
+        elif session_factory is not None and router is not None:
+            self._commitment_handler = CommitmentScheduledTaskHandler(
+                session_factory,
+                router,
+                owner=settings.user.name,
+                llm_client=llm_client,
+            )
+        else:
+            self._commitment_handler = None
 
     def _build_code_mode_manager(self) -> CodeModeManager:
         """Create the Code-Mode manager used by the agent invocation."""
@@ -141,6 +163,9 @@ class AgentExecutionInvoker(ExecutionInvoker):
 
     def invoke_execution(self, request: ExecutionInvocationRequest) -> ExecutionInvocationResult:
         """Invoke the agent for a scheduled execution."""
+        commitment_result = self._handle_commitment_task(request)
+        if commitment_result is not None:
+            return commitment_result
         prompt = self._build_prompt(request)
         try:
             response = self._invoke_agent(prompt)
@@ -163,3 +188,57 @@ class AgentExecutionInvoker(ExecutionInvoker):
                     error_message=str(exc),
                 ),
             )
+
+    def _handle_commitment_task(
+        self,
+        request: ExecutionInvocationRequest,
+    ) -> ExecutionInvocationResult | None:
+        """Handle commitment-origin scheduled tasks without invoking the LLM agent."""
+        if self._commitment_handler is None:
+            return None
+        try:
+            outcome = self._commitment_handler.handle(
+                origin_reference=request.task_intent.origin_reference,
+                schedule_id=request.execution.schedule_id,
+                trace_id=request.execution.trace_id,
+                scheduled_for=request.execution.scheduled_for,
+            )
+        except Exception as exc:
+            LOGGER.exception("Commitment scheduled task handling failed")
+            return ExecutionInvocationResult(
+                status="failure",
+                result_code="commitment_task_error",
+                attention_required=True,
+                message=str(exc),
+                error=ExecutionInvocationError(
+                    error_code="commitment_task_error",
+                    error_message=str(exc),
+                ),
+            )
+        if outcome is None:
+            return None
+        return _result_from_commitment_outcome(outcome)
+
+
+def _result_from_commitment_outcome(
+    outcome: CommitmentScheduledTaskResult,
+) -> ExecutionInvocationResult:
+    """Translate a commitment task outcome into a scheduler invocation result."""
+    if outcome.status == "failed":
+        error_code = outcome.error_code or "commitment_task_failed"
+        return ExecutionInvocationResult(
+            status="failure",
+            result_code=error_code,
+            attention_required=True,
+            message=outcome.message,
+            error=ExecutionInvocationError(
+                error_code=error_code,
+                error_message=outcome.message or error_code,
+            ),
+        )
+    return ExecutionInvocationResult(
+        status="success",
+        result_code="commitment_task",
+        attention_required=outcome.attention_required,
+        message=outcome.message,
+    )

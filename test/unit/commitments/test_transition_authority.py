@@ -1,0 +1,53 @@
+"""Unit tests for commitment transition authority evaluation."""
+
+from __future__ import annotations
+
+from commitments.transition_authority import evaluate_transition_authority
+
+
+def test_system_missed_transition_is_allowed() -> None:
+    """System MISSED transitions should bypass confidence gating."""
+    decision = evaluate_transition_authority(
+        to_state="MISSED",
+        actor="system",
+        confidence=None,
+    )
+
+    assert decision.allow_transition is True
+    assert decision.reason == "missed_is_autonomous"
+
+
+def test_user_transition_is_allowed() -> None:
+    """User transitions should be allowed regardless of confidence."""
+    decision = evaluate_transition_authority(
+        to_state="COMPLETED",
+        actor="user",
+        confidence=0.1,
+    )
+
+    assert decision.allow_transition is True
+    assert decision.reason == "user_initiated"
+
+
+def test_system_transition_without_confidence_is_blocked() -> None:
+    """System transitions without confidence should be blocked."""
+    decision = evaluate_transition_authority(
+        to_state="COMPLETED",
+        actor="system",
+        confidence=None,
+    )
+
+    assert decision.allow_transition is False
+    assert decision.reason == "missing_confidence"
+
+
+def test_system_transition_uses_forced_zero_confidence() -> None:
+    """System transitions should compare using forced 0.0 confidence."""
+    decision = evaluate_transition_authority(
+        to_state="COMPLETED",
+        actor="system",
+        confidence=0.95,
+    )
+
+    assert decision.allow_transition is False
+    assert decision.effective_confidence == 0.0

@@ -1,0 +1,188 @@
+"""Execution helpers for loop-closure response intents."""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+from typing import Callable, Literal
+
+from sqlalchemy.orm import Session
+
+from commitments.loop_closure_parser import LoopClosureIntent
+from commitments.miss_detection_scheduling import MissDetectionScheduleService
+from commitments.repository import CommitmentRepository, CommitmentUpdateInput
+from commitments.transition_service import CommitmentStateTransitionService
+from scheduler.adapter_interface import SchedulerAdapter
+from time_utils import to_utc
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class LoopClosureActionRequest:
+    """Request payload for executing a loop-closure intent."""
+
+    commitment_id: int
+    intent: LoopClosureIntent
+    prompt: str
+    response: str
+    actor: str = "user"
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class LoopClosureActionResult:
+    """Outcome of applying a loop-closure action."""
+
+    status: Literal["completed", "canceled", "renegotiated", "reviewed", "noop"]
+    commitment_id: int
+    prior_state: str | None = None
+    new_state: str | None = None
+    new_due_by: datetime | None = None
+
+
+class LoopClosureActionService:
+    """Service to apply loop-closure response intents."""
+
+    def __init__(
+        self,
+        session_factory: Callable[[], Session],
+        schedule_adapter: SchedulerAdapter,
+        *,
+        now_provider: Callable[[], datetime] | None = None,
+    ) -> None:
+        """Initialize the loop-closure action service."""
+        self._session_factory = session_factory
+        self._now_provider = now_provider or (lambda: datetime.now(timezone.utc))
+        self._commitment_repo = CommitmentRepository(session_factory)
+        self._transition_service = CommitmentStateTransitionService(session_factory)
+        self._schedule_service = MissDetectionScheduleService(
+            session_factory,
+            schedule_adapter,
+            now_provider=self._now_provider,
+        )
+
+    def apply_intent(self, request: LoopClosureActionRequest) -> LoopClosureActionResult:
+        """Apply a loop-closure intent to the target commitment."""
+        self._log_prompt_response(request)
+        commitment = self._commitment_repo.get_by_id(request.commitment_id)
+        if commitment is None:
+            raise ValueError(f"Commitment not found: {request.commitment_id}")
+
+        prior_state = str(commitment.state)
+        if prior_state in {"COMPLETED", "CANCELED"}:
+            return LoopClosureActionResult(
+                status="noop",
+                commitment_id=commitment.commitment_id,
+                prior_state=prior_state,
+                new_state=prior_state,
+            )
+
+        intent_type = request.intent.intent
+        if intent_type == "complete":
+            self._transition_service.transition(
+                commitment_id=commitment.commitment_id,
+                to_state="COMPLETED",
+                actor=request.actor,
+                reason=request.reason or "loop_closure_complete",
+                context=_build_action_context(request),
+                now=self._now_provider(),
+            )
+            self._schedule_service.remove_schedule(
+                commitment_id=commitment.commitment_id,
+                reason="commitment_resolved",
+            )
+            return LoopClosureActionResult(
+                status="completed",
+                commitment_id=commitment.commitment_id,
+                prior_state=prior_state,
+                new_state="COMPLETED",
+            )
+        if intent_type == "cancel":
+            self._transition_service.transition(
+                commitment_id=commitment.commitment_id,
+                to_state="CANCELED",
+                actor=request.actor,
+                reason=request.reason or "loop_closure_cancel",
+                context=_build_action_context(request),
+                now=self._now_provider(),
+            )
+            self._schedule_service.remove_schedule(
+                commitment_id=commitment.commitment_id,
+                reason="commitment_resolved",
+            )
+            return LoopClosureActionResult(
+                status="canceled",
+                commitment_id=commitment.commitment_id,
+                prior_state=prior_state,
+                new_state="CANCELED",
+            )
+
+        if intent_type == "renegotiate":
+            new_due_by = _normalize_due_by(request.intent.new_due_by)
+            updated = self._commitment_repo.update(
+                commitment.commitment_id,
+                CommitmentUpdateInput(due_by=new_due_by),
+                now=self._now_provider(),
+            )
+            self._schedule_service.ensure_schedule(
+                commitment_id=commitment.commitment_id,
+                due_by=updated.due_by,
+            )
+            return LoopClosureActionResult(
+                status="renegotiated",
+                commitment_id=commitment.commitment_id,
+                prior_state=prior_state,
+                new_state=str(updated.state),
+                new_due_by=updated.due_by,
+            )
+
+        if intent_type == "review":
+            timestamp = self._now_provider()
+            updated = self._commitment_repo.update(
+                commitment.commitment_id,
+                CommitmentUpdateInput(reviewed_at=timestamp),
+                now=timestamp,
+            )
+            return LoopClosureActionResult(
+                status="reviewed",
+                commitment_id=commitment.commitment_id,
+                prior_state=prior_state,
+                new_state=str(updated.state),
+            )
+
+        raise ValueError(f"Unsupported loop-closure intent: {intent_type}")
+
+    def _log_prompt_response(self, request: LoopClosureActionRequest) -> None:
+        """Log prompt-response pairs for observability."""
+        timestamp = to_utc(self._now_provider())
+        logger.info(
+            "Loop-closure response: commitment_id=%s intent=%s timestamp=%s prompt=%s response=%s",
+            request.commitment_id,
+            request.intent.intent,
+            timestamp.isoformat(),
+            request.prompt,
+            request.response,
+        )
+
+
+def _normalize_due_by(value: date | datetime | None) -> date | datetime | None:
+    """Normalize due_by inputs, preserving date-only values for repository handling."""
+    return value
+
+
+def _build_action_context(request: LoopClosureActionRequest) -> dict[str, object]:
+    """Build audit context payload for loop-closure actions."""
+    return {
+        "prompt": request.prompt,
+        "response": request.response,
+        "intent": request.intent.intent,
+    }
+
+
+__all__ = [
+    "LoopClosureActionRequest",
+    "LoopClosureActionResult",
+    "LoopClosureActionService",
+]
