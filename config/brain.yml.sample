@@ -88,6 +88,7 @@
 #   review_day: "Saturday"
 #   review_time: "10:00"
 #   batch_reminder_time: "06:00"
+#   review_engagement_window_minutes: 60
 
 # Service URLs
 # qdrant:

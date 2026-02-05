@@ -21,6 +21,7 @@ from config import settings
 from models import SignalMessage
 from services.code_mode import CodeModeManager, create_code_mode_manager
 from services.database import init_db, get_session, log_action
+from services.database import get_sync_session
 from access_control import is_sender_allowed
 from services.signal import SignalClient
 from attention.router import AttentionRouter
@@ -53,6 +54,7 @@ from skills.errors import SkillPolicyError, SkillRuntimeError
 from skills.runtime import SkillRuntime
 from skills.registry_schema import AutonomyLevel, SkillStatus
 from skills.services import SkillServices
+from commitments.review_delivery import maybe_record_review_engagement
 
 # Observability imports (conditional to allow running without OTEL)
 try:
@@ -779,6 +781,15 @@ async def handle_signal_message(
         return
 
     logger.info(f"Handling message from {sender}: {message[:50]}...")
+    try:
+        maybe_record_review_engagement(
+            sender,
+            session_factory=get_sync_session,
+            engaged_at=signal_msg.timestamp,
+            window_minutes=settings.commitments.review_engagement_window_minutes,
+        )
+    except Exception:
+        logger.exception("Failed to record review engagement for %s.", sender)
 
     # Create tracing span if available
     tracer = None

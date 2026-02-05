@@ -180,6 +180,25 @@ def _collect_commitment_ids(
     return sorted(ids)
 
 
+def collect_commitment_ids_from_structured(
+    structured: ReviewStructuredSummary,
+) -> list[int]:
+    """Collect commitment IDs from a structured review summary."""
+    ids: set[int] = set()
+    for group in (
+        structured.completed,
+        structured.missed,
+        structured.modified,
+        structured.no_due_by,
+    ):
+        for item in group:
+            ids.add(item.commitment_id)
+    for pair in structured.duplicates:
+        ids.add(pair.primary.commitment_id)
+        ids.add(pair.secondary.commitment_id)
+    return sorted(ids)
+
+
 def _build_narrative(summary: ReviewStructuredSummary) -> str:
     """Generate a neutral, non-judgmental narrative summary."""
     if _is_summary_empty(summary):
@@ -233,5 +252,6 @@ __all__ = [
     "ReviewDuplicateSummary",
     "ReviewStructuredSummary",
     "ReviewSummaryResult",
+    "collect_commitment_ids_from_structured",
     "generate_review_summary",
 ]

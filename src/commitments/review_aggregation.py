@@ -38,14 +38,21 @@ def get_last_review_run_at(session_factory: Callable[[], Session]) -> datetime:
 def record_review_run(
     session_factory: Callable[[], Session],
     *,
+    owner: str | None = None,
     run_at: datetime | None = None,
+    delivered_at: datetime | None = None,
 ) -> CommitmentReviewRun:
     """Insert a review run record and return it."""
     timestamp = _normalize_timestamp(run_at or datetime.now(timezone.utc))
+    delivered_ts = _normalize_optional_timestamp(delivered_at)
     with closing(session_factory()) as session:
         session.expire_on_commit = False
         try:
-            record = CommitmentReviewRun(run_at=timestamp)
+            record = CommitmentReviewRun(
+                run_at=timestamp,
+                owner=owner,
+                delivered_at=delivered_ts,
+            )
             session.add(record)
             session.commit()
         except Exception:
@@ -157,6 +164,13 @@ def aggregate_review_commitments(
 def _normalize_timestamp(value: datetime) -> datetime:
     """Normalize timestamps to UTC."""
     return to_utc(value)
+
+
+def _normalize_optional_timestamp(value: datetime | None) -> datetime | None:
+    """Normalize optional timestamps to UTC when provided."""
+    if value is None:
+        return None
+    return _normalize_timestamp(value)
 
 
 __all__ = [

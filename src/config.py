@@ -312,6 +312,7 @@ class CommitmentConfig(BaseModel):
     review_day: str = "Saturday"
     review_time: str = "10:00"
     batch_reminder_time: str = "06:00"
+    review_engagement_window_minutes: int = 60
 
     @field_validator("autonomous_transition_confidence_threshold")
     @classmethod
@@ -393,6 +394,14 @@ class CommitmentConfig(BaseModel):
         except ValueError as exc:
             raise ValueError("commitments.batch_reminder_time must be HH:MM.") from exc
         return value.strip()
+
+    @field_validator("review_engagement_window_minutes")
+    @classmethod
+    def validate_review_engagement_window_minutes(cls, value: int) -> int:
+        """Ensure engagement window is positive."""
+        if value < 1:
+            raise ValueError("commitments.review_engagement_window_minutes must be >= 1.")
+        return value
 
 
 class ServiceConfig(BaseModel):

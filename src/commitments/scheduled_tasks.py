@@ -15,9 +15,16 @@ from commitments.batch_delivery import deliver_batch_reminder
 from commitments.batch_formatting import format_batch_reminder_message
 from commitments.miss_detection import handle_miss_detection_callback
 from commitments.review_aggregation import aggregate_review_commitments, record_review_run
-from commitments.review_delivery import deliver_review_summary
+from commitments.review_delivery import (
+    deliver_review_summary,
+    mark_review_delivered,
+    record_review_items,
+)
 from commitments.review_dedupe import scan_review_duplicates
-from commitments.review_summary import generate_review_summary
+from commitments.review_summary import (
+    collect_commitment_ids_from_structured,
+    generate_review_summary,
+)
 from llm import LLMClient
 from time_utils import to_utc
 
@@ -160,7 +167,18 @@ class CommitmentScheduledTaskHandler:
             duplicates=duplicates,
             generated_at=timestamp,
         )
-        review_run = record_review_run(self._session_factory, run_at=timestamp)
+        review_run = record_review_run(
+            self._session_factory,
+            run_at=timestamp,
+            owner=self._owner,
+        )
+        commitment_ids = collect_commitment_ids_from_structured(summary.structured)
+        record_review_items(
+            review_run.id,
+            commitment_ids,
+            session_factory=self._session_factory,
+            created_at=timestamp,
+        )
         routing_result = deliver_review_summary(
             self._router,
             review_id=review_run.id,
@@ -168,6 +186,12 @@ class CommitmentScheduledTaskHandler:
             owner=self._owner,
             now=timestamp,
         )
+        if routing_result.decision == "DELIVER":
+            mark_review_delivered(
+                review_run.id,
+                session_factory=self._session_factory,
+                delivered_at=timestamp,
+            )
         return CommitmentScheduledTaskResult(
             status="success",
             message=f"Weekly review delivered ({routing_result.decision}).",

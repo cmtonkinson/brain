@@ -15,6 +15,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Index,
     JSON,
     String,
     Text,
@@ -529,6 +530,41 @@ class CommitmentReviewRun(Base):
 
     id = Column(Integer, primary_key=True)
     run_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    owner = Column(String, nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    engaged_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class CommitmentReviewItem(Base):
+    """Commitment records included in a weekly review run."""
+
+    __tablename__ = "commitment_review_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "review_run_id",
+            "commitment_id",
+            name="uq_commitment_review_items_review_run_commitment",
+        ),
+        Index("idx_commitment_review_items_review_run_id", "review_run_id"),
+        Index("idx_commitment_review_items_commitment_id", "commitment_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    review_run_id = Column(
+        Integer,
+        ForeignKey("commitment_review_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    commitment_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("commitments.commitment_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at = Column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),

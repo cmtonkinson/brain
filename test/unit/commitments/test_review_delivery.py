@@ -9,7 +9,13 @@ from sqlalchemy.orm import sessionmaker
 
 from attention.router import RoutingResult
 from commitments.repository import CommitmentCreateInput, CommitmentRepository
-from commitments.review_delivery import deliver_review_summary, record_review_engagement
+from commitments.review_aggregation import record_review_run
+from commitments.review_delivery import (
+    deliver_review_summary,
+    maybe_record_review_engagement,
+    record_review_engagement,
+    record_review_items,
+)
 from commitments.review_summary import ReviewStructuredSummary, ReviewSummaryResult
 
 
@@ -93,9 +99,20 @@ def test_review_engagement_updates_reviewed_at(
     )
     engaged_at = datetime(2024, 2, 2, tzinfo=timezone.utc)
 
+    review_run = record_review_run(
+        sqlite_session_factory,
+        owner="+15555550123",
+        run_at=engaged_at,
+        delivered_at=engaged_at,
+    )
+    record_review_items(
+        review_run.id,
+        [included_id],
+        session_factory=sqlite_session_factory,
+        created_at=engaged_at,
+    )
     record_review_engagement(
-        review_id=7,
-        commitment_ids=[included_id],
+        review_id=review_run.id,
         session_factory=sqlite_session_factory,
         engaged_at=engaged_at,
     )
@@ -105,3 +122,38 @@ def test_review_engagement_updates_reviewed_at(
 
     assert _normalize_timestamp(included.reviewed_at) == engaged_at
     assert excluded.reviewed_at is None
+
+
+def test_review_engagement_window_records_latest_review(
+    sqlite_session_factory: sessionmaker,
+) -> None:
+    """Replies within the engagement window should mark review engagement."""
+    included_id = _create_commitment(
+        sqlite_session_factory,
+        description="Windowed commitment",
+    )
+    delivered_at = datetime(2024, 2, 2, 9, 0, tzinfo=timezone.utc)
+    engaged_at = delivered_at.replace(hour=9, minute=30)
+    review_run = record_review_run(
+        sqlite_session_factory,
+        owner="+15555550123",
+        run_at=delivered_at,
+        delivered_at=delivered_at,
+    )
+    record_review_items(
+        review_run.id,
+        [included_id],
+        session_factory=sqlite_session_factory,
+        created_at=delivered_at,
+    )
+
+    recorded = maybe_record_review_engagement(
+        "+15555550123",
+        session_factory=sqlite_session_factory,
+        engaged_at=engaged_at,
+        window_minutes=60,
+    )
+
+    assert recorded is True
+    included = _load_commitment(sqlite_session_factory, included_id)
+    assert _normalize_timestamp(included.reviewed_at) == engaged_at
