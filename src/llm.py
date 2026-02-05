@@ -10,7 +10,17 @@ class LLMClient:
 
     def __init__(self, model: Optional[str] = None):
         """Initialize the client with a default model if omitted."""
-        self.model = model or settings.llm.model
+        self.model = self._normalize_model_name(model or settings.llm.model)
+
+    def _normalize_model_name(self, model: str) -> str:
+        """Normalize model name for LiteLLM compatibility.
+
+        LiteLLM expects Anthropic models without the 'anthropic:' prefix.
+        For example: 'claude-sonnet-4-20250514', not 'anthropic:claude-sonnet-4-20250514'.
+        """
+        if model.startswith("anthropic:"):
+            return model[len("anthropic:"):]
+        return model
 
     def _litellm_kwargs(self) -> Dict[str, Any]:
         """Build LiteLLM keyword arguments from settings."""

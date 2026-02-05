@@ -74,7 +74,14 @@ def extract_commitments_from_text(
 
     try:
         prompt = EXTRACTION_PROMPT.format(text=text)
-        response = client.generate(prompt)
+        response = client.complete_sync(
+            messages=[
+                {"role": "system", "content": "You are a commitment extraction assistant. Extract commitments from text and return valid JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.0,
+            max_tokens=2000,
+        )
 
         # Parse JSON response
         response_text = response.strip()

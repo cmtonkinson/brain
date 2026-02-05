@@ -29,6 +29,7 @@ from models import Commitment, Schedule, TaskIntent
 from scheduler.adapter_interface import SchedulerAdapter
 from scheduler.data_access import ActorContext as ScheduleActorContext, delete_schedule
 
+LOGGER = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class CommitmentProvenanceLinkInput:
@@ -136,11 +137,23 @@ class CommitmentCreationService:
                     due_by=commitment.due_by,
                 ).schedule_id
             except Exception as exc:  # noqa: BLE001 - surface root error after rollback
-                self._rollback_creation(
-                    commitment_id=commitment.commitment_id,
-                    error=exc,
-                )
-                raise
+                from scheduler.schedule_service_interface import ScheduleValidationError
+
+                # Allow commitment creation even if scheduling fails for past due dates
+                # The commitment is still valid, just can't schedule future miss detection
+                if isinstance(exc, ScheduleValidationError) and "must be in the future" in str(exc):
+                    LOGGER.warning(
+                        "Skipping miss detection schedule for commitment %s: due_by is in the past",
+                        commitment.commitment_id,
+                    )
+                    schedule_id = None
+                else:
+                    # For other scheduling errors, rollback and fail
+                    self._rollback_creation(
+                        commitment_id=commitment.commitment_id,
+                        error=exc,
+                    )
+                    raise
 
         return CommitmentCreationSuccess(
             status="success",

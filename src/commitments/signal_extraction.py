@@ -14,10 +14,8 @@ from commitments.creation_service import (
     CommitmentCreationDedupeRequired,
     CommitmentCreationRequest,
     CommitmentCreationService,
-    CommitmentProvenanceLinkInput,
 )
 from commitments.extraction import extract_commitments_from_text
-from ingestion.provenance import ProvenanceSourceInput
 from llm import LLMClient
 from scheduler.adapter_interface import SchedulerAdapter
 
@@ -84,38 +82,26 @@ Agent: {agent_response}"""
     # Create commitments
     for extraction in extractions:
         try:
-            # Build provenance for Signal message
-            provenance_sources = [
-                ProvenanceSourceInput(
-                    source_type="signal",
-                    source_uri=f"signal://{sender}",
-                    source_actor=sender,
-                    captured_at=timestamp,
-                )
-            ]
-
-            # Create a synthetic object key for the Signal exchange
-            # (not stored in object store, just for provenance linking)
-            object_key = f"signal:{sender}:{timestamp.isoformat()}"
-
-            provenance_link = CommitmentProvenanceLinkInput(
-                object_key=object_key,
-                ingestion_id=UUID("00000000-0000-0000-0000-000000000000"),  # Sentinel for Signal
-                sources=provenance_sources,
-            )
-
             # Determine source based on confidence
             # User-initiated messages should have high confidence for user source
             # Agent suggestions should use agent source with lower confidence
             source = "user"  # Default to user-initiated
             confidence = extraction.get("confidence")
 
+            # Remove confidence from payload since it's passed separately in the request
+            # CommitmentCreationInput has extra="forbid" so it rejects unknown fields
+            payload = {k: v for k, v in extraction.items() if k != "confidence"}
+
+            # Note: Signal messages don't have artifacts in the object store,
+            # so we don't link provenance (which requires an artifact to exist).
+            # The commitment's metadata can still capture the Signal source if needed.
+
             # Create commitment request
             request = CommitmentCreationRequest(
-                payload=extraction,
+                payload=payload,
                 source=source,
                 confidence=confidence,
-                provenance=provenance_link,
+                provenance=None,  # No provenance for Signal-sourced commitments
             )
 
             # Attempt creation

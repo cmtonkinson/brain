@@ -31,19 +31,34 @@ def _create_scheduler_adapter() -> SchedulerAdapter:
     Returns:
         A configured SchedulerAdapter instance
     """
+    # Import Celery here to create our own instance
+    # (avoid importing scheduler.celery_app which has module-level init issues)
+    from celery import Celery
+
+    # Create a minimal Celery app instance for the scheduler client
+    # This matches the configuration in scheduler.celery_app but avoids
+    # triggering module-level object creation that requires async context
+    celery_app = Celery("brain.scheduler")
+    celery_app.conf.broker_url = settings.scheduler.celery_broker_url
+    celery_app.conf.result_backend = settings.scheduler.celery_result_backend
+    celery_app.conf.task_default_queue = settings.scheduler.celery_queue_name
+
     # Use Celery + SQLAlchemy scheduler (same as used by celery beat)
-    broker_url = os.environ.get("CELERY_BROKER_URL", "redis://redis:6379/1")
-    beat_dburi = str(get_sync_engine().url)
+    db_uri = str(get_sync_engine().url)
+    callback_task_name = "scheduler.execute_callback"
+    queue_name = settings.scheduler.celery_queue_name
 
     client = CelerySqlAlchemySchedulerClient(
-        broker_url=broker_url,
-        beat_dburi=beat_dburi,
+        celery_app=celery_app,
+        callback_task_name=callback_task_name,
+        db_uri=db_uri,
+        queue_name=queue_name,
     )
 
     config = CeleryAdapterConfig(
-        callback_task_name="scheduler.execute_callback",
+        callback_task_name=callback_task_name,
         evaluation_callback_task_name="scheduler.evaluate_predicate",
-        queue_name=os.environ.get("CELERY_QUEUE_NAME", "scheduler"),
+        queue_name=queue_name,
     )
 
     return CelerySchedulerAdapter(client=client, config=config)

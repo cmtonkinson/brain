@@ -77,6 +77,10 @@
 #   backoff_base_seconds: 60
 #   failure_notification_threshold: 3
 #   failure_notification_throttle_seconds: 3600
+#   # Celery backend configuration
+#   celery_broker_url: "redis://redis:6379/1"
+#   celery_result_backend: "redis://redis:6379/2"
+#   celery_queue_name: "scheduler"
 
 # Commitment tracking configuration
 # commitments:

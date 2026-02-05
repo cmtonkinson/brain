@@ -74,27 +74,30 @@ def _parse_env_value(raw: str, kind: str) -> Any:
 def _env_settings_source():
     """Create a settings source that maps environment variables to config keys."""
     mapping = {
+        "ALLOWED_SENDERS": ("signal.allowed_senders", "json"),
+        "ALLOWED_SENDERS_BY_CHANNEL": ("signal.allowed_senders_by_channel", "json"),
         "ANTHROPIC_API_KEY": ("anthropic_api_key", "str"),
+        "CELERY_BROKER_URL": ("scheduler.celery_broker_url", "str"),
+        "CELERY_QUEUE_NAME": ("scheduler.celery_queue_name", "str"),
+        "CELERY_RESULT_BACKEND": ("scheduler.celery_result_backend", "str"),
+        "DATABASE_URL": ("database.url", "str"),
+        "LETTA_AGENT_NAME": ("letta.agent_name", "str"),
+        "LETTA_API_KEY": ("letta.api_key", "str"),
+        "LETTA_BASE_URL": ("letta.base_url", "str"),
+        "LETTA_EMBED_MODEL": ("letta.embed_model", "str"),
+        "LETTA_MODEL": ("letta.model", "str"),
+        "LETTA_SERVER_PASSWORD": ("letta.server_password", "str"),
+        "LITELLM_MODEL": ("llm.model", "str"),
+        "LLM_BASE_URL": ("llm.base_url", "str"),
+        "LLM_EMBED_BASE_URL": ("llm.embed_base_url", "str"),
+        "LLM_TIMEOUT": ("llm.timeout", "int"),
         "OBSIDIAN_API_KEY": ("obsidian.api_key", "str"),
         "OBSIDIAN_VAULT_PATH": ("obsidian.vault_path", "str"),
-        "DATABASE_URL": ("database.url", "str"),
+        "OLLAMA_EMBED_MODEL": ("llm.embed_model", "str"),
+        "OLLAMA_URL": ("llm.embed_base_url", "str"),
         "POSTGRES_PASSWORD": ("database.postgres_password", "str"),
         "QDRANT_URL": ("qdrant.url", "str"),
         "SIGNAL_PHONE_NUMBER": ("signal.phone_number", "str"),
-        "ALLOWED_SENDERS": ("signal.allowed_senders", "json"),
-        "ALLOWED_SENDERS_BY_CHANNEL": ("signal.allowed_senders_by_channel", "json"),
-        "LETTA_BASE_URL": ("letta.base_url", "str"),
-        "LETTA_API_KEY": ("letta.api_key", "str"),
-        "LETTA_SERVER_PASSWORD": ("letta.server_password", "str"),
-        "LETTA_AGENT_NAME": ("letta.agent_name", "str"),
-        "LETTA_MODEL": ("letta.model", "str"),
-        "LETTA_EMBED_MODEL": ("letta.embed_model", "str"),
-        "LLM_BASE_URL": ("llm.base_url", "str"),
-        "LLM_TIMEOUT": ("llm.timeout", "int"),
-        "LLM_EMBED_BASE_URL": ("llm.embed_base_url", "str"),
-        "LITELLM_MODEL": ("llm.model", "str"),
-        "OLLAMA_URL": ("llm.embed_base_url", "str"),
-        "OLLAMA_EMBED_MODEL": ("llm.embed_model", "str"),
         "USER_TIMEZONE": ("user.timezone", "str"),
         "UTCP_CONFIG_PATH": ("utcp.config_path", "str"),
     }
@@ -249,6 +252,11 @@ class SchedulerConfig(BaseModel):
     backoff_base_seconds: int = 60
     failure_notification_threshold: int = 3
     failure_notification_throttle_seconds: int = 3600
+
+    # Celery configuration
+    celery_broker_url: str = "redis://redis:6379/1"
+    celery_result_backend: str = "redis://redis:6379/2"
+    celery_queue_name: str = "scheduler"
 
     @field_validator("default_max_attempts")
     @classmethod

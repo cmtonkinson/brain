@@ -1096,7 +1096,7 @@ async def main() -> None:
     object_store = ObjectStore(settings.objects.root_dir)
 
     # Initialize agent hooks and services
-    agent_services = {}
+    # IMPORTANT: Initialization failures are fatal - the agent cannot operate without these hooks
     try:
         from agent_init import initialize_agent_hooks
         from llm import LLMClient
@@ -1108,7 +1108,8 @@ async def main() -> None:
             llm_client=llm_client,
         )
     except Exception as e:
-        logger.warning(f"Failed to initialize agent hooks: {e}", exc_info=True)
+        logger.error(f"FATAL: Failed to initialize agent hooks: {e}", exc_info=True)
+        raise RuntimeError(f"Agent initialization failed: {e}") from e
 
     if args.test:
         await run_test_mode(agent, args.test, code_mode, object_store)

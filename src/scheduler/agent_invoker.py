@@ -65,12 +65,33 @@ def _definition_to_string(definition: ExecutionInvocationScheduleDefinition) -> 
 
 
 def _run_coroutine_sync(coro: Callable[[], object]) -> object:
-    """Run an async coroutine in a fresh asyncio runner and return the result."""
-    runner = asyncio.Runner()
+    """Run an async coroutine synchronously.
+
+    If called from outside an event loop, creates a new runner.
+    If called from within an event loop, raises an error since we can't block.
+    """
     try:
-        return runner.run(coro())
-    finally:
-        runner.close()
+        # Check if we're already in an event loop
+        asyncio.get_running_loop()
+        # If we get here, there IS a running loop - we can't use Runner()
+        raise RuntimeError(
+            "Cannot synchronously initialize CodeModeManager from within an event loop. "
+            "AgentExecutionInvoker must be created outside async context, "
+            "or pass code_mode explicitly to avoid lazy initialization."
+        )
+    except RuntimeError as e:
+        # Check if the error is about no running loop (expected case)
+        error_msg = str(e).lower()
+        if "no running event loop" in error_msg or "no current event loop" in error_msg:
+            # No running loop - safe to create a new runner
+            runner = asyncio.Runner()
+            try:
+                return runner.run(coro())
+            finally:
+                runner.close()
+        else:
+            # It's our custom error or another RuntimeError - re-raise
+            raise
 
 
 class AgentExecutionInvoker(ExecutionInvoker):
