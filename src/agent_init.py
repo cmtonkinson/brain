@@ -6,11 +6,16 @@ import logging
 import os
 from typing import Callable
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from commitments.daily_batch_scheduler import schedule_daily_batch_reminder
 from commitments.ingestion_hook import create_commitment_extraction_hook
+from commitments.loop_closure_handler import LoopClosureReplyHandler
 from commitments.signal_extraction import create_signal_commitment_extractor
+from commitments.weekly_review_scheduler import schedule_weekly_review
 from config import settings
+from models import Schedule, TaskIntent
 from ingestion.hooks import HookFilters, register_hook
 from llm import LLMClient
 from scheduler.adapter_interface import SchedulerAdapter
@@ -23,6 +28,26 @@ from services.database import get_sync_engine
 from services.object_store import ObjectStore
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _schedule_exists(session: Session, origin_reference: str) -> bool:
+    """Check if an active schedule with the given origin_reference already exists.
+
+    Args:
+        session: Database session
+        origin_reference: Origin reference to check (e.g., "commitments.weekly_review")
+
+    Returns:
+        True if an active schedule exists, False otherwise
+    """
+    stmt = (
+        select(Schedule)
+        .join(TaskIntent, Schedule.task_intent_id == TaskIntent.id)
+        .where(TaskIntent.origin_reference == origin_reference)
+        .where(Schedule.state.in_(["active", "paused"]))
+    )
+    result = session.execute(stmt).first()
+    return result is not None
 
 
 def _create_scheduler_adapter() -> SchedulerAdapter:
@@ -154,15 +179,54 @@ def initialize_agent_hooks(
     )
     LOGGER.info("Created Signal message commitment extractor")
 
+    # Create loop-closure reply handler
+    loop_closure_handler = LoopClosureReplyHandler(
+        session_factory=session_factory,
+        schedule_adapter=schedule_adapter,
+    )
+    LOGGER.info("Created loop-closure reply handler")
+
+    # Bootstrap recurring commitment schedules (idempotent)
+    try:
+        with session_factory() as session:
+            if _schedule_exists(session, "commitments.weekly_review"):
+                LOGGER.info("Weekly commitment review schedule already exists, skipping bootstrap")
+            else:
+                weekly_result = schedule_weekly_review(
+                    session_factory=session_factory,
+                    adapter=schedule_adapter,
+                )
+                LOGGER.info(
+                    "Bootstrapped weekly commitment review schedule: %s",
+                    weekly_result.schedule_id if weekly_result.success else weekly_result.error,
+                )
+    except Exception as e:
+        LOGGER.warning("Failed to bootstrap weekly review schedule: %s", e, exc_info=True)
+
+    try:
+        with session_factory() as session:
+            if _schedule_exists(session, "commitments.daily_batch"):
+                LOGGER.info("Daily batch reminder schedule already exists, skipping bootstrap")
+            else:
+                daily_result = schedule_daily_batch_reminder(
+                    session_factory=session_factory,
+                    adapter=schedule_adapter,
+                )
+                LOGGER.info(
+                    "Bootstrapped daily batch reminder schedule: %s",
+                    daily_result.schedule_id if daily_result.success else daily_result.error,
+                )
+    except Exception as e:
+        LOGGER.warning("Failed to bootstrap daily batch reminder schedule: %s", e, exc_info=True)
+
     # Future: Add other hook initializations here
     # - Skill output commitment extraction
-    # - Weekly review scheduling
-    # - Daily batch scheduling
 
     LOGGER.info("Agent hooks and services initialized successfully")
 
     return {
         "signal_commitment_extractor": signal_commitment_extractor,
+        "loop_closure_handler": loop_closure_handler,
     }
 
 

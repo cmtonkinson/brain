@@ -19,7 +19,7 @@ class CommitmentProgressCreateInput:
     """Input payload for creating a commitment progress record."""
 
     commitment_id: int
-    provenance_id: UUID
+    provenance_id: UUID | None
     occurred_at: datetime
     summary: str
     snippet: str | None = None

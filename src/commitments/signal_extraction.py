@@ -14,8 +14,10 @@ from commitments.creation_service import (
     CommitmentCreationDedupeRequired,
     CommitmentCreationRequest,
     CommitmentCreationService,
+    CommitmentCreationSuccess,
 )
 from commitments.extraction import extract_commitments_from_text
+from commitments.progress_service import CommitmentProgressService
 from llm import LLMClient
 from scheduler.adapter_interface import SchedulerAdapter
 
@@ -29,6 +31,7 @@ def extract_and_create_commitments_from_signal(
     timestamp: datetime,
     creation_service: CommitmentCreationService,
     llm_client: LLMClient | None = None,
+    progress_service: CommitmentProgressService | None = None,
 ) -> None:
     """Extract and create commitments from a Signal message exchange.
 
@@ -127,6 +130,26 @@ Agent: {agent_response}"""
                     result.commitment.description[:100],
                     sender,
                 )
+                # Record progress for successful creation
+                if progress_service is not None and isinstance(result, CommitmentCreationSuccess):
+                    try:
+                        progress_service.record_progress(
+                            commitment_id=result.commitment.commitment_id,
+                            provenance_id=result.provenance_id,
+                            occurred_at=timestamp,
+                            summary="Commitment created from Signal message",
+                            snippet=user_message[:200] if user_message else None,
+                            metadata={"sender": sender, "source": "signal"},
+                        )
+                        LOGGER.debug(
+                            "Recorded progress for commitment_id=%s",
+                            result.commitment.commitment_id,
+                        )
+                    except Exception:
+                        LOGGER.exception(
+                            "Failed to record progress for commitment_id=%s",
+                            result.commitment.commitment_id,
+                        )
         except Exception:
             LOGGER.exception(
                 "Failed to create commitment from Signal extraction: %s",
@@ -154,6 +177,7 @@ def create_signal_commitment_extractor(
         schedule_adapter,
         llm_client=llm_client,
     )
+    progress_service = CommitmentProgressService(session_factory)
 
     def extractor(
         user_message: str,
@@ -169,6 +193,7 @@ def create_signal_commitment_extractor(
             timestamp=timestamp,
             creation_service=creation_service,
             llm_client=llm_client,
+            progress_service=progress_service,
         )
 
     return extractor

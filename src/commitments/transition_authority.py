@@ -47,7 +47,7 @@ def evaluate_transition_authority(
             threshold=threshold,
             reason="missing_confidence",
         )
-    effective_confidence = 0.0
+    effective_confidence = confidence
     allow_transition = effective_confidence >= threshold
     return TransitionAuthorityDecision(
         allow_transition=allow_transition,

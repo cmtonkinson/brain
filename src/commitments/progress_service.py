@@ -29,7 +29,7 @@ class CommitmentProgressService:
         self,
         *,
         commitment_id: int,
-        provenance_id: UUID,
+        provenance_id: UUID | None,
         occurred_at: datetime,
         summary: str,
         snippet: str | None = None,

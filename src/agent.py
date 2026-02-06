@@ -101,6 +101,31 @@ class AgentDeps:
     channel: str = "signal"
 
 
+def _generate_loop_closure_confirmation(result: object) -> str:
+    """Generate a confirmation message for a loop-closure action.
+
+    Args:
+        result: LoopClosureActionResult from the handler
+
+    Returns:
+        Confirmation message string
+    """
+    status = result.status
+    if status == "completed":
+        return "✓ Marked as complete."
+    elif status == "canceled":
+        return "✓ Commitment canceled."
+    elif status == "renegotiated":
+        if result.new_due_by:
+            return f"✓ Rescheduled to {result.new_due_by.strftime('%Y-%m-%d')}."
+        return "✓ Commitment updated."
+    elif status == "reviewed":
+        return "✓ Marked for review."
+    elif status == "noop":
+        return "This commitment is already resolved."
+    return "✓ Updated."
+
+
 def _preview(text: str, limit: int = 160) -> str:
     """Return a single-line preview of text for logging."""
     cleaned = " ".join(text.split())
@@ -756,6 +781,7 @@ async def handle_signal_message(
     router: AttentionRouter,
     phone_number: str,
     signal_commitment_extractor: Callable | None = None,
+    loop_closure_handler: object | None = None,
 ) -> None:
     """Handle an incoming Signal message.
 
@@ -768,6 +794,7 @@ async def handle_signal_message(
         router: Attention router for outbound replies
         phone_number: The agent's phone number
         signal_commitment_extractor: Optional extractor for creating commitments from messages
+        loop_closure_handler: Optional handler for loop-closure replies
     """
     sender = signal_msg.sender
     message = signal_msg.message
@@ -825,6 +852,25 @@ async def handle_signal_message(
             channel="signal",
         )
 
+        # Check if this is a loop-closure reply first
+        loop_closure_result = None
+        if loop_closure_handler:
+            try:
+                loop_closure_result = await asyncio.to_thread(
+                    loop_closure_handler.try_handle_reply,
+                    sender,
+                    message,
+                    signal_msg.timestamp,
+                )
+                if loop_closure_result:
+                    logger.info(
+                        "Handled loop-closure reply from %s: %s",
+                        sender,
+                        loop_closure_result.status,
+                    )
+            except Exception:
+                logger.exception("Failed to process potential loop-closure reply")
+
         # Create dependencies with sender context
         deps = AgentDeps(
             user=settings.user.name,
@@ -836,8 +882,12 @@ async def handle_signal_message(
             channel="signal",
         )
 
-        # Process message
-        response = await process_message(agent, message, deps)
+        # Process message (or generate acknowledgment if loop-closure was handled)
+        if loop_closure_result:
+            # Generate a confirmation response based on the action taken
+            response = _generate_loop_closure_confirmation(loop_closure_result)
+        else:
+            response = await process_message(agent, message, deps)
 
         # Log response to conversation
         await memory.log_message(
@@ -900,6 +950,7 @@ async def run_signal_loop(
     object_store: ObjectStore,
     poll_interval: float = 2.0,
     signal_commitment_extractor: Callable | None = None,
+    loop_closure_handler: object | None = None,
 ) -> None:
     """Main loop for polling Signal messages.
 
@@ -910,6 +961,7 @@ async def run_signal_loop(
         object_store: Object store for blob persistence
         poll_interval: Seconds between polls
         signal_commitment_extractor: Optional extractor for creating commitments from messages
+        loop_closure_handler: Optional handler for loop-closure replies
     """
     phone_number = settings.signal.phone_number
     if not phone_number:
@@ -950,6 +1002,7 @@ async def run_signal_loop(
                     router,
                     phone_number,
                     signal_commitment_extractor=signal_commitment_extractor,
+                    loop_closure_handler=loop_closure_handler,
                 )
 
         except Exception as e:
@@ -1136,6 +1189,7 @@ async def main() -> None:
             object_store,
             poll_interval=args.poll_interval,
             signal_commitment_extractor=agent_services.get("signal_commitment_extractor"),
+            loop_closure_handler=agent_services.get("loop_closure_handler"),
         )
     except KeyboardInterrupt:
         logger.info("Shutting down...")

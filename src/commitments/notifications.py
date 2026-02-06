@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Callable
 
 from attention.envelope_schema import (
     ActionAuthorizationContext,
@@ -315,3 +316,55 @@ def _log_routing_result(notification: CommitmentNotification, result: RoutingRes
 def _clamp(value: float, *, minimum: float, maximum: float) -> float:
     """Clamp numeric values to a specified range."""
     return max(minimum, min(maximum, value))
+
+
+def create_proposal_notification_hook(
+    router: AttentionRouter,
+    repository_factory: Callable[[], object],
+) -> Callable[[object], None]:
+    """Create a hook function that routes transition proposals via the attention router.
+
+    Args:
+        router: Attention router for routing notifications
+        repository_factory: Factory that returns a CommitmentRepository instance
+
+    Returns:
+        Hook function that accepts CommitmentTransitionProposal objects
+    """
+    def hook(proposal: object) -> None:
+        """Route a transition proposal notification."""
+        try:
+            # Get commitment details for notification
+            repo = repository_factory()
+            commitment = repo.get_by_id(proposal.commitment_id)
+            if commitment is None:
+                logger.warning(
+                    "Cannot route proposal notification: commitment not found: commitment_id=%s",
+                    proposal.commitment_id,
+                )
+                return
+
+            # Submit proposal notification
+            submit_transition_proposal_notification(
+                router,
+                commitment,
+                from_state=str(proposal.from_state),
+                to_state=str(proposal.to_state),
+                owner=commitment.owner,
+                now=proposal.proposed_at,
+            )
+            logger.info(
+                "Routed transition proposal notification: proposal_id=%s commitment_id=%s %s→%s",
+                proposal.proposal_id,
+                proposal.commitment_id,
+                proposal.from_state,
+                proposal.to_state,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to route transition proposal notification: proposal_id=%s commitment_id=%s",
+                getattr(proposal, "proposal_id", None),
+                getattr(proposal, "commitment_id", None),
+            )
+
+    return hook

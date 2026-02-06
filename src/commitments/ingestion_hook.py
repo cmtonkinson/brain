@@ -14,9 +14,11 @@ from commitments.creation_service import (
     CommitmentCreationDedupeRequired,
     CommitmentCreationRequest,
     CommitmentCreationService,
+    CommitmentCreationSuccess,
     CommitmentProvenanceLinkInput,
 )
 from commitments.extraction import extract_commitments_from_text
+from commitments.progress_service import CommitmentProgressService
 from config import settings
 from ingestion.provenance import ProvenanceSourceInput
 from llm import LLMClient
@@ -49,6 +51,7 @@ def create_commitment_extraction_hook(
         schedule_adapter,
         llm_client=llm_client,
     )
+    progress_service = CommitmentProgressService(session_factory)
 
     def commitment_extraction_hook(
         ingestion_id: UUID,
@@ -83,6 +86,7 @@ def create_commitment_extraction_hook(
                     record=record,
                     ingestion_id=ingestion_id,
                     creation_service=creation_service,
+                    progress_service=progress_service,
                     object_store=object_store,
                     session_factory=session_factory,
                     llm_client=llm_client,
@@ -100,6 +104,7 @@ def _process_record(
     record: ProvenanceRecord,
     ingestion_id: UUID,
     creation_service: CommitmentCreationService,
+    progress_service: CommitmentProgressService,
     object_store: ObjectStore,
     session_factory: Callable[[], Session],
     llm_client: LLMClient | None,
@@ -221,6 +226,32 @@ def _process_record(
                     result.commitment.commitment_id,
                     result.commitment.description[:100],
                 )
+                # Record progress for successful creation
+                if isinstance(result, CommitmentCreationSuccess):
+                    try:
+                        # Use content snippet for progress record
+                        snippet = content_text[:200] if len(content_text) <= 500 else None
+                        progress_service.record_progress(
+                            commitment_id=result.commitment.commitment_id,
+                            provenance_id=result.provenance_id,
+                            occurred_at=record.updated_at,
+                            summary="Commitment created from ingested artifact",
+                            snippet=snippet,
+                            metadata={
+                                "object_key": record.object_key,
+                                "ingestion_id": str(ingestion_id),
+                                "source": "ingestion",
+                            },
+                        )
+                        LOGGER.debug(
+                            "Recorded progress for commitment_id=%s",
+                            result.commitment.commitment_id,
+                        )
+                    except Exception:
+                        LOGGER.exception(
+                            "Failed to record progress for commitment_id=%s",
+                            result.commitment.commitment_id,
+                        )
         except Exception:
             LOGGER.exception(
                 "Failed to create commitment from extraction: %s",

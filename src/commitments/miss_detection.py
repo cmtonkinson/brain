@@ -10,6 +10,7 @@ from typing import Callable, Literal
 from sqlalchemy.orm import Session
 
 from commitments.notifications import (
+    create_proposal_notification_hook,
     submit_loop_closure_prompt_notification,
     submit_missed_commitment_notification,
 )
@@ -67,6 +68,13 @@ def handle_miss_detection_callback(
 
     timestamp = to_utc(now or datetime.now(timezone.utc))
     resolved_router = router or AttentionRouter()
+
+    # Create proposal notification hook
+    proposal_hook = create_proposal_notification_hook(
+        resolved_router,
+        lambda: CommitmentRepository(session_factory),
+    )
+
     transition_service = CommitmentStateTransitionService(
         session_factory,
         on_missed_hook=lambda record: _dispatch_missed_notifications(
@@ -74,6 +82,7 @@ def handle_miss_detection_callback(
             record,
             timestamp=timestamp,
         ),
+        on_proposal_hook=proposal_hook,
     )
     transition_service.transition(
         commitment_id=commitment.commitment_id,

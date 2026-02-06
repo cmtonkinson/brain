@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from commitments.loop_closure_parser import LoopClosureIntent
 from commitments.miss_detection_scheduling import MissDetectionScheduleService
+from commitments.progress_service import CommitmentProgressService
 from commitments.repository import CommitmentRepository, CommitmentUpdateInput
 from commitments.transition_service import CommitmentStateTransitionService
 from commitments.transition_proposal_repository import (
@@ -61,6 +62,7 @@ class LoopClosureActionService:
         self._commitment_repo = CommitmentRepository(session_factory)
         self._proposal_repo = CommitmentTransitionProposalRepository(session_factory)
         self._transition_service = CommitmentStateTransitionService(session_factory)
+        self._progress_service = CommitmentProgressService(session_factory)
         self._schedule_service = MissDetectionScheduleService(
             session_factory,
             schedule_adapter,
@@ -90,18 +92,34 @@ class LoopClosureActionService:
             actor=request.actor,
         )
         if intent_type == "complete":
+            timestamp = self._now_provider()
             self._transition_service.transition(
                 commitment_id=commitment.commitment_id,
                 to_state="COMPLETED",
                 actor=request.actor,
                 reason=request.reason or "loop_closure_complete",
                 context=_build_action_context(request),
-                now=self._now_provider(),
+                now=timestamp,
             )
             self._schedule_service.remove_schedule(
                 commitment_id=commitment.commitment_id,
                 reason="commitment_resolved",
             )
+            # Record progress for completion
+            try:
+                self._progress_service.record_progress(
+                    commitment_id=commitment.commitment_id,
+                    provenance_id=None,
+                    occurred_at=timestamp,
+                    summary="Commitment marked complete via loop closure",
+                    snippet=request.response[:200] if request.response else None,
+                    metadata={"actor": request.actor, "source": "loop_closure"},
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to record progress for completion: commitment_id=%s",
+                    commitment.commitment_id,
+                )
             return LoopClosureActionResult(
                 status="completed",
                 commitment_id=commitment.commitment_id,
@@ -109,18 +127,34 @@ class LoopClosureActionService:
                 new_state="COMPLETED",
             )
         if intent_type == "cancel":
+            timestamp = self._now_provider()
             self._transition_service.transition(
                 commitment_id=commitment.commitment_id,
                 to_state="CANCELED",
                 actor=request.actor,
                 reason=request.reason or "loop_closure_cancel",
                 context=_build_action_context(request),
-                now=self._now_provider(),
+                now=timestamp,
             )
             self._schedule_service.remove_schedule(
                 commitment_id=commitment.commitment_id,
                 reason="commitment_resolved",
             )
+            # Record progress for cancellation
+            try:
+                self._progress_service.record_progress(
+                    commitment_id=commitment.commitment_id,
+                    provenance_id=None,
+                    occurred_at=timestamp,
+                    summary="Commitment canceled via loop closure",
+                    snippet=request.response[:200] if request.response else None,
+                    metadata={"actor": request.actor, "source": "loop_closure"},
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to record progress for cancellation: commitment_id=%s",
+                    commitment.commitment_id,
+                )
             return LoopClosureActionResult(
                 status="canceled",
                 commitment_id=commitment.commitment_id,
@@ -129,16 +163,37 @@ class LoopClosureActionService:
             )
 
         if intent_type == "renegotiate":
+            timestamp = self._now_provider()
             new_due_by = _normalize_due_by(request.intent.new_due_by)
             updated = self._commitment_repo.update(
                 commitment.commitment_id,
                 CommitmentUpdateInput(due_by=new_due_by),
-                now=self._now_provider(),
+                now=timestamp,
             )
             self._schedule_service.ensure_schedule(
                 commitment_id=commitment.commitment_id,
                 due_by=updated.due_by,
             )
+            # Record progress for renegotiation
+            try:
+                summary = f"Commitment renegotiated, new due date: {new_due_by.strftime('%Y-%m-%d') if new_due_by else 'cleared'}"
+                self._progress_service.record_progress(
+                    commitment_id=commitment.commitment_id,
+                    provenance_id=None,
+                    occurred_at=timestamp,
+                    summary=summary,
+                    snippet=request.response[:200] if request.response else None,
+                    metadata={
+                        "actor": request.actor,
+                        "source": "loop_closure",
+                        "new_due_by": new_due_by.isoformat() if new_due_by else None,
+                    },
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to record progress for renegotiation: commitment_id=%s",
+                    commitment.commitment_id,
+                )
             return LoopClosureActionResult(
                 status="renegotiated",
                 commitment_id=commitment.commitment_id,

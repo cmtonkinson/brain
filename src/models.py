@@ -588,12 +588,47 @@ class CommitmentProgress(Base):
     provenance_id = Column(
         Uuid(as_uuid=True),
         ForeignKey("provenance_records.id"),
-        nullable=False,
+        nullable=True,
     )
     occurred_at = Column(DateTime(timezone=True), nullable=False)
     summary = Column(Text, nullable=False)
     snippet = Column(Text, nullable=True)
     metadata_ = Column("metadata", JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+
+
+class CommitmentArtifact(Base):
+    """Junction table linking commitments to related artifacts."""
+
+    __tablename__ = "commitment_artifacts"
+    __table_args__ = (
+        CheckConstraint(
+            "relationship_type IN ('evidence', 'context', 'reference', 'progress', 'related')",
+            name="ck_commitment_artifacts_relationship_type",
+        ),
+        CheckConstraint(
+            "added_by IN ('user', 'system')",
+            name="ck_commitment_artifacts_added_by",
+        ),
+        Index("ix_commitment_artifacts_commitment_id", "commitment_id"),
+        Index("ix_commitment_artifacts_object_key", "object_key"),
+    )
+
+    commitment_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("commitments.commitment_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    object_key = Column(
+        Text,
+        ForeignKey("artifacts.object_key", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    relationship_type = Column(Text, nullable=False)
+    added_at = Column(DateTime(timezone=True), nullable=False)
+    added_by = Column(Text, nullable=False)
+    notes = Column(Text, nullable=True)
 
 
 class CommitmentStateTransition(Base):
