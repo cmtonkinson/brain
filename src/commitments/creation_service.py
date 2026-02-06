@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
