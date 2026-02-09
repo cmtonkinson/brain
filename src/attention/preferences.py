@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from config import settings
 from datetime import time
 from enum import Enum
 
@@ -21,7 +22,7 @@ from models import (
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_CHANNELS = {"signal"}
+ALLOWED_CHANNELS = settings.routing.allowed_channels
 
 
 class ChannelPreferenceLevel(str, Enum):

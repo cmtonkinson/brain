@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from config import settings
 
-ALLOWED_CHANNELS = {"signal"}
+# Use the runtime routing configuration instead of a hard‑coded set.
+ALLOWED_CHANNELS = settings.routing.allowed_channels
 
 
 @dataclass(frozen=True)

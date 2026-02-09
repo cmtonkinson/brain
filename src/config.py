@@ -71,8 +71,26 @@ def _parse_env_value(raw: str, kind: str) -> Any:
     return raw
 
 
+def _env_dict_from_mapping(mapping: dict[str, tuple[str, str]]) -> dict[str, Any]:
+    """Convert a mapping of ``ENV_VAR -> (config_path, type)`` into a nested dict.
+
+    This helper is used by :func:`_env_settings_source` and can be reused by
+    other modules that need a similar environment‑to‑dict conversion.
+    """
+    data: dict[str, Any] = {}
+    for env_key, (path, kind) in mapping.items():
+        raw = os.environ.get(env_key)
+        if raw is None:
+            continue
+        _set_nested_value(data, path, _parse_env_value(raw, kind))
+    return data
+
+
 def _env_settings_source():
     """Create a settings source that maps environment variables to config keys."""
+    # Mapping of environment variable name to (config path, type). The helper
+    # below will convert this mapping into a nested dict that can be used as a
+    # Pydantic settings source.
     mapping = {
         "ALLOWED_SENDERS": ("signal.allowed_senders", "json"),
         "ALLOWED_SENDERS_BY_CHANNEL": ("signal.allowed_senders_by_channel", "json"),
@@ -103,13 +121,13 @@ def _env_settings_source():
     }
 
     def source() -> dict[str, Any]:
-        data: dict[str, Any] = {}
-        for env_key, (path, kind) in mapping.items():
-            raw = os.environ.get(env_key)
-            if raw is None:
-                continue
-            _set_nested_value(data, path, _parse_env_value(raw, kind))
-        return data
+        """Generate a nested dict from the environment mapping.
+
+        The logic is factored out to :func:`_env_dict_from_mapping` so that
+        other modules (or future refactors) can reuse the same conversion
+        routine.
+        """
+        return _env_dict_from_mapping(mapping)
 
     return source
 
@@ -183,6 +201,17 @@ class LlmConfig(BaseModel):
     timeout: int = 600
     embed_model: str = "mxbai-embed-large"
     embed_base_url: str = "http://host.docker.internal:11434"
+
+
+class RoutingConfig(BaseModel):
+    """Configuration for routing decisions.
+
+    The set of allowed channels is configurable so tests and deployments can
+    enable or disable channels without touching the routing logic.  The
+    default mirrors the hard‑coded set that existed before the refactor.
+    """
+
+    allowed_channels: set[str] = Field(default_factory=lambda: {"signal"})
 
     @model_validator(mode="after")
     def populate_embed_base_url(self) -> "LlmConfig":
@@ -490,6 +519,9 @@ class Settings(BaseSettings):
 
     # Letta
     letta: LettaConfig = Field(default_factory=LettaConfig)
+
+    # Routing
+    routing: RoutingConfig = Field(default_factory=RoutingConfig)
 
     # User Context
     user: UserConfig = Field(default_factory=UserConfig)

@@ -82,6 +82,11 @@
 #   celery_result_backend: "redis://redis:6379/2"
 #   celery_queue_name: "scheduler"
 
+# Routing configuration
+# routing:
+#   allowed_channels:
+#     - "signal"
+
 # Commitment tracking configuration
 # commitments:
 #   autonomous_transition_confidence_threshold: 0.8
