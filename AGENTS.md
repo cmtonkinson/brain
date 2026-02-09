@@ -12,7 +12,7 @@ Whenever changes impact config files (`.env`, `config/*.{yml,json}`, etc.):
 - Never modify the live/.gitignored files without approval.
 - Always report what changes were made to live/.gitignored files.
 
-Test suites can be run using the helper `test.sh` script:
+Test suites can be run using the helper `test.sh -a` script:
 - core suite (lint, checks, unit/contract/smoke/go): `./test.sh`
 - include integration tests: `./test.sh --integration`
 - enable coverage reporting: `./test.sh --coverage`

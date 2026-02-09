@@ -9,6 +9,26 @@ from config import settings
 from services import vector_search
 
 
+class StubSyncClient:
+    """Synchronous client stub returning configured responses."""
+
+    def __init__(self, response: httpx.Response) -> None:
+        """Initialize the stub with a response."""
+        self.response = response
+
+    def __enter__(self) -> "StubSyncClient":
+        """Enter the context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        """Exit the context manager."""
+        pass
+
+    def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Return the configured response."""
+        return self.response
+
+
 def _build_response(
     status_code: int,
     *,
@@ -60,11 +80,8 @@ class DummyQdrantClient:
 def test_embed_query_raises_on_missing_embedding(monkeypatch) -> None:
     """_embed_query raises when embeddings payload is missing."""
     response = _build_response(200, json_data={"unexpected": "shape"})
-
-    def _fake_post(*args, **kwargs) -> httpx.Response:
-        return response
-
-    monkeypatch.setattr(httpx, "post", _fake_post)
+    stub = StubSyncClient(response)
+    monkeypatch.setattr(httpx, "Client", lambda **kwargs: stub)
 
     with pytest.raises(ValueError, match="missing 'embedding'"):
         vector_search._embed_query("query")
@@ -76,11 +93,8 @@ def test_search_vault_formats_results(monkeypatch) -> None:
     monkeypatch.setattr(settings.qdrant, "url", "http://qdrant.test", raising=False)
     monkeypatch.setattr(settings.indexer, "collection", "obsidian", raising=False)
     response = _build_response(200, json_data={"embedding": [0.1, 0.2, 0.3]})
-
-    def _fake_post(*args, **kwargs) -> httpx.Response:
-        return response
-
-    monkeypatch.setattr(httpx, "post", _fake_post)
+    stub = StubSyncClient(response)
+    monkeypatch.setattr(httpx, "Client", lambda **kwargs: stub)
     monkeypatch.setattr(vector_search, "QdrantClient", DummyQdrantClient)
 
     results = vector_search.search_vault("query", limit=2, collection="obsidian")

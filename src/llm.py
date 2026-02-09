@@ -19,7 +19,7 @@ class LLMClient:
         For example: 'claude-sonnet-4-20250514', not 'anthropic:claude-sonnet-4-20250514'.
         """
         if model.startswith("anthropic:"):
-            return model[len("anthropic:"):]
+            return model[len("anthropic:") :]
         return model
 
     def _litellm_kwargs(self) -> Dict[str, Any]:

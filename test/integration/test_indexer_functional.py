@@ -77,7 +77,7 @@ def _patch_indexer(monkeypatch, session_factory: sessionmaker, qdrant: StubQdran
     """Patch indexer dependencies to use sqlite and a stubbed Qdrant client."""
     monkeypatch.setattr("indexer.get_sync_session", lambda: session_factory())
     monkeypatch.setattr("indexer.QdrantClient", lambda url: qdrant)
-    monkeypatch.setattr("indexer.embed_text", lambda client, text, model: [0.1, 0.2, 0.3])
+    monkeypatch.setattr("indexer.embed_text", lambda text, model: [0.1, 0.2, 0.3])
 
 
 def test_indexer_indexes_notes_and_chunks(

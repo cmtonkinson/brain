@@ -21,6 +21,26 @@ def _build_response(
     return httpx.Response(status_code=status_code, content=content, request=request)
 
 
+class StubSyncClient:
+    """Synchronous client stub returning configured response."""
+
+    def __init__(self, response: httpx.Response) -> None:
+        """Initialize the stub with a response."""
+        self.response = response
+
+    def __enter__(self) -> "StubSyncClient":
+        """Enter the context manager."""
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        """Exit the context manager."""
+        pass
+
+    def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Return the configured response."""
+        return self.response
+
+
 def test_read_note_requires_api_key(monkeypatch) -> None:
     """read_note raises when the API key is missing."""
     monkeypatch.setattr(settings.obsidian, "api_key", None, raising=False)
@@ -33,11 +53,8 @@ def test_read_note_returns_not_found_message(monkeypatch) -> None:
     """read_note returns a friendly message on 404 responses."""
     monkeypatch.setattr(settings.obsidian, "api_key", "test-key", raising=False)
     response = _build_response(404, content="missing")
-
-    def _fake_get(*args, **kwargs) -> httpx.Response:
-        return response
-
-    monkeypatch.setattr(httpx, "get", _fake_get)
+    stub = StubSyncClient(response)
+    monkeypatch.setattr(httpx, "Client", lambda **kwargs: stub)
 
     result = obsidian_read.read_note("missing.md")
 
@@ -49,11 +66,8 @@ def test_read_note_truncates_long_content(monkeypatch) -> None:
     monkeypatch.setattr(settings.obsidian, "api_key", "test-key", raising=False)
     long_text = "A" * 20
     response = _build_response(200, content=long_text)
-
-    def _fake_get(*args, **kwargs) -> httpx.Response:
-        return response
-
-    monkeypatch.setattr(httpx, "get", _fake_get)
+    stub = StubSyncClient(response)
+    monkeypatch.setattr(httpx, "Client", lambda **kwargs: stub)
 
     result = obsidian_read.read_note("note.md", max_chars=10)
 

@@ -19,7 +19,6 @@ from commitments.creation_service import (
 )
 from commitments.extraction import extract_commitments_from_text
 from commitments.progress_service import CommitmentProgressService
-from config import settings
 from ingestion.provenance import ProvenanceSourceInput
 from llm import LLMClient
 from models import Artifact, ProvenanceRecord, ProvenanceSource

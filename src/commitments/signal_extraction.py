@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from typing import Callable
-from uuid import UUID
 
 from sqlalchemy.orm import Session
 

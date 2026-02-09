@@ -76,7 +76,10 @@ def extract_commitments_from_text(
         prompt = EXTRACTION_PROMPT.format(text=text)
         response = client.complete_sync(
             messages=[
-                {"role": "system", "content": "You are a commitment extraction assistant. Extract commitments from text and return valid JSON only."},
+                {
+                    "role": "system",
+                    "content": "You are a commitment extraction assistant. Extract commitments from text and return valid JSON only.",
+                },
                 {"role": "user", "content": prompt},
             ],
             temperature=0.0,
@@ -118,8 +121,12 @@ def extract_commitments_from_text(
                 "description": str(commitment["description"]).strip(),
                 "due_by": commitment.get("due_by"),
                 "importance": _normalize_int(commitment.get("importance", 2), 1, 3, default=2),
-                "effort_provided": _normalize_int(commitment.get("effort_provided", 2), 1, 3, default=2),
-                "confidence": _normalize_float(commitment.get("confidence", 0.5), 0.0, 1.0, default=0.5),
+                "effort_provided": _normalize_int(
+                    commitment.get("effort_provided", 2), 1, 3, default=2
+                ),
+                "confidence": _normalize_float(
+                    commitment.get("confidence", 0.5), 0.0, 1.0, default=0.5
+                ),
             }
 
             validated.append(normalized)
@@ -129,7 +136,7 @@ def extract_commitments_from_text(
 
     except json.JSONDecodeError as e:
         LOGGER.error("Failed to parse LLM response as JSON: %s", e)
-        LOGGER.debug("LLM response was: %s", response[:500] if 'response' in locals() else 'N/A')
+        LOGGER.debug("LLM response was: %s", response[:500] if "response" in locals() else "N/A")
         return []
     except Exception as e:
         LOGGER.exception("Unexpected error during commitment extraction: %s", e)

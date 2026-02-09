@@ -2,22 +2,21 @@
 
 from __future__ import annotations
 
-import httpx
 from qdrant_client import QdrantClient
 
 from config import settings
+from services.http_client import HttpClient
 
 
 def _embed_query(text: str) -> list[float]:
     """Embed a search query using the configured embedding endpoint."""
     base_url = settings.llm.embed_base_url
     model = settings.llm.embed_model
-    response = httpx.post(
+    client = HttpClient(timeout=settings.llm.timeout)
+    response = client.post(
         f"{base_url.rstrip('/')}/api/embeddings",
         json={"model": model, "prompt": text},
-        timeout=settings.llm.timeout,
     )
-    response.raise_for_status()
     payload = response.json()
     embedding = payload.get("embedding")
     if not embedding:

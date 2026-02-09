@@ -39,28 +39,24 @@ class StubAsyncClient:
         """Exit the async context manager."""
         return False
 
-    async def get(self, url: str, **kwargs) -> httpx.Response:
-        """Return the configured GET response or raise the configured error."""
-        if isinstance(self._get, Exception):
-            raise self._get
-        response = self._get or _build_response(200, json_data=[], method="GET", url=url)
-        response.request = httpx.Request("GET", url)
-        return response
+    async def request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Return the configured response based on HTTP method."""
+        if method == "GET":
+            if isinstance(self._get, Exception):
+                raise self._get
+            response = self._get or _build_response(200, json_data=[], method="GET", url=url)
+        elif method == "POST":
+            if isinstance(self._post, Exception):
+                raise self._post
+            response = self._post or _build_response(200, json_data=[], method="POST", url=url)
+        elif method == "PUT":
+            if isinstance(self._put, Exception):
+                raise self._put
+            response = self._put or _build_response(200, json_data={}, method="PUT", url=url)
+        else:
+            response = _build_response(200, json_data={}, method=method, url=url)
 
-    async def post(self, url: str, **kwargs) -> httpx.Response:
-        """Return the configured POST response or raise the configured error."""
-        if isinstance(self._post, Exception):
-            raise self._post
-        response = self._post or _build_response(200, json_data=[], method="POST", url=url)
-        response.request = httpx.Request("POST", url)
-        return response
-
-    async def put(self, url: str, **kwargs) -> httpx.Response:
-        """Return the configured PUT response or raise the configured error."""
-        if isinstance(self._put, Exception):
-            raise self._put
-        response = self._put or _build_response(200, json_data={}, method="PUT", url=url)
-        response.request = httpx.Request("PUT", url)
+        response.request = httpx.Request(method, url)
         return response
 
 

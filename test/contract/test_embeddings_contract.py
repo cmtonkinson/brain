@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-import httpx
 import pytest
 import respx
 
@@ -32,7 +31,7 @@ def test_vector_search_embed_query_contract(monkeypatch) -> None:
 
 
 def test_indexer_embed_text_contract(monkeypatch) -> None:
-    """Indexer embed_text posts to the embeddings endpoint via client."""
+    """Indexer embed_text posts to the embeddings endpoint via HTTP wrapper."""
     monkeypatch.setattr(settings.llm, "embed_base_url", "http://embeddings.test", raising=False)
     monkeypatch.setattr(settings.llm, "embed_model", "mxbai-embed-large", raising=False)
 
@@ -41,8 +40,7 @@ def test_indexer_embed_text_contract(monkeypatch) -> None:
             200, json={"embedding": [0.9]}
         )
 
-        with httpx.Client() as client:
-            embedding = embed_text(client, "hello", "mxbai-embed-large")
+        embedding = embed_text("hello", "mxbai-embed-large")
 
     assert embedding == [0.9]
     assert route.called
@@ -57,6 +55,5 @@ def test_indexer_embed_text_raises_on_missing_embedding(monkeypatch) -> None:
     with respx.mock(assert_all_called=True) as router:
         router.post("http://embeddings.test/api/embeddings").respond(200, json={"unexpected": []})
 
-        with httpx.Client() as client:
-            with pytest.raises(ValueError, match="missing 'embedding'"):
-                embed_text(client, "hello", "mxbai-embed-large")
+        with pytest.raises(ValueError, match="missing 'embedding'"):
+            embed_text("hello", "mxbai-embed-large")

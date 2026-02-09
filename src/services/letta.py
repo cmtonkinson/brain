@@ -5,9 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
-
 from config import settings
+from services.http_client import HttpClient
 
 logger = logging.getLogger(__name__)
 
@@ -43,13 +42,12 @@ class LettaService:
         if self._agent_id:
             return self._agent_id
 
-        response = httpx.get(
+        client = HttpClient()
+        response = client.get(
             f"{self.base_url}/v1/agents",
             headers=self._headers(),
-            timeout=settings.llm.timeout,
             follow_redirects=True,
         )
-        response.raise_for_status()
         agents = response.json()
         if isinstance(agents, dict):
             agents = agents.get("agents") or agents.get("data") or agents.get("items") or []
@@ -69,24 +67,28 @@ class LettaService:
         timeout: float | None = None,
     ) -> Any:
         """POST to the first available endpoint from a fallback list."""
+        import httpx
+
         if timeout is None:
-            timeout = settings.llm.timeout
+            timeout = settings.http.timeout
+        client = HttpClient(timeout=int(timeout))
         last_status: int | None = None
         last_body: str | None = None
         for url, payload in attempts:
-            response = httpx.post(
-                url,
-                headers=self._headers(),
-                json=payload,
-                timeout=timeout,
-                follow_redirects=True,
-            )
-            if response.status_code in (404, 422):
-                last_status = response.status_code
-                last_body = response.text
-                continue
-            response.raise_for_status()
-            return response.json()
+            try:
+                response = client.post(
+                    url,
+                    headers=self._headers(),
+                    json=payload,
+                    follow_redirects=True,
+                )
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (404, 422):
+                    last_status = e.response.status_code
+                    last_body = e.response.text
+                    continue
+                raise
         detail = f" (last status={last_status}, body={last_body})" if last_status else ""
         raise RuntimeError(f"Letta memory endpoint not available{detail}")
 
@@ -96,24 +98,28 @@ class LettaService:
         timeout: float | None = None,
     ) -> Any:
         """GET from the first available endpoint in a fallback list."""
+        import httpx
+
         if timeout is None:
-            timeout = settings.llm.timeout
+            timeout = settings.http.timeout
+        client = HttpClient(timeout=int(timeout))
         last_status: int | None = None
         last_body: str | None = None
         for url, params in attempts:
-            response = httpx.get(
-                url,
-                headers=self._headers(),
-                params=params,
-                timeout=timeout,
-                follow_redirects=True,
-            )
-            if response.status_code in (404, 422):
-                last_status = response.status_code
-                last_body = response.text
-                continue
-            response.raise_for_status()
-            return response.json()
+            try:
+                response = client.get(
+                    url,
+                    headers=self._headers(),
+                    params=params,
+                    follow_redirects=True,
+                )
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (404, 422):
+                    last_status = e.response.status_code
+                    last_body = e.response.text
+                    continue
+                raise
         detail = f" (last status={last_status}, body={last_body})" if last_status else ""
         raise RuntimeError(f"Letta memory endpoint not available{detail}")
 

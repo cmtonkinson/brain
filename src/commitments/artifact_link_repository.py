@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from models import CommitmentArtifact
 from time_utils import to_utc
 
-
 RelationshipType = Literal["evidence", "context", "reference", "progress", "related"]
 ActorType = Literal["user", "system"]
 

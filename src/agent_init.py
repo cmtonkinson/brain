@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from typing import Callable
 
 from sqlalchemy import select
@@ -123,10 +122,12 @@ def _initialize_commitment_hooks(
         stage="normalize",
         callback=commitment_hook,
         filters=HookFilters(
-            mime_types=frozenset([
-                "text/plain",
-                "text/markdown",
-            ]),
+            mime_types=frozenset(
+                [
+                    "text/plain",
+                    "text/markdown",
+                ]
+            ),
         ),
     )
 

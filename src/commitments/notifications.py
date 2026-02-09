@@ -331,6 +331,7 @@ def create_proposal_notification_hook(
     Returns:
         Hook function that accepts CommitmentTransitionProposal objects
     """
+
     def hook(proposal: object) -> None:
         """Route a transition proposal notification."""
         try:

@@ -6,11 +6,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 from letta_client import Letta
 
 from config import settings
+from services.http_client import HttpClient
 
 logger = logging.getLogger(__name__)
 
@@ -142,13 +141,12 @@ def _build_llm_config() -> dict[str, object] | None:
     if not settings.letta.model or not settings.letta.base_url or not settings.letta.api_key:
         return None
     try:
-        response = httpx.get(
+        client = HttpClient()
+        response = client.get(
             f"{settings.letta.base_url.rstrip('/')}/v1/models/",
             headers={"Authorization": f"Bearer {settings.letta.api_key}"},
-            timeout=settings.llm.timeout,
             follow_redirects=True,
         )
-        response.raise_for_status()
         models = response.json()
         if not isinstance(models, list):
             return None
@@ -197,12 +195,11 @@ def _build_embedding_config() -> dict[str, object] | None:
     model_name = _strip_ollama_prefix(settings.letta.embed_model)
     embedding_endpoint = _normalize_openai_endpoint(settings.llm.embed_base_url)
     try:
-        response = httpx.post(
+        client = HttpClient(timeout=settings.llm.timeout)
+        response = client.post(
             f"{settings.llm.embed_base_url.rstrip('/')}/api/embeddings",
             json={"model": model_name, "prompt": "dimension probe"},
-            timeout=settings.llm.timeout,
         )
-        response.raise_for_status()
         payload = response.json()
         embedding = payload.get("embedding") or []
         embedding_dim = len(embedding)

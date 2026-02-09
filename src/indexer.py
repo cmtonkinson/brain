@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator
 
-import httpx
 import threading
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
@@ -18,6 +17,7 @@ from qdrant_client.http import models as qmodels
 from config import settings
 from models import IndexedChunk, IndexedNote
 from services.database import get_sync_session, run_migrations_sync
+from services.http_client import HttpClient
 
 # Configure logging (when run standalone; agent.py overrides with force=True).
 logging.basicConfig(
@@ -330,14 +330,13 @@ def file_hash(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def embed_text(client: httpx.Client, text: str, model: str) -> list[float]:
+def embed_text(text: str, model: str) -> list[float]:
     """Fetch an embedding vector for text from the configured embedding API."""
+    client = HttpClient(timeout=settings.llm.timeout)
     response = client.post(
         f"{settings.llm.embed_base_url.rstrip('/')}/api/embeddings",
         json={"model": model, "prompt": text},
-        timeout=settings.llm.timeout,
     )
-    response.raise_for_status()
     payload = response.json()
     embedding = payload.get("embedding")
     if not embedding:
@@ -380,7 +379,6 @@ def build_points(
     chunks: Iterable[str],
     content_hash: str,
     modified_at: float,
-    embed_client: httpx.Client,
     embed_model: str,
 ) -> tuple[list[qmodels.PointStruct], list[tuple[int, str, int]]]:
     """Build Qdrant point structs and metadata for each chunk."""
@@ -389,7 +387,7 @@ def build_points(
     chunk_list = list(chunks)
     total = len(chunk_list)
     for idx, chunk in enumerate(chunk_list):
-        embedding = embed_text(embed_client, chunk, embed_model)
+        embedding = embed_text(chunk, embed_model)
         qdrant_id = make_point_id(note_path, idx)
         payload = {
             "path": note_path,
@@ -464,106 +462,104 @@ def index_vault(
             )
             session.commit()
 
-        with httpx.Client() as embed_client:
-            for path in markdown_files:
-                relative_path = str(path.relative_to(vault))
-                current_paths.add(relative_path)
-                try:
-                    content = path.read_text(encoding="utf-8", errors="ignore")
-                except OSError as exc:
-                    logger.warning(f"Failed to read {relative_path}: {exc}")
-                    continue
+        for path in markdown_files:
+            relative_path = str(path.relative_to(vault))
+            current_paths.add(relative_path)
+            try:
+                content = path.read_text(encoding="utf-8", errors="ignore")
+            except OSError as exc:
+                logger.warning(f"Failed to read {relative_path}: {exc}")
+                continue
 
-                note = (
-                    session.query(IndexedNote)
-                    .filter(
-                        IndexedNote.collection == collection,
-                        IndexedNote.path == relative_path,
-                    )
-                    .one_or_none()
+            note = (
+                session.query(IndexedNote)
+                .filter(
+                    IndexedNote.collection == collection,
+                    IndexedNote.path == relative_path,
                 )
+                .one_or_none()
+            )
 
-                if not content.strip():
-                    if note:
-                        delete_note_points(qdrant, collection, relative_path)
-                        session.query(IndexedChunk).filter(IndexedChunk.note_id == note.id).delete(
-                            synchronize_session=False
-                        )
-                        session.delete(note)
-                        session.commit()
-                        updated += 1
-                    else:
-                        skipped += 1
-                    continue
-
-                current_hash = file_hash(content)
-                if note and note.content_hash == current_hash:
-                    skipped += 1
-                    continue
-
+            if not content.strip():
                 if note:
                     delete_note_points(qdrant, collection, relative_path)
                     session.query(IndexedChunk).filter(IndexedChunk.note_id == note.id).delete(
                         synchronize_session=False
                     )
-
-                chunks = chunk_markdown(content, max_tokens=max_tokens)
-                if not chunks:
-                    skipped += 1
-                    continue
-
-                try:
-                    points, chunk_meta = build_points(
-                        note_path=relative_path,
-                        chunks=chunks,
-                        content_hash=current_hash,
-                        modified_at=path.stat().st_mtime,
-                        embed_client=embed_client,
-                        embed_model=embed_model,
-                    )
-                except Exception as exc:
-                    session.rollback()
-                    logger.warning(f"Embedding failed for {relative_path}: {exc}")
-                    continue
-
-                ensure_collection(qdrant, collection, vector_size=len(points[0].vector))
-                qdrant.upsert(collection_name=collection, points=points)
-
-                modified_at = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
-                now = datetime.now(timezone.utc)
-                if note:
-                    note.content_hash = current_hash
-                    note.modified_at = modified_at
-                    note.chunk_count = len(chunks)
-                    note.last_indexed_at = now
+                    session.delete(note)
+                    session.commit()
                     updated += 1
                 else:
-                    note = IndexedNote(
-                        path=relative_path,
-                        collection=collection,
-                        content_hash=current_hash,
-                        modified_at=modified_at,
-                        chunk_count=len(chunks),
-                        last_indexed_at=now,
+                    skipped += 1
+                continue
+
+            current_hash = file_hash(content)
+            if note and note.content_hash == current_hash:
+                skipped += 1
+                continue
+
+            if note:
+                delete_note_points(qdrant, collection, relative_path)
+                session.query(IndexedChunk).filter(IndexedChunk.note_id == note.id).delete(
+                    synchronize_session=False
+                )
+
+            chunks = chunk_markdown(content, max_tokens=max_tokens)
+            if not chunks:
+                skipped += 1
+                continue
+
+            try:
+                points, chunk_meta = build_points(
+                    note_path=relative_path,
+                    chunks=chunks,
+                    content_hash=current_hash,
+                    modified_at=path.stat().st_mtime,
+                    embed_model=embed_model,
+                )
+            except Exception as exc:
+                session.rollback()
+                logger.warning(f"Embedding failed for {relative_path}: {exc}")
+                continue
+
+            ensure_collection(qdrant, collection, vector_size=len(points[0].vector))
+            qdrant.upsert(collection_name=collection, points=points)
+
+            modified_at = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+            now = datetime.now(timezone.utc)
+            if note:
+                note.content_hash = current_hash
+                note.modified_at = modified_at
+                note.chunk_count = len(chunks)
+                note.last_indexed_at = now
+                updated += 1
+            else:
+                note = IndexedNote(
+                    path=relative_path,
+                    collection=collection,
+                    content_hash=current_hash,
+                    modified_at=modified_at,
+                    chunk_count=len(chunks),
+                    last_indexed_at=now,
+                )
+                session.add(note)
+                indexed += 1
+
+            session.flush()
+            for chunk_index, qdrant_id, chunk_chars in chunk_meta:
+                session.add(
+                    IndexedChunk(
+                        note_id=note.id,
+                        chunk_index=chunk_index,
+                        qdrant_id=qdrant_id,
+                        chunk_chars=chunk_chars,
                     )
-                    session.add(note)
-                    indexed += 1
+                )
 
-                session.flush()
-                for chunk_index, qdrant_id, chunk_chars in chunk_meta:
-                    session.add(
-                        IndexedChunk(
-                            note_id=note.id,
-                            chunk_index=chunk_index,
-                            qdrant_id=qdrant_id,
-                            chunk_chars=chunk_chars,
-                        )
-                    )
+            session.commit()
 
-                session.commit()
-
-                if (indexed + updated) % 50 == 0:
-                    logger.info(f"Indexed {indexed}, updated {updated} notes...")
+            if (indexed + updated) % 50 == 0:
+                logger.info(f"Indexed {indexed}, updated {updated} notes...")
 
         db_notes = session.query(IndexedNote).filter(IndexedNote.collection == collection).all()
         for note in db_notes:

@@ -32,6 +32,7 @@ from scheduler.data_access import ActorContext as ScheduleActorContext, delete_s
 
 LOGGER = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class CommitmentProvenanceLinkInput:
     """Input metadata used to link a commitment to ingestion provenance records."""

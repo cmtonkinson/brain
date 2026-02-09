@@ -65,9 +65,7 @@ def detect_loop_closure_reply(
     commitments = commitment_repo.list_by_owner(sender)
 
     # Filter to only active commitments (not completed/canceled)
-    active_commitments = [
-        c for c in commitments if c.state not in {"COMPLETED", "CANCELED"}
-    ]
+    active_commitments = [c for c in commitments if c.state not in {"COMPLETED", "CANCELED"}]
 
     if not active_commitments:
         logger.debug(

@@ -41,13 +41,14 @@ def test_system_transition_without_confidence_is_blocked() -> None:
     assert decision.reason == "missing_confidence"
 
 
-def test_system_transition_uses_forced_zero_confidence() -> None:
-    """System transitions should compare using forced 0.0 confidence."""
+def test_system_transition_with_high_confidence_is_allowed() -> None:
+    """System transitions with high confidence should be allowed."""
     decision = evaluate_transition_authority(
         to_state="COMPLETED",
         actor="system",
         confidence=0.95,
     )
 
-    assert decision.allow_transition is False
-    assert decision.effective_confidence == 0.0
+    assert decision.allow_transition is True
+    assert decision.effective_confidence == 0.95
+    assert decision.reason == "autonomy_confidence_gate"

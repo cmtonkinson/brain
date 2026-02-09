@@ -5,22 +5,21 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
 from qdrant_client import QdrantClient
 
 from config import settings
+from services.http_client import HttpClient
 
 logger = logging.getLogger(__name__)
 
 
 def _embed_query(text: str) -> list[float]:
     """Embed a query string using the configured embedding endpoint."""
-    response = httpx.post(
+    client = HttpClient(timeout=settings.llm.timeout)
+    response = client.post(
         f"{settings.llm.embed_base_url.rstrip('/')}/api/embeddings",
         json={"model": settings.llm.embed_model, "prompt": text},
-        timeout=settings.llm.timeout,
     )
-    response.raise_for_status()
     payload = response.json()
     embedding = payload.get("embedding")
     if not embedding:

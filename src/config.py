@@ -99,6 +99,8 @@ def _env_settings_source():
         "CELERY_QUEUE_NAME": ("scheduler.celery_queue_name", "str"),
         "CELERY_RESULT_BACKEND": ("scheduler.celery_result_backend", "str"),
         "DATABASE_URL": ("database.url", "str"),
+        "HTTP_TIMEOUT": ("http.timeout", "int"),
+        "HTTP_CONNECT_TIMEOUT": ("http.connect_timeout", "int"),
         "LETTA_AGENT_NAME": ("letta.agent_name", "str"),
         "LETTA_API_KEY": ("letta.api_key", "str"),
         "LETTA_BASE_URL": ("letta.base_url", "str"),
@@ -202,6 +204,25 @@ class LlmConfig(BaseModel):
     embed_model: str = "mxbai-embed-large"
     embed_base_url: str = "http://host.docker.internal:11434"
 
+    @model_validator(mode="after")
+    def populate_embed_base_url(self) -> "LlmConfig":
+        """Use the LLM base URL for embeddings when no embed URL is set."""
+        if not self.embed_base_url and self.base_url:
+            self.embed_base_url = self.base_url
+        return self
+
+
+class HttpConfig(BaseModel):
+    """HTTP client configuration for internal service calls.
+
+    This is separate from llm.timeout, which is specifically for LLM API calls
+    that can take minutes. Internal service calls (Signal, Obsidian, Letta, etc.)
+    should use much shorter timeouts.
+    """
+
+    timeout: int = 30  # Reasonable default for internal APIs
+    connect_timeout: int = 10  # Connection establishment timeout
+
 
 class RoutingConfig(BaseModel):
     """Configuration for routing decisions.
@@ -212,13 +233,6 @@ class RoutingConfig(BaseModel):
     """
 
     allowed_channels: set[str] = Field(default_factory=lambda: {"signal"})
-
-    @model_validator(mode="after")
-    def populate_embed_base_url(self) -> "LlmConfig":
-        """Use the LLM base URL for embeddings when no embed URL is set."""
-        if not self.embed_base_url and self.base_url:
-            self.embed_base_url = self.base_url
-        return self
 
 
 class SignalConfig(BaseModel):
@@ -528,6 +542,9 @@ class Settings(BaseSettings):
 
     # LLM
     llm: LlmConfig = Field(default_factory=LlmConfig)
+
+    # HTTP Client
+    http: HttpConfig = Field(default_factory=HttpConfig)
 
     # Conversation Storage
     conversation: ConversationConfig = Field(default_factory=ConversationConfig)
