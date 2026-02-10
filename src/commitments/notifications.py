@@ -382,7 +382,6 @@ def create_proposal_notification_hook(
                 commitment,
                 from_state=str(proposal.from_state),
                 to_state=str(proposal.to_state),
-                owner=commitment.owner,
                 now=proposal.proposed_at,
             )
             logger.info(
