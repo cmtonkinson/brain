@@ -26,9 +26,10 @@ from commitments.repository import (
 )
 from ingestion.provenance import ProvenanceSourceInput, record_provenance
 from llm import LLMClient
-from models import Commitment, Schedule, TaskIntent
+from models import Commitment
 from scheduler.adapter_interface import SchedulerAdapter
-from scheduler.data_access import ActorContext as ScheduleActorContext, delete_schedule
+from scheduler.schedule_service import ScheduleCommandServiceImpl
+from scheduler.schedule_service_interface import ActorContext, ScheduleDeleteRequest
 
 LOGGER = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class CommitmentCreationRequest:
     source: CommitmentCreationSource | str | None = None
     confidence: float | None = None
     provenance: CommitmentProvenanceLinkInput | None = None
+    bypass_dedupe_once: bool = False
 
 
 @dataclass(frozen=True)
@@ -126,9 +128,10 @@ class CommitmentCreationService:
     ) -> CommitmentCreationResult:
         """Create a commitment or return a proposal if dedupe/approval is required."""
         validated = self._validate_request(request)
-        dedupe = self._check_dedupe(validated)
-        if dedupe is not None:
-            return CommitmentCreationDedupeRequired(status="dedupe_required", proposal=dedupe)
+        if not request.bypass_dedupe_once:
+            dedupe = self._check_dedupe(validated)
+            if dedupe is not None:
+                return CommitmentCreationDedupeRequired(status="dedupe_required", proposal=dedupe)
 
         authority_source = _resolve_authority_source(request)
         authority = evaluate_creation_authority(
@@ -261,11 +264,13 @@ class CommitmentCreationService:
     ) -> None:
         """Best-effort rollback when schedule creation fails."""
         schedule_id = _extract_schedule_id(error)
-        if schedule_id is None:
-            schedule_id = _find_schedule_id_by_commitment(self._session_factory, commitment_id)
         if schedule_id is not None:
             try:
-                _cancel_schedule(self._session_factory, schedule_id)
+                _cancel_schedule(
+                    self._session_factory,
+                    self._schedule_adapter,
+                    schedule_id,
+                )
             except Exception:
                 pass
         self._commitment_repo.delete(commitment_id)
@@ -293,42 +298,30 @@ def _resolve_authority_source(request: CommitmentCreationRequest) -> CommitmentC
     raise ValueError("Commitment creation authority is required.")
 
 
-def _find_schedule_id_by_commitment(
-    session_factory: Callable[[], Session],
-    commitment_id: int,
-) -> int | None:
-    """Lookup the schedule id for a commitment via its miss-detection origin reference."""
-    origin_reference = f"commitments.miss_detection:{commitment_id}"
-    with closing(session_factory()) as session:
-        row = (
-            session.query(Schedule.id)
-            .join(TaskIntent, Schedule.task_intent_id == TaskIntent.id)
-            .filter(TaskIntent.origin_reference == origin_reference)
-            .order_by(Schedule.id.desc())
-            .first()
-        )
-        return row[0] if row is not None else None
-
-
 def _cancel_schedule(
     session_factory: Callable[[], Session],
+    schedule_adapter: SchedulerAdapter,
     schedule_id: int,
 ) -> None:
-    """Cancel a schedule without invoking adapter synchronization."""
-    actor = ScheduleActorContext(
+    """Cancel a schedule using the scheduler service interface."""
+    actor = ActorContext(
         actor_type="system",
         actor_id=None,
         channel="system",
         trace_id=f"commitments.creation.rollback:{schedule_id}",
         reason="commitment_creation_rollback",
     )
-    with closing(session_factory()) as session:
-        try:
-            delete_schedule(session, schedule_id, actor)
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
+    service = ScheduleCommandServiceImpl(
+        session_factory,
+        schedule_adapter,
+    )
+    service.delete_schedule(
+        ScheduleDeleteRequest(
+            schedule_id=schedule_id,
+            reason="commitment_creation_rollback",
+        ),
+        actor,
+    )
 
 
 __all__ = [

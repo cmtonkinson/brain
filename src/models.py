@@ -174,6 +174,20 @@ CommitmentTransitionProposalStatusEnum = Enum(
     name="commitment_transition_proposal_status",
     native_enum=False,
 )
+CommitmentCreationProposalKindEnum = Enum(
+    "dedupe",
+    "approval",
+    name="commitment_creation_proposal_kind",
+    native_enum=False,
+)
+CommitmentCreationProposalStatusEnum = Enum(
+    "pending",
+    "approved",
+    "rejected",
+    "canceled",
+    name="commitment_creation_proposal_status",
+    native_enum=False,
+)
 
 
 # Database models
@@ -736,6 +750,53 @@ class CommitmentTransitionProposal(Base):
     provenance_id = Column(
         Uuid(as_uuid=True),
         ForeignKey("provenance_records.id"),
+        nullable=True,
+    )
+
+
+class CommitmentCreationProposal(Base):
+    """Persisted dedupe/approval proposal awaiting a user decision."""
+
+    __tablename__ = "commitment_creation_proposals"
+    __table_args__ = (
+        Index(
+            "ix_commitment_creation_proposals_status",
+            "status",
+            "proposed_at",
+        ),
+        Index(
+            "ix_commitment_creation_proposals_channel_status",
+            "source_channel",
+            "status",
+            "proposed_at",
+        ),
+        CheckConstraint(
+            "proposal_kind IN ('dedupe', 'approval')",
+            name="ck_commitment_creation_proposals_kind",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'canceled')",
+            name="ck_commitment_creation_proposals_status",
+        ),
+    )
+
+    proposal_ref = Column(String(120), primary_key=True)
+    proposal_kind = Column(CommitmentCreationProposalKindEnum, nullable=False)
+    status = Column(CommitmentCreationProposalStatusEnum, nullable=False, default="pending")
+    payload = Column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
+    source_channel = Column(String(50), nullable=False)
+    source_actor = Column(String(200), nullable=True)
+    proposed_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    decided_at = Column(DateTime(timezone=True), nullable=True)
+    decided_by = Column(String(200), nullable=True)
+    decision_reason = Column(Text, nullable=True)
+    created_commitment_id = Column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("commitments.commitment_id", ondelete="SET NULL"),
         nullable=True,
     )
 

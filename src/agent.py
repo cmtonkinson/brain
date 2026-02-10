@@ -126,6 +126,22 @@ def _generate_loop_closure_confirmation(result: object) -> str:
     return "✓ Updated."
 
 
+def _generate_proposal_confirmation(result: object) -> str:
+    """Generate a confirmation message for a creation-proposal decision."""
+    status = getattr(result, "status", None)
+    proposal_kind = getattr(result, "proposal_kind", "proposal")
+    if status == "created":
+        commitment_id = getattr(result, "commitment_id", None)
+        if commitment_id is not None:
+            return f"✓ Approved {proposal_kind} proposal and created commitment {commitment_id}."
+        return f"✓ Approved {proposal_kind} proposal."
+    if status == "approved_noop":
+        return f"✓ Recorded {proposal_kind} proposal decision."
+    if status == "rejected":
+        return f"✓ Rejected {proposal_kind} proposal."
+    return "✓ Proposal decision recorded."
+
+
 def _preview(text: str, limit: int = 160) -> str:
     """Return a single-line preview of text for logging."""
     cleaned = " ".join(text.split())
@@ -781,6 +797,7 @@ async def handle_signal_message(
     router: AttentionRouter,
     phone_number: str,
     signal_commitment_extractor: Callable | None = None,
+    proposal_reply_handler: object | None = None,
     loop_closure_handler: object | None = None,
 ) -> None:
     """Handle an incoming Signal message.
@@ -794,6 +811,7 @@ async def handle_signal_message(
         router: Attention router for outbound replies
         phone_number: The agent's phone number
         signal_commitment_extractor: Optional extractor for creating commitments from messages
+        proposal_reply_handler: Optional handler for proposal decision replies
         loop_closure_handler: Optional handler for loop-closure replies
     """
     sender = signal_msg.sender
@@ -852,9 +870,28 @@ async def handle_signal_message(
             channel="signal",
         )
 
-        # Check if this is a loop-closure reply first
+        # Check if this is a creation/dedupe proposal reply first.
+        proposal_reply_result = None
+        if proposal_reply_handler:
+            try:
+                proposal_reply_result = await asyncio.to_thread(
+                    proposal_reply_handler.try_handle_reply,
+                    sender,
+                    message,
+                    signal_msg.timestamp,
+                )
+                if proposal_reply_result:
+                    logger.info(
+                        "Handled proposal reply from %s: %s",
+                        sender,
+                        proposal_reply_result.status,
+                    )
+            except Exception:
+                logger.exception("Failed to process potential proposal reply")
+
+        # Check if this is a loop-closure reply second.
         loop_closure_result = None
-        if loop_closure_handler:
+        if proposal_reply_result is None and loop_closure_handler:
             try:
                 loop_closure_result = await asyncio.to_thread(
                     loop_closure_handler.try_handle_reply,
@@ -882,8 +919,10 @@ async def handle_signal_message(
             channel="signal",
         )
 
-        # Process message (or generate acknowledgment if loop-closure was handled)
-        if loop_closure_result:
+        # Process message (or generate acknowledgment when reply handlers run)
+        if proposal_reply_result:
+            response = _generate_proposal_confirmation(proposal_reply_result)
+        elif loop_closure_result:
             # Generate a confirmation response based on the action taken
             response = _generate_loop_closure_confirmation(loop_closure_result)
         else:
@@ -950,6 +989,7 @@ async def run_signal_loop(
     object_store: ObjectStore,
     poll_interval: float = 2.0,
     signal_commitment_extractor: Callable | None = None,
+    proposal_reply_handler: object | None = None,
     loop_closure_handler: object | None = None,
 ) -> None:
     """Main loop for polling Signal messages.
@@ -961,6 +1001,7 @@ async def run_signal_loop(
         object_store: Object store for blob persistence
         poll_interval: Seconds between polls
         signal_commitment_extractor: Optional extractor for creating commitments from messages
+        proposal_reply_handler: Optional handler for proposal decision replies
         loop_closure_handler: Optional handler for loop-closure replies
     """
     phone_number = settings.signal.phone_number
@@ -1002,6 +1043,7 @@ async def run_signal_loop(
                     router,
                     phone_number,
                     signal_commitment_extractor=signal_commitment_extractor,
+                    proposal_reply_handler=proposal_reply_handler,
                     loop_closure_handler=loop_closure_handler,
                 )
 
@@ -1189,6 +1231,7 @@ async def main() -> None:
             object_store,
             poll_interval=args.poll_interval,
             signal_commitment_extractor=agent_services.get("signal_commitment_extractor"),
+            proposal_reply_handler=agent_services.get("proposal_reply_handler"),
             loop_closure_handler=agent_services.get("loop_closure_handler"),
         )
     except KeyboardInterrupt:

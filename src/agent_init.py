@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from commitments.daily_batch_scheduler import schedule_daily_batch_reminder
 from commitments.ingestion_hook import create_commitment_extraction_hook
 from commitments.loop_closure_handler import LoopClosureReplyHandler
+from commitments.proposal_reply_handler import CommitmentProposalReplyHandler
 from commitments.signal_extraction import create_signal_commitment_extractor
 from commitments.weekly_review_scheduler import schedule_weekly_review
 from config import settings
@@ -23,6 +24,8 @@ from scheduler.adapters import (
     CelerySchedulerAdapter,
     CelerySqlAlchemySchedulerClient,
 )
+from services.signal import SignalClient
+from attention.router import AttentionRouter
 from services.database import get_sync_engine
 from services.object_store import ObjectStore
 
@@ -173,12 +176,20 @@ def initialize_agent_hooks(
     )
 
     # Create Signal message commitment extractor
+    signal_router = AttentionRouter(signal_client=SignalClient())
     signal_commitment_extractor = create_signal_commitment_extractor(
         session_factory=session_factory,
         schedule_adapter=schedule_adapter,
         llm_client=llm_client,
+        router=signal_router,
     )
     LOGGER.info("Created Signal message commitment extractor")
+
+    proposal_reply_handler = CommitmentProposalReplyHandler(
+        session_factory=session_factory,
+        schedule_adapter=schedule_adapter,
+    )
+    LOGGER.info("Created proposal reply handler")
 
     # Create loop-closure reply handler
     loop_closure_handler = LoopClosureReplyHandler(
@@ -227,6 +238,7 @@ def initialize_agent_hooks(
 
     return {
         "signal_commitment_extractor": signal_commitment_extractor,
+        "proposal_reply_handler": proposal_reply_handler,
         "loop_closure_handler": loop_closure_handler,
     }
 

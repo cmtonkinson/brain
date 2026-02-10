@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from hashlib import sha1
 from contextlib import closing
 from typing import Callable, Sequence
 from uuid import UUID
@@ -22,12 +21,11 @@ from commitments.creation_service import (
     CommitmentProvenanceLinkInput,
 )
 from commitments.creation_authority import CreationApprovalProposal
-from commitments.dedupe import DedupeProposal
-from commitments.notifications import (
-    CommitmentNotification,
-    CommitmentNotificationType,
-    submit_commitment_notification,
+from commitments.creation_proposal_notifications import (
+    ProposalRoutingContext,
+    route_creation_proposal_notification,
 )
+from commitments.dedupe import DedupeProposal
 from commitments.extraction import extract_commitments_from_text
 from commitments.progress_service import CommitmentProgressService
 from ingestion.provenance import ProvenanceSourceInput
@@ -230,9 +228,11 @@ def _process_record(
                     result.proposal,
                 )
                 _route_ingestion_dedupe_proposal(
+                    session_factory=session_factory,
                     router=router,
                     proposal=result.proposal,
                     extraction=extraction,
+                    source_context=source_context,
                     ingestion_id=ingestion_id,
                     object_key=record.object_key,
                     extraction_index=extraction_index,
@@ -243,9 +243,11 @@ def _process_record(
                     result.proposal,
                 )
                 _route_ingestion_approval_proposal(
+                    session_factory=session_factory,
                     router=router,
                     proposal=result.proposal,
                     extraction=extraction,
+                    source_context=source_context,
                     ingestion_id=ingestion_id,
                     object_key=record.object_key,
                     extraction_index=extraction_index,
@@ -291,140 +293,113 @@ def _process_record(
 
 def _route_ingestion_dedupe_proposal(
     *,
+    session_factory: Callable[[], Session],
     router: AttentionRouter,
     proposal: DedupeProposal,
     extraction: dict,
+    source_context: CommitmentSourceContext,
     ingestion_id: UUID,
     object_key: str,
     extraction_index: int,
 ) -> None:
     """Route ingestion dedupe proposals through the commitment notification path."""
     description = str(extraction.get("description", "")).strip()
-    proposal_ref = _build_ingestion_proposal_reference(
-        proposal_kind="dedupe",
-        ingestion_id=ingestion_id,
-        object_key=object_key,
-        extraction_index=extraction_index,
-        description=description,
-    )
     message = (
         "Dedupe review needed for extracted commitment: "
         f'"{description or "Unspecified commitment"}". '
         f"Potential duplicate commitment_id={proposal.candidate.commitment_id} "
-        f"(confidence={proposal.confidence:.2f}, threshold={proposal.threshold:.2f}). "
-        f"proposal_ref={proposal_ref}"
+        f"(confidence={proposal.confidence:.2f}, threshold={proposal.threshold:.2f})."
     )
-    notification = CommitmentNotification(
-        commitment_id=proposal.candidate.commitment_id,
-        notification_type=CommitmentNotificationType.DEDUPE_PROPOSAL,
+    route_creation_proposal_notification(
+        session_factory=session_factory,
+        router=router,
+        proposal_kind="dedupe",
+        creation_payload=extraction,
+        authority="agent",
+        confidence=extraction.get("confidence"),
+        source_context=source_context,
         message=message,
-        channel="signal",
-        signal_reference=f"commitment.dedupe_proposal:{proposal_ref}",
-        provenance=[
-            ProvenanceInput(
-                input_type="proposal_ref",
-                reference=proposal_ref,
-                description="Stable dedupe proposal reference.",
+        context=ProposalRoutingContext(
+            scope="ingest",
+            source_channel="signal",
+            source_actor=source_context.source_actor,
+            fingerprint_components=(
+                "dedupe",
+                str(ingestion_id),
+                object_key,
+                str(extraction_index),
+                description,
             ),
-            ProvenanceInput(
-                input_type="ingestion",
-                reference=str(ingestion_id),
-                description="Ingestion run that surfaced the extracted commitment.",
-            ),
-            ProvenanceInput(
-                input_type="artifact",
-                reference=object_key,
-                description=f"Artifact object_key from extraction index={extraction_index}.",
-            ),
-        ],
+            provenance=[
+                ProvenanceInput(
+                    input_type="ingestion",
+                    reference=str(ingestion_id),
+                    description="Ingestion run that surfaced the extracted commitment.",
+                ),
+                ProvenanceInput(
+                    input_type="artifact",
+                    reference=object_key,
+                    description=f"Artifact object_key from extraction index={extraction_index}.",
+                ),
+            ],
+        ),
     )
-    _submit_ingestion_proposal_notification(router, notification, proposal_ref=proposal_ref)
 
 
 def _route_ingestion_approval_proposal(
     *,
+    session_factory: Callable[[], Session],
     router: AttentionRouter,
     proposal: CreationApprovalProposal,
     extraction: dict,
+    source_context: CommitmentSourceContext,
     ingestion_id: UUID,
     object_key: str,
     extraction_index: int,
 ) -> None:
     """Route ingestion approval proposals through the commitment notification path."""
     description = str(extraction.get("description", "")).strip()
-    proposal_ref = _build_ingestion_proposal_reference(
-        proposal_kind="approval",
-        ingestion_id=ingestion_id,
-        object_key=object_key,
-        extraction_index=extraction_index,
-        description=description,
-    )
     message = (
         "Approval needed for extracted commitment creation: "
         f'"{description or "Unspecified commitment"}". '
         f"Source={proposal.source.value} "
         f"(confidence={proposal.confidence:.2f}, threshold={proposal.threshold:.2f}). "
-        f"Reason={proposal.reason}. proposal_ref={proposal_ref}"
+        f"Reason={proposal.reason}."
     )
-    notification = CommitmentNotification(
-        commitment_id=None,
-        notification_type=CommitmentNotificationType.CREATION_APPROVAL_PROPOSAL,
+    route_creation_proposal_notification(
+        session_factory=session_factory,
+        router=router,
+        proposal_kind="approval",
+        creation_payload=extraction,
+        authority=proposal.source.value,
+        confidence=proposal.confidence,
+        source_context=source_context,
         message=message,
-        channel="signal",
-        signal_reference=f"commitment.creation_approval_proposal:{proposal_ref}",
-        provenance=[
-            ProvenanceInput(
-                input_type="proposal_ref",
-                reference=proposal_ref,
-                description="Stable creation approval proposal reference.",
+        context=ProposalRoutingContext(
+            scope="ingest",
+            source_channel="signal",
+            source_actor=source_context.source_actor,
+            fingerprint_components=(
+                "approval",
+                str(ingestion_id),
+                object_key,
+                str(extraction_index),
+                description,
             ),
-            ProvenanceInput(
-                input_type="ingestion",
-                reference=str(ingestion_id),
-                description="Ingestion run that surfaced the extracted commitment.",
-            ),
-            ProvenanceInput(
-                input_type="artifact",
-                reference=object_key,
-                description=f"Artifact object_key from extraction index={extraction_index}.",
-            ),
-        ],
+            provenance=[
+                ProvenanceInput(
+                    input_type="ingestion",
+                    reference=str(ingestion_id),
+                    description="Ingestion run that surfaced the extracted commitment.",
+                ),
+                ProvenanceInput(
+                    input_type="artifact",
+                    reference=object_key,
+                    description=f"Artifact object_key from extraction index={extraction_index}.",
+                ),
+            ],
+        ),
     )
-    _submit_ingestion_proposal_notification(router, notification, proposal_ref=proposal_ref)
-
-
-def _submit_ingestion_proposal_notification(
-    router: AttentionRouter,
-    notification: CommitmentNotification,
-    *,
-    proposal_ref: str,
-) -> None:
-    """Submit proposal notifications without aborting ingestion record processing."""
-    try:
-        submit_commitment_notification(router, notification)
-    except Exception:
-        LOGGER.exception(
-            "Failed to route ingestion proposal notification: proposal_ref=%s type=%s",
-            proposal_ref,
-            notification.notification_type.value,
-        )
-
-
-def _build_ingestion_proposal_reference(
-    *,
-    proposal_kind: str,
-    ingestion_id: UUID,
-    object_key: str,
-    extraction_index: int,
-    description: str,
-) -> str:
-    """Return a deterministic proposal reference for ingestion-created proposals."""
-    fingerprint = sha1(
-        f"{proposal_kind}|{ingestion_id}|{object_key}|{extraction_index}|{description}".encode(
-            "utf-8"
-        )
-    ).hexdigest()
-    return f"ingest:{proposal_kind}:{fingerprint[:16]}"
 
 
 def _build_ingest_source_context(sources: Sequence[ProvenanceSource]) -> CommitmentSourceContext:

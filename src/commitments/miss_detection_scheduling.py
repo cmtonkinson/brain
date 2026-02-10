@@ -95,11 +95,22 @@ class MissDetectionScheduleService:
         )
         actor = _default_actor(trace_id=f"commitments.miss_detection:{commitment_id}")
         result = self._schedule_service.create_schedule(request, actor)
-        self._link_service.create_link(
-            commitment_id=commitment_id,
-            schedule_id=result.schedule.id,
-            now=self._now_provider(),
-        )
+        try:
+            self._link_service.create_link(
+                commitment_id=commitment_id,
+                schedule_id=result.schedule.id,
+                now=self._now_provider(),
+            )
+        except Exception:
+            # Compensate for link persistence failures so schedules are not orphaned.
+            self._schedule_service.delete_schedule(
+                ScheduleDeleteRequest(
+                    schedule_id=result.schedule.id,
+                    reason="commitment_link_create_failed",
+                ),
+                _default_actor(trace_id=f"commitments.miss_detection:cleanup:{commitment_id}"),
+            )
+            raise
         return MissDetectionScheduleResult(schedule_id=result.schedule.id)
 
     def update_schedule(

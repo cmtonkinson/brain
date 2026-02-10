@@ -150,6 +150,35 @@ def test_dedupe_proposal_halts_creation(sqlite_session_factory: sessionmaker) ->
     assert _count_commitments(sqlite_session_factory) == 1
 
 
+def test_bypass_dedupe_once_allows_creation(sqlite_session_factory: sessionmaker) -> None:
+    """One-time dedupe bypass should allow explicit user-approved creation."""
+    repo = CommitmentRepository(sqlite_session_factory)
+    existing = repo.create(CommitmentCreateInput(description="Book dentist appointment"))
+    client = StubLLMClient(
+        response=(
+            '{"duplicate_commitment_id": %d, "confidence": 0.9, "summary": "Duplicate"}'
+            % existing.commitment_id
+        )
+    )
+    adapter = RecordingSchedulerAdapter()
+    service = CommitmentCreationService(
+        sqlite_session_factory,
+        adapter,
+        llm_client=client,
+    )
+
+    result = service.create(
+        CommitmentCreationRequest(
+            payload={"description": "Schedule dentist visit"},
+            authority=CommitmentCreationSource.USER,
+            bypass_dedupe_once=True,
+        )
+    )
+
+    assert result.status == "success"
+    assert _count_commitments(sqlite_session_factory) == 2
+
+
 def test_authority_proposal_halts_creation(sqlite_session_factory: sessionmaker) -> None:
     """Agent-suggested commitments should require approval by default."""
     adapter = RecordingSchedulerAdapter()

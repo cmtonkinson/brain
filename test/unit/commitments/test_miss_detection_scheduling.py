@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy.orm import sessionmaker
 
 from commitments.miss_detection_scheduling import MissDetectionScheduleService
@@ -183,3 +184,33 @@ def test_transition_hook_removes_schedule(sqlite_session_factory: sessionmaker) 
         schedule = session.get(Schedule, created.schedule_id)
         assert schedule is not None
         assert schedule.state == "canceled"
+
+
+def test_link_failure_triggers_schedule_cleanup(sqlite_session_factory: sessionmaker) -> None:
+    """Link persistence failures should trigger compensating schedule deletion."""
+    adapter = RecordingSchedulerAdapter()
+    now = datetime(2026, 1, 2, 9, 0, tzinfo=timezone.utc)
+    due_by = now + timedelta(hours=1)
+    commitment_id = _create_commitment(
+        sqlite_session_factory,
+        description="Cleanup on link failure",
+        due_by=due_by,
+    )
+    service = MissDetectionScheduleService(
+        sqlite_session_factory,
+        adapter,
+        now_provider=lambda: now,
+    )
+
+    def _raise_link_error(**_kwargs) -> None:
+        raise RuntimeError("link create failed")
+
+    service._link_service.create_link = _raise_link_error  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="link create failed"):
+        service.create_schedule(commitment_id=commitment_id, due_by=due_by)
+
+    with sqlite_session_factory() as session:
+        schedules = session.query(Schedule).all()
+        assert len(schedules) == 1
+        assert schedules[0].state == "canceled"

@@ -126,7 +126,8 @@ def test_dedupe_required_routes_proposal_notification(
         return RoutingResult(decision="NOTIFY:signal", channel="signal")
 
     monkeypatch.setattr(
-        "commitments.ingestion_hook.submit_commitment_notification", _capture_submit
+        "commitments.creation_proposal_notifications.submit_commitment_notification",
+        _capture_submit,
     )
 
     _process_record(
@@ -177,7 +178,8 @@ def test_approval_required_routes_proposal_notification(
         return RoutingResult(decision="NOTIFY:signal", channel="signal")
 
     monkeypatch.setattr(
-        "commitments.ingestion_hook.submit_commitment_notification", _capture_submit
+        "commitments.creation_proposal_notifications.submit_commitment_notification",
+        _capture_submit,
     )
 
     _process_record(
@@ -238,7 +240,10 @@ def test_notification_failure_does_not_abort_remaining_extractions(
     def _raise_submit(_router, _notification, **_kwargs):  # noqa: ANN001
         raise RuntimeError("router unavailable")
 
-    monkeypatch.setattr("commitments.ingestion_hook.submit_commitment_notification", _raise_submit)
+    monkeypatch.setattr(
+        "commitments.creation_proposal_notifications.submit_commitment_notification",
+        _raise_submit,
+    )
 
     _process_record(
         record=record,

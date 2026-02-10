@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from hashlib import sha1
 from datetime import datetime
 from typing import Callable
 
@@ -16,9 +17,15 @@ from commitments.creation_service import (
     CommitmentSourceContext,
     CommitmentCreationSuccess,
 )
+from commitments.creation_proposal_notifications import (
+    ProposalRoutingContext,
+    route_creation_proposal_notification,
+)
 from commitments.extraction import extract_commitments_from_text
 from commitments.progress_service import CommitmentProgressService
 from llm import LLMClient
+from attention.envelope_schema import ProvenanceInput
+from attention.router import AttentionRouter
 from scheduler.adapter_interface import SchedulerAdapter
 
 LOGGER = logging.getLogger(__name__)
@@ -29,9 +36,11 @@ def extract_and_create_commitments_from_signal(
     agent_response: str,
     sender: str,
     timestamp: datetime,
+    session_factory: Callable[[], Session],
     creation_service: CommitmentCreationService,
     llm_client: LLMClient | None = None,
     progress_service: CommitmentProgressService | None = None,
+    router: AttentionRouter | None = None,
 ) -> None:
     """Extract and create commitments from a Signal message exchange.
 
@@ -122,13 +131,86 @@ Agent: {agent_response}"""
                     "Commitment creation requires dedupe review: %s",
                     result.proposal,
                 )
-                # TODO: Route dedupe proposal to attention router
+                if router is not None:
+                    description = str(extraction.get("description", "")).strip()
+                    route_creation_proposal_notification(
+                        session_factory=session_factory,
+                        router=router,
+                        proposal_kind="dedupe",
+                        creation_payload=extraction,
+                        authority=source,
+                        confidence=confidence,
+                        source_context=request.source_context,
+                        message=(
+                            "Dedupe review needed for Signal commitment: "
+                            f'"{description or "Unspecified commitment"}". '
+                            f"Potential duplicate commitment_id={result.proposal.candidate.commitment_id} "
+                            f"(confidence={result.proposal.confidence:.2f}, "
+                            f"threshold={result.proposal.threshold:.2f})."
+                        ),
+                        context=ProposalRoutingContext(
+                            scope="signal",
+                            source_channel="signal",
+                            source_actor=sender,
+                            fingerprint_components=(
+                                "dedupe",
+                                sender,
+                                timestamp.isoformat(),
+                                description,
+                                sha1(user_message.encode("utf-8")).hexdigest()[:12],
+                            ),
+                            provenance=[
+                                ProvenanceInput(
+                                    input_type="signal_sender",
+                                    reference=sender,
+                                    description="Signal sender that surfaced this proposal.",
+                                )
+                            ],
+                        ),
+                    )
             elif isinstance(result, CommitmentCreationApprovalRequired):
                 LOGGER.info(
                     "Commitment creation requires approval: %s",
                     result.proposal,
                 )
-                # TODO: Route approval proposal to attention router
+                if router is not None:
+                    description = str(extraction.get("description", "")).strip()
+                    route_creation_proposal_notification(
+                        session_factory=session_factory,
+                        router=router,
+                        proposal_kind="approval",
+                        creation_payload=extraction,
+                        authority=source,
+                        confidence=confidence,
+                        source_context=request.source_context,
+                        message=(
+                            "Approval needed for Signal commitment creation: "
+                            f'"{description or "Unspecified commitment"}". '
+                            f"Source={result.proposal.source.value} "
+                            f"(confidence={result.proposal.confidence:.2f}, "
+                            f"threshold={result.proposal.threshold:.2f}). "
+                            f"Reason={result.proposal.reason}."
+                        ),
+                        context=ProposalRoutingContext(
+                            scope="signal",
+                            source_channel="signal",
+                            source_actor=sender,
+                            fingerprint_components=(
+                                "approval",
+                                sender,
+                                timestamp.isoformat(),
+                                description,
+                                sha1(user_message.encode("utf-8")).hexdigest()[:12],
+                            ),
+                            provenance=[
+                                ProvenanceInput(
+                                    input_type="signal_sender",
+                                    reference=sender,
+                                    description="Signal sender that surfaced this proposal.",
+                                )
+                            ],
+                        ),
+                    )
             else:
                 LOGGER.info(
                     "Commitment created from Signal: commitment_id=%s description=%s sender=%s",
@@ -167,6 +249,7 @@ def create_signal_commitment_extractor(
     session_factory: Callable[[], Session],
     schedule_adapter: SchedulerAdapter,
     llm_client: LLMClient | None = None,
+    router: AttentionRouter | None = None,
 ) -> Callable[[str, str, str, datetime], None]:
     """Create a Signal commitment extractor function.
 
@@ -184,6 +267,7 @@ def create_signal_commitment_extractor(
         llm_client=llm_client,
     )
     progress_service = CommitmentProgressService(session_factory)
+    resolved_router = router or AttentionRouter()
 
     def extractor(
         user_message: str,
@@ -197,9 +281,11 @@ def create_signal_commitment_extractor(
             agent_response=agent_response,
             sender=sender,
             timestamp=timestamp,
+            session_factory=session_factory,
             creation_service=creation_service,
             llm_client=llm_client,
             progress_service=progress_service,
+            router=resolved_router,
         )
 
     return extractor
