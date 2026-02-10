@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
@@ -16,13 +15,10 @@ from commitments.loop_closure_actions import (
     LoopClosureActionService,
 )
 from commitments.loop_closure_parser import parse_loop_closure_response
-from commitments.repository import CommitmentRepository
+from commitments.loop_closure_resolver import LoopClosureReplyResolver
 from scheduler.adapter_interface import SchedulerAdapter
 
 logger = logging.getLogger(__name__)
-
-# Pattern to extract commitment ID from signal_reference like "commitment.missed:123"
-_COMMITMENT_REFERENCE_PATTERN = re.compile(r"commitment\.\w+:(\d+)")
 
 
 @dataclass(frozen=True)
@@ -39,17 +35,22 @@ def detect_loop_closure_reply(
     session: Session,
     sender: str,
     message: str,
+    *,
+    signal_reference: str | None = None,
+    resolver: LoopClosureReplyResolver | None = None,
 ) -> LoopClosureReplyContext | None:
     """Detect if a message is a potential loop-closure reply.
 
     This function checks if:
     1. The message contains a parseable loop-closure intent (complete, cancel, renegotiate)
-    2. The sender has any active commitments that could be closed
+    2. The message can be mapped to a target commitment
 
     Args:
         session: Database session
         sender: Phone number of message sender
         message: Message text
+        signal_reference: Optional signal reference for deterministic linkage
+        resolver: Optional commitment resolver override
 
     Returns:
         LoopClosureReplyContext if this appears to be a loop-closure reply, None otherwise
@@ -59,29 +60,25 @@ def detect_loop_closure_reply(
     if intent is None:
         return None
 
-    # Find the most recent active commitment for this sender
-    # In v1, we use a simple heuristic: most recent non-completed commitment
-    commitment_repo = CommitmentRepository(lambda: session)
-    commitments = commitment_repo.list_by_owner(sender)
-
-    # Filter to only active commitments (not completed/canceled)
-    active_commitments = [c for c in commitments if c.state not in {"COMPLETED", "CANCELED"}]
-
-    if not active_commitments:
+    active_resolver = resolver or LoopClosureReplyResolver()
+    commitment_id = active_resolver.resolve_commitment_id(
+        session,
+        sender=sender,
+        message=message,
+        signal_reference=signal_reference,
+    )
+    if commitment_id is None:
         logger.debug(
-            "Loop-closure intent detected but no active commitments for sender %s",
+            "Loop-closure intent detected but no target commitment could be resolved for sender %s",
             sender,
         )
         return None
-
-    # Use most recently updated commitment (likely the one they're responding to)
-    target_commitment = max(active_commitments, key=lambda c: c.updated_at)
 
     return LoopClosureReplyContext(
         sender=sender,
         message=message,
         timestamp=datetime.now(timezone.utc),
-        commitment_id=target_commitment.commitment_id,
+        commitment_id=commitment_id,
     )
 
 
@@ -108,6 +105,7 @@ class LoopClosureReplyHandler:
         sender: str,
         message: str,
         timestamp: datetime | None = None,
+        signal_reference: str | None = None,
     ) -> LoopClosureActionResult | None:
         """Attempt to handle a message as a loop-closure reply.
 
@@ -115,6 +113,7 @@ class LoopClosureReplyHandler:
             sender: Phone number of message sender
             message: Message text
             timestamp: Message timestamp (defaults to now)
+            signal_reference: Optional signal reference from routing metadata
 
         Returns:
             LoopClosureActionResult if handled, None if not a loop-closure reply
@@ -123,7 +122,12 @@ class LoopClosureReplyHandler:
 
         with self._session_factory() as session:
             # Detect if this is a loop-closure reply
-            context = detect_loop_closure_reply(session, sender, message)
+            context = detect_loop_closure_reply(
+                session,
+                sender,
+                message,
+                signal_reference=signal_reference,
+            )
             if context is None:
                 return None
 
