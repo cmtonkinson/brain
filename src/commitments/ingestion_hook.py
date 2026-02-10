@@ -3,19 +3,30 @@
 from __future__ import annotations
 
 import logging
+from hashlib import sha1
 from contextlib import closing
 from typing import Callable, Sequence
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from attention.envelope_schema import ProvenanceInput
+from attention.router import AttentionRouter
 from commitments.creation_service import (
     CommitmentCreationApprovalRequired,
     CommitmentCreationDedupeRequired,
     CommitmentCreationRequest,
     CommitmentCreationService,
+    CommitmentSourceContext,
     CommitmentCreationSuccess,
     CommitmentProvenanceLinkInput,
+)
+from commitments.creation_authority import CreationApprovalProposal
+from commitments.dedupe import DedupeProposal
+from commitments.notifications import (
+    CommitmentNotification,
+    CommitmentNotificationType,
+    submit_commitment_notification,
 )
 from commitments.extraction import extract_commitments_from_text
 from commitments.progress_service import CommitmentProgressService
@@ -33,6 +44,7 @@ def create_commitment_extraction_hook(
     schedule_adapter: SchedulerAdapter,
     object_store: ObjectStore,
     llm_client: LLMClient | None = None,
+    router: AttentionRouter | None = None,
 ) -> Callable[[UUID, str, Sequence[ProvenanceRecord]], None]:
     """Create a hook callback that extracts and creates commitments from ingested content.
 
@@ -51,6 +63,7 @@ def create_commitment_extraction_hook(
         llm_client=llm_client,
     )
     progress_service = CommitmentProgressService(session_factory)
+    resolved_router = router or AttentionRouter()
 
     def commitment_extraction_hook(
         ingestion_id: UUID,
@@ -89,6 +102,7 @@ def create_commitment_extraction_hook(
                     object_store=object_store,
                     session_factory=session_factory,
                     llm_client=llm_client,
+                    router=resolved_router,
                 )
             except Exception:
                 LOGGER.exception(
@@ -107,6 +121,7 @@ def _process_record(
     object_store: ObjectStore,
     session_factory: Callable[[], Session],
     llm_client: LLMClient | None,
+    router: AttentionRouter,
 ) -> None:
     """Process a single provenance record for commitment extraction."""
     # Load artifact metadata and check if it's text content
@@ -176,7 +191,7 @@ def _process_record(
     )
 
     # Create commitments
-    for extraction in extractions:
+    for extraction_index, extraction in enumerate(extractions, start=1):
         try:
             # Build provenance link
             provenance_sources = [
@@ -196,10 +211,12 @@ def _process_record(
             )
 
             # Create commitment request
+            source_context = _build_ingest_source_context(sources)
             request = CommitmentCreationRequest(
                 payload=extraction,
-                source="ingestion",
+                authority="agent",
                 confidence=extraction.get("confidence"),
+                source_context=source_context,
                 provenance=provenance_link,
             )
 
@@ -212,13 +229,27 @@ def _process_record(
                     "Commitment creation requires dedupe review: %s",
                     result.proposal,
                 )
-                # TODO: Route dedupe proposal to attention router
+                _route_ingestion_dedupe_proposal(
+                    router=router,
+                    proposal=result.proposal,
+                    extraction=extraction,
+                    ingestion_id=ingestion_id,
+                    object_key=record.object_key,
+                    extraction_index=extraction_index,
+                )
             elif isinstance(result, CommitmentCreationApprovalRequired):
                 LOGGER.info(
                     "Commitment creation requires approval: %s",
                     result.proposal,
                 )
-                # TODO: Route approval proposal to attention router
+                _route_ingestion_approval_proposal(
+                    router=router,
+                    proposal=result.proposal,
+                    extraction=extraction,
+                    ingestion_id=ingestion_id,
+                    object_key=record.object_key,
+                    extraction_index=extraction_index,
+                )
             else:
                 LOGGER.info(
                     "Commitment created successfully: commitment_id=%s description=%s",
@@ -239,7 +270,7 @@ def _process_record(
                             metadata={
                                 "object_key": record.object_key,
                                 "ingestion_id": str(ingestion_id),
-                                "source": "ingestion",
+                                "intake_channel": "ingest",
                             },
                         )
                         LOGGER.debug(
@@ -256,6 +287,163 @@ def _process_record(
                 "Failed to create commitment from extraction: %s",
                 extraction.get("description", "unknown"),
             )
+
+
+def _route_ingestion_dedupe_proposal(
+    *,
+    router: AttentionRouter,
+    proposal: DedupeProposal,
+    extraction: dict,
+    ingestion_id: UUID,
+    object_key: str,
+    extraction_index: int,
+) -> None:
+    """Route ingestion dedupe proposals through the commitment notification path."""
+    description = str(extraction.get("description", "")).strip()
+    proposal_ref = _build_ingestion_proposal_reference(
+        proposal_kind="dedupe",
+        ingestion_id=ingestion_id,
+        object_key=object_key,
+        extraction_index=extraction_index,
+        description=description,
+    )
+    message = (
+        "Dedupe review needed for extracted commitment: "
+        f'"{description or "Unspecified commitment"}". '
+        f"Potential duplicate commitment_id={proposal.candidate.commitment_id} "
+        f"(confidence={proposal.confidence:.2f}, threshold={proposal.threshold:.2f}). "
+        f"proposal_ref={proposal_ref}"
+    )
+    notification = CommitmentNotification(
+        commitment_id=proposal.candidate.commitment_id,
+        notification_type=CommitmentNotificationType.DEDUPE_PROPOSAL,
+        message=message,
+        channel="signal",
+        signal_reference=f"commitment.dedupe_proposal:{proposal_ref}",
+        provenance=[
+            ProvenanceInput(
+                input_type="proposal_ref",
+                reference=proposal_ref,
+                description="Stable dedupe proposal reference.",
+            ),
+            ProvenanceInput(
+                input_type="ingestion",
+                reference=str(ingestion_id),
+                description="Ingestion run that surfaced the extracted commitment.",
+            ),
+            ProvenanceInput(
+                input_type="artifact",
+                reference=object_key,
+                description=f"Artifact object_key from extraction index={extraction_index}.",
+            ),
+        ],
+    )
+    _submit_ingestion_proposal_notification(router, notification, proposal_ref=proposal_ref)
+
+
+def _route_ingestion_approval_proposal(
+    *,
+    router: AttentionRouter,
+    proposal: CreationApprovalProposal,
+    extraction: dict,
+    ingestion_id: UUID,
+    object_key: str,
+    extraction_index: int,
+) -> None:
+    """Route ingestion approval proposals through the commitment notification path."""
+    description = str(extraction.get("description", "")).strip()
+    proposal_ref = _build_ingestion_proposal_reference(
+        proposal_kind="approval",
+        ingestion_id=ingestion_id,
+        object_key=object_key,
+        extraction_index=extraction_index,
+        description=description,
+    )
+    message = (
+        "Approval needed for extracted commitment creation: "
+        f'"{description or "Unspecified commitment"}". '
+        f"Source={proposal.source.value} "
+        f"(confidence={proposal.confidence:.2f}, threshold={proposal.threshold:.2f}). "
+        f"Reason={proposal.reason}. proposal_ref={proposal_ref}"
+    )
+    notification = CommitmentNotification(
+        commitment_id=None,
+        notification_type=CommitmentNotificationType.CREATION_APPROVAL_PROPOSAL,
+        message=message,
+        channel="signal",
+        signal_reference=f"commitment.creation_approval_proposal:{proposal_ref}",
+        provenance=[
+            ProvenanceInput(
+                input_type="proposal_ref",
+                reference=proposal_ref,
+                description="Stable creation approval proposal reference.",
+            ),
+            ProvenanceInput(
+                input_type="ingestion",
+                reference=str(ingestion_id),
+                description="Ingestion run that surfaced the extracted commitment.",
+            ),
+            ProvenanceInput(
+                input_type="artifact",
+                reference=object_key,
+                description=f"Artifact object_key from extraction index={extraction_index}.",
+            ),
+        ],
+    )
+    _submit_ingestion_proposal_notification(router, notification, proposal_ref=proposal_ref)
+
+
+def _submit_ingestion_proposal_notification(
+    router: AttentionRouter,
+    notification: CommitmentNotification,
+    *,
+    proposal_ref: str,
+) -> None:
+    """Submit proposal notifications without aborting ingestion record processing."""
+    try:
+        submit_commitment_notification(router, notification)
+    except Exception:
+        LOGGER.exception(
+            "Failed to route ingestion proposal notification: proposal_ref=%s type=%s",
+            proposal_ref,
+            notification.notification_type.value,
+        )
+
+
+def _build_ingestion_proposal_reference(
+    *,
+    proposal_kind: str,
+    ingestion_id: UUID,
+    object_key: str,
+    extraction_index: int,
+    description: str,
+) -> str:
+    """Return a deterministic proposal reference for ingestion-created proposals."""
+    fingerprint = sha1(
+        f"{proposal_kind}|{ingestion_id}|{object_key}|{extraction_index}|{description}".encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    return f"ingest:{proposal_kind}:{fingerprint[:16]}"
+
+
+def _build_ingest_source_context(sources: Sequence[ProvenanceSource]) -> CommitmentSourceContext:
+    """Build intake source context for commitments created from ingestion records."""
+    if not sources:
+        return CommitmentSourceContext(
+            source_actor=None,
+            source_medium=None,
+            source_uri=None,
+            intake_channel="ingest",
+        )
+
+    primary_source = sources[0]
+    return CommitmentSourceContext(
+        source_actor=primary_source.source_actor,
+        source_medium=primary_source.source_type,
+        source_uri=primary_source.source_uri,
+        intake_channel="ingest",
+    )
 
 
 __all__ = ["create_commitment_extraction_hook"]

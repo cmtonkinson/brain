@@ -13,6 +13,7 @@ from commitments.creation_service import (
     CommitmentCreationDedupeRequired,
     CommitmentCreationRequest,
     CommitmentCreationService,
+    CommitmentSourceContext,
     CommitmentCreationSuccess,
 )
 from commitments.extraction import extract_commitments_from_text
@@ -101,8 +102,14 @@ Agent: {agent_response}"""
             # Create commitment request
             request = CommitmentCreationRequest(
                 payload=payload,
-                source=source,
+                authority=source,
                 confidence=confidence,
+                source_context=CommitmentSourceContext(
+                    source_actor=sender,
+                    source_medium="message",
+                    source_uri=None,
+                    intake_channel="signal",
+                ),
                 provenance=None,  # No provenance for Signal-sourced commitments
             )
 
@@ -138,7 +145,7 @@ Agent: {agent_response}"""
                             occurred_at=timestamp,
                             summary="Commitment created from Signal message",
                             snippet=user_message[:200] if user_message else None,
-                            metadata={"sender": sender, "source": "signal"},
+                            metadata={"sender": sender, "intake_channel": "signal"},
                         )
                         LOGGER.debug(
                             "Recorded progress for commitment_id=%s",

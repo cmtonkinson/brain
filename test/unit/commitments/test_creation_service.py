@@ -67,7 +67,7 @@ def test_creation_success_description_only(sqlite_session_factory: sessionmaker)
     result = service.create(
         CommitmentCreationRequest(
             payload={"description": "Plan quarterly review"},
-            source=CommitmentCreationSource.USER,
+            authority=CommitmentCreationSource.USER,
         )
     )
 
@@ -94,7 +94,7 @@ def test_creation_with_due_by_creates_schedule(sqlite_session_factory: sessionma
     result = service.create(
         CommitmentCreationRequest(
             payload={"description": "Submit report", "due_by": due_by},
-            source=CommitmentCreationSource.USER,
+            authority=CommitmentCreationSource.USER,
         )
     )
 
@@ -115,7 +115,7 @@ def test_validation_error_halts_creation(sqlite_session_factory: sessionmaker) -
         service.create(
             CommitmentCreationRequest(
                 payload={},
-                source=CommitmentCreationSource.USER,
+                authority=CommitmentCreationSource.USER,
             )
         )
 
@@ -142,7 +142,7 @@ def test_dedupe_proposal_halts_creation(sqlite_session_factory: sessionmaker) ->
     result = service.create(
         CommitmentCreationRequest(
             payload={"description": "Schedule dentist visit"},
-            source=CommitmentCreationSource.USER,
+            authority=CommitmentCreationSource.USER,
         )
     )
 
@@ -158,7 +158,7 @@ def test_authority_proposal_halts_creation(sqlite_session_factory: sessionmaker)
     result = service.create(
         CommitmentCreationRequest(
             payload={"description": "Agent suggestion"},
-            source=CommitmentCreationSource.AGENT,
+            authority=CommitmentCreationSource.AGENT,
             confidence=0.0,
         )
     )
@@ -182,7 +182,7 @@ def test_schedule_failure_rolls_back_commitment(sqlite_session_factory: sessionm
         service.create(
             CommitmentCreationRequest(
                 payload={"description": "Fail schedule", "due_by": due_by},
-                source=CommitmentCreationSource.USER,
+                authority=CommitmentCreationSource.USER,
             )
         )
 
@@ -190,3 +190,32 @@ def test_schedule_failure_rolls_back_commitment(sqlite_session_factory: sessionm
     schedule = _find_any_schedule(sqlite_session_factory)
     if schedule is not None:
         assert schedule.state == "canceled"
+
+
+def test_legacy_source_field_remains_supported(sqlite_session_factory: sessionmaker) -> None:
+    """Legacy source input should still drive authority decisions."""
+    adapter = RecordingSchedulerAdapter()
+    service = CommitmentCreationService(sqlite_session_factory, adapter)
+
+    result = service.create(
+        CommitmentCreationRequest(
+            payload={"description": "Legacy source compatibility"},
+            source=CommitmentCreationSource.USER,
+        )
+    )
+
+    assert result.status == "success"
+    assert _count_commitments(sqlite_session_factory) == 1
+
+
+def test_missing_authority_and_source_raises(sqlite_session_factory: sessionmaker) -> None:
+    """Creation should fail fast when no authority input is provided."""
+    adapter = RecordingSchedulerAdapter()
+    service = CommitmentCreationService(sqlite_session_factory, adapter)
+
+    with pytest.raises(ValueError, match="authority is required"):
+        service.create(
+            CommitmentCreationRequest(
+                payload={"description": "Missing authority"},
+            )
+        )

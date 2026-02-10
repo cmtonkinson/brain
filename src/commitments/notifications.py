@@ -41,17 +41,21 @@ class CommitmentNotificationType(str, Enum):
     BATCH = "BATCH"
     LOOP_CLOSURE = "LOOP_CLOSURE"
     TRANSITION_PROPOSAL = "TRANSITION_PROPOSAL"
+    DEDUPE_PROPOSAL = "DEDUPE_PROPOSAL"
+    CREATION_APPROVAL_PROPOSAL = "CREATION_APPROVAL_PROPOSAL"
 
 
 @dataclass(frozen=True)
 class CommitmentNotification:
     """Payload describing a commitment notification to be routed."""
 
-    commitment_id: int
+    commitment_id: int | None
     notification_type: CommitmentNotificationType
     message: str
     urgency: int | None = None
     channel: str = "signal"
+    signal_reference: str | None = None
+    provenance: list[ProvenanceInput] | None = None
 
 
 def build_missed_commitment_message(commitment: Commitment) -> str:
@@ -232,18 +236,13 @@ def _build_routing_envelope(
 ) -> RoutingEnvelope:
     """Create a RoutingEnvelope for a commitment notification."""
     signal_reference = _signal_reference(notification)
+    provenance = _build_notification_provenance(notification, signal_reference=signal_reference)
     notification_envelope = NotificationEnvelope(
         version=DEFAULT_ROUTING_VERSION,
         source_component=source_component,
         origin_signal=signal_reference,
         confidence=DEFAULT_SIGNAL_CONFIDENCE,
-        provenance=[
-            ProvenanceInput(
-                input_type="commitment",
-                reference=str(notification.commitment_id),
-                description=f"Commitment {notification.notification_type.value} notification.",
-            )
-        ],
+        provenance=provenance,
     )
     signal_payload = SignalPayload(
         from_number=settings.signal.phone_number or "unknown",
@@ -274,6 +273,10 @@ def _build_routing_envelope(
 
 def _signal_reference(notification: CommitmentNotification) -> str:
     """Build a stable reference string for the notification."""
+    if notification.signal_reference is not None:
+        return notification.signal_reference
+    if notification.commitment_id is None:
+        raise ValueError("notification.commitment_id is required when signal_reference is not set.")
     return f"commitment.{notification.notification_type.value.lower()}:{notification.commitment_id}"
 
 
@@ -311,6 +314,34 @@ def _log_routing_result(notification: CommitmentNotification, result: RoutingRes
         result.decision,
         result.channel,
     )
+
+
+def _build_notification_provenance(
+    notification: CommitmentNotification,
+    *,
+    signal_reference: str,
+) -> list[ProvenanceInput]:
+    """Build required provenance rows for commitment notifications."""
+    provenance: list[ProvenanceInput] = []
+    if notification.commitment_id is not None:
+        provenance.append(
+            ProvenanceInput(
+                input_type="commitment",
+                reference=str(notification.commitment_id),
+                description=f"Commitment {notification.notification_type.value} notification.",
+            )
+        )
+    if notification.provenance:
+        provenance.extend(notification.provenance)
+    if not provenance:
+        provenance.append(
+            ProvenanceInput(
+                input_type="notification",
+                reference=signal_reference,
+                description=f"{notification.notification_type.value} notification.",
+            )
+        )
+    return provenance
 
 
 def _clamp(value: float, *, minimum: float, maximum: float) -> float:

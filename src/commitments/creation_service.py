@@ -43,11 +43,23 @@ class CommitmentProvenanceLinkInput:
 
 
 @dataclass(frozen=True)
+class CommitmentSourceContext:
+    """Inbound source taxonomy captured at commitment intake time."""
+
+    source_actor: str | None
+    source_medium: str | None
+    source_uri: str | None
+    intake_channel: Literal["signal", "ingest"] | None
+
+
+@dataclass(frozen=True)
 class CommitmentCreationRequest:
     """Creation request combining validated input payloads with source metadata."""
 
     payload: CommitmentCreationInput | dict
-    source: CommitmentCreationSource | str
+    authority: CommitmentCreationSource | str | None = None
+    source_context: CommitmentSourceContext | None = None
+    source: CommitmentCreationSource | str | None = None
     confidence: float | None = None
     provenance: CommitmentProvenanceLinkInput | None = None
 
@@ -118,8 +130,9 @@ class CommitmentCreationService:
         if dedupe is not None:
             return CommitmentCreationDedupeRequired(status="dedupe_required", proposal=dedupe)
 
+        authority_source = _resolve_authority_source(request)
         authority = evaluate_creation_authority(
-            request.source,
+            authority_source,
             confidence=request.confidence,
         )
         if not authority.allow_create:
@@ -271,6 +284,15 @@ def _extract_schedule_id(error: Exception) -> int | None:
     return None
 
 
+def _resolve_authority_source(request: CommitmentCreationRequest) -> CommitmentCreationSource | str:
+    """Resolve authority source from explicit authority input or legacy source."""
+    if request.authority is not None:
+        return request.authority
+    if request.source is not None:
+        return request.source
+    raise ValueError("Commitment creation authority is required.")
+
+
 def _find_schedule_id_by_commitment(
     session_factory: Callable[[], Session],
     commitment_id: int,
@@ -313,6 +335,7 @@ __all__ = [
     "CommitmentCreationApprovalRequired",
     "CommitmentCreationDedupeRequired",
     "CommitmentCreationRequest",
+    "CommitmentSourceContext",
     "CommitmentCreationResult",
     "CommitmentCreationService",
     "CommitmentCreationSuccess",
