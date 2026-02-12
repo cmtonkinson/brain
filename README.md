@@ -87,21 +87,21 @@ What needs to be backed up, and why?
 
 ## Phased Implementation
 ### Phase 1: (✅ DONE) Text interaction + memory + MCP tools
-- Obsidian Local REST API integration (read/write)
-- Letta archival memory
-- Code-Mode (UTCP) for MCP tool calls
-- Signal messaging with allowlisted senders
-- Vault indexer + Qdrant semantic search
-- Optional observability stack (OTel)
+- ~~Obsidian Local REST API integration (read/write)~~
+- ~~Letta archival memory~~
+- ~~Code-Mode (UTCP) for MCP tool calls~~
+- ~~Signal messaging with allowlisted senders~~
+- ~~Vault indexer + Qdrant semantic search~~
+- ~~Optional observability stack (OTel)~~
 
 ### Phase 2: (✅ DONE) The "Assitant Triangle"
-- Skill framework + capability registry
-- Attention router + interruption policy
-- Commitment tracking + loop closure
-- Requires scheduled/background jobs, policy engine, ingestion pipeline~~
+- ~~Skill framework + capability registry~~
+- ~~Attention router + interruption policy~~
+- ~~Commitment tracking + loop closure~~
+- ~~Requires scheduled/background jobs, policy engine, ingestion pipeline~~~~
 
 ### Phase 3: (⚠️ IN WORK) Refactor
-- Define clean subsystem boundaries & responsibilities
+- ~~Define clean subsystem boundaries & responsibilities~~
 - Refactor codebase along clean boundaries with crisp public APIs
 - Extensive testing for enforcement of new semantics
 
