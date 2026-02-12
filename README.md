@@ -5,7 +5,7 @@ Brain is a local-first AI system grounded in data sovereignty and durable
 knowledge; cognitive infrastructure that prioritizes context, directs intent
 deliberately, and closes loops.
 
-![Status: Experimental](https://img.shields.io/badge/status-experimental-red)
+![Status: Experimental](https://img.shields.io/badge/Status-Experimental-red)
 ![CI](https://github.com/cmtonkinson/brain/actions/workflows/tests.yml/badge.svg?branch=main)
 ![Python: 3.13](https://img.shields.io/badge/Python-3.13-blue.svg)
 ![macOS](https://img.shields.io/badge/macOS-supported-lightgrey?logo=apple&logoColor=white)
