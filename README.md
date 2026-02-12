@@ -5,7 +5,7 @@
   </tr>
   <tr>
     <td>
-      <img src="img/brain-purple-128.png" width="128" height="128" alt="Brain" />
+      <img src="img/brain-purple-512.png" width="128" height="128" alt="Brain" />
     </td>
     <td>
       <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" />
