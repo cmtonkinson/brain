@@ -86,21 +86,21 @@ What needs to be backed up, and why?
 - TODO: Add Redis
 
 ## Phased Implementation
-~~### ✅ DONE Phase 1: Text interaction + memory + MCP tools
+### ✅ DONE Phase 1: Text interaction + memory + MCP tools
 - Obsidian Local REST API integration (read/write)
 - Letta archival memory
 - Code-Mode (UTCP) for MCP tool calls
 - Signal messaging with allowlisted senders
 - Vault indexer + Qdrant semantic search
-- Optional observability stack (OTel)~~
+- Optional observability stack (OTel)
 
-~~### ✅ DONE Phase 2: The "Assitant Triangle"
+### ✅ DONE Phase 2: The "Assitant Triangle"
 - Skill framework + capability registry
 - Attention router + interruption policy
 - Commitment tracking + loop closure
 - Requires scheduled/background jobs, policy engine, ingestion pipeline~~
 
-### Phase 3: Refactor to respect (in work)
+### ⚠️ Phase 3: Refactor to respect (in work)
 - Define clean subsystem boundaries & responsibilities
 - Refactor codebase along clean boundaries with crisp public APIs
 - Extensive testing for enforcement of new semantics
