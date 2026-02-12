@@ -1,13 +1,11 @@
 # Brain
-An exocortex for attention, memory, and action.
+An exocortex for attention, memory, and action. This is a local-first AI system
+grounded in data sovereignty and durable knowledge; cognitive infrastructure
+that prioritizes context, directs intent deliberately, and closes loops.
 
-Brain is a local-first AI system grounded in data sovereignty and durable
-knowledge; cognitive infrastructure that prioritizes context, directs intent
-deliberately, and closes loops.
-
-🚫 This project is in **active/experimental development and extremely
+_**NOTE:** 🚫 This project is in **active/experimental development and extremely
 unstable**. Anything may break at any time. Don't @ me, bro. When it gets a
-non-Cthullian version number, you'll know it's safe(r) to use.
+non-Cthullian version number, you'll know it's safe(r) to use._
 
 ![Status: Pre-Alpha](https://img.shields.io/badge/Pre--Alpha-red?style=flat)
 ![CI](https://github.com/cmtonkinson/brain/actions/workflows/tests.yml/badge.svg?branch=main)
