@@ -102,6 +102,7 @@ What _really_ needs to be backed up?
 - ~~Define clean subsystem boundaries & responsibilities~~
 - Refactor codebase along clean boundaries with crisp public APIs
 - Extensive testing for enforcement of new semantics
+- Review all documentation to ensure truth & alignment with actual system
 
 ### Phase 3: Voice + telephony + SMS (unstarted)
 - Local voice (whisper.cpp + Piper, openWakeWord)
