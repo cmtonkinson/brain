@@ -62,7 +62,9 @@ Internet you choose to aim it at.
 ### System Responsibilities & Boundaries
 Responsibilities & Boundaries are one of the most useful ways to think about the
 system architecture... just remember, this is conceptual - it's not a
-deployment, netowrk, or data flow diagram.
+deployment, network, or data flow diagram. This is a companion visualization for
+the full [Responsibilities &
+Boundaries](docs/responsibilities-and-boundaries.md) document.
 ![Responsibilities & Boundaries](img/responsibilities-and-boundaries.png)
 
 ## Data Protection
