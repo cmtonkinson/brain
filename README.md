@@ -98,7 +98,7 @@ What needs to be backed up, and why?
 - ~~Skill framework + capability registry~~
 - ~~Attention router + interruption policy~~
 - ~~Commitment tracking + loop closure~~
-- ~~Requires scheduled/background jobs, policy engine, ingestion pipeline~~~~
+- ~~Requires scheduled/background jobs, policy engine, ingestion pipeline~~
 
 ### Phase 3: (⚠️ IN WORK) Refactor
 - ~~Define clean subsystem boundaries & responsibilities~~
