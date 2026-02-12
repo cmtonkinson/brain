@@ -1,67 +1,66 @@
 # Brain -- Responsibility & Boundary Definition
-
 ## 1. Purpose
-
 This document defines the authoritative responsibility, ownership, and
-boundary model for Brain. It is ontological and normative. Refactoring
-and implementation must conform to this definition.
+boundary model for Brain.
 
-This document is supplemental to C4 Context, Container, and Component
-diagrams.
+TODO: ENVELOPES EVERYWHERE - WE'LL LOOK LIKE A POST OFFICE
 
 ------------------------------------------------------------------------
-
 # 2. Layer Model
+One way to think about boundaries within Brain is to think in terms of "Layers"
+where humans and LLMs are at the top (Layer 2) while data & integrations are at
+the bottom (Layer 0).
 
-Brain is structured into three layers.
+Invariant: No component within a given layer may depend on something from a
+higher level.
 
-## Layer 2 (L2) -- Actors
+## Layer 2 -- Actors
+Actors are external clients of Layer 1 services. The Agent process itself, along
+with Celery Workers/Beats, and any CLI tooling, are by definition Layer 2.
 
-Actors are external clients of Layer 1 services.
+The only means for L2/Actors to interact with the system are with the Brain SDK,
+which exposes the Layer 1 Service APIs through gRPC.
 
-Examples: - CLI - TUI - Agent runtime - Celery worker/beat
+L2 has no direct access to L0 Resources.
 
-Properties: - Cross-process and potentially cross-network - Must
-interact with L1 exclusively through defined service ports (via Brain
-SDK) - Must use Envelopes for all cross-boundary communication
+## Layer 1 -- Services
+The system's business logic (and associated public contracts) live in Layer 1.
 
-L2 has no direct access to Substrate or Adapters.
+Properties:
+- All Services within L1 are assumed process-local (single container/process)
+- Services may call each other directly (but only via public APIs)
+- No service may import another service's internal implementation
+- Services are reponsible for their own audit logs, per domain
+- Services must enforce relevant policies
+
+Limited "East-West" traffic is permitted within L1, subject to System dependency
+rules (see below for an explanation of the System Model).
+
+## Layer 0 -- Resources
+L0 contains persisted data and external integrations. Operations or changes at
+Layer 0 either are by definition, or may cause, permanent real world side
+effects (sending a message, deleting a file, etc).
+
+Data storage Resources are called Substrates. Examples include:
+- Obsidian vault
+- Postgres
+
+Integration Resources are called Adapters, and are assumed to interact with
+real-world external systems. Examples include:
+- GitHub MCP Server
+- Signal CLI
+
+For clarity:
+- L0 Resources are ONLY accessible by the appropriate L1 Services
+  - this is defined on a per Resource basis
+  - example: **only** the Vault Authority Service can access Obisidian
+  - example: **only** the Capability Engine can access MCP Servers
+- L2 has no direct access to L0 whatsoever.
 
 ------------------------------------------------------------------------
-
-## Layer 1 (L1) -- Services
-
-L1 defines the system's authoritative public service surface.
-
-Properties: - Services are assumed process-local (single
-container/process) - Services may call each other directly, but only via
-public ports - No service may import another service's internal
-implementation - All public interactions must be defined via a Port
-
-L1 is the only layer that: - Owns domain authority - Enforces policy -
-Owns audit logs per service domain
-
-------------------------------------------------------------------------
-
-## Layer 0 (L0) -- Substrate & Adapters
-
-L0 contains infrastructure and external integrations.
-
-Substrate examples: - Redis - Object store - Obsidian vault - Letta -
-External APIs (Signal, etc.)
-
-Adapters: - Concrete implementations that speak to substrate systems -
-Always considered non-local (process/network boundary) - Never directly
-accessed outside of the appropriate Authority Service
-
-L0 is never accessed directly by L2. L0 is never accessed directly by
-unrelated L1 services.
-
-------------------------------------------------------------------------
-
-# 3. System Model (Within L1)
-
-L1 is organized into three Systems.
+# 3. System Model
+Another way to think about boundaries within Brian are the three vertically
+integrated domains of functionality, or "Systems."
 
 ## State System
 
