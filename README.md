@@ -16,7 +16,7 @@ know it's safe(r) to use._
 ![Brain](img/brain-purple-512.png)
 
 ## Overview
-_Conceptually_, Brain has three parts:
+_Conceptually_, Brain has three primary domains:
 1. A **personal knowledge base**: durable, human-readable, locally-stored
    information. At its simplest, this could be a single (if very large) file.
 2. A **reasoning engine**: an LLM used to interpret context, propose actions,
@@ -24,37 +24,31 @@ _Conceptually_, Brain has three parts:
 3. A **capabilities**: governed operations that interact with the real world
    (files, calendars, messaging, etc.) via native APIs or MCP Servers.
 
-The **Agent** serves to coordinate these concerns while keeping them separate,
-inspectable, and under your control.
-
-_Architecturally_, the system takes advantage of Docker to isolate subsystems.
-In an ideal world every component would be containerized, but for various
-reasons (security boundaries, usability, performance) there are a limited number
-of services that need to run directly on your host system:
+_Operationally_, the system takes advantage of Docker for process isolattion. In
+an ideal world every process would be containerized, but for various reasons
+(security, usability, performance) there are a limited number of services that
+need to run directly on your host system:
 - Obsidian, with its various plugins &mdash; _required_
-- Ollama for local chat and embedding &mdash; _optional_
-- Any MCP Servers which require host access (e.g. for EventKit on MacOS) &mdash;
-  _optional_
-- The Host MCP Gateway proxy (an HTTP server) &mdash; _optional_
+- Ollama &mdash; _recommended_ for embedding, _optional_ for inference
+- The Host MCP Gateway server (an HTTP proxy) &mdash; _required assuming you
+  want MCP Servers with host-level access (e.g. EventKit on macOS)_
 
 All other services are run with Docker Compose:
+- Brain Agent, built with **Pydantic AI**
+- Brain Core, which houses all runtime State, Action, and Control services
+- Secure chat/messaging is run through **Signal**
 - Durable working state and application logs are kept in **Postgres**
 - Caching and queueing are handled by **Redis**
-- Semantic search for embeddings is powered by **Qdrant**
+- Vector search for semantic embeddings is powered by **Qdrant**
 - Memory (short- and long-term) is managed by **Letta**
-- Secure chat/messaging is run through **Signal**
-- And the Agent process itself, built with **Pydantic AI**, leverages 
-  - **LiteLLM** for model orchestration
-  - **UTCP Code-Mode** for MCP tool discovery/execution
 
-There is an optional OpenTelemetry-based observability stack (a separate but
-related Docker Compose) which leverages **Prometheus**, **Loki**, and
-**Grafana**.
+There is also an optional OpenTelemetry-based observability stack (a separate
+but related Docker Compose) which leverages **Prometheus**, **Loki**,
+**Grafana**, and **cAdvisor**.
 
 ## Architecture
 If you aren't familiar with the [C4 Model](https://c4model.com), I'd highly
-recommend it. It's a 30-minute video that will instantly make your diagrams
-simple, readable, durable, and useful.
+recommend it.
 
 ### C4 System Context Diagram
 It's just you, your agent, and your local system ...and whatever parts of the
@@ -72,7 +66,7 @@ deployment, netowrk, or data flow diagram.
 ![Responsibilities & Boundaries](img/responsibilities-and-boundaries.png)
 
 ## Data Protection
-What needs to be backed up, and why?
+What _really_ needs to be backed up?
 
 **High Priority —** Authoritative Information
 - Custom configuration & policy files under `~/.config/brain`
