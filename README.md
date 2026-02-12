@@ -100,7 +100,7 @@ What needs to be backed up, and why?
 - Commitment tracking + loop closure
 - Requires scheduled/background jobs, policy engine, ingestion pipeline~~
 
-### ⚠️ Phase 3: Refactor to respect (in work)
+### ⚠️ Phase 3: Refactor (in work)
 - Define clean subsystem boundaries & responsibilities
 - Refactor codebase along clean boundaries with crisp public APIs
 - Extensive testing for enforcement of new semantics
