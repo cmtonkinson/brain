@@ -243,10 +243,10 @@
           <mxGeometry height="240" width="1450" x="-200" y="440" as="geometry" />
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-50" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=40;" value="" vertex="1">
-          <mxGeometry height="580" width="360" x="-80" y="110" as="geometry" />
+          <mxGeometry height="560" width="360" x="-80" y="170" as="geometry" />
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-51" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=40;" value="" vertex="1">
-          <mxGeometry height="580" width="440" x="360" y="110" as="geometry" />
+          <mxGeometry height="560" width="440" x="360" y="170" as="geometry" />
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-103" edge="1" parent="1" source="unOKrO_ng0ZAvA2SlFJE-28" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.75;entryY=1;entryDx=0;entryDy=0;exitX=0.75;exitY=1;exitDx=0;exitDy=0;edgeStyle=orthogonalEdgeStyle;startArrow=classic;startFill=1;dashed=1;curved=0;" target="unOKrO_ng0ZAvA2SlFJE-30">
           <mxGeometry relative="1" as="geometry" />
@@ -310,7 +310,7 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-64" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=40;" value="" vertex="1">
-          <mxGeometry height="580" width="360" x="880" y="110" as="geometry" />
+          <mxGeometry height="560" width="360" x="880" y="170" as="geometry" />
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-65" parent="1" style="rounded=0;whiteSpace=wrap;html=1;movable=1;resizable=1;rotatable=1;deletable=1;editable=1;locked=0;connectable=1;fillColor=#76608a;strokeColor=#432D57;fontColor=#ffffff;" value="Commitment&lt;br&gt;Tracking &amp;amp;&lt;br&gt;Loop&lt;br&gt;Closure" vertex="1">
           <mxGeometry height="100" width="80" x="1120" y="230" as="geometry" />
@@ -331,13 +331,13 @@
           <mxGeometry height="140" width="300" x="910" y="490" as="geometry" />
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-78" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontStyle=1" value="&lt;h2&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;STATE&lt;/font&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt; SYSTEM&lt;/font&gt;&lt;/h2&gt;" vertex="1">
-          <mxGeometry height="30" width="170" x="-50" y="110" as="geometry" />
+          <mxGeometry height="30" width="170" x="-80" y="690" as="geometry" />
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-79" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontStyle=1" value="&lt;h2&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;ACTION&lt;/font&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt; SYSTEM&lt;/font&gt;&lt;/h2&gt;" vertex="1">
-          <mxGeometry height="30" width="170" x="390" y="110" as="geometry" />
+          <mxGeometry height="30" width="170" x="360" y="690" as="geometry" />
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-80" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontStyle=1" value="&lt;h2&gt;&lt;span style=&quot;&quot;&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt;CONTROL&lt;/font&gt;&lt;font style=&quot;font-size: 16px;&quot;&gt; SYSTEM&lt;/font&gt;&lt;/span&gt;&lt;/h2&gt;" vertex="1">
-          <mxGeometry height="30" width="170" x="910" y="110" as="geometry" />
+          <mxGeometry height="30" width="170" x="880" y="690" as="geometry" />
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-85" edge="1" parent="1" source="-nI3kN9ZCotlMl1iEThV-7" style="rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;exitX=0.5;exitY=1;exitDx=0;exitDy=0;curved=0;" target="unOKrO_ng0ZAvA2SlFJE-28">
           <mxGeometry relative="1" as="geometry">

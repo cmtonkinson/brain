@@ -54,38 +54,21 @@ There is an optional OpenTelemetry-based observability stack (a separate but rel
 **Prometheus**, **Loki**, and **Grafana**.
 
 ## Architecture
+If you aren't familiar with the [C4 Model](https://c4model.com), I'd highly
+recommend it.
 
-```mermaid
-flowchart TB
-    subgraph Tier0["Tier 0 — Authoritative Memory"]
-        Vault["Obsidian Vault<br/>canonical notes & promoted memory"]
-    end
-    LocalAPI["Local REST API"]
-    BrainAgent["Brain Agent<br/>(Pydantic AI + LiteLLM routing)"]
-    Signal["Signal API (E2EE messaging)"]
-    Qdrant["Qdrant (semantic search)"]
-    PostgresRedis["Postgres + Redis<br/>(state, logs, cache)"]
-    ObjectStore["Local Object Store<br/>(raw artifacts)"]
-    Letta["Letta (archival memory manager)"]
-    CodeMode["Code-Mode (UTCP)"]
-    subgraph MCP["Tier 1 tools & host APIs"]
-        MCPServers["MCP servers<br/>(filesystem, EventKit, GitHub)"]
-        HostGateway["Host MCP Gateway<br/>(macOS APIs)"]
-    end
-    Vault --> LocalAPI --> BrainAgent
-    BrainAgent --> Signal
-    BrainAgent --> Qdrant
-    BrainAgent --> PostgresRedis
-    BrainAgent --> ObjectStore
-    BrainAgent --> CodeMode --> MCPServers --> HostGateway
-    Letta -.-> BrainAgent
-    Letta --> Vault
-    Letta --> PostgresRedis
-```
+### C4 System Context Diagram
+![C4 Context](img/c4-context.png)
+
+### C4 Container Diagram
+![C4 Container](img/c4-container.png)
+
+### System Responsibilities & Boundaries
+![Responsibilities & Boundaries](img/responsibilities-and-boundaries.png)
 
 ## Data Tiers (Current State)
 **Tier 0 — Authoritative Information**
-- Configuration/policy files under `~/.config/brain`
+- Configuration & policy files under `~/.config/brain`
 - Obsidian vault (canonical knowledge, notes, promoted memory)
 - Postgres (operational state - scheduels, logs, etc.)
 - Local object store root_dir (raw artifacts)

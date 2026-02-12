@@ -12,6 +12,9 @@ coverage.xml
 data/
 logs/
 
+# Draw.io trash
+.$*drawio.bkp
+
 # For local agent management
 ralph.sh
 /work-*/

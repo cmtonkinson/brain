@@ -1,8 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# Usage: ./export-drawio.sh diagram.drawio
+# Map page indices to tab names
+declare -A PAGE_NAMES=(
+  [1]="c4-context"
+  [2]="c4-container"
+  [3]="c4-component"
+  [4]="responsibilities-and-boundaries"
+)
 
-DRAWIO_FILE="$1"
+DRAWIO_FILE="${1:-diagrams.drawio}"
 BORDER=40
 
 if [ ! -f "$DRAWIO_FILE" ]; then
@@ -10,19 +16,17 @@ if [ ! -f "$DRAWIO_FILE" ]; then
   exit 1
 fi
 
-# Get list of page names
-PAGES=$(drawio --export --format png --list-pages "$DRAWIO_FILE" 2>/dev/null)
-
-if [ -z "$PAGES" ]; then
-  echo "Error: Could not read pages from file"
-  exit 1
-fi
-
 # Export each page
-echo "$PAGES" | while IFS= read -r page; do
-  if [ -n "$page" ]; then
-    OUTPUT="${page// /_}.png"
-    echo "Exporting: $page -> $OUTPUT"
-    drawio --export --format png --border "$BORDER" --page-index "$page" --output "$OUTPUT" "$DRAWIO_FILE"
+for index in $(echo "${!PAGE_NAMES[@]}" | tr ' ' '\n' | sort -n); do
+  name="${PAGE_NAMES[$index]}"
+  output="${name}.png"
+
+  echo "Exporting page $index: $name -> $output"
+  drawio --export --format=png --border="$BORDER" --all-pages --page-index="$index" --output="$output" "$DRAWIO_FILE" 2>/dev/null
+
+  if [ $? -ne 0 ]; then
+    echo "Warning: Failed to export page $index"
   fi
 done
+
+echo "Done!"
