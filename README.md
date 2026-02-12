@@ -21,7 +21,7 @@ _Conceptually_, Brain has three primary domains:
    information. At its simplest, this could be a single (if very large) file.
 2. A **reasoning engine**: an LLM used to interpret context, propose actions,
    explain decisions, and interact with you conversationally.
-3. A **capabilities**: governed operations that interact with the real world
+3. **Capabilities**: governed operations that interact with the real world
    (files, calendars, messaging, etc.) via native APIs or MCP Servers.
 
 _Operationally_, the system takes advantage of Docker for process isolattion. In
