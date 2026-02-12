@@ -28,15 +28,15 @@ _Operationally_, the system takes advantage of Docker for process isolattion. In
 an ideal world every process would be containerized, but for various reasons
 (security, usability, performance) there are a limited number of services that
 need to run directly on your host system:
-- Obsidian, with its various plugins &mdash; _required_
-- Ollama &mdash; _recommended_ for embedding, _optional_ for inference
-- The Host MCP Gateway server (an HTTP proxy) &mdash; _required assuming you
+- **Obsidian**, with its various plugins &mdash; _required_
+- **Ollama** &mdash; _recommended_ for embedding, _optional_ for inference
+- The **Host MCP Gateway** server (an HTTP proxy) &mdash; _required assuming you
   want MCP Servers with host-level access (e.g. EventKit on macOS)_
 
 All other services are run with Docker Compose:
 - Brain Agent, built with **Pydantic AI**
 - Brain Core, which houses all runtime State, Action, and Control services
-- Secure chat/messaging is run through **Signal**
+- Secure messaging thanks to **Signal**
 - Durable working state and application logs are kept in **Postgres**
 - Caching and queueing are handled by **Redis**
 - Vector search for semantic embeddings is powered by **Qdrant**
