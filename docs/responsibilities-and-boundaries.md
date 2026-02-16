@@ -215,72 +215,46 @@ failure mode/state.
 ------------------------------------------------------------------------
 # SDKs
 ## Brain SDK
+The Brain SDK is the public interface for L2 Actors of Brain Core using
+Protobuf/gRPC. All L2 Actors must be built on the Brain SDK.
 
--   Defines gRPC transport over all L1 service ports
--   Used by L2 Actors
--   Must not contain business logic
--   Acts as client façade over service ports
+The SDK contains no business logic; it simply exists as an access layer across
+network boundaries to the pulic L1 Servie APIs.
 
 ## Capability SDK
-
--   Supports registration and management of Ops and Skills
--   Defines Capability metadata schema
--   Interacts with Capability Engine registry
+The Capability SDK supports registration and management of Capabilities (Ops and
+Skills) including both logic and metadata such as Policy declarations.
 
 ------------------------------------------------------------------------
-
 # Error Taxonomy
-
 Errors must be categorized as:
+- terminal
+- retriable
 
--   terminal
--   retriable
+Errors may carry optional category fields such as:
+- conflict
+- dependency
+- not_found
+- policy
+- validation
 
-Optional category field may include: - policy - validation -
-dependency - not_found - conflict
-
-Policy violations are terminal by definition.
-
-------------------------------------------------------------------------
-
-# Authority Gating
-
-Only Authority Services may access Substrate.
-
-Examples: - Obsidian access via Vault Authority - Letta via Memory
-Authority - Object store via Object Authority - Redis via Cache
-Authority - Signal via Switchboard
-
-Direct substrate access outside designated authority is prohibited.
+Policy violations are, by definition, terminal, and should not be retried.
 
 ------------------------------------------------------------------------
-
 # Policy Enforcement Rule
-
-All Capability invocations must pass through Capability Engine invoke().
-Skills must not directly call other Skills or Ops by importing
-implementations. Policy Engine evaluation is mandatory and recursive.
+All Capability invocations (including within Skills) MUST pass through
+Capability Engine invoke(). Skills must not directly call other Skills or Ops by
+importing implementations. Policy Engine evaluation is mandatory and recursive.
 
 ------------------------------------------------------------------------
-
 # Process Assumptions
-
--   L1 services are process-local but restricted to ports
--   L2 actors are process and network isolated
--   L0 substrate and adapters are non-local
+- L2 Actors are process-and-network isolated
+- L1 Services are process-local, but restricted to public APIs
+- L0 Substrates and Adapters are non-local
 
 ------------------------------------------------------------------------
-
 # Open Items
-
-\[PLACEHOLDER: Session/Conversation handle lifecycle for voice\]
-
 \[PLACEHOLDER: Principal identity model\]
 
-\[PLACEHOLDER: gRPC generation pipeline specifics\]
-
-\[PLACEHOLDER: Future delivery semantics refinement\]
-
 ------------------------------------------------------------------------
-
 _End of Responsibilities and Boundaries_ 
