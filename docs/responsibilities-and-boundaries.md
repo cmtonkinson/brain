@@ -196,9 +196,38 @@ consists of:
 - `timestamp`: _required_ int64
 - `kind`: _required_ string (one of `command`, `event`, `result`, `stream`)
 - `source`: _required_ string (e.g. `cli`, `agent`, `switchboard`, `job`)
-- `principal`: _required_ string (e.g. `operator`, `service:ctlc`, `system`)
+- `principal`: _required_ string (e.g. `operator`, `ctlc`, `core`)
 
-Envelope subclasses may append their own metadata.
+Envelope subclasses may append their own metadata. For clarity, `source` is the
+immediate emitting component for _"this" specific Envelope_, whereas `principal`
+is the accountable identity (effective authority) for the request. Components
+are required to propogate `principal` unchanged across calls.
+
+**Illustrative (non-literal) example:**  
+The Operator requests a reminder in 1 hour. A message is passed from the
+Switchboard to the Agent like:
+  - `source = "switchboard"`
+  - `principal = "operator"`
+which results in a message from the Agent to the Scheduler like:
+  - `source = "agent"`
+  - `principal = "operator"`
+
+An hour later, the schedule fires and the Job invokes the Agent like:
+  - `source = "job"`
+  - `principal = "operator"`
+which results in a message from the Agent to the Attention Router like:
+  - `source = "agent"`
+  - `principal = "operator"`
+
+### Tracing
+A `trace_id` scopes a single execution episode. In the example above, the first
+two Envelopes share the same `trace_id`. The third and fourth share a new
+`trace_id` (distinct from the first two), and the third sets `parent_id` to the
+`envelope_id` of the scheduling Envelope from the prior trace.
+
+This keeps each execution episode independently observable while preserving
+cross-trace causality for long-term lineage and analysis. This provides for a
+DAG of Envelopes across time, with trace segments as execution partitions.
 
 ### Payload
 Domain-specific content.
@@ -211,6 +240,20 @@ Domain-specific content.
 Most usually Errors will be present in a Result Envelope, but are not invalid in
 any Envelope. Errors are a collection of structured objects representing some
 failure mode/state.
+
+------------------------------------------------------------------------
+# Principal Identity Model
+The **Principal** is "who the system treats as accountable" for a given request.
+
+**`operator`** - All "personal assistant" work should utlimately roll up to the
+Operator.
+
+**`<service>`** (e.g. `switchboard`, `ctlc`) - This represents a Layer 1 Service
+acting autonomously. This is used when Serivces initiate work without an
+immediate upstream request (think scheduled jobs, inbound interrupt, etc.)
+
+**`core`** - Rare. Only used for truly low-level, cross-cutting "infrastructure"
+behavior which are explicitly system-meta in nature.
 
 ------------------------------------------------------------------------
 # SDKs
@@ -251,10 +294,6 @@ importing implementations. Policy Engine evaluation is mandatory and recursive.
 - L2 Actors are process-and-network isolated
 - L1 Services are process-local, but restricted to public APIs
 - L0 Substrates and Adapters are non-local
-
-------------------------------------------------------------------------
-# Open Items
-\[PLACEHOLDER: Principal identity model\]
 
 ------------------------------------------------------------------------
 _End of Responsibilities and Boundaries_ 
