@@ -31,8 +31,9 @@ Properties:
 - Services are reponsible for their own audit logs, per domain
 - Services must enforce relevant policies
 
-Limited "East-West" traffic is permitted within L1, subject to System dependency
-rules (see below for an explanation of the System Model).
+"East-West" traffic is permitted within L1, but each Service is only permitted
+to interact with the formal public APIs of others. See below for an explanation
+of the System Model of component boundaries.
 
 ## Layer 0: Resources
 L0 contains persisted data and external integrations. Operations or changes at
