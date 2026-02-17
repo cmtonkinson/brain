@@ -12,6 +12,10 @@ coverage.xml
 data/
 logs/
 
+# gRPC/protobuf
+generated/
+!generated/.keep
+
 # Draw.io trash
 .$*drawio.bkp
 
