@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package brain.state.v1;
 
-import "brain/envelope/v1/envelope.proto";
+import "brain/shared/v1/envelope.proto";
 import "google/protobuf/timestamp.proto";
 
 // Authority service for agent recall, context management, and memory lifecycle.
@@ -98,45 +98,45 @@ message ContextWindowRecord {
 }
 
 message PutContextTurnRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   SessionRef session                   = 2;
   string role                          = 3;
   string content                       = 4;
 }
 
 message PutContextTurnResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   ContextTurnRecord turn                        = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message GetContextWindowRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   SessionRef session                   = 2;
   int32 max_turns                      = 3;
   int32 max_memories                   = 4;
 }
 
 message GetContextWindowResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   ContextWindowRecord context_window            = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message CompactContextRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   SessionRef session                   = 2;
   int32 keep_recent_turns              = 3;
 }
 
 message CompactContextResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   bool compacted                                = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message ProposeMemoryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   MemoryClass memory_class             = 2;
   string category                      = 3;
   string title                         = 4;
@@ -146,60 +146,60 @@ message ProposeMemoryRequest {
 }
 
 message ProposeMemoryResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   MemoryProposalRecord proposal                 = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message ListMemoryProposalsRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   ProposalStatus status               = 2;
   int32 limit                         = 3;
 }
 
 message ListMemoryProposalsResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   repeated MemoryProposalRecord proposals       = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message PromoteMemoryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   MemoryProposalRef proposal_ref       = 2;
 }
 
 message PromoteMemoryResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   MemoryRecord memory                           = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message SearchMemoryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   string query                         = 2;
   MemoryStatus status                  = 3;
   int32 limit                          = 4;
 }
 
 message SearchMemoryResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   repeated MemoryRecord matches                 = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message GetMemoryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   MemoryRef ref                        = 2;
 }
 
 message GetMemoryResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   MemoryRecord memory                           = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message UpdateMemoryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   MemoryRef ref                        = 2;
   string category                      = 3;
   string title                         = 4;
@@ -209,18 +209,18 @@ message UpdateMemoryRequest {
 }
 
 message UpdateMemoryResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   MemoryRecord memory                           = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message ArchiveMemoryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   MemoryRef ref                        = 2;
 }
 
 message ArchiveMemoryResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   bool archived                                 = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }

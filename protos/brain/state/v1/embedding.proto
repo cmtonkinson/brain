@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package brain.state.v1;
 
-import "brain/envelope/v1/envelope.proto";
+import "brain/shared/v1/envelope.proto";
 import "google/protobuf/timestamp.proto";
 
 // Authority service for vector embeddings and similarity search.
@@ -38,7 +38,7 @@ message EmbeddingMatch {
 }
 
 message UpsertEmbeddingRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   EmbeddingRef ref                     = 2;
   repeated float vector                = 3;
   string model                         = 4;
@@ -46,37 +46,37 @@ message UpsertEmbeddingRequest {
 }
 
 message UpsertEmbeddingResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   EmbeddingRecord embedding                     = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message GetEmbeddingRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   EmbeddingRef ref                     = 2;
 }
 
 message GetEmbeddingResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   bool found                                    = 2;
   EmbeddingRecord embedding                     = 3;
-  repeated brain.envelope.v1.ErrorDetail errors = 4;
+  repeated brain.shared.v1.ErrorDetail errors = 4;
 }
 
 message DeleteEmbeddingRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   EmbeddingRef ref                     = 2;
   bool missing_ok                      = 3;
 }
 
 message DeleteEmbeddingResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   bool deleted                                  = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message SearchEmbeddingsRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   string namespace                    = 2;
   repeated float query_vector         = 3;
   int32 limit                         = 4;
@@ -84,7 +84,7 @@ message SearchEmbeddingsRequest {
 }
 
 message SearchEmbeddingsResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   repeated EmbeddingMatch matches               = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }

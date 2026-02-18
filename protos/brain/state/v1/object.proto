@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package brain.state.v1;
 
-import "brain/envelope/v1/envelope.proto";
+import "brain/shared/v1/envelope.proto";
 import "google/protobuf/timestamp.proto";
 
 // Authority service for durable blob/object storage.
@@ -29,50 +29,50 @@ message ObjectRecord {
 }
 
 message PutObjectRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   bytes content                        = 2;
   string content_type                  = 3;
 }
 
 message PutObjectResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   ObjectRecord object                           = 2;
   bool already_exists                           = 3;
-  repeated brain.envelope.v1.ErrorDetail errors = 4;
+  repeated brain.shared.v1.ErrorDetail errors = 4;
 }
 
 message GetObjectRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   ObjectRef ref                        = 2;
 }
 
 message GetObjectResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   ObjectRecord object                           = 2;
   bytes content                                 = 3;
-  repeated brain.envelope.v1.ErrorDetail errors = 4;
+  repeated brain.shared.v1.ErrorDetail errors = 4;
 }
 
 message StatObjectRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   ObjectRef ref                        = 2;
 }
 
 message StatObjectResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   bool found                                    = 2;
   ObjectRecord object                           = 3;
-  repeated brain.envelope.v1.ErrorDetail errors = 4;
+  repeated brain.shared.v1.ErrorDetail errors = 4;
 }
 
 message DeleteObjectRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   ObjectRef ref                        = 2;
   bool missing_ok                      = 3;
 }
 
 message DeleteObjectResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   bool deleted                                  = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }

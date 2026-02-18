@@ -5,9 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import grpc
-from brain.envelope.v1 import envelope_pb2
+from brain.shared.v1 import envelope_pb2
 from brain.state.v1 import embedding_pb2, embedding_pb2_grpc
-
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Result
 from packages.brain_shared.errors import ErrorCategory, ErrorDetail
 from services.state.embedding_authority.domain import (

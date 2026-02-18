@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package brain.state.v1;
 
-import "brain/envelope/v1/envelope.proto";
+import "brain/shared/v1/envelope.proto";
 import "google/protobuf/timestamp.proto";
 
 // Authority service for vault notes and directory operations.
@@ -44,97 +44,97 @@ message NoteSearchMatch {
 }
 
 message ListDirectoryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   DirectoryRef ref                    = 2;
 }
 
 message ListDirectoryResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   repeated DirectoryRef directory_paths         = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message CreateDirectoryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   DirectoryRef ref                    = 2;
   bool recursive                      = 3;
 }
 
 message CreateDirectoryResponse {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   DirectoryRef ref                    = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message DeleteDirectoryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   DirectoryRef ref                    = 2;
   bool recursive                      = 3;
   bool missing_ok                     = 4;
 }
 
 message DeleteDirectoryResponse {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   bool deleted                        = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message PutNoteRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   NoteRef ref                         = 2;
   string content                      = 3;
 }
 
 message PutNoteResponse {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   NoteRecord note                     = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message GetNoteRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   NoteRef ref                         = 2;
 }
 
 message GetNoteResponse {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   NoteRecord note                     = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message DeleteNoteRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   NoteRef ref                         = 2;
   bool missing_ok                     = 3;
 }
 
 message DeleteNoteResponse {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   bool deleted                        = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message AppendNoteRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   NoteRef ref                         = 2;
   string content                      = 3;
 }
 
 message AppendNoteResponse {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   NoteRecord note                     = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message SearchNotesRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   string query                        = 2;
   DirectoryRef scope                  = 3;
   int32 limit                         = 4;
 }
 
 message SearchNotesResponse {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   repeated NoteSearchMatch matches    = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }

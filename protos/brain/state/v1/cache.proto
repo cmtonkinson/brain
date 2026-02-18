@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package brain.state.v1;
 
-import "brain/envelope/v1/envelope.proto";
+import "brain/shared/v1/envelope.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -50,9 +50,9 @@ message QueueEnvelope {
   google.protobuf.Timestamp deliver_after    = 4;
 
   oneof payload {
-    brain.envelope.v1.CommandEnvelope command = 5;
-    brain.envelope.v1.EventEnvelope event     = 6;
-    brain.envelope.v1.ResultEnvelope result   = 7;
+    brain.shared.v1.CommandEnvelope command = 5;
+    brain.shared.v1.EventEnvelope event     = 6;
+    brain.shared.v1.ResultEnvelope result   = 7;
   }
 }
 
@@ -65,63 +65,63 @@ message LeasedQueueEnvelope {
 }
 
 message PutEntryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
-  CacheRef ref                         = 2;
-  bytes value                          = 3;
-  string content_type                  = 4;
-  google.protobuf.Duration ttl         = 5;
+  brain.shared.v1.EnvelopeMeta meta = 1;
+  CacheRef ref                      = 2;
+  bytes value                       = 3;
+  string content_type               = 4;
+  google.protobuf.Duration ttl      = 5;
 }
 
 message PutEntryResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
-  CacheEntry entry                              = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
+  CacheEntry entry                            = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message GetEntryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
-  CacheRef ref                         = 2;
+  brain.shared.v1.EnvelopeMeta meta = 1;
+  CacheRef ref                      = 2;
 }
 
 message GetEntryResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
-  bool found                                    = 2;
-  CacheEntry entry                              = 3;
-  repeated brain.envelope.v1.ErrorDetail errors = 4;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
+  bool found                                  = 2;
+  CacheEntry entry                            = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 4;
 }
 
 message DeleteEntryRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
-  CacheRef ref                         = 2;
-  bool missing_ok                      = 3;
+  brain.shared.v1.EnvelopeMeta meta = 1;
+  CacheRef ref                      = 2;
+  bool missing_ok                   = 3;
 }
 
 message DeleteEntryResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
-  bool deleted                                  = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
+  bool deleted                                = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message EnqueueRequest {
-  brain.envelope.v1.EnvelopeMeta meta      = 1;
-  QueueRef queue                           = 2;
-  google.protobuf.Timestamp deliver_after  = 3;
+  brain.shared.v1.EnvelopeMeta meta       = 1;
+  QueueRef queue                          = 2;
+  google.protobuf.Timestamp deliver_after = 3;
 
   oneof payload {
-    brain.envelope.v1.CommandEnvelope command = 4;
-    brain.envelope.v1.EventEnvelope event     = 5;
-    brain.envelope.v1.ResultEnvelope result   = 6;
+    brain.shared.v1.CommandEnvelope command = 4;
+    brain.shared.v1.EventEnvelope event     = 5;
+    brain.shared.v1.ResultEnvelope result   = 6;
   }
 }
 
 message EnqueueResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   string message_id                             = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message DequeueRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   QueueRef queue                      = 2;
   uint32 max_messages                 = 3;
   google.protobuf.Duration lease_for  = 4;
@@ -129,26 +129,26 @@ message DequeueRequest {
 }
 
 message DequeueResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   repeated LeasedQueueEnvelope messages         = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message AckRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   QueueRef queue                      = 2;
   string message_id                   = 3;
   string lease_id                     = 4;
 }
 
 message AckResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   bool acked                                    = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message NackRequest {
-  brain.envelope.v1.EnvelopeMeta meta      = 1;
+  brain.shared.v1.EnvelopeMeta meta      = 1;
   QueueRef queue                           = 2;
   string message_id                        = 3;
   string lease_id                          = 4;
@@ -156,18 +156,18 @@ message NackRequest {
 }
 
 message NackResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   bool nacked                                   = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message QueueDepthRequest {
-  brain.envelope.v1.EnvelopeMeta meta = 1;
+  brain.shared.v1.EnvelopeMeta meta = 1;
   QueueRef queue                      = 2;
 }
 
 message QueueDepthResponse {
-  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  brain.shared.v1.EnvelopeMeta meta           = 1;
   uint64 depth                                  = 2;
-  repeated brain.envelope.v1.ErrorDetail errors = 3;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
