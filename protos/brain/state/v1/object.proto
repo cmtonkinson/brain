@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package brain.state.v1;
+
+import "brain/envelope/v1/envelope.proto";
+import "google/protobuf/timestamp.proto";
+
+// Authority service for durable blob/object storage.
+service ObjectAuthorityService {
+  rpc PutObject(PutObjectRequest) returns (PutObjectResponse);
+  rpc GetObject(GetObjectRequest) returns (GetObjectResponse);
+  rpc StatObject(StatObjectRequest) returns (StatObjectResponse);
+  rpc DeleteObject(DeleteObjectRequest) returns (DeleteObjectResponse);
+}
+
+// Canonical content-addressed object key reference.
+message ObjectRef {
+  string object_key = 1;
+}
+
+// Materialized object metadata.
+message ObjectRecord {
+  ObjectRef ref                         = 1;
+  uint64 size_bytes                     = 2;
+  string digest_algorithm               = 3;
+  string digest_hex                     = 4;
+  string content_type                   = 5;
+  google.protobuf.Timestamp created_at  = 6;
+}
+
+message PutObjectRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  bytes content                        = 2;
+  string content_type                  = 3;
+}
+
+message PutObjectResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  ObjectRecord object                           = 2;
+  bool already_exists                           = 3;
+  repeated brain.envelope.v1.ErrorDetail errors = 4;
+}
+
+message GetObjectRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  ObjectRef ref                        = 2;
+}
+
+message GetObjectResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  ObjectRecord object                           = 2;
+  bytes content                                 = 3;
+  repeated brain.envelope.v1.ErrorDetail errors = 4;
+}
+
+message StatObjectRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  ObjectRef ref                        = 2;
+}
+
+message StatObjectResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  bool found                                    = 2;
+  ObjectRecord object                           = 3;
+  repeated brain.envelope.v1.ErrorDetail errors = 4;
+}
+
+message DeleteObjectRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  ObjectRef ref                        = 2;
+  bool missing_ok                      = 3;
+}
+
+message DeleteObjectResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  bool deleted                                  = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}

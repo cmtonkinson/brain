@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package brain.state.v1;
+
+import "brain/envelope/v1/envelope.proto";
+import "google/protobuf/timestamp.proto";
+
+// Authority service for vector embeddings and similarity search.
+service EmbeddingAuthorityService {
+  rpc UpsertEmbedding(UpsertEmbeddingRequest) returns (UpsertEmbeddingResponse);
+  rpc GetEmbedding(GetEmbeddingRequest) returns (GetEmbeddingResponse);
+  rpc DeleteEmbedding(DeleteEmbeddingRequest) returns (DeleteEmbeddingResponse);
+  rpc SearchEmbeddings(SearchEmbeddingsRequest) returns (SearchEmbeddingsResponse);
+}
+
+// Canonical embedding key scoped by namespace.
+message EmbeddingRef {
+  string namespace = 1;
+  string key = 2;
+}
+
+// Materialized embedding payload and metadata.
+message EmbeddingRecord {
+  EmbeddingRef ref                        = 1;
+  repeated float vector                   = 2;
+  string model                            = 3;
+  uint32 dimensions                       = 4;
+  map<string, string> metadata            = 5;
+  google.protobuf.Timestamp created_at    = 6;
+  google.protobuf.Timestamp updated_at    = 7;
+}
+
+// Similarity-search match with scored result.
+message EmbeddingMatch {
+  EmbeddingRef ref             = 1;
+  float score                  = 2;
+  map<string, string> metadata = 3;
+}
+
+message UpsertEmbeddingRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  EmbeddingRef ref                     = 2;
+  repeated float vector                = 3;
+  string model                         = 4;
+  map<string, string> metadata         = 5;
+}
+
+message UpsertEmbeddingResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  EmbeddingRecord embedding                     = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message GetEmbeddingRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  EmbeddingRef ref                     = 2;
+}
+
+message GetEmbeddingResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  bool found                                    = 2;
+  EmbeddingRecord embedding                     = 3;
+  repeated brain.envelope.v1.ErrorDetail errors = 4;
+}
+
+message DeleteEmbeddingRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  EmbeddingRef ref                     = 2;
+  bool missing_ok                      = 3;
+}
+
+message DeleteEmbeddingResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  bool deleted                                  = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message SearchEmbeddingsRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  string namespace                    = 2;
+  repeated float query_vector         = 3;
+  int32 limit                         = 4;
+  string model                        = 5;
+}
+
+message SearchEmbeddingsResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  repeated EmbeddingMatch matches               = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}

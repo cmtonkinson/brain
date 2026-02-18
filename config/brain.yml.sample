@@ -1,114 +1,15 @@
-# Brain configuration sample
-# All values shown here have defaults in src/config.py
-# Only uncomment and set values you want to override
-#
-# SECRETS go in ~/.config/brain/secrets.yml (see secrets.yml.sample)
+logging:
+  level: INFO
+  json_output: true
+  service: brain
+  environment: dev
 
-# Logging
-# log_level: "INFO"
-# log_level_otel: "INFO"
-
-# Obsidian configuration
-# obsidian:
-#   url: "http://host.docker.internal:27123"
-#   vault_path: "/Users/you/Documents/Vault"  # REQUIRED - set in user config
-#   root_folder: null  # Optional - used by memory.py for conversation paths
-#   conversation_folder: null  # Optional - used by memory.py
-#   summary_folder: null  # Optional - used by memory.py
-
-# LLM configuration
-# llm:
-#   model: "anthropic:claude-sonnet-4-20250514"
-#   base_url: null
-#   timeout: 600
-#   embed_model: "mxbai-embed-large"
-#   embed_base_url: "http://host.docker.internal:11434"
-
-# Database configuration
-# database:
-#   url: null  # Auto-generated from postgres_password if not set
-
-# Signal configuration
-# signal:
-#   url: "http://signal-api:8080"
-#   allowed_senders: []  # Deprecated - use allowed_senders_by_channel
-
-# Letta service configuration
-# letta:
-#   base_url: null
-#   agent_name: "brain"
-#   model: "ollama/llama3.1:8b"
-#   embed_model: "ollama/mxbai-embed-large:latest"
-#   bootstrap_on_start: false
-
-# Conversation storage
-# conversation:
-#   default_channel: "signal"
-#   summary_every_turns: 7
-
-# UTCP Code-Mode configuration
-# utcp:
-#   config_path: "~/.config/brain/utcp.json"
-#   code_mode_timeout: 30
-
-# Indexer configuration
-# indexer:
-#   interval_seconds: 0  # 0 = disabled
-#   chunk_tokens: 1000
-#   collection: "obsidian"
-
-# Object storage
-# objects:
-#   root_dir: "data/objects"
-
-# Anchoring configuration (Stage 4 Obsidian notes)
-# anchoring:
-#   attachments_dir: "_attachments/"
-#   visual_allowlist:
-#     - "jpg"
-#     - "jpeg"
-#     - "png"
-#     - "gif"
-
-# Scheduler configuration
-# scheduler:
-#   default_max_attempts: 3
-#   default_backoff_strategy: "exponential"  # fixed, exponential, or none
-#   backoff_base_seconds: 60
-#   failure_notification_threshold: 3
-#   failure_notification_throttle_seconds: 3600
-#   # Celery backend configuration
-#   celery_broker_url: "redis://redis:6379/1"
-#   celery_result_backend: "redis://redis:6379/2"
-#   celery_queue_name: "scheduler"
-
-# Routing configuration
-# routing:
-#   allowed_channels:
-#     - "signal"
-
-# Commitment tracking configuration
-# commitments:
-#   autonomous_transition_confidence_threshold: 0.8
-#   autonomous_creation_confidence_threshold: 0.9
-#   dedupe_confidence_threshold: 0.8
-#   dedupe_summary_length: 20
-#   audit_retention_days: 0
-#   review_day: "Saturday"
-#   review_time: "10:00"
-#   batch_reminder_time: "06:00"
-#   review_engagement_window_minutes: 60
-
-# Service URLs
-# qdrant:
-#   url: "http://qdrant:6333"
-# redis:
-#   url: "redis://redis:6379"
-
-# User configuration
-# user:
-#   name: "user"
-#   home_dir: "/Users/you"  # Should match filesystem MCP allowed directories
-#   timezone: "America/New_York"
-#   test_calendar_name: null
-#   test_reminder_list_name: null
+embedding:
+  request_timeout_seconds: 10.0
+  default_top_k: 10
+  max_top_k: 100
+  namespace_strategy: single_collection
+  collection_name: brain_embeddings
+  distance_metric: cosine
+  qdrant_url: http://qdrant:6333
+  model_dimensions: {}

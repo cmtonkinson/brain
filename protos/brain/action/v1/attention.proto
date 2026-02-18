@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+package brain.action.v1;
+
+// Placeholder for Attention service API definitions.

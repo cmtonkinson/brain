@@ -59,13 +59,13 @@ Internet you choose to aim it at.
 "That's a lot of processes!" Yeah... I know.
 ![C4 Container](img/c4-container.png)
 
-### System Responsibilities & Boundaries
-Responsibilities & Boundaries are one of the most useful ways to think about the
+### System Boundaries & Responsibilities
+Boundaries & Responsibilities are one of the most useful ways to think about the
 system architecture... just remember, this is conceptual - it's not a
 deployment, network, or data flow diagram. This is a companion visualization for
-the full [Responsibilities &
-Boundaries](docs/responsibilities-and-boundaries.md) document.
-![Responsibilities & Boundaries](img/responsibilities-and-boundaries.png)
+the full [Boundaries &
+Responsibilities](docs/boundaries-and-responsibilities.md) document.
+![Boundaries & Responsibilities](img/boundaries-and-responsibilities.png)
 
 ## Data Protection
 What _really_ needs to be backed up?

@@ -7,7 +7,7 @@ declare -A PAGE_NAMES=(
   [1]="c4-context"
   [2]="c4-container"
   [3]="c4-component"
-  [4]="responsibilities-and-boundaries"
+  [4]="boundaries-and-responsibilities"
 )
 
 INPUT_FILE="${1:-diagrams.drawio}"

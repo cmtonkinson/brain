@@ -1,0 +1,173 @@
+syntax = "proto3";
+
+package brain.state.v1;
+
+import "brain/envelope/v1/envelope.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// Authority service for disposable cache state and durable queueing.
+service CacheAuthorityService {
+  // Cache primitives
+  rpc PutEntry(PutEntryRequest) returns (PutEntryResponse);
+  rpc GetEntry(GetEntryRequest) returns (GetEntryResponse);
+  rpc DeleteEntry(DeleteEntryRequest) returns (DeleteEntryResponse);
+
+  // Queue primitives
+  rpc Enqueue(EnqueueRequest) returns (EnqueueResponse);
+  rpc Dequeue(DequeueRequest) returns (DequeueResponse);
+  rpc Ack(AckRequest) returns (AckResponse);
+  rpc Nack(NackRequest) returns (NackResponse);
+  rpc QueueDepth(QueueDepthRequest) returns (QueueDepthResponse);
+}
+
+// Canonical cache key.
+message CacheRef {
+  string namespace = 1;
+  string key = 2;
+}
+
+// Materialized cache entry.
+message CacheEntry {
+  CacheRef ref                         = 1;
+  bytes value                          = 2;
+  string content_type                  = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+// Canonical queue name.
+message QueueRef {
+  string name = 1;
+}
+
+// Queue item payload with compile-time envelope typing.
+message QueueEnvelope {
+  string message_id                          = 1;
+  QueueRef queue                             = 2;
+  google.protobuf.Timestamp enqueued_at      = 3;
+  google.protobuf.Timestamp deliver_after    = 4;
+
+  oneof payload {
+    brain.envelope.v1.CommandEnvelope command = 5;
+    brain.envelope.v1.EventEnvelope event     = 6;
+    brain.envelope.v1.ResultEnvelope result   = 7;
+  }
+}
+
+// Dequeued item plus lease ownership data.
+message LeasedQueueEnvelope {
+  QueueEnvelope envelope                      = 1;
+  string lease_id                             = 2;
+  google.protobuf.Timestamp lease_expires_at  = 3;
+  uint32 delivery_attempt                     = 4;
+}
+
+message PutEntryRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  CacheRef ref                         = 2;
+  bytes value                          = 3;
+  string content_type                  = 4;
+  google.protobuf.Duration ttl         = 5;
+}
+
+message PutEntryResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  CacheEntry entry                              = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message GetEntryRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  CacheRef ref                         = 2;
+}
+
+message GetEntryResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  bool found                                    = 2;
+  CacheEntry entry                              = 3;
+  repeated brain.envelope.v1.ErrorDetail errors = 4;
+}
+
+message DeleteEntryRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  CacheRef ref                         = 2;
+  bool missing_ok                      = 3;
+}
+
+message DeleteEntryResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  bool deleted                                  = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message EnqueueRequest {
+  brain.envelope.v1.EnvelopeMeta meta      = 1;
+  QueueRef queue                           = 2;
+  google.protobuf.Timestamp deliver_after  = 3;
+
+  oneof payload {
+    brain.envelope.v1.CommandEnvelope command = 4;
+    brain.envelope.v1.EventEnvelope event     = 5;
+    brain.envelope.v1.ResultEnvelope result   = 6;
+  }
+}
+
+message EnqueueResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  string message_id                             = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message DequeueRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  QueueRef queue                      = 2;
+  uint32 max_messages                 = 3;
+  google.protobuf.Duration lease_for  = 4;
+  google.protobuf.Duration wait_for   = 5;
+}
+
+message DequeueResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  repeated LeasedQueueEnvelope messages         = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message AckRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  QueueRef queue                      = 2;
+  string message_id                   = 3;
+  string lease_id                     = 4;
+}
+
+message AckResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  bool acked                                    = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message NackRequest {
+  brain.envelope.v1.EnvelopeMeta meta      = 1;
+  QueueRef queue                           = 2;
+  string message_id                        = 3;
+  string lease_id                          = 4;
+  google.protobuf.Duration requeue_after   = 5;
+}
+
+message NackResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  bool nacked                                   = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message QueueDepthRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  QueueRef queue                      = 2;
+}
+
+message QueueDepthResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  uint64 depth                                  = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}

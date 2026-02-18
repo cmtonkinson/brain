@@ -1,0 +1,226 @@
+syntax = "proto3";
+
+package brain.state.v1;
+
+import "brain/envelope/v1/envelope.proto";
+import "google/protobuf/timestamp.proto";
+
+// Authority service for agent recall, context management, and memory lifecycle.
+service MemoryAuthorityService {
+  rpc PutContextTurn(PutContextTurnRequest) returns (PutContextTurnResponse);
+  rpc GetContextWindow(GetContextWindowRequest) returns (GetContextWindowResponse);
+  rpc CompactContext(CompactContextRequest) returns (CompactContextResponse);
+  rpc ProposeMemory(ProposeMemoryRequest) returns (ProposeMemoryResponse);
+  rpc ListMemoryProposals(ListMemoryProposalsRequest) returns (ListMemoryProposalsResponse);
+  rpc PromoteMemory(PromoteMemoryRequest) returns (PromoteMemoryResponse);
+  rpc SearchMemory(SearchMemoryRequest) returns (SearchMemoryResponse);
+  rpc GetMemory(GetMemoryRequest) returns (GetMemoryResponse);
+  rpc UpdateMemory(UpdateMemoryRequest) returns (UpdateMemoryResponse);
+  rpc ArchiveMemory(ArchiveMemoryRequest) returns (ArchiveMemoryResponse);
+}
+
+enum MemoryClass {
+  MEMORY_CLASS_UNSPECIFIED = 0;
+  MEMORY_CLASS_EPHEMERAL = 1;
+  MEMORY_CLASS_OPERATIONAL = 2;
+  MEMORY_CLASS_DECLARATIVE = 3;
+}
+
+enum MemoryStatus {
+  MEMORY_STATUS_UNSPECIFIED = 0;
+  MEMORY_STATUS_ACTIVE = 1;
+  MEMORY_STATUS_ARCHIVED = 2;
+}
+
+enum ProposalStatus {
+  PROPOSAL_STATUS_UNSPECIFIED = 0;
+  PROPOSAL_STATUS_PENDING = 1;
+  PROPOSAL_STATUS_ACCEPTED = 2;
+  PROPOSAL_STATUS_REJECTED = 3;
+}
+
+message SessionRef {
+  string session_id = 1;
+}
+
+message ContextTurnRef {
+  string turn_id = 1;
+}
+
+message MemoryRef {
+  string memory_id = 1;
+}
+
+message MemoryProposalRef {
+  string proposal_id = 1;
+}
+
+message ContextTurnRecord {
+  ContextTurnRef ref                     = 1;
+  SessionRef session                     = 2;
+  string role                            = 3;
+  string content                         = 4;
+  google.protobuf.Timestamp created_at   = 5;
+}
+
+message MemoryRecord {
+  MemoryRef ref                          = 1;
+  MemoryClass memory_class               = 2;
+  MemoryStatus status                    = 3;
+  string category                        = 4;
+  string title                           = 5;
+  string content                         = 6;
+  string provenance                      = 7;
+  double confidence                      = 8;
+  string canonical_uri                   = 9;
+  google.protobuf.Timestamp created_at   = 10;
+  google.protobuf.Timestamp updated_at   = 11;
+}
+
+message MemoryProposalRecord {
+  MemoryProposalRef ref                  = 1;
+  ProposalStatus status                  = 2;
+  MemoryClass memory_class               = 3;
+  string category                        = 4;
+  string title                           = 5;
+  string content                         = 6;
+  string provenance                      = 7;
+  double confidence                      = 8;
+  google.protobuf.Timestamp created_at   = 9;
+  google.protobuf.Timestamp updated_at   = 10;
+}
+
+message ContextWindowRecord {
+  SessionRef session                           = 1;
+  repeated ContextTurnRecord recent_turns      = 2;
+  repeated MemoryRecord recalled_memories      = 3;
+  repeated string summaries                    = 4;
+}
+
+message PutContextTurnRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  SessionRef session                   = 2;
+  string role                          = 3;
+  string content                       = 4;
+}
+
+message PutContextTurnResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  ContextTurnRecord turn                        = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message GetContextWindowRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  SessionRef session                   = 2;
+  int32 max_turns                      = 3;
+  int32 max_memories                   = 4;
+}
+
+message GetContextWindowResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  ContextWindowRecord context_window            = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message CompactContextRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  SessionRef session                   = 2;
+  int32 keep_recent_turns              = 3;
+}
+
+message CompactContextResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  bool compacted                                = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message ProposeMemoryRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  MemoryClass memory_class             = 2;
+  string category                      = 3;
+  string title                         = 4;
+  string content                       = 5;
+  string provenance                    = 6;
+  double confidence                    = 7;
+}
+
+message ProposeMemoryResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  MemoryProposalRecord proposal                 = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message ListMemoryProposalsRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  ProposalStatus status               = 2;
+  int32 limit                         = 3;
+}
+
+message ListMemoryProposalsResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  repeated MemoryProposalRecord proposals       = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message PromoteMemoryRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  MemoryProposalRef proposal_ref       = 2;
+}
+
+message PromoteMemoryResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  MemoryRecord memory                           = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message SearchMemoryRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  string query                         = 2;
+  MemoryStatus status                  = 3;
+  int32 limit                          = 4;
+}
+
+message SearchMemoryResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  repeated MemoryRecord matches                 = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message GetMemoryRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  MemoryRef ref                        = 2;
+}
+
+message GetMemoryResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  MemoryRecord memory                           = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message UpdateMemoryRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  MemoryRef ref                        = 2;
+  string category                      = 3;
+  string title                         = 4;
+  string content                       = 5;
+  string provenance                    = 6;
+  double confidence                    = 7;
+}
+
+message UpdateMemoryResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  MemoryRecord memory                           = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
+
+message ArchiveMemoryRequest {
+  brain.envelope.v1.EnvelopeMeta meta = 1;
+  MemoryRef ref                        = 2;
+}
+
+message ArchiveMemoryResponse {
+  brain.envelope.v1.EnvelopeMeta meta           = 1;
+  bool archived                                 = 2;
+  repeated brain.envelope.v1.ErrorDetail errors = 3;
+}
