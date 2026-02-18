@@ -33,10 +33,9 @@ $(PROTO_STAMP): $(PROTO_FILES)
 	@touch $(PROTO_STAMP)
 
 test: build
-#	@if [ -x ./test.sh ]; then \
-#		./test.sh; \
-#	elif command -v pytest >/dev/null 2>&1; then \
-#		pytest; \
-#	else \
-#		echo "No test runner found."; \
-#	fi
+	@if command -v pytest >/dev/null 2>&1; then \
+		pytest -q tests; \
+	else \
+		echo "No test runner found."; \
+		exit 1; \
+	fi
