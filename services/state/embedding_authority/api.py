@@ -6,16 +6,21 @@ from datetime import datetime, timezone
 
 import grpc
 from brain.envelope.v1 import envelope_pb2
-from brain.state.v1 import embedding_pb2
-from brain.state.v1 import embedding_pb2_grpc
+from brain.state.v1 import embedding_pb2, embedding_pb2_grpc
 
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Result
 from packages.brain_shared.errors import ErrorCategory, ErrorDetail
-from services.state.embedding_authority.domain import EmbeddingMatch, EmbeddingRecord, EmbeddingRef
+from services.state.embedding_authority.domain import (
+    EmbeddingMatch,
+    EmbeddingRecord,
+    EmbeddingRef,
+)
 from services.state.embedding_authority.service import EmbeddingAuthorityService
 
 
-class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityServiceServicer):
+class GrpcEmbeddingAuthorityService(
+    embedding_pb2_grpc.EmbeddingAuthorityServiceServicer
+):
     """gRPC servicer that delegates to the in-process EAS API contract."""
 
     def __init__(self, service: EmbeddingAuthorityService) -> None:
@@ -239,7 +244,11 @@ def _abort_for_transport_errors(
     context: grpc.ServicerContext,
     result: Result[object],
 ) -> None:
-    """Abort gRPC request for transport-level failures (Rule A)."""
+    """Abort gRPC request for transport/infrastructure failures only.
+
+    Domain errors remain in the typed envelope error list. Infrastructure
+    failures are surfaced as gRPC status failures.
+    """
     for error in result.errors:
         if error.category == ErrorCategory.DEPENDENCY:
             context.abort(grpc.StatusCode.UNAVAILABLE, _transport_detail(error))

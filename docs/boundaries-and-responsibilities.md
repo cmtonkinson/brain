@@ -291,6 +291,16 @@ Errors may carry optional category fields such as:
 
 Policy violations are, by definition, terminal, and should not be retried.
 
+## Transport vs Domain Failure Mapping
+To avoid ambiguity at service boundaries:
+- **Domain failures** (validation, conflict, not_found, policy) are returned as
+  typed structured errors in the envelope-like response.
+- **Transport/infrastructure failures** (dependency unavailable, internal
+  runtime faults) are surfaced as transport failures on gRPC status codes.
+
+This keeps domain behavior explicit and machine-readable while preserving normal
+transport semantics for network/runtime outages.
+
 ------------------------------------------------------------------------
 # Policy Enforcement Rule
 All Capability invocations (including within Skills) MUST pass through
