@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Mapping, Sequence
 
-from packages.brain_shared.envelope import EnvelopeMeta, Result, failure, success
+from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Result, failure, success
 from packages.brain_shared.errors import ErrorDetail, codes, dependency_error, not_found_error, validation_error
 from services.state.embedding_authority.domain import EmbeddingMatch, EmbeddingRecord, EmbeddingRef
+from services.state.embedding_authority.interfaces import EmbeddingBackend
 from services.state.embedding_authority.qdrant_backend import QdrantEmbeddingBackend
 from services.state.embedding_authority.service import EmbeddingAuthorityService
 from services.state.embedding_authority.settings import EmbeddingSettings
@@ -15,14 +16,16 @@ from services.state.embedding_authority.settings import EmbeddingSettings
 class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     """Default EAS implementation backed by Qdrant."""
 
-    def __init__(self, settings: EmbeddingSettings) -> None:
+    def __init__(self, settings: EmbeddingSettings, backend: EmbeddingBackend) -> None:
         self._settings = settings
-        self._backend = QdrantEmbeddingBackend(settings=settings)
+        self._backend = backend
 
     @classmethod
     def from_config(cls, config: Mapping[str, object]) -> "DefaultEmbeddingAuthorityService":
-        """Construct service from merged application config mapping."""
-        return cls(settings=EmbeddingSettings.from_config(config))
+        """Construct service and backend from merged application config mapping."""
+        settings = EmbeddingSettings.from_config(config)
+        backend = QdrantEmbeddingBackend(settings=settings)
+        return cls(settings=settings, backend=backend)
 
     def upsert_embedding(
         self,
@@ -34,7 +37,8 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         metadata: Mapping[str, str],
     ) -> Result[EmbeddingRecord]:
         """Upsert one embedding record."""
-        errors = self._validate_ref_and_model(ref=ref, model=model)
+        errors = self._validate_meta(meta=meta)
+        errors.extend(self._validate_ref_and_model(ref=ref, model=model))
         if errors:
             return failure(meta=meta, errors=errors)
 
@@ -75,7 +79,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 model=model,
                 metadata={str(key): str(value) for key, value in metadata.items()},
             )
-            return success(meta=meta, payload=stored.record)
+            return success(meta=meta, payload=stored)
         except Exception as exc:  # noqa: BLE001
             return failure(
                 meta=meta,
@@ -96,7 +100,8 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         ref: EmbeddingRef,
     ) -> Result[EmbeddingRecord]:
         """Read one embedding record."""
-        errors = self._validate_ref(ref=ref)
+        errors = self._validate_meta(meta=meta)
+        errors.extend(self._validate_ref(ref=ref))
         if errors:
             return failure(meta=meta, errors=errors)
 
@@ -136,7 +141,8 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         missing_ok: bool,
     ) -> Result[bool]:
         """Delete one embedding record."""
-        errors = self._validate_ref(ref=ref)
+        errors = self._validate_meta(meta=meta)
+        errors.extend(self._validate_ref(ref=ref))
         if errors:
             return failure(meta=meta, errors=errors, payload=False)
 
@@ -178,6 +184,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         model: str,
     ) -> Result[list[EmbeddingMatch]]:
         """Search embeddings by nearest-neighbor similarity."""
+        meta_errors = self._validate_meta(meta=meta)
+        if meta_errors:
+            return failure(meta=meta, errors=meta_errors, payload=[])
+
         if not namespace:
             return failure(
                 meta=meta,
@@ -255,6 +265,23 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                     metadata={"known_models": ",".join(sorted(self._settings.model_dimensions.keys()))},
                 )
             )
+        return errors
+
+    def _validate_meta(self, *, meta: EnvelopeMeta) -> list[ErrorDetail]:
+        """Validate required envelope metadata fields for service calls."""
+        errors: list[ErrorDetail] = []
+        if not meta.envelope_id:
+            errors.append(validation_error("meta.envelope_id is required", code=codes.MISSING_REQUIRED_FIELD))
+        if not meta.trace_id:
+            errors.append(validation_error("meta.trace_id is required", code=codes.MISSING_REQUIRED_FIELD))
+        if meta.timestamp is None:
+            errors.append(validation_error("meta.timestamp is required", code=codes.MISSING_REQUIRED_FIELD))
+        if meta.kind == EnvelopeKind.UNSPECIFIED:
+            errors.append(validation_error("meta.kind must be specified", code=codes.INVALID_ARGUMENT))
+        if not meta.source:
+            errors.append(validation_error("meta.source is required", code=codes.MISSING_REQUIRED_FIELD))
+        if not meta.principal:
+            errors.append(validation_error("meta.principal is required", code=codes.MISSING_REQUIRED_FIELD))
         return errors
 
     def _validate_ref(self, *, ref: EmbeddingRef) -> list[ErrorDetail]:

@@ -229,8 +229,7 @@ def _error_category_to_proto(category: ErrorCategory) -> envelope_pb2.ErrorCateg
         ErrorCategory.NOT_FOUND: envelope_pb2.ERROR_CATEGORY_NOT_FOUND,
         ErrorCategory.POLICY: envelope_pb2.ERROR_CATEGORY_POLICY,
         ErrorCategory.DEPENDENCY: envelope_pb2.ERROR_CATEGORY_DEPENDENCY,
-        # protobuf taxonomy currently has no INTERNAL category.
-        ErrorCategory.INTERNAL: envelope_pb2.ERROR_CATEGORY_UNSPECIFIED,
+        ErrorCategory.INTERNAL: envelope_pb2.ERROR_CATEGORY_INTERNAL,
     }
     return mapping.get(category, envelope_pb2.ERROR_CATEGORY_UNSPECIFIED)
 
@@ -243,12 +242,11 @@ def _abort_for_transport_errors(
     """Abort gRPC request for transport-level failures (Rule A)."""
     for error in result.errors:
         if error.category == ErrorCategory.DEPENDENCY:
-            context.abort(
-                grpc.StatusCode.UNAVAILABLE,
-                f"{error.code}: {error.message}",
-            )
-        if error.category == ErrorCategory.INTERNAL:
-            context.abort(
-                grpc.StatusCode.INTERNAL,
-                f"{error.code}: {error.message}",
-            )
+            context.abort(grpc.StatusCode.UNAVAILABLE, _transport_detail(error))
+        elif error.category == ErrorCategory.INTERNAL:
+            context.abort(grpc.StatusCode.INTERNAL, _transport_detail(error))
+
+
+def _transport_detail(error: ErrorDetail) -> str:
+    """Return deterministic error detail formatting for gRPC aborts."""
+    return f"code={error.code}; message={error.message}"

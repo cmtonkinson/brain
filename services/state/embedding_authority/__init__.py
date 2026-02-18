@@ -1,9 +1,11 @@
-"""Embedding Authority Service package exports."""
+"""Embedding Authority Service native package exports.
 
-from services.state.embedding_authority.api import (
-    GrpcEmbeddingAuthorityService,
-    register_embedding_authority_service,
-)
+This module intentionally exports only the native, in-process EAS API surface.
+The gRPC adapter layer is available from `services.state.embedding_authority.api`
+and is kept out of default imports to preserve transport optionality for
+east-west callers.
+"""
+
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Result
 from packages.brain_shared.errors import ErrorCategory, ErrorDetail
 from services.state.embedding_authority.domain import EmbeddingMatch, EmbeddingRecord, EmbeddingRef
@@ -22,7 +24,5 @@ __all__ = [
     "EnvelopeMeta",
     "ErrorCategory",
     "ErrorDetail",
-    "GrpcEmbeddingAuthorityService",
     "Result",
-    "register_embedding_authority_service",
 ]

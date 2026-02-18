@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from .meta import EnvelopeMeta
+from .meta import EnvelopeKind, EnvelopeMeta
 
 
 def validate_meta(meta: EnvelopeMeta) -> None:
@@ -16,6 +16,10 @@ def validate_meta(meta: EnvelopeMeta) -> None:
         raise ValueError("metadata.envelope_id is required")
     if not meta.trace_id:
         raise ValueError("metadata.trace_id is required")
+    if meta.timestamp is None:
+        raise ValueError("metadata.timestamp is required")
+    if meta.kind == EnvelopeKind.UNSPECIFIED:
+        raise ValueError("metadata.kind must be specified")
     if not meta.source:
         raise ValueError("metadata.source is required")
     if not meta.principal:

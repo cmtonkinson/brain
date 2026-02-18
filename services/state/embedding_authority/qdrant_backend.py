@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import Lock
 from typing import Iterable, Sequence
@@ -12,13 +11,6 @@ from qdrant_client.http import models
 
 from services.state.embedding_authority.domain import EmbeddingMatch, EmbeddingRecord, EmbeddingRef
 from services.state.embedding_authority.settings import EmbeddingSettings
-
-
-@dataclass(frozen=True)
-class StoredEmbedding:
-    """Backend persistence response payload for a stored embedding."""
-
-    record: EmbeddingRecord
 
 
 class QdrantEmbeddingBackend:
@@ -37,7 +29,7 @@ class QdrantEmbeddingBackend:
         vector: Sequence[float],
         model: str,
         metadata: dict[str, str],
-    ) -> StoredEmbedding:
+    ) -> EmbeddingRecord:
         """Insert or replace an embedding record."""
         vector_size = len(vector)
         self._ensure_collection(vector_size)
@@ -67,16 +59,14 @@ class QdrantEmbeddingBackend:
             wait=True,
         )
 
-        return StoredEmbedding(
-            record=EmbeddingRecord(
-                ref=ref,
-                vector=tuple(float(value) for value in vector),
-                model=model,
-                dimensions=vector_size,
-                metadata=dict(metadata),
-                created_at=created_at,
-                updated_at=now,
-            )
+        return EmbeddingRecord(
+            ref=ref,
+            vector=tuple(float(value) for value in vector),
+            model=model,
+            dimensions=vector_size,
+            metadata=dict(metadata),
+            created_at=created_at,
+            updated_at=now,
         )
 
     def get(self, *, ref: EmbeddingRef) -> EmbeddingRecord | None:
