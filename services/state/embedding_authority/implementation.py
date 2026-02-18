@@ -6,6 +6,11 @@ from typing import Mapping, Sequence
 
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Result, failure, success
 from packages.brain_shared.errors import ErrorDetail, codes, dependency_error, not_found_error, validation_error
+from services.state.embedding_authority.data import (
+    EmbeddingAuditRepository,
+    EmbeddingDataUnitOfWork,
+    EmbeddingPostgresRuntime,
+)
 from services.state.embedding_authority.domain import EmbeddingMatch, EmbeddingRecord, EmbeddingRef
 from services.state.embedding_authority.interfaces import EmbeddingBackend
 from services.state.embedding_authority.qdrant_backend import QdrantEmbeddingBackend
@@ -14,18 +19,38 @@ from services.state.embedding_authority.settings import EmbeddingSettings
 
 
 class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
-    """Default EAS implementation backed by Qdrant."""
+    """Default EAS implementation backed by Qdrant with EAS-owned DB wiring."""
 
-    def __init__(self, settings: EmbeddingSettings, backend: EmbeddingBackend) -> None:
+    def __init__(
+        self,
+        settings: EmbeddingSettings,
+        backend: EmbeddingBackend,
+        *,
+        db_runtime: EmbeddingPostgresRuntime | None = None,
+        audit_repository: EmbeddingAuditRepository | None = None,
+        data_uow: EmbeddingDataUnitOfWork | None = None,
+    ) -> None:
         self._settings = settings
         self._backend = backend
+        self._db_runtime = db_runtime
+        self._audit_repository = audit_repository
+        self._data_uow = data_uow
 
     @classmethod
     def from_config(cls, config: Mapping[str, object]) -> "DefaultEmbeddingAuthorityService":
         """Construct service and backend from merged application config mapping."""
         settings = EmbeddingSettings.from_config(config)
         backend = QdrantEmbeddingBackend(settings=settings)
-        return cls(settings=settings, backend=backend)
+        db_runtime = EmbeddingPostgresRuntime.from_config(config)
+        audit_repository = EmbeddingAuditRepository(db_runtime.schema_sessions)
+        data_uow = EmbeddingDataUnitOfWork(db_runtime.schema_sessions)
+        return cls(
+            settings=settings,
+            backend=backend,
+            db_runtime=db_runtime,
+            audit_repository=audit_repository,
+            data_uow=data_uow,
+        )
 
     def upsert_embedding(
         self,

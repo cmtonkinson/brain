@@ -4,7 +4,7 @@ GENERATED_DIR := generated
 PROTO_FILES   := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
 PROTO_STAMP   := $(GENERATED_DIR)/.proto-stamp
 
-.PHONY: all deps clean build test
+.PHONY: all deps clean build test migrate
 
 all: clean build test
 
@@ -39,3 +39,19 @@ test: build
 		echo "No test runner found."; \
 		exit 1; \
 	fi
+
+migrate:
+	@python -c "import alembic, psycopg" >/dev/null 2>&1 || \
+		( echo "Missing migration dependencies in current Python environment."; \
+		  echo "Install with: make deps"; \
+		  exit 1 )
+	@BRAIN_POSTGRES__URL="$${BRAIN_POSTGRES__URL:-postgresql+psycopg://brain:brain@localhost:5432/brain}" \
+		bash -lc '\
+			set -euo pipefail; \
+			shopt -s nullglob; \
+			for layer in state action control; do \
+				for ini in services/$$layer/*/migrations/alembic.ini; do \
+					echo "Running migrations: $$ini"; \
+					python -m alembic -c "$$ini" upgrade head; \
+				done; \
+			done'

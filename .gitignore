@@ -9,7 +9,8 @@ config/brain.yml
 .ruff_cache/
 __pycache__
 coverage.xml
-data/
+/data/
+/deprecated/data/
 logs/
 
 # gRPC/protobuf

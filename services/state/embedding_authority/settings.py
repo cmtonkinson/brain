@@ -17,6 +17,7 @@ class EmbeddingSettings:
     collection_name: str
     distance_metric: str
     qdrant_url: str
+    postgres_schema: str
     model_dimensions: dict[str, int]
 
     @classmethod
@@ -31,6 +32,7 @@ class EmbeddingSettings:
         collection_name = str(embedding.get("collection_name", "brain_embeddings"))
         distance_metric = str(embedding.get("distance_metric", "cosine"))
         qdrant_url = str(embedding.get("qdrant_url", "http://qdrant:6333"))
+        postgres_schema = str(embedding.get("postgres_schema", "state_embedding_authority"))
 
         raw_model_dimensions = embedding.get("model_dimensions", {})
         model_dimensions: dict[str, int] = {}
@@ -45,6 +47,7 @@ class EmbeddingSettings:
             collection_name=collection_name,
             distance_metric=distance_metric,
             qdrant_url=qdrant_url,
+            postgres_schema=postgres_schema,
             model_dimensions=model_dimensions,
         )
         settings.validate()
@@ -66,5 +69,7 @@ class EmbeddingSettings:
             raise ValueError("embedding.collection_name is required")
         if not self.qdrant_url:
             raise ValueError("embedding.qdrant_url is required")
+        if not self.postgres_schema:
+            raise ValueError("embedding.postgres_schema is required")
         if self.distance_metric not in {"cosine", "dot", "euclid"}:
             raise ValueError("embedding.distance_metric must be one of: cosine, dot, euclid")

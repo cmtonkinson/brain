@@ -18,6 +18,14 @@ BUILTIN_DEFAULTS: dict[str, Any] = {
         "service": "brain",
         "environment": "dev",
     },
+    "postgres": {
+        "url": "postgresql+psycopg://brain:brain@postgres:5432/brain",
+        "pool_size": 5,
+        "max_overflow": 10,
+        "pool_timeout_seconds": 30.0,
+        "connect_timeout_seconds": 10.0,
+        "sslmode": "prefer",
+    },
     "embedding": {
         "request_timeout_seconds": 10.0,
         "default_top_k": 10,
@@ -26,6 +34,7 @@ BUILTIN_DEFAULTS: dict[str, Any] = {
         "collection_name": "brain_embeddings",
         "distance_metric": "cosine",
         "qdrant_url": "http://qdrant:6333",
+        "postgres_schema": "state_embedding_authority",
         "model_dimensions": {},
     },
 }

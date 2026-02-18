@@ -1,0 +1,24 @@
+"""SQLAlchemy engine construction for shared Postgres substrate."""
+
+from __future__ import annotations
+
+from sqlalchemy import Engine, create_engine
+
+from resources.substrates.postgres.config import PostgresConfig
+
+
+def create_postgres_engine(config: PostgresConfig) -> Engine:
+    """Construct a configured SQLAlchemy engine using psycopg."""
+    config.validate()
+    connect_args = {
+        "connect_timeout": int(config.connect_timeout_seconds),
+        "sslmode": config.sslmode,
+    }
+    return create_engine(
+        config.url,
+        pool_size=config.pool_size,
+        max_overflow=config.max_overflow,
+        pool_timeout=config.pool_timeout_seconds,
+        pool_pre_ping=True,
+        connect_args=connect_args,
+    )

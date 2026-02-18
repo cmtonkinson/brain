@@ -1,5 +1,8 @@
+PyYAML==6.0.3
+SQLAlchemy==2.0.43
+alembic==1.16.5
 grpcio-tools==1.78.0
 protobuf==6.33.5
+psycopg[binary]==3.2.9
 pytest==9.0.2
-PyYAML==6.0.3
 qdrant-client==1.15.1
