@@ -14,7 +14,11 @@ def row_to_audit_entry(row: Mapping[str, Any]) -> EmbeddingAuditEntry:
     """Convert a row mapping into an ``EmbeddingAuditEntry``."""
     occurred_at = row.get("occurred_at")
     if isinstance(occurred_at, datetime):
-        normalized_occurred_at = occurred_at if occurred_at.tzinfo is not None else occurred_at.replace(tzinfo=UTC)
+        normalized_occurred_at = (
+            occurred_at
+            if occurred_at.tzinfo is not None
+            else occurred_at.replace(tzinfo=UTC)
+        )
     else:
         normalized_occurred_at = datetime.now(UTC)
 

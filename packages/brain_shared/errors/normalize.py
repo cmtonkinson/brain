@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from . import codes
-from .factories import dependency_error, internal_error, not_found_error, policy_error, validation_error
+from .factories import (
+    dependency_error,
+    internal_error,
+    not_found_error,
+    policy_error,
+    validation_error,
+)
 from .types import ErrorDetail
 
 
@@ -16,10 +22,14 @@ def exception_to_error(exc: Exception) -> ErrorDetail:
     metadata = {"exception_type": type(exc).__name__}
 
     if isinstance(exc, ValueError):
-        return validation_error(str(exc), code=codes.INVALID_ARGUMENT, metadata=metadata)
+        return validation_error(
+            str(exc), code=codes.INVALID_ARGUMENT, metadata=metadata
+        )
 
     if isinstance(exc, KeyError):
-        return not_found_error(str(exc), code=codes.RESOURCE_NOT_FOUND, metadata=metadata)
+        return not_found_error(
+            str(exc), code=codes.RESOURCE_NOT_FOUND, metadata=metadata
+        )
 
     if isinstance(exc, PermissionError):
         return policy_error(str(exc), code=codes.PERMISSION_DENIED, metadata=metadata)

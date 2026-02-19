@@ -2,7 +2,6 @@
 
 from packages.brain_shared.ids.sqlalchemy import (
     ULID_BYTES_LENGTH,
-    ulid_length_check,
     ulid_primary_key_column,
 )
 from packages.brain_shared.ids.ulid import (
@@ -16,7 +15,6 @@ from packages.brain_shared.ids.ulid import (
 __all__ = [
     "ULID_BYTES_LENGTH",
     "ulid_primary_key_column",
-    "ulid_length_check",
     "ulid_str_to_bytes",
     "ulid_bytes_to_str",
     "generate_ulid_bytes",

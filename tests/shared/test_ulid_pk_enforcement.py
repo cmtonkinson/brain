@@ -1,4 +1,4 @@
-"""Repository-wide checks enforcing ULID BYTEA primary-key conventions."""
+"""Repository-wide checks enforcing ULID domain primary-key conventions."""
 
 from __future__ import annotations
 
@@ -9,10 +9,14 @@ import re
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
-def test_no_integer_uuid_or_text_primary_keys_in_service_schemas_or_migrations() -> None:
+def test_no_integer_uuid_or_text_primary_keys_in_service_schemas_or_migrations() -> (
+    None
+):
     """Reject int/uuid/text PK definitions in service schema + migration files."""
     root = Path("services")
-    targets = list(root.rglob("data/schema.py")) + list(root.rglob("migrations/versions/*.py"))
+    targets = list(root.rglob("data/schema.py")) + list(
+        root.rglob("migrations/versions/*.py")
+    )
 
     disallowed_patterns = [
         r'Column\("id",\s*Integer\b',
@@ -36,8 +40,8 @@ def test_no_integer_uuid_or_text_primary_keys_in_service_schemas_or_migrations()
     assert not offenders, "\n".join(offenders)
 
 
-def test_primary_key_uses_postgres_bytea_and_length_check() -> None:
-    """Ensure canonical BYTEA(16)-equivalent conventions are present."""
+def test_primary_key_uses_schema_ulid_domain() -> None:
+    """Ensure canonical schema-qualified ``ulid_bin`` PK conventions are present."""
     schema_file = Path("services/state/embedding_authority/data/schema.py")
     migration_file = Path(
         "services/state/embedding_authority/migrations/versions/20260218_0001_create_embedding_audit_log.py"
@@ -47,9 +51,8 @@ def test_primary_key_uses_postgres_bytea_and_length_check() -> None:
     migration = migration_file.read_text(encoding="utf-8")
 
     assert "ulid_primary_key_column(" in schema
-    assert "ck_embedding_audit_log_id_ulid_16" in schema
-    assert "ck_embedding_audit_log_id_ulid_16" in schema
+    assert "schema_name=embedding_postgres_schema()" in schema
 
-    assert "postgresql.BYTEA()" in migration
-    assert "octet_length(id) =" in migration
-    assert "ck_embedding_audit_log_id_ulid_16" in migration
+    assert "postgresql.DOMAIN(" in migration
+    assert 'name="ulid_bin"' in migration
+    assert "schema=schema" in migration

@@ -50,9 +50,16 @@ class EmbeddingAuditRepository:
         """Return most-recent EAS audit entries in descending time order."""
         bounded_limit = 1 if limit <= 0 else min(limit, 1000)
         with self._sessions.session() as session:
-            rows = session.execute(
-                select(embedding_audit_log)
-                .order_by(embedding_audit_log.c.occurred_at.desc(), embedding_audit_log.c.id.desc())
-                .limit(bounded_limit)
-            ).mappings().all()
+            rows = (
+                session.execute(
+                    select(embedding_audit_log)
+                    .order_by(
+                        embedding_audit_log.c.occurred_at.desc(),
+                        embedding_audit_log.c.id.desc(),
+                    )
+                    .limit(bounded_limit)
+                )
+                .mappings()
+                .all()
+            )
             return [row_to_audit_entry(row) for row in rows]

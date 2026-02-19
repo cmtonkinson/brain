@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from threading import RLock
-from typing import Final, FrozenSet, Iterable, Literal, NewType, Optional
+from typing import Final, FrozenSet, Literal, NewType, Optional
 
 ComponentId = NewType("ComponentId", str)
 ModuleRoot = NewType("ModuleRoot", str)
@@ -188,7 +188,7 @@ class ManifestRegistry:
         declared_owners: dict[ComponentId, ComponentId] = {}
 
         for service in self.list_services():
-            for resource_id in (service.owns_resources or frozenset()):
+            for resource_id in service.owns_resources or frozenset():
                 owner = declared_owners.get(resource_id)
                 if owner is not None and owner != service.id:
                     raise ManifestError(

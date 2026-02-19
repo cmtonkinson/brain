@@ -34,7 +34,6 @@ BUILTIN_DEFAULTS: dict[str, Any] = {
         "collection_name": "brain_embeddings",
         "distance_metric": "cosine",
         "qdrant_url": "http://qdrant:6333",
-        "postgres_schema": "state_embedding_authority",
         "model_dimensions": {},
     },
 }

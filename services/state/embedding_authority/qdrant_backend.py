@@ -7,14 +7,20 @@ from typing import Mapping, Sequence
 
 from resources.substrates.qdrant import QdrantClientSubstrate, QdrantConfig
 from resources.substrates.qdrant.substrate import QdrantSubstrate
-from services.state.embedding_authority.domain import EmbeddingMatch, EmbeddingRecord, EmbeddingRef
+from services.state.embedding_authority.domain import (
+    EmbeddingMatch,
+    EmbeddingRecord,
+    EmbeddingRef,
+)
 from services.state.embedding_authority.settings import EmbeddingSettings
 
 
 class QdrantEmbeddingBackend:
     """EAS backend that maps embedding domain operations to Qdrant substrate calls."""
 
-    def __init__(self, settings: EmbeddingSettings, substrate: QdrantSubstrate | None = None) -> None:
+    def __init__(
+        self, settings: EmbeddingSettings, substrate: QdrantSubstrate | None = None
+    ) -> None:
         self._substrate = substrate or QdrantClientSubstrate(
             QdrantConfig(
                 url=settings.qdrant_url,

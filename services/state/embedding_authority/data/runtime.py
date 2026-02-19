@@ -12,6 +12,7 @@ from typing import Any, Mapping
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from packages.brain_shared.manifest import component_id_to_schema_name
 from resources.substrates.postgres import (
     PostgresConfig,
     ServiceSchemaSessionProvider,
@@ -19,8 +20,7 @@ from resources.substrates.postgres import (
     create_session_factory,
     ping,
 )
-
-EMBEDDING_POSTGRES_SCHEMA_DEFAULT = "state_embedding_authority"
+from services.state.embedding_authority.component import SERVICE_COMPONENT_ID
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ class EmbeddingPostgresRuntime:
         postgres_config = PostgresConfig.from_config(config)
         engine = create_postgres_engine(postgres_config)
         session_factory = create_session_factory(engine)
-        schema = embedding_postgres_schema_from_config(config)
+        schema = embedding_postgres_schema()
         return cls(
             engine=engine,
             session_factory=session_factory,
@@ -52,12 +52,6 @@ class EmbeddingPostgresRuntime:
         return ping(self.engine)
 
 
-def embedding_postgres_schema_from_config(config: Mapping[str, Any]) -> str:
-    """Resolve the owned EAS schema name from merged config with fallback."""
-    embedding = config.get("embedding", {}) if isinstance(config, Mapping) else {}
-    schema = str(embedding.get("postgres_schema", EMBEDDING_POSTGRES_SCHEMA_DEFAULT)).strip()
-    if not schema:
-        raise ValueError("embedding.postgres_schema is required")
-    if not schema.replace("_", "").isalnum():
-        raise ValueError("embedding.postgres_schema must be alphanumeric/underscore")
-    return schema
+def embedding_postgres_schema() -> str:
+    """Resolve the canonical EAS schema name from component identity."""
+    return component_id_to_schema_name(SERVICE_COMPONENT_ID)

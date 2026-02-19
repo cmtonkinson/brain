@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from typing import Mapping, Protocol, Sequence
 
-from services.state.embedding_authority.domain import EmbeddingMatch, EmbeddingRecord, EmbeddingRef
+from services.state.embedding_authority.domain import (
+    EmbeddingMatch,
+    EmbeddingRecord,
+    EmbeddingRef,
+)
 
 
 class EmbeddingBackend(Protocol):

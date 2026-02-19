@@ -4,14 +4,30 @@ from __future__ import annotations
 
 from typing import Mapping, Sequence
 
-from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Result, failure, success
-from packages.brain_shared.errors import ErrorDetail, codes, dependency_error, not_found_error, validation_error
+from packages.brain_shared.envelope import (
+    EnvelopeKind,
+    EnvelopeMeta,
+    Result,
+    failure,
+    success,
+)
+from packages.brain_shared.errors import (
+    ErrorDetail,
+    codes,
+    dependency_error,
+    not_found_error,
+    validation_error,
+)
 from services.state.embedding_authority.data import (
     EmbeddingAuditRepository,
     EmbeddingDataUnitOfWork,
     EmbeddingPostgresRuntime,
 )
-from services.state.embedding_authority.domain import EmbeddingMatch, EmbeddingRecord, EmbeddingRef
+from services.state.embedding_authority.domain import (
+    EmbeddingMatch,
+    EmbeddingRecord,
+    EmbeddingRef,
+)
 from services.state.embedding_authority.interfaces import EmbeddingBackend
 from services.state.embedding_authority.qdrant_backend import QdrantEmbeddingBackend
 from services.state.embedding_authority.service import EmbeddingAuthorityService
@@ -37,7 +53,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         self._data_uow = data_uow
 
     @classmethod
-    def from_config(cls, config: Mapping[str, object]) -> "DefaultEmbeddingAuthorityService":
+    def from_config(
+        cls, config: Mapping[str, object]
+    ) -> "DefaultEmbeddingAuthorityService":
         """Construct service and backend from merged application config mapping."""
         settings = EmbeddingSettings.from_config(config)
         backend = QdrantEmbeddingBackend(settings=settings)
@@ -70,7 +88,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         if len(vector) == 0:
             return failure(
                 meta=meta,
-                errors=[validation_error("vector must not be empty", code=codes.INVALID_ARGUMENT)],
+                errors=[
+                    validation_error(
+                        "vector must not be empty", code=codes.INVALID_ARGUMENT
+                    )
+                ],
             )
 
         model_dimension = self._settings.model_dimensions.get(model)
@@ -216,21 +238,37 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         if not namespace:
             return failure(
                 meta=meta,
-                errors=[validation_error("namespace is required", code=codes.MISSING_REQUIRED_FIELD)],
+                errors=[
+                    validation_error(
+                        "namespace is required", code=codes.MISSING_REQUIRED_FIELD
+                    )
+                ],
                 payload=[],
             )
 
         if len(query_vector) == 0:
             return failure(
                 meta=meta,
-                errors=[validation_error("query_vector must not be empty", code=codes.INVALID_ARGUMENT)],
+                errors=[
+                    validation_error(
+                        "query_vector must not be empty", code=codes.INVALID_ARGUMENT
+                    )
+                ],
                 payload=[],
             )
 
-        effective_limit = self._settings.default_top_k if limit <= 0 else min(limit, self._settings.max_top_k)
+        effective_limit = (
+            self._settings.default_top_k
+            if limit <= 0
+            else min(limit, self._settings.max_top_k)
+        )
 
         model_dimension = self._settings.model_dimensions.get(model)
-        if model and model_dimension is not None and model_dimension != len(query_vector):
+        if (
+            model
+            and model_dimension is not None
+            and model_dimension != len(query_vector)
+        ):
             return failure(
                 meta=meta,
                 errors=[
@@ -277,17 +315,28 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 payload=[],
             )
 
-    def _validate_ref_and_model(self, *, ref: EmbeddingRef, model: str) -> list[ErrorDetail]:
+    def _validate_ref_and_model(
+        self, *, ref: EmbeddingRef, model: str
+    ) -> list[ErrorDetail]:
         """Validate reference/model input and return accumulated errors."""
         errors = self._validate_ref(ref=ref)
         if not model:
-            errors.append(validation_error("model is required", code=codes.MISSING_REQUIRED_FIELD))
-        elif self._settings.model_dimensions and model not in self._settings.model_dimensions:
+            errors.append(
+                validation_error("model is required", code=codes.MISSING_REQUIRED_FIELD)
+            )
+        elif (
+            self._settings.model_dimensions
+            and model not in self._settings.model_dimensions
+        ):
             errors.append(
                 validation_error(
                     f"unknown model '{model}'",
                     code=codes.INVALID_ARGUMENT,
-                    metadata={"known_models": ",".join(sorted(self._settings.model_dimensions.keys()))},
+                    metadata={
+                        "known_models": ",".join(
+                            sorted(self._settings.model_dimensions.keys())
+                        )
+                    },
                 )
             )
         return errors
@@ -296,24 +345,56 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         """Validate required envelope metadata fields for service calls."""
         errors: list[ErrorDetail] = []
         if not meta.envelope_id:
-            errors.append(validation_error("meta.envelope_id is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "meta.envelope_id is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if not meta.trace_id:
-            errors.append(validation_error("meta.trace_id is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "meta.trace_id is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if meta.timestamp is None:
-            errors.append(validation_error("meta.timestamp is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "meta.timestamp is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if meta.kind == EnvelopeKind.UNSPECIFIED:
-            errors.append(validation_error("meta.kind must be specified", code=codes.INVALID_ARGUMENT))
+            errors.append(
+                validation_error(
+                    "meta.kind must be specified", code=codes.INVALID_ARGUMENT
+                )
+            )
         if not meta.source:
-            errors.append(validation_error("meta.source is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "meta.source is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if not meta.principal:
-            errors.append(validation_error("meta.principal is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "meta.principal is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         return errors
 
     def _validate_ref(self, *, ref: EmbeddingRef) -> list[ErrorDetail]:
         """Validate embedding reference fields and return accumulated errors."""
         errors: list[ErrorDetail] = []
         if not ref.namespace:
-            errors.append(validation_error("ref.namespace is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "ref.namespace is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if not ref.key:
-            errors.append(validation_error("ref.key is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "ref.key is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         return errors

@@ -51,4 +51,3 @@ class QdrantSubstrate(Protocol):
         limit: int,
     ) -> list[SearchPoint]:
         """Search points in the configured collection using exact-match filters."""
-

@@ -8,12 +8,7 @@ east-west callers.
 
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Result
 from packages.brain_shared.errors import ErrorCategory, ErrorDetail
-from packages.brain_shared.manifest import (
-    ComponentId,
-    ModuleRoot,
-    register_component,
-    ServiceManifest,
-)
+from services.state.embedding_authority.component import MANIFEST
 from services.state.embedding_authority.domain import (
     EmbeddingMatch,
     EmbeddingRecord,
@@ -24,18 +19,6 @@ from services.state.embedding_authority.implementation import (
 )
 from services.state.embedding_authority.service import EmbeddingAuthorityService
 from services.state.embedding_authority.settings import EmbeddingSettings
-
-MANIFEST = register_component(
-    ServiceManifest(
-        id=ComponentId("service_embedding_authority"),
-        layer=1,
-        system="state",
-        module_roots=frozenset({ModuleRoot("services.state.embedding_authority")}),
-        public_api_roots=frozenset({ModuleRoot("services.state.embedding_authority")}),
-        # EAS owns Qdrant substrate; Postgres is shared infrastructure.
-        owns_resources=frozenset({ComponentId("substrate_qdrant")}),
-    )
-)
 
 __all__ = [
     "EmbeddingAuthorityService",

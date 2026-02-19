@@ -9,7 +9,11 @@ from qdrant_client.http import models
 
 from resources.substrates.qdrant.client import create_qdrant_client
 from resources.substrates.qdrant.config import QdrantConfig
-from resources.substrates.qdrant.substrate import QdrantSubstrate, RetrievedPoint, SearchPoint
+from resources.substrates.qdrant.substrate import (
+    QdrantSubstrate,
+    RetrievedPoint,
+    SearchPoint,
+)
 
 
 class QdrantClientSubstrate(QdrantSubstrate):
@@ -167,4 +171,3 @@ def _distance(metric: str) -> models.Distance:
         "euclid": models.Distance.EUCLID,
     }
     return mapping[metric]
-

@@ -11,4 +11,3 @@ def create_qdrant_client(config: QdrantConfig) -> QdrantClient:
     """Construct a configured Qdrant client instance."""
     config.validate()
     return QdrantClient(url=config.url, timeout=config.timeout_seconds)
-

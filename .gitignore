@@ -1,14 +1,7 @@
 # Secrets
-.env
 config/brain.yml
 
 # General files
-.coverage
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
-__pycache__
-coverage.xml
 /data/
 /deprecated/data/
 logs/
@@ -16,9 +9,3 @@ logs/
 # gRPC/protobuf
 generated/
 
-# Draw.io trash
-.$*drawio.bkp
-
-# For local agent management
-ralph.sh
-/work-*/

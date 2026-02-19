@@ -6,7 +6,11 @@ from abc import ABC, abstractmethod
 from typing import Mapping, Sequence
 
 from packages.brain_shared.envelope import EnvelopeMeta, Result
-from services.state.embedding_authority.domain import EmbeddingMatch, EmbeddingRecord, EmbeddingRef
+from services.state.embedding_authority.domain import (
+    EmbeddingMatch,
+    EmbeddingRecord,
+    EmbeddingRef,
+)
 
 
 class EmbeddingAuthorityService(ABC):

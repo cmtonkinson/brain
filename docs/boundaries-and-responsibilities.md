@@ -146,6 +146,7 @@ Service may access PostgreSQL directly for its own schema only.
 
 To do this cleanly, it means:
 - Each Service has exclusive ownership of its own schema.
+- The Postgres schema for a Service is exactly it's ComponentId.
 - Direct cross-schema access is prohibited. Services must request foreign
   records via the public API of the owning Service.
 - Cross-service foreign keys are prohibited; referential integrity across
@@ -157,6 +158,14 @@ To do this cleanly, it means:
 - A wrapper utility runs migrations in a consistent order (e.g., first State,
   then Action, then Control). This isn't strictly necessary given cross-Service
   FKs are disallowed, however does provide deterministic bootstrapping.
+
+`make migrate` will automatically, for every valid, registered Service:
+1. Create the schema based on the component_id. (e.g. the EAS component_id is
+   `service_embedding_authority`, so that will be the Postgres schema name for
+   that Service)
+2. Create a DOMAIN within the schema called `ulid_bin`. All tables in all
+   schemas **MUST** use `ulid_bin` for their Primary Key. Automated tests will
+   fail if violations are found. (`ulid_bin` is a constrained `bytea(16)`)
 
 ------------------------------------------------------------------------
 # Public APIs

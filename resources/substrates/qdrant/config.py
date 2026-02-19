@@ -23,5 +23,6 @@ class QdrantConfig:
         if not self.collection_name:
             raise ValueError("qdrant.collection_name is required")
         if self.distance_metric not in {"cosine", "dot", "euclid"}:
-            raise ValueError("qdrant.distance_metric must be one of: cosine, dot, euclid")
-
+            raise ValueError(
+                "qdrant.distance_metric must be one of: cosine, dot, euclid"
+            )

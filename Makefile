@@ -4,7 +4,7 @@ GENERATED_DIR := generated
 PROTO_FILES   := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
 PROTO_STAMP   := $(GENERATED_DIR)/.proto-stamp
 
-.PHONY: all deps clean build test migrate
+.PHONY: all deps clean build check format test migrate up down
 
 all: clean build test
 
@@ -32,7 +32,21 @@ $(PROTO_STAMP): $(PROTO_FILES)
 	@python -m compileall -q $(GENERATED_DIR)
 	@touch $(PROTO_STAMP)
 
-test: build
+check:
+	@python -c "import ruff" >/dev/null 2>&1 || \
+		( echo "Missing ruff in current Python environment."; \
+		  echo "Install with: make deps"; \
+		  exit 1 )
+	@ruff check .
+
+format:
+	@python -c "import ruff" >/dev/null 2>&1 || \
+		( echo "Missing ruff in current Python environment."; \
+		  echo "Install with: make deps"; \
+		  exit 1 )
+	@ruff format .
+
+test: build check
 	@if command -v pytest >/dev/null 2>&1; then \
 		pytest -q tests; \
 	else \
@@ -49,9 +63,16 @@ migrate:
 		bash -lc '\
 			set -euo pipefail; \
 			shopt -s nullglob; \
+			python -m resources.substrates.postgres.bootstrap; \
 			for layer in state action control; do \
 				for ini in services/$$layer/*/migrations/alembic.ini; do \
 					echo "Running migrations: $$ini"; \
 					python -m alembic -c "$$ini" upgrade head; \
 				done; \
 			done'
+
+up:
+	@docker compose up -d
+
+down:
+	@docker compose down

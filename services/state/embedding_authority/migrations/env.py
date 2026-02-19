@@ -5,10 +5,10 @@ from __future__ import annotations
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool, text
+from sqlalchemy import engine_from_config, pool
 
 from packages.brain_shared.config import load_config
-from services.state.embedding_authority.data.runtime import embedding_postgres_schema_from_config
+from services.state.embedding_authority.data.runtime import embedding_postgres_schema
 from services.state.embedding_authority.data.schema import metadata
 
 config = context.config
@@ -24,7 +24,7 @@ sqlalchemy_url = postgres.get("url", "") if isinstance(postgres, dict) else ""
 if not sqlalchemy_url:
     raise ValueError("postgres.url is required for EAS migrations")
 
-schema_name = embedding_postgres_schema_from_config(merged_config)
+schema_name = embedding_postgres_schema()
 config.set_main_option("sqlalchemy.url", str(sqlalchemy_url))
 
 
@@ -53,8 +53,6 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema_name}"))
-        connection.commit()
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

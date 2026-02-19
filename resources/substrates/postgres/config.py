@@ -32,7 +32,9 @@ class PostgresConfig:
             pool_size=int(postgres.get("pool_size", 5)),
             max_overflow=int(postgres.get("max_overflow", 10)),
             pool_timeout_seconds=float(postgres.get("pool_timeout_seconds", 30.0)),
-            connect_timeout_seconds=float(postgres.get("connect_timeout_seconds", 10.0)),
+            connect_timeout_seconds=float(
+                postgres.get("connect_timeout_seconds", 10.0)
+            ),
             sslmode=str(postgres.get("sslmode", "prefer")),
         )
         instance.validate()
@@ -50,7 +52,14 @@ class PostgresConfig:
             raise ValueError("postgres.pool_timeout_seconds must be > 0")
         if self.connect_timeout_seconds <= 0:
             raise ValueError("postgres.connect_timeout_seconds must be > 0")
-        if self.sslmode not in {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}:
+        if self.sslmode not in {
+            "disable",
+            "allow",
+            "prefer",
+            "require",
+            "verify-ca",
+            "verify-full",
+        }:
             raise ValueError(
                 "postgres.sslmode must be one of: disable, allow, prefer, require, verify-ca, verify-full"
             )

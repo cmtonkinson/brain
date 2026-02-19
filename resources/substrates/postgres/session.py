@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 def create_session_factory(engine: Engine) -> sessionmaker[Session]:
     """Create a session factory bound to the provided SQLAlchemy engine."""
-    return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+    return sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+    )
 
 
 @contextmanager
