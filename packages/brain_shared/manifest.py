@@ -36,6 +36,7 @@ class ComponentManifest:
 
     id: ComponentId
     layer: Layer
+    system: System
     module_roots: FrozenSet[ModuleRoot]
 
     def __post_init__(self) -> None:
@@ -69,9 +70,8 @@ class ServiceManifest(ComponentManifest):
     """Manifest declaration for an L1 service component."""
 
     layer: Literal[1]
-    system: System
     public_api_roots: FrozenSet[ModuleRoot]
-    owns_resources: FrozenSet[ComponentId]
+    owns_resources: Optional[FrozenSet[ComponentId]] = None
 
     def __post_init__(self) -> None:
         """Validate service-specific invariants."""
@@ -188,7 +188,7 @@ class ManifestRegistry:
         declared_owners: dict[ComponentId, ComponentId] = {}
 
         for service in self.list_services():
-            for resource_id in service.owns_resources:
+            for resource_id in (service.owns_resources or frozenset()):
                 owner = declared_owners.get(resource_id)
                 if owner is not None and owner != service.id:
                     raise ManifestError(

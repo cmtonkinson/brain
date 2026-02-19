@@ -18,6 +18,7 @@ MANIFEST = register_component(
     ResourceManifest(
         id=ComponentId("substrate_qdrant"),
         layer=0,
+        system="state",
         kind="substrate",
         module_roots=frozenset({ModuleRoot("resources.substrates.qdrant")}),
         owner_service_id=ComponentId("service_embedding_authority"),
