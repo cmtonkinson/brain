@@ -5,86 +5,347 @@ package brain.state.v1;
 import "brain/shared/v1/envelope.proto";
 import "google/protobuf/timestamp.proto";
 
-// Authority service for vector embeddings and similarity search.
 service EmbeddingAuthorityService {
-  rpc UpsertEmbedding(UpsertEmbeddingRequest) returns (UpsertEmbeddingResponse);
+  rpc UpsertSource(UpsertSourceRequest) returns (UpsertSourceResponse);
+  rpc UpsertChunk(UpsertChunkRequest) returns (UpsertChunkResponse);
+  rpc UpsertChunks(UpsertChunksRequest) returns (UpsertChunksResponse);
+
+  rpc DeleteChunk(DeleteChunkRequest) returns (DeleteChunkResponse);
+  rpc DeleteSource(DeleteSourceRequest) returns (DeleteSourceResponse);
+
+  rpc GetSource(GetSourceRequest) returns (GetSourceResponse);
+  rpc ListSources(ListSourcesRequest) returns (ListSourcesResponse);
+
+  rpc GetChunk(GetChunkRequest) returns (GetChunkResponse);
+  rpc ListChunksBySource(ListChunksBySourceRequest)
+      returns (ListChunksBySourceResponse);
+
   rpc GetEmbedding(GetEmbeddingRequest) returns (GetEmbeddingResponse);
-  rpc DeleteEmbedding(DeleteEmbeddingRequest) returns (DeleteEmbeddingResponse);
-  rpc SearchEmbeddings(SearchEmbeddingsRequest) returns (SearchEmbeddingsResponse);
+  rpc ListEmbeddingsBySource(ListEmbeddingsBySourceRequest)
+      returns (ListEmbeddingsBySourceResponse);
+  rpc ListEmbeddingsByStatus(ListEmbeddingsByStatusRequest)
+      returns (ListEmbeddingsByStatusResponse);
+
+  rpc GetActiveSpec(GetActiveSpecRequest) returns (GetActiveSpecResponse);
+  rpc ListSpecs(ListSpecsRequest) returns (ListSpecsResponse);
+  rpc GetSpec(GetSpecRequest) returns (GetSpecResponse);
+
+  rpc RepairSpec(RepairSpecRequest) returns (RepairSpecResponse);
 }
 
-// Canonical embedding key scoped by namespace.
-message EmbeddingRef {
-  string namespace = 1;
-  string key = 2;
+enum EmbeddingStatus {
+  EMBEDDING_STATUS_UNSPECIFIED = 0;
+  EMBEDDING_STATUS_PENDING     = 1;
+  EMBEDDING_STATUS_INDEXED     = 2;
+  EMBEDDING_STATUS_FAILED      = 3;
 }
 
-// Materialized embedding payload and metadata.
+message EmbeddingSpec {
+  string id                           = 1;
+  string provider                     = 2;
+  string name                         = 3;
+  string version                      = 4;
+  uint32 dimensions                   = 5;
+  bytes hash                          = 6;
+  string canonical_string             = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message SourceRecord {
+  string id                            = 1;
+  string source_type                   = 2;
+  string canonical_reference           = 3;
+  string service                       = 4;
+  string principal                     = 5;
+  map<string, string> metadata         = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message ChunkRecord {
+  string id                            = 1;
+  string source_id                     = 2;
+  int32 chunk_ordinal                  = 3;
+  string reference_range               = 4;
+  string content_hash                  = 5;
+  map<string, string> metadata         = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
 message EmbeddingRecord {
-  EmbeddingRef ref                        = 1;
-  repeated float vector                   = 2;
-  string model                            = 3;
-  uint32 dimensions                       = 4;
-  map<string, string> metadata            = 5;
-  google.protobuf.Timestamp created_at    = 6;
-  google.protobuf.Timestamp updated_at    = 7;
+  string chunk_id                      = 1;
+  string spec_id                       = 2;
+  string content_hash                  = 3;
+  EmbeddingStatus status               = 4;
+  string error_detail                  = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
 }
 
-// Similarity-search match with scored result.
-message EmbeddingMatch {
-  EmbeddingRef ref             = 1;
-  float score                  = 2;
-  map<string, string> metadata = 3;
+message UpsertSourcePayload {
+  string source_type          = 1;
+  string canonical_reference  = 2;
+  string service              = 3;
+  string principal            = 4;
+  map<string, string> metadata = 5;
 }
 
-message UpsertEmbeddingRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  EmbeddingRef ref                     = 2;
-  repeated float vector                = 3;
-  string model                         = 4;
-  map<string, string> metadata         = 5;
+message UpsertSourceRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  UpsertSourcePayload payload            = 2;
 }
 
-message UpsertEmbeddingResponse {
-  brain.shared.v1.EnvelopeMeta meta           = 1;
-  EmbeddingRecord embedding                     = 2;
+message UpsertSourceResponse {
+  brain.shared.v1.EnvelopeMeta metadata   = 1;
+  SourceRecord payload                    = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message UpsertChunkPayload {
+  string source_id            = 1;
+  int32 chunk_ordinal         = 2;
+  string reference_range      = 3;
+  string content_hash         = 4;
+  string text                 = 5;
+  map<string, string> metadata = 6;
+}
+
+message UpsertChunkRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  UpsertChunkPayload payload             = 2;
+}
+
+message UpsertChunkResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  UpsertChunkResult payload             = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message UpsertChunkResult {
+  ChunkRecord chunk            = 1;
+  EmbeddingRecord embedding    = 2;
+}
+
+message UpsertChunksPayload {
+  repeated UpsertChunkPayload items = 1;
+}
+
+message UpsertChunksRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  UpsertChunksPayload payload            = 2;
+}
+
+message UpsertChunksResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  repeated UpsertChunkResult payload    = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message DeleteChunkPayload {
+  string chunk_id = 1;
+}
+
+message DeleteChunkRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  DeleteChunkPayload payload             = 2;
+}
+
+message DeleteChunkResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  bool payload                          = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message DeleteSourcePayload {
+  string source_id = 1;
+}
+
+message DeleteSourceRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  DeleteSourcePayload payload            = 2;
+}
+
+message DeleteSourceResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  bool payload                          = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message GetSourcePayload {
+  string source_id = 1;
+}
+
+message GetSourceRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  GetSourcePayload payload               = 2;
+}
+
+message GetSourceResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  SourceRecord payload                  = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message ListSourcesPayload {
+  string canonical_reference = 1;
+  string service             = 2;
+  string principal           = 3;
+  int32 limit                = 4;
+}
+
+message ListSourcesRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  ListSourcesPayload payload             = 2;
+}
+
+message ListSourcesResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  repeated SourceRecord payload         = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message GetChunkPayload {
+  string chunk_id = 1;
+}
+
+message GetChunkRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  GetChunkPayload payload                = 2;
+}
+
+message GetChunkResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  ChunkRecord payload                   = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message ListChunksBySourcePayload {
+  string source_id = 1;
+  int32 limit      = 2;
+}
+
+message ListChunksBySourceRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  ListChunksBySourcePayload payload      = 2;
+}
+
+message ListChunksBySourceResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  repeated ChunkRecord payload          = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message GetEmbeddingPayload {
+  string chunk_id = 1;
+  string spec_id  = 2;
 }
 
 message GetEmbeddingRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  EmbeddingRef ref                     = 2;
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  GetEmbeddingPayload payload            = 2;
 }
 
 message GetEmbeddingResponse {
-  brain.shared.v1.EnvelopeMeta meta           = 1;
-  bool found                                    = 2;
-  EmbeddingRecord embedding                     = 3;
-  repeated brain.shared.v1.ErrorDetail errors = 4;
-}
-
-message DeleteEmbeddingRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  EmbeddingRef ref                     = 2;
-  bool missing_ok                      = 3;
-}
-
-message DeleteEmbeddingResponse {
-  brain.shared.v1.EnvelopeMeta meta           = 1;
-  bool deleted                                  = 2;
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  EmbeddingRecord payload               = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
-message SearchEmbeddingsRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  string namespace                    = 2;
-  repeated float query_vector         = 3;
-  int32 limit                         = 4;
-  string model                        = 5;
+message ListEmbeddingsBySourcePayload {
+  string source_id = 1;
+  string spec_id   = 2;
+  int32 limit      = 3;
 }
 
-message SearchEmbeddingsResponse {
-  brain.shared.v1.EnvelopeMeta meta           = 1;
-  repeated EmbeddingMatch matches               = 2;
+message ListEmbeddingsBySourceRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  ListEmbeddingsBySourcePayload payload  = 2;
+}
+
+message ListEmbeddingsBySourceResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  repeated EmbeddingRecord payload      = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message ListEmbeddingsByStatusPayload {
+  EmbeddingStatus status = 1;
+  string spec_id         = 2;
+  int32 limit            = 3;
+}
+
+message ListEmbeddingsByStatusRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  ListEmbeddingsByStatusPayload payload  = 2;
+}
+
+message ListEmbeddingsByStatusResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  repeated EmbeddingRecord payload      = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message GetActiveSpecRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+}
+
+message GetActiveSpecResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  EmbeddingSpec payload                 = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message ListSpecsPayload {
+  int32 limit = 1;
+}
+
+message ListSpecsRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  ListSpecsPayload payload               = 2;
+}
+
+message ListSpecsResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  repeated EmbeddingSpec payload        = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message GetSpecPayload {
+  string spec_id = 1;
+}
+
+message GetSpecRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  GetSpecPayload payload                 = 2;
+}
+
+message GetSpecResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  EmbeddingSpec payload                 = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message RepairSpecPayload {
+  string spec_id = 1;
+  int32 limit    = 2;
+}
+
+message RepairSpecRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  RepairSpecPayload payload              = 2;
+}
+
+message RepairSpecResult {
+  string spec_id       = 1;
+  int32 scanned        = 2;
+  int32 repaired       = 3;
+  int32 reembedded     = 4;
+}
+
+message RepairSpecResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  RepairSpecResult payload              = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
 }

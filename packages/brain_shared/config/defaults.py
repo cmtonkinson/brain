@@ -2,9 +2,6 @@
 
 These defaults are the final fallback in the configuration cascade:
 CLI params > ENV vars > config file > built-in defaults.
-
-Defaults intentionally remain minimal and broadly safe so each service can
-override or extend domain-specific configuration in its own package.
 """
 
 from __future__ import annotations
@@ -27,13 +24,14 @@ BUILTIN_DEFAULTS: dict[str, Any] = {
         "sslmode": "prefer",
     },
     "embedding": {
-        "request_timeout_seconds": 10.0,
-        "default_top_k": 10,
-        "max_top_k": 100,
-        "namespace_strategy": "single_collection",
-        "collection_name": "brain_embeddings",
-        "distance_metric": "cosine",
+        "provider": "ollama",
+        "name": "nomic-embed-text",
+        "version": "v1",
+        "dimensions": 768,
         "qdrant_url": "http://qdrant:6333",
-        "model_dimensions": {},
+        "distance_metric": "cosine",
+        "request_timeout_seconds": 10.0,
+        "max_list_limit": 500,
+        "repair_batch_limit": 500,
     },
 }
