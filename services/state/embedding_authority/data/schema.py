@@ -17,12 +17,23 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 
 from packages.brain_shared.ids import ulid_primary_key_column
 from services.state.embedding_authority.data.runtime import embedding_postgres_schema
 
 metadata = MetaData()
+
+
+def _ulid_domain() -> postgresql.DOMAIN:
+    """Return schema-local ``ulid_bin`` domain reference."""
+    return postgresql.DOMAIN(
+        name="ulid_bin",
+        data_type=postgresql.BYTEA(),
+        schema=embedding_postgres_schema(),
+        create_type=False,
+    )
 
 specs = Table(
     "specs",
@@ -77,7 +88,7 @@ chunks = Table(
     ulid_primary_key_column("id", schema_name=embedding_postgres_schema()),
     Column(
         "source_id",
-        LargeBinary(16),
+        _ulid_domain(),
         ForeignKey(f"{embedding_postgres_schema()}.sources.id", ondelete="RESTRICT"),
         nullable=False,
     ),
@@ -102,13 +113,13 @@ embeddings = Table(
     metadata,
     Column(
         "chunk_id",
-        LargeBinary(16),
+        _ulid_domain(),
         ForeignKey(f"{embedding_postgres_schema()}.chunks.id", ondelete="RESTRICT"),
         nullable=False,
     ),
     Column(
         "spec_id",
-        LargeBinary(16),
+        _ulid_domain(),
         ForeignKey(f"{embedding_postgres_schema()}.specs.id", ondelete="RESTRICT"),
         nullable=False,
     ),

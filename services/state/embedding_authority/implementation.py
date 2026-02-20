@@ -15,6 +15,7 @@ from packages.brain_shared.errors import (
     not_found_error,
     validation_error,
 )
+from packages.brain_shared.ids import ulid_str_to_bytes
 from resources.substrates.postgres.errors import normalize_postgres_error
 from services.state.embedding_authority.data import (
     EmbeddingPostgresRuntime,
@@ -162,6 +163,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         errors = self._validate_meta(meta)
         if not source_id:
             errors.append(validation_error("source_id is required", code=codes.MISSING_REQUIRED_FIELD))
+        else:
+            ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
         if chunk_ordinal < 0:
             errors.append(validation_error("chunk_ordinal must be >= 0", code=codes.INVALID_ARGUMENT))
         if not content_hash:
@@ -231,6 +236,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         errors = self._validate_meta(meta)
         if not chunk_id:
             errors.append(validation_error("chunk_id is required", code=codes.MISSING_REQUIRED_FIELD))
+        else:
+            ulid_error = self._validate_ulid(value=chunk_id, field_name="chunk_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
         if errors:
             return failure(meta=meta, errors=errors, payload=False)
 
@@ -257,6 +266,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         errors = self._validate_meta(meta)
         if not source_id:
             errors.append(validation_error("source_id is required", code=codes.MISSING_REQUIRED_FIELD))
+        else:
+            ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
         if errors:
             return failure(meta=meta, errors=errors, payload=False)
 
@@ -286,6 +299,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         errors = self._validate_meta(meta)
         if not source_id:
             errors.append(validation_error("source_id is required", code=codes.MISSING_REQUIRED_FIELD))
+        else:
+            ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
         if errors:
             return failure(meta=meta, errors=errors)
 
@@ -330,6 +347,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         errors = self._validate_meta(meta)
         if not chunk_id:
             errors.append(validation_error("chunk_id is required", code=codes.MISSING_REQUIRED_FIELD))
+        else:
+            ulid_error = self._validate_ulid(value=chunk_id, field_name="chunk_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
         if errors:
             return failure(meta=meta, errors=errors)
 
@@ -355,6 +376,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         errors = self._validate_meta(meta)
         if not source_id:
             errors.append(validation_error("source_id is required", code=codes.MISSING_REQUIRED_FIELD))
+        else:
+            ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
@@ -378,6 +403,14 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         errors = self._validate_meta(meta)
         if not chunk_id:
             errors.append(validation_error("chunk_id is required", code=codes.MISSING_REQUIRED_FIELD))
+        else:
+            ulid_error = self._validate_ulid(value=chunk_id, field_name="chunk_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
+        if spec_id:
+            ulid_error = self._validate_ulid(value=spec_id, field_name="spec_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
         if errors:
             return failure(meta=meta, errors=errors)
 
@@ -405,6 +438,14 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         errors = self._validate_meta(meta)
         if not source_id:
             errors.append(validation_error("source_id is required", code=codes.MISSING_REQUIRED_FIELD))
+        else:
+            ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
+        if spec_id:
+            ulid_error = self._validate_ulid(value=spec_id, field_name="spec_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
@@ -429,6 +470,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     ) -> Result[list[EmbeddingRecord]]:
         """List embedding rows by status."""
         errors = self._validate_meta(meta)
+        if spec_id:
+            ulid_error = self._validate_ulid(value=spec_id, field_name="spec_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
@@ -467,6 +512,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         errors = self._validate_meta(meta)
         if not spec_id:
             errors.append(validation_error("spec_id is required", code=codes.MISSING_REQUIRED_FIELD))
+        else:
+            ulid_error = self._validate_ulid(value=spec_id, field_name="spec_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
         if errors:
             return failure(meta=meta, errors=errors)
 
@@ -491,6 +540,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         """Repair missing/stale derived Qdrant points for one spec."""
         errors = self._validate_meta(meta)
         effective_spec_id = spec_id or self._active.spec.id
+        if spec_id:
+            ulid_error = self._validate_ulid(value=spec_id, field_name="spec_id")
+            if ulid_error is not None:
+                errors.append(ulid_error)
         if errors:
             return failure(meta=meta, errors=errors)
 
@@ -586,7 +639,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         """Upsert active-spec embedding row and derived Qdrant point for one chunk."""
         spec = self._active.spec
         existing = self._repository.get_embedding(chunk_id=chunk.id, spec_id=spec.id)
-        if existing is not None and existing.content_hash == chunk.content_hash:
+        if (
+            existing is not None
+            and existing.content_hash == chunk.content_hash
+            and existing.status == EmbeddingStatus.INDEXED
+        ):
             return existing
 
         try:
@@ -632,6 +689,17 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         if limit <= 0:
             return min(100, self._settings.max_list_limit)
         return min(limit, self._settings.max_list_limit)
+
+    def _validate_ulid(self, *, value: str, field_name: str) -> ErrorDetail | None:
+        """Validate ULID string fields and return a typed validation error."""
+        try:
+            ulid_str_to_bytes(value)
+        except ValueError:
+            return validation_error(
+                f"{field_name} must be a valid ULID string",
+                code=codes.INVALID_ARGUMENT,
+            )
+        return None
 
 
 def _canonical_spec_string(*, provider: str, name: str, version: str, dimensions: int) -> str:

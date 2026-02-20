@@ -1,0 +1,30 @@
+# Continuous Integration workflow for Brain.
+# Runs lint and unit tests through `make test` on push and pull requests.
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    name: Test (Python 3.13)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: make deps
+
+      - name: Run tests
+        run: make test

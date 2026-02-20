@@ -8,7 +8,12 @@ import grpc
 from brain.shared.v1 import envelope_pb2
 from brain.state.v1 import embedding_pb2, embedding_pb2_grpc
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Result
-from packages.brain_shared.errors import ErrorCategory, ErrorDetail
+from packages.brain_shared.errors import (
+    ErrorCategory,
+    ErrorDetail,
+    codes,
+    validation_error,
+)
 from services.state.embedding_authority.domain import (
     ChunkRecord,
     EmbeddingRecord,
@@ -189,9 +194,24 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
         )
 
     def ListEmbeddingsByStatus(self, request: embedding_pb2.ListEmbeddingsByStatusRequest, context: grpc.ServicerContext) -> embedding_pb2.ListEmbeddingsByStatusResponse:
+        mapped_status = _status_from_proto(request.payload.status)
+        if mapped_status is None:
+            meta = _meta_from_proto(request.metadata)
+            return embedding_pb2.ListEmbeddingsByStatusResponse(
+                metadata=_meta_to_proto(meta),
+                payload=[],
+                errors=[
+                    _error_to_proto(
+                        validation_error(
+                            "status must be specified",
+                            code=codes.INVALID_ARGUMENT,
+                        )
+                    )
+                ],
+            )
         result = self._service.list_embeddings_by_status(
             meta=_meta_from_proto(request.metadata),
-            status=_status_from_proto(request.payload.status),
+            status=mapped_status,
             spec_id=request.payload.spec_id,
             limit=request.payload.limit,
         )
@@ -320,6 +340,7 @@ def _chunk_to_proto(chunk: ChunkRecord | None) -> embedding_pb2.ChunkRecord:
         reference_range=chunk.reference_range,
         content_hash=chunk.content_hash,
         metadata=dict(chunk.metadata),
+        text=chunk.text,
     )
     message.created_at.FromDatetime(_utc(chunk.created_at))
     message.updated_at.FromDatetime(_utc(chunk.updated_at))
@@ -406,14 +427,14 @@ def _kind_to_proto(kind: EnvelopeKind) -> envelope_pb2.EnvelopeKind:
     return mapping[kind]
 
 
-def _status_from_proto(status: embedding_pb2.EmbeddingStatus) -> EmbeddingStatus:
+def _status_from_proto(status: embedding_pb2.EmbeddingStatus) -> EmbeddingStatus | None:
     """Map protobuf status enum to domain status enum."""
     mapping = {
         embedding_pb2.EMBEDDING_STATUS_PENDING: EmbeddingStatus.PENDING,
         embedding_pb2.EMBEDDING_STATUS_INDEXED: EmbeddingStatus.INDEXED,
         embedding_pb2.EMBEDDING_STATUS_FAILED: EmbeddingStatus.FAILED,
     }
-    return mapping.get(status, EmbeddingStatus.PENDING)
+    return mapping.get(status)
 
 
 def _status_to_proto(status: EmbeddingStatus) -> embedding_pb2.EmbeddingStatus:

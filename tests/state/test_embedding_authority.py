@@ -537,3 +537,67 @@ def test_hard_delete_removes_rows_and_best_effort_qdrant_delete() -> None:
     assert not svc.get_source(meta=_meta(), source_id=source_id).ok
     assert not svc.get_chunk(meta=_meta(), chunk_id=chunk_id).ok
     assert any(chunk_id == deleted_chunk for _, deleted_chunk in index.deletes)
+
+
+def test_failed_embedding_with_same_hash_is_retried_on_upsert() -> None:
+    """A failed row for current hash must be retried, not no-op'd."""
+    svc, repository, index = _service()
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://6",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    source_id = source.payload.id if source.payload else ""
+
+    created = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source_id,
+        chunk_ordinal=1,
+        reference_range="r",
+        content_hash="same-hash",
+        text="text",
+        metadata={},
+    )
+    assert created.payload is not None
+    active_spec = svc.get_active_spec(meta=_meta()).payload
+    assert active_spec is not None
+
+    chunk_id = created.payload.chunk.id
+    key = (chunk_id, active_spec.id)
+    failed_row = repository.embeddings[key]
+    repository.embeddings[key] = EmbeddingRecord(
+        chunk_id=failed_row.chunk_id,
+        spec_id=failed_row.spec_id,
+        content_hash=failed_row.content_hash,
+        status=EmbeddingStatus.FAILED,
+        error_detail="boom",
+        created_at=failed_row.created_at,
+        updated_at=failed_row.updated_at,
+    )
+
+    before = len(index.upserts)
+    retried = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source_id,
+        chunk_ordinal=1,
+        reference_range="r",
+        content_hash="same-hash",
+        text="text",
+        metadata={},
+    )
+    assert retried.ok
+    assert retried.payload is not None
+    assert retried.payload.embedding.status == EmbeddingStatus.INDEXED
+    assert len(index.upserts) > before
+
+
+def test_invalid_ulid_is_validation_error_not_transport_error() -> None:
+    """Malformed ULIDs should produce domain validation errors."""
+    svc, _, _ = _service()
+    result = svc.get_source(meta=_meta(), source_id="not-a-ulid")
+    assert not result.ok
+    assert result.errors
+    assert result.errors[0].category.value == "validation"
