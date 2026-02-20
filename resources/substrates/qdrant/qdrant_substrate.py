@@ -5,15 +5,19 @@ from __future__ import annotations
 from threading import Lock
 from typing import Iterable, Mapping, Sequence
 
+from packages.brain_shared.logging import get_logger, public_api_instrumented
 from qdrant_client.http import models
 
 from resources.substrates.qdrant.client import create_qdrant_client
+from resources.substrates.qdrant.component import RESOURCE_COMPONENT_ID
 from resources.substrates.qdrant.config import QdrantConfig
 from resources.substrates.qdrant.substrate import (
     QdrantSubstrate,
     RetrievedPoint,
     SearchPoint,
 )
+
+_LOGGER = get_logger(__name__)
 
 
 class QdrantClientSubstrate(QdrantSubstrate):
@@ -26,6 +30,10 @@ class QdrantClientSubstrate(QdrantSubstrate):
         self._collection = config.collection_name
         self._lock = Lock()
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(RESOURCE_COMPONENT_ID),
+    )
     def get_collection_vector_size(self) -> int | None:
         """Return configured collection vector size if collection exists."""
         if not self._collection_exists():
@@ -37,6 +45,11 @@ class QdrantClientSubstrate(QdrantSubstrate):
             return int(vectors.size)
         return None
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(RESOURCE_COMPONENT_ID),
+        id_fields=("point_id",),
+    )
     def upsert_point(
         self,
         *,
@@ -57,6 +70,11 @@ class QdrantClientSubstrate(QdrantSubstrate):
             wait=True,
         )
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(RESOURCE_COMPONENT_ID),
+        id_fields=("point_id",),
+    )
     def retrieve_point(self, *, point_id: str) -> RetrievedPoint | None:
         """Fetch one point by id from the configured collection."""
         if not self._collection_exists():
@@ -89,6 +107,11 @@ class QdrantClientSubstrate(QdrantSubstrate):
             payload=dict(payload),
         )
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(RESOURCE_COMPONENT_ID),
+        id_fields=("point_id",),
+    )
     def delete_point(self, *, point_id: str) -> bool:
         """Delete one point by id, returning whether a point existed."""
         if not self._collection_exists():
@@ -105,6 +128,10 @@ class QdrantClientSubstrate(QdrantSubstrate):
         )
         return True
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(RESOURCE_COMPONENT_ID),
+    )
     def search_points(
         self,
         *,

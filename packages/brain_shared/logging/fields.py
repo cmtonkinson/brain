@@ -9,6 +9,7 @@ TIMESTAMP = "timestamp"
 LEVEL = "level"
 LOGGER = "logger"
 MESSAGE = "message"
+EVENT = "event"
 
 # Envelope/correlation fields.
 TRACE_ID = "trace_id"
@@ -16,6 +17,13 @@ ENVELOPE_ID = "envelope_id"
 PARENT_ID = "parent_id"
 SOURCE = "source"
 PRINCIPAL = "principal"
+
+# Public API invocation fields.
+COMPONENT_ID = "component_id"
+API_NAME = "api_name"
+SUCCESS = "success"
+DURATION_MS = "duration_ms"
+ERRORS = "errors"
 
 # Future tracing compatibility fields.
 OTEL_TRACE_ID = "otel_trace_id"

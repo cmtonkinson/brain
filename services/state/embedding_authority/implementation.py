@@ -22,8 +22,9 @@ from packages.brain_shared.errors import (
     validation_error,
 )
 from packages.brain_shared.ids import ulid_str_to_bytes
-from packages.brain_shared.logging import get_logger
+from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.substrates.postgres.errors import normalize_postgres_error
+from services.state.embedding_authority.component import SERVICE_COMPONENT_ID
 from services.state.embedding_authority.data import (
     EmbeddingPostgresRuntime,
     PostgresEmbeddingRepository,
@@ -121,6 +122,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             vectorizer=vectorizer,
         )
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("principal",),
+    )
     def upsert_source(
         self,
         *,
@@ -172,6 +178,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         except Exception as exc:  # noqa: BLE001
             return failure(meta=meta, errors=[normalize_postgres_error(exc)])
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("source_id",),
+    )
     def upsert_chunk(
         self,
         *,
@@ -241,6 +252,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         except Exception as exc:  # noqa: BLE001
             return failure(meta=meta, errors=[normalize_postgres_error(exc)])
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
     def upsert_chunks(
         self,
         *,
@@ -279,6 +294,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             return failure(meta=meta, errors=aggregate_errors, payload=results)
         return success(meta=meta, payload=results)
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("chunk_id",),
+    )
     def delete_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Result[bool]:
         """Hard-delete one chunk and best-effort delete derived index points."""
         errors = self._validate_meta(meta)
@@ -318,6 +338,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 meta=meta, errors=[normalize_postgres_error(exc)], payload=False
             )
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("source_id",),
+    )
     def delete_source(self, *, meta: EnvelopeMeta, source_id: str) -> Result[bool]:
         """Hard-delete one source and all owned chunk/embedding rows."""
         errors = self._validate_meta(meta)
@@ -360,6 +385,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 meta=meta, errors=[normalize_postgres_error(exc)], payload=False
             )
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("source_id",),
+    )
     def get_source(self, *, meta: EnvelopeMeta, source_id: str) -> Result[SourceRecord]:
         """Read one source by id."""
         errors = self._validate_meta(meta)
@@ -391,6 +421,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         except Exception as exc:  # noqa: BLE001
             return failure(meta=meta, errors=[normalize_postgres_error(exc)])
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("principal",),
+    )
     def list_sources(
         self,
         *,
@@ -418,6 +453,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
             )
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("chunk_id",),
+    )
     def get_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Result[ChunkRecord]:
         """Read one chunk by id."""
         errors = self._validate_meta(meta)
@@ -449,6 +489,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         except Exception as exc:  # noqa: BLE001
             return failure(meta=meta, errors=[normalize_postgres_error(exc)])
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("source_id",),
+    )
     def list_chunks_by_source(
         self,
         *,
@@ -482,6 +527,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
             )
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("chunk_id", "spec_id"),
+    )
     def get_embedding(
         self,
         *,
@@ -526,6 +576,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         except Exception as exc:  # noqa: BLE001
             return failure(meta=meta, errors=[normalize_postgres_error(exc)])
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("source_id", "spec_id"),
+    )
     def list_embeddings_by_source(
         self,
         *,
@@ -566,6 +621,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
             )
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("spec_id",),
+    )
     def list_embeddings_by_status(
         self,
         *,
@@ -596,6 +656,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
             )
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
     def get_active_spec(self, *, meta: EnvelopeMeta) -> Result[EmbeddingSpec]:
         """Return in-memory active spec."""
         errors = self._validate_meta(meta)
@@ -603,6 +667,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             return failure(meta=meta, errors=errors)
         return success(meta=meta, payload=self._active.spec)
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
     def list_specs(
         self, *, meta: EnvelopeMeta, limit: int
     ) -> Result[list[EmbeddingSpec]]:
@@ -619,6 +687,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
             )
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("spec_id",),
+    )
     def get_spec(self, *, meta: EnvelopeMeta, spec_id: str) -> Result[EmbeddingSpec]:
         """Read one embedding spec by id."""
         errors = self._validate_meta(meta)
@@ -648,6 +721,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         except Exception as exc:  # noqa: BLE001
             return failure(meta=meta, errors=[normalize_postgres_error(exc)])
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("spec_id",),
+    )
     def repair_spec(
         self,
         *,
