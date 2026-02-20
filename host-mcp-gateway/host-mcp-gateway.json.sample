@@ -1,6 +1,8 @@
 {
   "bind_host": "127.0.0.1",
   "bind_port": 7411,
+  "request_timeout_ms": 30000,
+  "restart_backoff_ms": 2000,
   "auth_token": "CHANGE_ME",
   "allowed_clients": [
     "127.0.0.1/32",

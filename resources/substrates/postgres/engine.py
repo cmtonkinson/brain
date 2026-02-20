@@ -19,6 +19,6 @@ def create_postgres_engine(config: PostgresConfig) -> Engine:
         pool_size=config.pool_size,
         max_overflow=config.max_overflow,
         pool_timeout=config.pool_timeout_seconds,
-        pool_pre_ping=True,
+        pool_pre_ping=config.pool_pre_ping,
         connect_args=connect_args,
     )

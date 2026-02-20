@@ -60,17 +60,23 @@ migrate:
 		( echo "Missing migration dependencies in current Python environment."; \
 		  echo "Install with: make deps"; \
 		  exit 1 )
-	@BRAIN_POSTGRES__URL="$${BRAIN_POSTGRES__URL:-postgresql+psycopg://brain:brain@localhost:5432/brain}" \
-		bash -lc '\
-			set -euo pipefail; \
-			shopt -s nullglob; \
-			python -m resources.substrates.postgres.bootstrap; \
-			for layer in state action control; do \
-				for ini in services/$$layer/*/migrations/alembic.ini; do \
-					echo "Running migrations: $$ini"; \
-					python -m alembic -c "$$ini" upgrade head; \
-				done; \
-			done'
+	@bash -lc '\
+		set -euo pipefail; \
+		if [ -z "$${BRAIN_POSTGRES__URL:-}" ]; then \
+			export BRAIN_POSTGRES__URL="$$(python -c '\''from packages.brain_shared.config import load_config; print(str(load_config().get("postgres", {}).get("url", "")).strip())'\'')"; \
+		fi; \
+		if [ -z "$$BRAIN_POSTGRES__URL" ]; then \
+			echo "BRAIN_POSTGRES__URL resolved to empty value; set postgres.url in config or export BRAIN_POSTGRES__URL."; \
+			exit 1; \
+		fi; \
+		shopt -s nullglob; \
+		python -m resources.substrates.postgres.bootstrap; \
+		for layer in state action control; do \
+			for ini in services/$$layer/*/migrations/alembic.ini; do \
+				echo "Running migrations: $$ini"; \
+				python -m alembic -c "$$ini" upgrade head; \
+			done; \
+		done'
 
 up:
 	@docker compose up -d

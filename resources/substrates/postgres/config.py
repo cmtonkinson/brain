@@ -15,6 +15,7 @@ class PostgresConfig:
     pool_size: int
     max_overflow: int
     pool_timeout_seconds: float
+    pool_pre_ping: bool
     connect_timeout_seconds: float
     sslmode: str
 
@@ -26,12 +27,14 @@ class PostgresConfig:
         url = str(postgres.get("url", "")).strip()
         if not url:
             url = _build_url_from_parts(postgres)
+        pool_pre_ping_raw = postgres.get("pool_pre_ping", True)
 
         instance = cls(
             url=url,
             pool_size=int(postgres.get("pool_size", 5)),
             max_overflow=int(postgres.get("max_overflow", 10)),
             pool_timeout_seconds=float(postgres.get("pool_timeout_seconds", 30.0)),
+            pool_pre_ping=_coerce_bool(pool_pre_ping_raw),
             connect_timeout_seconds=float(
                 postgres.get("connect_timeout_seconds", 10.0)
             ),
@@ -84,3 +87,16 @@ def _build_url_from_parts(postgres: Mapping[str, Any]) -> str:
         "postgresql+psycopg://"
         f"{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{quote_plus(database)}"
     )
+
+
+def _coerce_bool(value: object) -> bool:
+    """Normalize boolean-like values from config sources."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "on"}:
+            return True
+        if lowered in {"false", "0", "no", "off"}:
+            return False
+    return bool(value)

@@ -84,6 +84,20 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.BindPort != defaultPort {
 		t.Fatalf("expected default bind port %d, got %d", defaultPort, cfg.BindPort)
 	}
+	if cfg.RequestTimeoutMS != defaultRequestTimeoutMS {
+		t.Fatalf(
+			"expected default request_timeout_ms %d, got %d",
+			defaultRequestTimeoutMS,
+			cfg.RequestTimeoutMS,
+		)
+	}
+	if cfg.RestartBackoffMS != defaultRestartBackoffMS {
+		t.Fatalf(
+			"expected default restart_backoff_ms %d, got %d",
+			defaultRestartBackoffMS,
+			cfg.RestartBackoffMS,
+		)
+	}
 	if cfg.Servers[0].RestartPolicy != "on-failure" {
 		t.Fatalf("expected default restart policy, got %q", cfg.Servers[0].RestartPolicy)
 	}

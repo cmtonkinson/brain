@@ -31,18 +31,21 @@ import (
 )
 
 const (
-	serviceName    = "host-mcp-gateway"
-	serviceVersion = "0.1.0"
-	defaultPort    = 7411
-	requestTimeout = 30 * time.Second
+	serviceName             = "host-mcp-gateway"
+	serviceVersion          = "0.1.0"
+	defaultPort             = 7411
+	defaultRequestTimeoutMS = 30000
+	defaultRestartBackoffMS = 2000
 )
 
 type Config struct {
-	BindHost       string         `json:"bind_host"`
-	BindPort       int            `json:"bind_port"`
-	AuthToken      string         `json:"auth_token"`
-	AllowedClients []string       `json:"allowed_clients"`
-	Servers        []ServerConfig `json:"servers"`
+	BindHost         string         `json:"bind_host"`
+	BindPort         int            `json:"bind_port"`
+	AuthToken        string         `json:"auth_token"`
+	AllowedClients   []string       `json:"allowed_clients"`
+	RequestTimeoutMS int            `json:"request_timeout_ms"`
+	RestartBackoffMS int            `json:"restart_backoff_ms"`
+	Servers          []ServerConfig `json:"servers"`
 }
 
 type ServerConfig struct {
@@ -137,22 +140,24 @@ func (l *Logger) Log(ctx context.Context, level, message string, fields map[stri
 }
 
 type ManagedServer struct {
-	cfg          ServerConfig
-	logger       *Logger
-	mu           sync.Mutex
-	status       string
-	cmd          *exec.Cmd
-	stdin        io.WriteCloser
-	stdout       *bufio.Reader
-	decoder      *json.Decoder
-	stderr       io.ReadCloser
-	sessionID    string
-	requests     chan serverRequest
-	workerOnce   sync.Once
-	metrics      *GatewayMetrics
-	restartCount int
-	lastExitCode int
-	lastExitAt   time.Time
+	cfg            ServerConfig
+	logger         *Logger
+	mu             sync.Mutex
+	status         string
+	cmd            *exec.Cmd
+	stdin          io.WriteCloser
+	stdout         *bufio.Reader
+	decoder        *json.Decoder
+	stderr         io.ReadCloser
+	sessionID      string
+	requests       chan serverRequest
+	workerOnce     sync.Once
+	metrics        *GatewayMetrics
+	requestTimeout time.Duration
+	restartBackoff time.Duration
+	restartCount   int
+	lastExitCode   int
+	lastExitAt     time.Time
 }
 
 type serverRequest struct {
@@ -254,6 +259,14 @@ func setupObservability(ctx context.Context) (trace.Tracer, metric.Meter, func(c
 }
 
 func NewGateway(cfg Config, logger *Logger, tracer trace.Tracer, meter metric.Meter, shutdownTrace func(context.Context) error, shutdownMet func(context.Context) error) (*Gateway, error) {
+	cfg = applyConfigDefaults(cfg)
+	if cfg.RequestTimeoutMS < 0 {
+		return nil, errors.New("request_timeout_ms must be >= 0")
+	}
+	if cfg.RestartBackoffMS < 0 {
+		return nil, errors.New("restart_backoff_ms must be >= 0")
+	}
+
 	allowedIPs, allowedCIDRs, err := parseAllowlist(cfg.AllowedClients)
 	if err != nil {
 		return nil, err
@@ -265,11 +278,13 @@ func NewGateway(cfg Config, logger *Logger, tracer trace.Tracer, meter metric.Me
 			return nil, fmt.Errorf("duplicate server_id: %s", server.ServerID)
 		}
 		servers[server.ServerID] = &ManagedServer{
-			cfg:      server,
-			logger:   logger,
-			status:   "stopped",
-			requests: make(chan serverRequest),
-			metrics:  nil,
+			cfg:            server,
+			logger:         logger,
+			status:         "stopped",
+			requests:       make(chan serverRequest),
+			metrics:        nil,
+			requestTimeout: time.Duration(cfg.RequestTimeoutMS) * time.Millisecond,
+			restartBackoff: time.Duration(cfg.RestartBackoffMS) * time.Millisecond,
 		}
 	}
 
@@ -790,7 +805,7 @@ func (s *ManagedServer) ensureSessionID() string {
 
 func (s *ManagedServer) worker(ctx context.Context) {
 	for req := range s.requests {
-		callCtx, cancel := context.WithTimeout(req.ctx, requestTimeout)
+		callCtx, cancel := context.WithTimeout(req.ctx, s.requestTimeout)
 		payload, err := s.sendAndReceive(callCtx, req.payload, req.requestID)
 		cancel()
 
@@ -888,7 +903,7 @@ func (s *ManagedServer) waitForExit(ctx context.Context) {
 		if s.metrics != nil {
 			s.metrics.restarts.Add(ctx, 1, metric.WithAttributes(attribute.String("server_id", s.cfg.ServerID)))
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(s.restartBackoff)
 		_ = s.Start(ctx)
 	}
 }
@@ -908,11 +923,13 @@ func loadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 
-	if cfg.BindHost == "" {
-		cfg.BindHost = "127.0.0.1"
+	cfg = applyConfigDefaults(cfg)
+
+	if cfg.RequestTimeoutMS < 0 {
+		return nil, errors.New("request_timeout_ms must be >= 0")
 	}
-	if cfg.BindPort == 0 {
-		cfg.BindPort = defaultPort
+	if cfg.RestartBackoffMS < 0 {
+		return nil, errors.New("restart_backoff_ms must be >= 0")
 	}
 	if cfg.AuthToken == "" {
 		return nil, errors.New("auth_token is required")
@@ -940,6 +957,22 @@ func loadConfig(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func applyConfigDefaults(cfg Config) Config {
+	if cfg.BindHost == "" {
+		cfg.BindHost = "127.0.0.1"
+	}
+	if cfg.BindPort == 0 {
+		cfg.BindPort = defaultPort
+	}
+	if cfg.RequestTimeoutMS == 0 {
+		cfg.RequestTimeoutMS = defaultRequestTimeoutMS
+	}
+	if cfg.RestartBackoffMS == 0 {
+		cfg.RestartBackoffMS = defaultRestartBackoffMS
+	}
+	return cfg
 }
 
 func expandPath(path string) (string, error) {
