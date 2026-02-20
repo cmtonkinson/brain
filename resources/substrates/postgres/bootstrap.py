@@ -9,11 +9,11 @@ from sqlalchemy import text
 
 from packages.brain_shared.component_loader import import_registered_component_modules
 from packages.brain_shared.config import load_config
+from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
 from packages.brain_shared.manifest import ServiceManifest, get_registry
 from resources.substrates.postgres.config import PostgresConfig
 from resources.substrates.postgres.engine import create_postgres_engine
 
-ULID_DOMAIN_NAME = "ulid_bin"
 ULID_DOMAIN_DEFINITION_SQL = (
     f"CREATE DOMAIN IF NOT EXISTS {{schema}}.{ULID_DOMAIN_NAME} "
     "AS bytea CHECK (octet_length(VALUE) = 16)"

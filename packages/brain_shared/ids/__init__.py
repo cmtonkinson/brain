@@ -1,5 +1,6 @@
 """Shared ULID primitives for binary primary-key standardization."""
 
+from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
 from packages.brain_shared.ids.sqlalchemy import (
     ULID_BYTES_LENGTH,
     ulid_primary_key_column,
@@ -13,6 +14,7 @@ from packages.brain_shared.ids.ulid import (
 )
 
 __all__ = [
+    "ULID_DOMAIN_NAME",
     "ULID_BYTES_LENGTH",
     "ulid_primary_key_column",
     "ulid_str_to_bytes",

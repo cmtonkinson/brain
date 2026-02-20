@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from packages.brain_shared.embeddings import (
+    SUPPORTED_DISTANCE_METRICS,
+    SUPPORTED_DISTANCE_METRICS_TEXT,
+)
+
 
 @dataclass(frozen=True)
 class QdrantConfig:
@@ -22,7 +27,7 @@ class QdrantConfig:
             raise ValueError("qdrant.timeout_seconds must be > 0")
         if not self.collection_name:
             raise ValueError("qdrant.collection_name is required")
-        if self.distance_metric not in {"cosine", "dot", "euclid"}:
+        if self.distance_metric not in SUPPORTED_DISTANCE_METRICS:
             raise ValueError(
-                "qdrant.distance_metric must be one of: cosine, dot, euclid"
+                f"qdrant.distance_metric must be one of: {SUPPORTED_DISTANCE_METRICS_TEXT}"
             )

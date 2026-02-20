@@ -6,6 +6,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
 from services.state.embedding_authority.data.runtime import embedding_postgres_schema
 
 # revision identifiers, used by Alembic.
@@ -23,7 +24,7 @@ def _schema() -> str:
 def _ulid_domain(schema: str) -> postgresql.DOMAIN:
     """Return schema-local ``ulid_bin`` domain reference."""
     return postgresql.DOMAIN(
-        name="ulid_bin",
+        name=ULID_DOMAIN_NAME,
         data_type=postgresql.BYTEA(),
         schema=schema,
         create_type=False,

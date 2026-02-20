@@ -78,7 +78,7 @@ class PublicApiLoggingConcern:
         payload = _invocation_log_context(context.invocation)
         payload.update(
             {
-                fields.EVENT: "public_api_completion",
+                fields.EVENT: fields.PUBLIC_API_COMPLETION_EVENT,
                 fields.SUCCESS: context.success,
                 fields.DURATION_MS: context.duration_ms,
                 fields.ERRORS: context.errors,
@@ -425,7 +425,7 @@ def _sanitize_errors(errors: object) -> list[str]:
 def _invocation_log_context(context: InvocationContext) -> dict[str, object]:
     """Build common structured fields for one invocation event."""
     return {
-        fields.EVENT: "public_api_invocation",
+        fields.EVENT: fields.PUBLIC_API_INVOCATION_EVENT,
         fields.COMPONENT_ID: context.component_id,
         fields.API_NAME: context.api_name,
         fields.TRACE_ID: context.trace_id,
@@ -448,7 +448,7 @@ def _emit_invocation(
         except Exception as exc:  # noqa: BLE001
             _log_concern_failure(
                 logger=logger,
-                event="public_api_instrumentation_failure",
+                event=fields.PUBLIC_API_INSTRUMENTATION_FAILURE_EVENT,
                 stage="invocation",
                 concern=type(concern).__name__,
                 exc=exc,
@@ -469,7 +469,7 @@ def _emit_completion(
         except Exception as exc:  # noqa: BLE001
             _log_concern_failure(
                 logger=logger,
-                event="public_api_instrumentation_failure",
+                event=fields.PUBLIC_API_INSTRUMENTATION_FAILURE_EVENT,
                 stage="completion",
                 concern=type(concern).__name__,
                 exc=exc,

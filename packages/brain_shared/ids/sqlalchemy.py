@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import Column
 from sqlalchemy.dialects import postgresql
 
+from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
 
 ULID_BYTES_LENGTH = 16
 
@@ -21,7 +22,7 @@ def ulid_primary_key_column(
     if not schema_name:
         raise ValueError("schema_name is required for ulid_primary_key_column")
     domain_type = postgresql.DOMAIN(
-        name="ulid_bin",
+        name=ULID_DOMAIN_NAME,
         data_type=postgresql.BYTEA(),
         schema=schema_name,
         create_type=False,

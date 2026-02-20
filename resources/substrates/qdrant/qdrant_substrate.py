@@ -5,6 +5,11 @@ from __future__ import annotations
 from threading import Lock
 from typing import Iterable, Mapping, Sequence
 
+from packages.brain_shared.embeddings import (
+    DISTANCE_METRIC_COSINE,
+    DISTANCE_METRIC_DOT,
+    DISTANCE_METRIC_EUCLID,
+)
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from qdrant_client.http import models
 
@@ -18,6 +23,11 @@ from resources.substrates.qdrant.substrate import (
 )
 
 _LOGGER = get_logger(__name__)
+_DISTANCE_MAPPING = {
+    DISTANCE_METRIC_COSINE: models.Distance.COSINE,
+    DISTANCE_METRIC_DOT: models.Distance.DOT,
+    DISTANCE_METRIC_EUCLID: models.Distance.EUCLID,
+}
 
 
 class QdrantClientSubstrate(QdrantSubstrate):
@@ -192,9 +202,4 @@ class QdrantClientSubstrate(QdrantSubstrate):
 
 def _distance(metric: str) -> models.Distance:
     """Map configured metric name to Qdrant distance enum."""
-    mapping = {
-        "cosine": models.Distance.COSINE,
-        "dot": models.Distance.DOT,
-        "euclid": models.Distance.EUCLID,
-    }
-    return mapping[metric]
+    return _DISTANCE_MAPPING[metric]

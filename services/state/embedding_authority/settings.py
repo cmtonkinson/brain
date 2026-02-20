@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from packages.brain_shared.embeddings import (
+    SUPPORTED_DISTANCE_METRICS,
+    SUPPORTED_DISTANCE_METRICS_TEXT,
+)
+
 
 @dataclass(frozen=True)
 class EmbeddingSettings:
@@ -53,9 +58,9 @@ class EmbeddingSettings:
             raise ValueError("embedding.dimensions must be > 0")
         if not self.qdrant_url:
             raise ValueError("embedding.qdrant_url is required")
-        if self.distance_metric not in {"cosine", "dot", "euclid"}:
+        if self.distance_metric not in SUPPORTED_DISTANCE_METRICS:
             raise ValueError(
-                "embedding.distance_metric must be one of: cosine, dot, euclid"
+                f"embedding.distance_metric must be one of: {SUPPORTED_DISTANCE_METRICS_TEXT}"
             )
         if self.request_timeout_seconds <= 0:
             raise ValueError("embedding.request_timeout_seconds must be > 0")
