@@ -21,6 +21,9 @@ from tests.shared.static_analysis_helpers import (
 )
 
 _DYNAMIC_IMPORT_ALLOWLIST = (
+    # component_loader.py is the only exception, and it needs dynamic imports
+    # because it's responsible for kicking off Component discovery and
+    # self-registration.
     "packages/brain_shared/component_loader.py",
 )
 
@@ -41,7 +44,9 @@ class _Violation:
 def test_runtime_code_disallows_dynamic_imports() -> None:
     """Reject dynamic import usage in runtime code roots."""
     repo_root = Path.cwd().resolve()
-    runtime_files = discover_runtime_python_files(repo_root=repo_root, roots=_RUNTIME_SCAN_ROOTS)
+    runtime_files = discover_runtime_python_files(
+        repo_root=repo_root, roots=_RUNTIME_SCAN_ROOTS
+    )
 
     violations: list[_Violation] = []
     for file_path in runtime_files:
