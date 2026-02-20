@@ -13,20 +13,22 @@ from functools import lru_cache, wraps
 from time import perf_counter
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
+from packages.brain_shared.config import load_config
+
 from . import fields
 from .context import log_context
 
 _QDRANT_COMPONENT_ID = "substrate_qdrant"
-_METER_NAME = "brain.public_api"
-_TRACER_NAME = "brain.public_api"
-_METRIC_PUBLIC_API_CALLS_TOTAL = "brain_public_api_calls_total"
-_METRIC_PUBLIC_API_DURATION_MS = "brain_public_api_duration_ms"
-_METRIC_PUBLIC_API_ERRORS_TOTAL = "brain_public_api_errors_total"
-_METRIC_INSTRUMENTATION_FAILURES_TOTAL = (
+_DEFAULT_METER_NAME = "brain.public_api"
+_DEFAULT_TRACER_NAME = "brain.public_api"
+_DEFAULT_METRIC_PUBLIC_API_CALLS_TOTAL = "brain_public_api_calls_total"
+_DEFAULT_METRIC_PUBLIC_API_DURATION_MS = "brain_public_api_duration_ms"
+_DEFAULT_METRIC_PUBLIC_API_ERRORS_TOTAL = "brain_public_api_errors_total"
+_DEFAULT_METRIC_INSTRUMENTATION_FAILURES_TOTAL = (
     "brain_public_api_instrumentation_failures_total"
 )
-_METRIC_QDRANT_OPS_TOTAL = "brain_qdrant_ops_total"
-_METRIC_QDRANT_OP_DURATION_MS = "brain_qdrant_op_duration_ms"
+_DEFAULT_METRIC_QDRANT_OPS_TOTAL = "brain_qdrant_ops_total"
+_DEFAULT_METRIC_QDRANT_OP_DURATION_MS = "brain_qdrant_op_duration_ms"
 
 
 @dataclass(frozen=True)
@@ -525,7 +527,8 @@ def _default_public_api_tracing_concern() -> PublicApiTracingConcern | None:
         from opentelemetry import trace as otel_trace
     except ImportError:
         return None
-    return PublicApiTracingConcern(tracer=otel_trace.get_tracer(_TRACER_NAME))
+    names = _public_api_otel_names()
+    return PublicApiTracingConcern(tracer=otel_trace.get_tracer(names.tracer_name))
 
 
 @lru_cache(maxsize=1)
@@ -555,6 +558,74 @@ class _OtelInstruments:
     qdrant_op_duration_ms: _HistogramLike
 
 
+@dataclass(frozen=True)
+class _PublicApiOtelNames:
+    """Resolved OTel naming for public API tracer and metric instruments."""
+
+    meter_name: str
+    tracer_name: str
+    metric_public_api_calls_total: str
+    metric_public_api_duration_ms: str
+    metric_public_api_errors_total: str
+    metric_instrumentation_failures_total: str
+    metric_qdrant_ops_total: str
+    metric_qdrant_op_duration_ms: str
+
+
+@lru_cache(maxsize=1)
+def _public_api_otel_names() -> _PublicApiOtelNames:
+    """Resolve OTel names from config with safe built-in defaults."""
+    config = load_config()
+    observability = config.get("observability", {})
+    public_api = observability.get("public_api", {})
+    otel = public_api.get("otel", {})
+    if not isinstance(otel, Mapping):
+        otel = {}
+
+    return _PublicApiOtelNames(
+        meter_name=_configured_name(otel, "meter_name", _DEFAULT_METER_NAME),
+        tracer_name=_configured_name(otel, "tracer_name", _DEFAULT_TRACER_NAME),
+        metric_public_api_calls_total=_configured_name(
+            otel,
+            "metric_public_api_calls_total",
+            _DEFAULT_METRIC_PUBLIC_API_CALLS_TOTAL,
+        ),
+        metric_public_api_duration_ms=_configured_name(
+            otel,
+            "metric_public_api_duration_ms",
+            _DEFAULT_METRIC_PUBLIC_API_DURATION_MS,
+        ),
+        metric_public_api_errors_total=_configured_name(
+            otel,
+            "metric_public_api_errors_total",
+            _DEFAULT_METRIC_PUBLIC_API_ERRORS_TOTAL,
+        ),
+        metric_instrumentation_failures_total=_configured_name(
+            otel,
+            "metric_instrumentation_failures_total",
+            _DEFAULT_METRIC_INSTRUMENTATION_FAILURES_TOTAL,
+        ),
+        metric_qdrant_ops_total=_configured_name(
+            otel,
+            "metric_qdrant_ops_total",
+            _DEFAULT_METRIC_QDRANT_OPS_TOTAL,
+        ),
+        metric_qdrant_op_duration_ms=_configured_name(
+            otel,
+            "metric_qdrant_op_duration_ms",
+            _DEFAULT_METRIC_QDRANT_OP_DURATION_MS,
+        ),
+    )
+
+
+def _configured_name(mapping: Mapping[str, object], key: str, default: str) -> str:
+    """Return non-empty string from mapping, otherwise fallback default."""
+    value = str(mapping.get(key, default)).strip()
+    if value == "":
+        return default
+    return value
+
+
 @lru_cache(maxsize=1)
 def _default_otel_instruments() -> _OtelInstruments | None:
     """Create OTel metric instruments when opentelemetry is installed."""
@@ -563,35 +634,36 @@ def _default_otel_instruments() -> _OtelInstruments | None:
     except ImportError:
         return None
 
-    meter = otel_metrics.get_meter(_METER_NAME)
+    names = _public_api_otel_names()
+    meter = otel_metrics.get_meter(names.meter_name)
     return _OtelInstruments(
         public_api_calls_total=meter.create_counter(
-            name=_METRIC_PUBLIC_API_CALLS_TOTAL,
+            name=names.metric_public_api_calls_total,
             description="Count of public API invocations by component/method/outcome.",
             unit="1",
         ),
         public_api_duration_ms=meter.create_histogram(
-            name=_METRIC_PUBLIC_API_DURATION_MS,
+            name=names.metric_public_api_duration_ms,
             description="Public API invocation latency in milliseconds.",
             unit="ms",
         ),
         public_api_errors_total=meter.create_counter(
-            name=_METRIC_PUBLIC_API_ERRORS_TOTAL,
+            name=names.metric_public_api_errors_total,
             description="Count of public API failures by error category.",
             unit="1",
         ),
         instrumentation_failures_total=meter.create_counter(
-            name=_METRIC_INSTRUMENTATION_FAILURES_TOTAL,
+            name=names.metric_instrumentation_failures_total,
             description="Count of instrumentation concern failures.",
             unit="1",
         ),
         qdrant_ops_total=meter.create_counter(
-            name=_METRIC_QDRANT_OPS_TOTAL,
+            name=names.metric_qdrant_ops_total,
             description="Count of Qdrant substrate operations by outcome.",
             unit="1",
         ),
         qdrant_op_duration_ms=meter.create_histogram(
-            name=_METRIC_QDRANT_OP_DURATION_MS,
+            name=names.metric_qdrant_op_duration_ms,
             description="Qdrant substrate operation latency in milliseconds.",
             unit="ms",
         ),

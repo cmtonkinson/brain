@@ -35,4 +35,18 @@ BUILTIN_DEFAULTS: dict[str, Any] = {
         "max_list_limit": 500,
         "repair_batch_limit": 500,
     },
+    "observability": {
+        "public_api": {
+            "otel": {
+                "meter_name": "brain.public_api",
+                "tracer_name": "brain.public_api",
+                "metric_public_api_calls_total": "brain_public_api_calls_total",
+                "metric_public_api_duration_ms": "brain_public_api_duration_ms",
+                "metric_public_api_errors_total": "brain_public_api_errors_total",
+                "metric_instrumentation_failures_total": "brain_public_api_instrumentation_failures_total",
+                "metric_qdrant_ops_total": "brain_qdrant_ops_total",
+                "metric_qdrant_op_duration_ms": "brain_qdrant_op_duration_ms",
+            }
+        }
+    },
 }
