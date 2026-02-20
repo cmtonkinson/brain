@@ -8,11 +8,8 @@ code.
 from __future__ import annotations
 
 import ast
-import sys
 from dataclasses import dataclass
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tests.shared.static_analysis_helpers import (
     _RUNTIME_SCAN_ROOTS,

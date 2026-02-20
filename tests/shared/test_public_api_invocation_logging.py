@@ -8,10 +8,7 @@ instrumentation.
 from __future__ import annotations
 
 import ast
-import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from packages.brain_shared.component_loader import import_registered_component_modules
 from packages.brain_shared.manifest import ServiceManifest, get_registry

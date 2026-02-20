@@ -50,6 +50,7 @@ from services.state.embedding_authority.settings import EmbeddingSettings
 
 _CANON_RE = re.compile(r"[^\.a-z0-9_-]")
 _LOGGER = get_logger(__name__)
+_NO_PAYLOAD = object()
 
 
 @dataclass(frozen=True)
@@ -138,31 +139,15 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         metadata: Mapping[str, str],
     ) -> Result[SourceRecord]:
         """Create/update source row."""
-        errors = self._validate_meta(meta)
-        if not canonical_reference:
-            errors.append(
-                validation_error(
-                    "canonical_reference is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        if not source_type:
-            errors.append(
-                validation_error(
-                    "source_type is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        if not service:
-            errors.append(
-                validation_error(
-                    "service is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        if not principal:
-            errors.append(
-                validation_error(
-                    "principal is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
+        errors = self._collect_errors(
+            meta=meta,
+            required_fields={
+                "canonical_reference": canonical_reference,
+                "source_type": source_type,
+                "service": service,
+                "principal": principal,
+            },
+        )
         if errors:
             return failure(meta=meta, errors=errors)
 
@@ -176,7 +161,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             )
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)])
+            return self._postgres_failure(meta=meta, exc=exc)
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -195,32 +180,19 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         metadata: Mapping[str, str],
     ) -> Result[UpsertChunkResult]:
         """Create/update chunk row and materialize active-spec embedding."""
-        errors = self._validate_meta(meta)
-        if not source_id:
-            errors.append(
-                validation_error(
-                    "source_id is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        else:
-            ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
+        errors = self._collect_errors(
+            meta=meta,
+            required_ulids={"source_id": source_id},
+            required_fields={
+                "content_hash": content_hash,
+                "text": text,
+            },
+        )
         if chunk_ordinal < 0:
             errors.append(
                 validation_error(
                     "chunk_ordinal must be >= 0", code=codes.INVALID_ARGUMENT
                 )
-            )
-        if not content_hash:
-            errors.append(
-                validation_error(
-                    "content_hash is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        if not text:
-            errors.append(
-                validation_error("text is required", code=codes.MISSING_REQUIRED_FIELD)
             )
         if errors:
             return failure(meta=meta, errors=errors)
@@ -228,14 +200,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         try:
             source = self._repository.get_source(source_id=source_id)
             if source is None:
-                return failure(
-                    meta=meta,
-                    errors=[
-                        not_found_error(
-                            "source not found", code=codes.RESOURCE_NOT_FOUND
-                        )
-                    ],
-                )
+                return self._not_found_failure(meta=meta, message="source not found")
 
             chunk = self._repository.upsert_chunk(
                 source_id=source.id,
@@ -250,7 +215,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 meta=meta, payload=UpsertChunkResult(chunk=chunk, embedding=embedding)
             )
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)])
+            return self._postgres_failure(meta=meta, exc=exc)
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -301,30 +266,16 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     )
     def delete_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Result[bool]:
         """Hard-delete one chunk and best-effort delete derived index points."""
-        errors = self._validate_meta(meta)
-        if not chunk_id:
-            errors.append(
-                validation_error(
-                    "chunk_id is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        else:
-            ulid_error = self._validate_ulid(value=chunk_id, field_name="chunk_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
+        errors = self._collect_errors(meta=meta, required_ulids={"chunk_id": chunk_id})
         if errors:
             return failure(meta=meta, errors=errors, payload=False)
 
         try:
             deleted = self._repository.delete_chunk(chunk_id=chunk_id)
             if not deleted:
-                return failure(
+                return self._not_found_failure(
                     meta=meta,
-                    errors=[
-                        not_found_error(
-                            "chunk not found", code=codes.RESOURCE_NOT_FOUND
-                        )
-                    ],
+                    message="chunk not found",
                     payload=False,
                 )
 
@@ -334,9 +285,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 )
             return success(meta=meta, payload=True)
         except Exception as exc:  # noqa: BLE001
-            return failure(
-                meta=meta, errors=[normalize_postgres_error(exc)], payload=False
-            )
+            return self._postgres_failure(meta=meta, exc=exc, payload=False)
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -345,17 +294,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     )
     def delete_source(self, *, meta: EnvelopeMeta, source_id: str) -> Result[bool]:
         """Hard-delete one source and all owned chunk/embedding rows."""
-        errors = self._validate_meta(meta)
-        if not source_id:
-            errors.append(
-                validation_error(
-                    "source_id is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        else:
-            ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
+        errors = self._collect_errors(
+            meta=meta, required_ulids={"source_id": source_id}
+        )
         if errors:
             return failure(meta=meta, errors=errors, payload=False)
 
@@ -363,13 +304,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             chunk_ids = self._repository.list_chunk_ids_for_source(source_id=source_id)
             deleted = self._repository.delete_source(source_id=source_id)
             if not deleted:
-                return failure(
+                return self._not_found_failure(
                     meta=meta,
-                    errors=[
-                        not_found_error(
-                            "source not found", code=codes.RESOURCE_NOT_FOUND
-                        )
-                    ],
+                    message="source not found",
                     payload=False,
                 )
 
@@ -381,9 +318,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                     )
             return success(meta=meta, payload=True)
         except Exception as exc:  # noqa: BLE001
-            return failure(
-                meta=meta, errors=[normalize_postgres_error(exc)], payload=False
-            )
+            return self._postgres_failure(meta=meta, exc=exc, payload=False)
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -392,34 +327,19 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     )
     def get_source(self, *, meta: EnvelopeMeta, source_id: str) -> Result[SourceRecord]:
         """Read one source by id."""
-        errors = self._validate_meta(meta)
-        if not source_id:
-            errors.append(
-                validation_error(
-                    "source_id is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        else:
-            ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
+        errors = self._collect_errors(
+            meta=meta, required_ulids={"source_id": source_id}
+        )
         if errors:
             return failure(meta=meta, errors=errors)
 
         try:
             record = self._repository.get_source(source_id=source_id)
             if record is None:
-                return failure(
-                    meta=meta,
-                    errors=[
-                        not_found_error(
-                            "source not found", code=codes.RESOURCE_NOT_FOUND
-                        )
-                    ],
-                )
+                return self._not_found_failure(meta=meta, message="source not found")
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)])
+            return self._postgres_failure(meta=meta, exc=exc)
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -460,34 +380,17 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     )
     def get_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Result[ChunkRecord]:
         """Read one chunk by id."""
-        errors = self._validate_meta(meta)
-        if not chunk_id:
-            errors.append(
-                validation_error(
-                    "chunk_id is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        else:
-            ulid_error = self._validate_ulid(value=chunk_id, field_name="chunk_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
+        errors = self._collect_errors(meta=meta, required_ulids={"chunk_id": chunk_id})
         if errors:
             return failure(meta=meta, errors=errors)
 
         try:
             record = self._repository.get_chunk(chunk_id=chunk_id)
             if record is None:
-                return failure(
-                    meta=meta,
-                    errors=[
-                        not_found_error(
-                            "chunk not found", code=codes.RESOURCE_NOT_FOUND
-                        )
-                    ],
-                )
+                return self._not_found_failure(meta=meta, message="chunk not found")
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)])
+            return self._postgres_failure(meta=meta, exc=exc)
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -502,17 +405,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         limit: int,
     ) -> Result[list[ChunkRecord]]:
         """List chunk rows for one source."""
-        errors = self._validate_meta(meta)
-        if not source_id:
-            errors.append(
-                validation_error(
-                    "source_id is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        else:
-            ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
+        errors = self._collect_errors(
+            meta=meta, required_ulids={"source_id": source_id}
+        )
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
@@ -523,9 +418,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             )
             return success(meta=meta, payload=records)
         except Exception as exc:  # noqa: BLE001
-            return failure(
-                meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
-            )
+            return self._postgres_failure(meta=meta, exc=exc, payload=[])
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -540,21 +433,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         spec_id: str = "",
     ) -> Result[EmbeddingRecord]:
         """Read one embedding row."""
-        errors = self._validate_meta(meta)
-        if not chunk_id:
-            errors.append(
-                validation_error(
-                    "chunk_id is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        else:
-            ulid_error = self._validate_ulid(value=chunk_id, field_name="chunk_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
-        if spec_id:
-            ulid_error = self._validate_ulid(value=spec_id, field_name="spec_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
+        errors = self._collect_errors(
+            meta=meta,
+            required_ulids={"chunk_id": chunk_id},
+            optional_ulids={"spec_id": spec_id},
+        )
         if errors:
             return failure(meta=meta, errors=errors)
 
@@ -564,17 +447,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 chunk_id=chunk_id, spec_id=effective_spec_id
             )
             if record is None:
-                return failure(
-                    meta=meta,
-                    errors=[
-                        not_found_error(
-                            "embedding not found", code=codes.RESOURCE_NOT_FOUND
-                        )
-                    ],
-                )
+                return self._not_found_failure(meta=meta, message="embedding not found")
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)])
+            return self._postgres_failure(meta=meta, exc=exc)
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -590,21 +466,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         limit: int,
     ) -> Result[list[EmbeddingRecord]]:
         """List embedding rows for one source."""
-        errors = self._validate_meta(meta)
-        if not source_id:
-            errors.append(
-                validation_error(
-                    "source_id is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        else:
-            ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
-        if spec_id:
-            ulid_error = self._validate_ulid(value=spec_id, field_name="spec_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
+        errors = self._collect_errors(
+            meta=meta,
+            required_ulids={"source_id": source_id},
+            optional_ulids={"spec_id": spec_id},
+        )
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
@@ -617,9 +483,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             )
             return success(meta=meta, payload=records)
         except Exception as exc:  # noqa: BLE001
-            return failure(
-                meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
-            )
+            return self._postgres_failure(meta=meta, exc=exc, payload=[])
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -635,11 +499,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         limit: int,
     ) -> Result[list[EmbeddingRecord]]:
         """List embedding rows by status."""
-        errors = self._validate_meta(meta)
-        if spec_id:
-            ulid_error = self._validate_ulid(value=spec_id, field_name="spec_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
+        errors = self._collect_errors(
+            meta=meta,
+            optional_ulids={"spec_id": spec_id},
+        )
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
@@ -652,9 +515,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             )
             return success(meta=meta, payload=records)
         except Exception as exc:  # noqa: BLE001
-            return failure(
-                meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
-            )
+            return self._postgres_failure(meta=meta, exc=exc, payload=[])
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -694,32 +555,17 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     )
     def get_spec(self, *, meta: EnvelopeMeta, spec_id: str) -> Result[EmbeddingSpec]:
         """Read one embedding spec by id."""
-        errors = self._validate_meta(meta)
-        if not spec_id:
-            errors.append(
-                validation_error(
-                    "spec_id is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
-        else:
-            ulid_error = self._validate_ulid(value=spec_id, field_name="spec_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
+        errors = self._collect_errors(meta=meta, required_ulids={"spec_id": spec_id})
         if errors:
             return failure(meta=meta, errors=errors)
 
         try:
             row = self._repository.get_spec(spec_id=spec_id)
             if row is None:
-                return failure(
-                    meta=meta,
-                    errors=[
-                        not_found_error("spec not found", code=codes.RESOURCE_NOT_FOUND)
-                    ],
-                )
+                return self._not_found_failure(meta=meta, message="spec not found")
             return success(meta=meta, payload=row)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)])
+            return self._postgres_failure(meta=meta, exc=exc)
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -734,24 +580,18 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         limit: int,
     ) -> Result[RepairSpecResult]:
         """Repair missing/stale derived Qdrant points for one spec."""
-        errors = self._validate_meta(meta)
+        errors = self._collect_errors(
+            meta=meta,
+            optional_ulids={"spec_id": spec_id},
+        )
         effective_spec_id = spec_id or self._active.spec.id
-        if spec_id:
-            ulid_error = self._validate_ulid(value=spec_id, field_name="spec_id")
-            if ulid_error is not None:
-                errors.append(ulid_error)
         if errors:
             return failure(meta=meta, errors=errors)
 
         try:
             spec = self._repository.get_spec(spec_id=effective_spec_id)
             if spec is None:
-                return failure(
-                    meta=meta,
-                    errors=[
-                        not_found_error("spec not found", code=codes.RESOURCE_NOT_FOUND)
-                    ],
-                )
+                return self._not_found_failure(meta=meta, message="spec not found")
 
             indexed = self._repository.list_embeddings_by_status(
                 status=EmbeddingStatus.INDEXED,
@@ -938,6 +778,73 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 code=codes.INVALID_ARGUMENT,
             )
         return None
+
+    def _collect_errors(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        required_fields: Mapping[str, str] | None = None,
+        required_ulids: Mapping[str, str] | None = None,
+        optional_ulids: Mapping[str, str] | None = None,
+    ) -> list[ErrorDetail]:
+        """Collect and return validation errors for common request shapes."""
+        errors = self._validate_meta(meta)
+        if required_fields:
+            for field_name, value in required_fields.items():
+                if not value:
+                    errors.append(
+                        validation_error(
+                            f"{field_name} is required",
+                            code=codes.MISSING_REQUIRED_FIELD,
+                        )
+                    )
+        if required_ulids:
+            for field_name, value in required_ulids.items():
+                if not value:
+                    errors.append(
+                        validation_error(
+                            f"{field_name} is required",
+                            code=codes.MISSING_REQUIRED_FIELD,
+                        )
+                    )
+                    continue
+                ulid_error = self._validate_ulid(value=value, field_name=field_name)
+                if ulid_error is not None:
+                    errors.append(ulid_error)
+        if optional_ulids:
+            for field_name, value in optional_ulids.items():
+                if not value:
+                    continue
+                ulid_error = self._validate_ulid(value=value, field_name=field_name)
+                if ulid_error is not None:
+                    errors.append(ulid_error)
+        return errors
+
+    def _not_found_failure(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        message: str,
+        payload: object = _NO_PAYLOAD,
+    ) -> Result[object]:
+        """Return standardized not-found failure result."""
+        errors = [not_found_error(message, code=codes.RESOURCE_NOT_FOUND)]
+        if payload is _NO_PAYLOAD:
+            return failure(meta=meta, errors=errors)
+        return failure(meta=meta, errors=errors, payload=payload)
+
+    def _postgres_failure(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        exc: Exception,
+        payload: object = _NO_PAYLOAD,
+    ) -> Result[object]:
+        """Return standardized Postgres-normalized failure result."""
+        errors = [normalize_postgres_error(exc)]
+        if payload is _NO_PAYLOAD:
+            return failure(meta=meta, errors=errors)
+        return failure(meta=meta, errors=errors, payload=payload)
 
     def _delete_derived_point_best_effort(self, *, spec_id: str, chunk_id: str) -> None:
         """Best-effort derived index cleanup with explicit observability."""

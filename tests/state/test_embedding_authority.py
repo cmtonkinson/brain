@@ -4,13 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Mapping, Sequence
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from packages.brain_shared.ids import generate_ulid_str
@@ -298,12 +294,6 @@ class FakeRepository:
 
     def list_chunk_ids_for_source(self, *, source_id: str) -> list[str]:
         return [row.id for row in self.chunks.values() if row.source_id == source_id]
-
-    def list_embeddings_for_spec(
-        self, *, spec_id: str, limit: int
-    ) -> list[EmbeddingRecord]:
-        rows = [row for row in self.embeddings.values() if row.spec_id == spec_id]
-        return rows[:limit]
 
     def delete_chunk(self, *, chunk_id: str) -> bool:
         if chunk_id not in self.chunks:

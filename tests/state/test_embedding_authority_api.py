@@ -10,7 +10,6 @@ import grpc
 import pytest
 
 repo_root = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(repo_root))
 generated_root = repo_root / "generated"
 if not generated_root.exists():
     pytest.skip(

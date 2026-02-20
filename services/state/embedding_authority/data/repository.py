@@ -354,23 +354,6 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
             ).all()
             return [ulid_bytes_to_str(row[0]) for row in rows]
 
-    def list_embeddings_for_spec(
-        self, *, spec_id: str, limit: int
-    ) -> list[EmbeddingRecord]:
-        """List all embeddings for one spec."""
-        with self._sessions.session() as session:
-            rows = (
-                session.execute(
-                    select(embeddings)
-                    .where(embeddings.c.spec_id == ulid_str_to_bytes(spec_id))
-                    .order_by(desc(embeddings.c.updated_at))
-                    .limit(_bounded_limit(limit))
-                )
-                .mappings()
-                .all()
-            )
-            return [_to_embedding(row) for row in rows]
-
     def delete_chunk(self, *, chunk_id: str) -> bool:
         """Delete one chunk and all embedding rows for it."""
         chunk_id_bytes = ulid_str_to_bytes(chunk_id)

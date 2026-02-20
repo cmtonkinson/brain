@@ -144,11 +144,6 @@ class EmbeddingRepository(Protocol):
     def list_chunk_ids_for_source(self, *, source_id: str) -> list[str]:
         """List chunk ids owned by one source."""
 
-    def list_embeddings_for_spec(
-        self, *, spec_id: str, limit: int
-    ) -> list[EmbeddingRecord]:
-        """List embeddings for one spec."""
-
     def delete_chunk(self, *, chunk_id: str) -> bool:
         """Delete chunk and associated embedding rows."""
 

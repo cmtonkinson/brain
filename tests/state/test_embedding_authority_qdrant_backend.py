@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import services.state.embedding_authority.qdrant_backend as qdrant_backend_module
 from services.state.embedding_authority.qdrant_backend import QdrantEmbeddingBackend

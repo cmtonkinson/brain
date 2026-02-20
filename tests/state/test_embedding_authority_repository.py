@@ -2,13 +2,9 @@
 
 from __future__ import annotations
 
-import sys
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from services.state.embedding_authority.data.repository import _row_dt
 
