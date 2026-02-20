@@ -78,6 +78,10 @@ Declared via `ServiceManifest`. Required:
 - `owns_resources` must list L0 component IDs it owns.
 - If a Resource declares `owner_service_id`, it must match the owning Service
   `id`.
+- Public API methods exposed must be decorated with
+  `packages.brain_shared.logging.public_api_instrumented(...)` so invocation
+  observability concerns (logging, metrics, tracing) remain consistent and
+  composable across Services.
 
 ## 4) Practical Registration Pattern
 Each component package should self-register at import time with a single exported `MANIFEST` symbol:

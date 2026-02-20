@@ -12,6 +12,7 @@ from .public_api import (
     PublicApiInstrumentationConcern,
     PublicApiLoggingConcern,
     PublicApiMetricsConcern,
+    PublicApiTracingConcern,
     public_api_instrumented,
     public_api_logged,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "PublicApiInstrumentationConcern",
     "PublicApiLoggingConcern",
     "PublicApiMetricsConcern",
+    "PublicApiTracingConcern",
     "public_api_instrumented",
     "public_api_logged",
 ]

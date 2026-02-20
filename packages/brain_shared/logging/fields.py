@@ -24,6 +24,10 @@ API_NAME = "api_name"
 SUCCESS = "success"
 DURATION_MS = "duration_ms"
 ERRORS = "errors"
+OUTCOME = "outcome"
+ERROR_CATEGORY = "error_category"
+STAGE = "stage"
+CONCERN = "concern"
 
 # Future tracing compatibility fields.
 OTEL_TRACE_ID = "otel_trace_id"

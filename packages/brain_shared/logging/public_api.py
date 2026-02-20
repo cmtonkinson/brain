@@ -7,6 +7,7 @@ share one stable callsite contract.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import lru_cache, wraps
 from time import perf_counter
@@ -14,6 +15,18 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from . import fields
 from .context import log_context
+
+_QDRANT_COMPONENT_ID = "substrate_qdrant"
+_METER_NAME = "brain.public_api"
+_TRACER_NAME = "brain.public_api"
+_METRIC_PUBLIC_API_CALLS_TOTAL = "brain_public_api_calls_total"
+_METRIC_PUBLIC_API_DURATION_MS = "brain_public_api_duration_ms"
+_METRIC_PUBLIC_API_ERRORS_TOTAL = "brain_public_api_errors_total"
+_METRIC_INSTRUMENTATION_FAILURES_TOTAL = (
+    "brain_public_api_instrumentation_failures_total"
+)
+_METRIC_QDRANT_OPS_TOTAL = "brain_qdrant_ops_total"
+_METRIC_QDRANT_OP_DURATION_MS = "brain_qdrant_op_duration_ms"
 
 
 @dataclass(frozen=True)
@@ -92,6 +105,95 @@ class _HistogramLike(Protocol):
         """Record one sample with attributes."""
 
 
+class _SpanLike(Protocol):
+    """Minimal span interface used by tracing concern."""
+
+    def set_attribute(self, key: str, value: object) -> None:
+        """Attach one attribute to a span."""
+
+    def record_exception(self, exception: Exception) -> None:
+        """Record one exception on a span."""
+
+    def set_status(self, status: object) -> None:
+        """Set the status of a span."""
+
+
+class _SpanContextManagerLike(Protocol):
+    """Minimal context manager interface for span lifecycles."""
+
+    def __enter__(self) -> _SpanLike:
+        """Enter and return the active span."""
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Exit and close the active span."""
+
+
+class _TracerLike(Protocol):
+    """Minimal tracer interface used by tracing concern."""
+
+    def start_as_current_span(self, name: str) -> _SpanContextManagerLike:
+        """Start one span and return a context manager."""
+
+
+@dataclass(frozen=True)
+class _TraceScope:
+    """One in-flight trace scope for a decorated API invocation."""
+
+    manager: _SpanContextManagerLike
+    span: _SpanLike
+
+
+class PublicApiTracingConcern:
+    """Tracing concern implementation for public API invocation telemetry."""
+
+    def __init__(self, *, tracer: _TracerLike) -> None:
+        self._tracer = tracer
+        self._active_scopes: ContextVar[list[_TraceScope]] = ContextVar(
+            "public_api_tracing_scopes", default=[]
+        )
+
+    def on_invocation(self, context: InvocationContext) -> None:
+        """Start one span for the current invocation and attach metadata."""
+        manager = self._tracer.start_as_current_span(
+            f"public_api.{context.component_id}.{context.api_name}"
+        )
+        span = manager.__enter__()
+        span.set_attribute(fields.COMPONENT_ID, context.component_id)
+        span.set_attribute(fields.API_NAME, context.api_name)
+        if context.trace_id is not None:
+            span.set_attribute(fields.TRACE_ID, context.trace_id)
+        if context.envelope_id is not None:
+            span.set_attribute(fields.ENVELOPE_ID, context.envelope_id)
+        if context.principal is not None:
+            span.set_attribute(fields.PRINCIPAL, context.principal)
+        for key, value in context.references.items():
+            span.set_attribute(f"reference.{key}", value)
+
+        current = self._active_scopes.get()
+        self._active_scopes.set([*current, _TraceScope(manager=manager, span=span)])
+
+    def on_completion(self, context: CompletionContext) -> None:
+        """Finalize the current invocation span with completion metadata."""
+        current = self._active_scopes.get()
+        if len(current) == 0:
+            return
+        scope = current[-1]
+        self._active_scopes.set(current[:-1])
+
+        scope.span.set_attribute(fields.SUCCESS, context.success)
+        scope.span.set_attribute(fields.DURATION_MS, context.duration_ms)
+        scope.span.set_attribute(
+            fields.OUTCOME, "success" if context.success else "failure"
+        )
+        scope.span.set_attribute("errors.count", len(context.errors))
+
+        if not context.success:
+            _set_span_error_status(scope.span)
+            if len(context.errors) > 0:
+                scope.span.record_exception(RuntimeError("; ".join(context.errors[:3])))
+        scope.manager.__exit__(None, None, None)
+
+
 class PublicApiMetricsConcern:
     """Metrics concern implementation for public API invocation telemetry."""
 
@@ -118,26 +220,26 @@ class PublicApiMetricsConcern:
         """Emit counters/histograms for completed invocation outcomes."""
         outcome = "success" if context.success else "failure"
         attrs = {
-            "component_id": context.invocation.component_id,
-            "api_name": context.invocation.api_name,
-            "outcome": outcome,
+            fields.COMPONENT_ID: context.invocation.component_id,
+            fields.API_NAME: context.invocation.api_name,
+            fields.OUTCOME: outcome,
         }
         self._public_api_calls_total.add(1, attributes=attrs)
         self._public_api_duration_ms.record(context.duration_ms, attributes=attrs)
 
-        if context.invocation.component_id == "substrate_qdrant":
+        if context.invocation.component_id == _QDRANT_COMPONENT_ID:
             self._qdrant_ops_total.add(
                 1,
                 attributes={
-                    "api_name": context.invocation.api_name,
-                    "outcome": outcome,
+                    fields.API_NAME: context.invocation.api_name,
+                    fields.OUTCOME: outcome,
                 },
             )
             self._qdrant_op_duration_ms.record(
                 context.duration_ms,
                 attributes={
-                    "api_name": context.invocation.api_name,
-                    "outcome": outcome,
+                    fields.API_NAME: context.invocation.api_name,
+                    fields.OUTCOME: outcome,
                 },
             )
 
@@ -149,9 +251,9 @@ class PublicApiMetricsConcern:
             self._public_api_errors_total.add(
                 1,
                 attributes={
-                    "component_id": context.invocation.component_id,
-                    "api_name": context.invocation.api_name,
-                    "error_category": category,
+                    fields.COMPONENT_ID: context.invocation.component_id,
+                    fields.API_NAME: context.invocation.api_name,
+                    fields.ERROR_CATEGORY: category,
                 },
             )
 
@@ -169,6 +271,9 @@ def public_api_instrumented(
     resolved_concerns: tuple[PublicApiInstrumentationConcern, ...] = tuple(
         concerns or ()
     )
+    default_tracing_concern = _default_public_api_tracing_concern()
+    if default_tracing_concern is not None:
+        resolved_concerns = (*resolved_concerns, default_tracing_concern)
     default_metrics_concern = _default_public_api_metrics_concern()
     if default_metrics_concern is not None:
         resolved_concerns = (*resolved_concerns, default_metrics_concern)
@@ -389,8 +494,8 @@ def _log_concern_failure(
             fields.EVENT: event,
             fields.COMPONENT_ID: invocation.component_id,
             fields.API_NAME: invocation.api_name,
-            "stage": stage,
-            "concern": concern,
+            fields.STAGE: stage,
+            fields.CONCERN: concern,
             fields.ERRORS: [f"{type(exc).__name__}: {exc}"],
         }
     ):
@@ -401,6 +506,26 @@ def _log_concern_failure(
         component_id=invocation.component_id,
         api_name=invocation.api_name,
     )
+
+
+def _set_span_error_status(span: _SpanLike) -> None:
+    """Best-effort OTel error status update when tracing API is available."""
+    try:
+        from opentelemetry.trace.status import Status, StatusCode
+
+        span.set_status(Status(StatusCode.ERROR))
+    except ImportError:
+        return
+
+
+@lru_cache(maxsize=1)
+def _default_public_api_tracing_concern() -> PublicApiTracingConcern | None:
+    """Build a default OTel-backed public API tracing concern when available."""
+    try:
+        from opentelemetry import trace as otel_trace
+    except ImportError:
+        return None
+    return PublicApiTracingConcern(tracer=otel_trace.get_tracer(_TRACER_NAME))
 
 
 @lru_cache(maxsize=1)
@@ -438,35 +563,35 @@ def _default_otel_instruments() -> _OtelInstruments | None:
     except ImportError:
         return None
 
-    meter = otel_metrics.get_meter("brain.public_api")
+    meter = otel_metrics.get_meter(_METER_NAME)
     return _OtelInstruments(
         public_api_calls_total=meter.create_counter(
-            name="brain_public_api_calls_total",
+            name=_METRIC_PUBLIC_API_CALLS_TOTAL,
             description="Count of public API invocations by component/method/outcome.",
             unit="1",
         ),
         public_api_duration_ms=meter.create_histogram(
-            name="brain_public_api_duration_ms",
+            name=_METRIC_PUBLIC_API_DURATION_MS,
             description="Public API invocation latency in milliseconds.",
             unit="ms",
         ),
         public_api_errors_total=meter.create_counter(
-            name="brain_public_api_errors_total",
+            name=_METRIC_PUBLIC_API_ERRORS_TOTAL,
             description="Count of public API failures by error category.",
             unit="1",
         ),
         instrumentation_failures_total=meter.create_counter(
-            name="brain_public_api_instrumentation_failures_total",
+            name=_METRIC_INSTRUMENTATION_FAILURES_TOTAL,
             description="Count of instrumentation concern failures.",
             unit="1",
         ),
         qdrant_ops_total=meter.create_counter(
-            name="brain_qdrant_ops_total",
+            name=_METRIC_QDRANT_OPS_TOTAL,
             description="Count of Qdrant substrate operations by outcome.",
             unit="1",
         ),
         qdrant_op_duration_ms=meter.create_histogram(
-            name="brain_qdrant_op_duration_ms",
+            name=_METRIC_QDRANT_OP_DURATION_MS,
             description="Qdrant substrate operation latency in milliseconds.",
             unit="ms",
         ),
@@ -483,9 +608,9 @@ def _record_instrumentation_failure(
     instruments.instrumentation_failures_total.add(
         1,
         attributes={
-            "component_id": component_id,
-            "api_name": api_name,
-            "stage": stage,
-            "concern": concern,
+            fields.COMPONENT_ID: component_id,
+            fields.API_NAME: api_name,
+            fields.STAGE: stage,
+            fields.CONCERN: concern,
         },
     )
