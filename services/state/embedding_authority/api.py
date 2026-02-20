@@ -20,6 +20,7 @@ from services.state.embedding_authority.domain import (
     EmbeddingSpec,
     EmbeddingStatus,
     RepairSpecResult,
+    SearchEmbeddingMatch,
     SourceRecord,
     UpsertChunkInput,
     UpsertChunkResult,
@@ -277,6 +278,30 @@ class GrpcEmbeddingAuthorityService(
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
+    def SearchEmbeddings(
+        self,
+        request: embedding_pb2.SearchEmbeddingsRequest,
+        context: grpc.ServicerContext,
+    ) -> embedding_pb2.SearchEmbeddingsResponse:
+        result = self._service.search_embeddings(
+            meta=_meta_from_proto(request.metadata),
+            query_text=request.payload.query_text,
+            source_id=request.payload.source_id,
+            spec_id=request.payload.spec_id,
+            limit=request.payload.limit,
+        )
+        _abort_for_transport_errors(context=context, result=result)
+        payload = (
+            []
+            if result.payload is None
+            else [_search_match_to_proto(item) for item in result.payload]
+        )
+        return embedding_pb2.SearchEmbeddingsResponse(
+            metadata=_meta_to_proto(result.metadata),
+            payload=payload,
+            errors=[_error_to_proto(item) for item in result.errors],
+        )
+
     def GetActiveSpec(
         self, request: embedding_pb2.GetActiveSpecRequest, context: grpc.ServicerContext
     ) -> embedding_pb2.GetActiveSpecResponse:
@@ -464,6 +489,23 @@ def _repair_to_proto(repair: RepairSpecResult | None) -> embedding_pb2.RepairSpe
         scanned=repair.scanned,
         repaired=repair.repaired,
         reembedded=repair.reembedded,
+    )
+
+
+def _search_match_to_proto(
+    match: SearchEmbeddingMatch | None,
+) -> embedding_pb2.SearchEmbeddingMatch:
+    """Map semantic search match payload to protobuf payload."""
+    if match is None:
+        return embedding_pb2.SearchEmbeddingMatch()
+    return embedding_pb2.SearchEmbeddingMatch(
+        score=match.score,
+        chunk_id=match.chunk_id,
+        source_id=match.source_id,
+        spec_id=match.spec_id,
+        chunk_ordinal=match.chunk_ordinal,
+        reference_range=match.reference_range,
+        content_hash=match.content_hash,
     )
 
 

@@ -12,6 +12,7 @@ from services.state.embedding_authority.domain import (
     EmbeddingSpec,
     EmbeddingStatus,
     RepairSpecResult,
+    SearchEmbeddingMatch,
     SourceRecord,
     UpsertChunkInput,
     UpsertChunkResult,
@@ -130,6 +131,18 @@ class EmbeddingAuthorityService(ABC):
         limit: int,
     ) -> Result[list[EmbeddingRecord]]:
         """List embedding rows by status, optionally scoped to one spec."""
+
+    @abstractmethod
+    def search_embeddings(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        query_text: str,
+        source_id: str,
+        spec_id: str,
+        limit: int,
+    ) -> Result[list[SearchEmbeddingMatch]]:
+        """Search derived embeddings by semantic similarity."""
 
     @abstractmethod
     def get_active_spec(self, *, meta: EnvelopeMeta) -> Result[EmbeddingSpec]:

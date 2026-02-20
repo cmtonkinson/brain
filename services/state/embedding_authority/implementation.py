@@ -35,6 +35,7 @@ from services.state.embedding_authority.domain import (
     EmbeddingSpec,
     EmbeddingStatus,
     RepairSpecResult,
+    SearchEmbeddingMatch,
     SourceRecord,
     UpsertChunkInput,
     UpsertChunkResult,
@@ -520,6 +521,92 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     @public_api_instrumented(
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("source_id", "spec_id"),
+    )
+    def search_embeddings(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        query_text: str,
+        source_id: str,
+        spec_id: str,
+        limit: int,
+    ) -> Result[list[SearchEmbeddingMatch]]:
+        """Search derived embeddings by semantic similarity."""
+        errors = self._collect_errors(
+            meta=meta,
+            required_fields={"query_text": query_text},
+            optional_ulids={
+                "source_id": source_id,
+                "spec_id": spec_id,
+            },
+        )
+        if errors:
+            return failure(meta=meta, errors=errors, payload=[])
+
+        effective_spec_id = spec_id or self._active.spec.id
+        try:
+            spec = self._repository.get_spec(spec_id=effective_spec_id)
+            if spec is None:
+                return self._not_found_failure(
+                    meta=meta,
+                    message="spec not found",
+                    payload=[],
+                )
+
+            vector = self._vectorizer.embed(text=query_text, dimensions=spec.dimensions)
+            hits = self._index_backend.search_points(
+                spec_id=spec.id,
+                source_id=source_id,
+                query_vector=vector,
+                limit=self._clamp_limit(limit),
+            )
+
+            matches: list[SearchEmbeddingMatch] = []
+            for hit in hits:
+                chunk_id = str(hit.payload.get("chunk_id", "")).strip()
+                if not chunk_id:
+                    continue
+                chunk_ordinal_raw = hit.payload.get("chunk_ordinal", 0)
+                try:
+                    chunk_ordinal = int(chunk_ordinal_raw)
+                except (TypeError, ValueError):
+                    chunk_ordinal = 0
+                matches.append(
+                    SearchEmbeddingMatch(
+                        score=float(hit.score),
+                        chunk_id=chunk_id,
+                        source_id=str(hit.payload.get("source_id", "")),
+                        spec_id=str(hit.payload.get("spec_id", spec.id)),
+                        chunk_ordinal=chunk_ordinal,
+                        reference_range=str(hit.payload.get("reference_range", "")),
+                        content_hash=str(hit.payload.get("content_hash", "")),
+                    )
+                )
+            return success(meta=meta, payload=matches)
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning(
+                "Search operation failed: spec_id=%s source_id=%s exception_type=%s",
+                effective_spec_id,
+                source_id,
+                type(exc).__name__,
+                exc_info=exc,
+            )
+            return failure(
+                meta=meta,
+                errors=[
+                    dependency_error(
+                        "search failed",
+                        code=codes.DEPENDENCY_FAILURE,
+                        metadata={"exception_type": type(exc).__name__},
+                    )
+                ],
+                payload=[],
+            )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
     )
     def get_active_spec(self, *, meta: EnvelopeMeta) -> Result[EmbeddingSpec]:
         """Return in-memory active spec."""
@@ -621,6 +708,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                         chunk_id=chunk.id,
                         vector=vector,
                         payload={
+                            "chunk_id": chunk.id,
                             "source_id": chunk.source_id,
                             "spec_id": spec.id,
                             "chunk_ordinal": chunk.chunk_ordinal,
@@ -723,6 +811,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 chunk_id=chunk.id,
                 vector=vector,
                 payload={
+                    "chunk_id": chunk.id,
                     "source_id": chunk.source_id,
                     "spec_id": spec.id,
                     "chunk_ordinal": chunk.chunk_ordinal,

@@ -6,6 +6,7 @@ from threading import Lock
 from typing import Mapping, Sequence
 
 from resources.substrates.qdrant import QdrantClientSubstrate, QdrantConfig
+from services.state.embedding_authority.interfaces import IndexSearchPoint
 
 
 class QdrantEmbeddingBackend:
@@ -66,6 +67,28 @@ class QdrantEmbeddingBackend:
     def delete_point(self, *, spec_id: str, chunk_id: str) -> bool:
         """Delete one point from one spec collection."""
         return self._substrate_for(spec_id).delete_point(point_id=chunk_id)
+
+    def search_points(
+        self,
+        *,
+        spec_id: str,
+        source_id: str,
+        query_vector: Sequence[float],
+        limit: int,
+    ) -> list[IndexSearchPoint]:
+        """Search one spec collection and return normalized derived-index hits."""
+        filters: dict[str, str] = {}
+        if source_id:
+            filters["source_id"] = source_id
+        hits = self._substrate_for(spec_id).search_points(
+            filters=filters,
+            query_vector=query_vector,
+            limit=limit,
+        )
+        return [
+            IndexSearchPoint(score=item.score, payload=dict(item.payload))
+            for item in hits
+        ]
 
     def _substrate_for(self, spec_id: str) -> QdrantClientSubstrate:
         """Return cached substrate instance for one spec collection."""

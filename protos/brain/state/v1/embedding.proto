@@ -25,6 +25,8 @@ service EmbeddingAuthorityService {
       returns (ListEmbeddingsBySourceResponse);
   rpc ListEmbeddingsByStatus(ListEmbeddingsByStatusRequest)
       returns (ListEmbeddingsByStatusResponse);
+  rpc SearchEmbeddings(SearchEmbeddingsRequest)
+      returns (SearchEmbeddingsResponse);
 
   rpc GetActiveSpec(GetActiveSpecRequest) returns (GetActiveSpecResponse);
   rpc ListSpecs(ListSpecsRequest) returns (ListSpecsResponse);
@@ -285,6 +287,34 @@ message ListEmbeddingsByStatusRequest {
 message ListEmbeddingsByStatusResponse {
   brain.shared.v1.EnvelopeMeta metadata = 1;
   repeated EmbeddingRecord payload      = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message SearchEmbeddingMatch {
+  float score           = 1;
+  string chunk_id       = 2;
+  string source_id      = 3;
+  string spec_id        = 4;
+  int32 chunk_ordinal   = 5;
+  string reference_range = 6;
+  string content_hash   = 7;
+}
+
+message SearchEmbeddingsPayload {
+  string query_text = 1;
+  string source_id  = 2;
+  string spec_id    = 3;
+  int32 limit       = 4;
+}
+
+message SearchEmbeddingsRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  SearchEmbeddingsPayload payload       = 2;
+}
+
+message SearchEmbeddingsResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  repeated SearchEmbeddingMatch payload = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 

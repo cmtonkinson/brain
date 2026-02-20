@@ -77,6 +77,19 @@ class EmbeddingRecord:
 
 
 @dataclass(frozen=True)
+class SearchEmbeddingMatch:
+    """Derived semantic-search match returned by EAS query operations."""
+
+    score: float
+    chunk_id: str
+    source_id: str
+    spec_id: str
+    chunk_ordinal: int
+    reference_range: str
+    content_hash: str
+
+
+@dataclass(frozen=True)
 class UpsertChunkInput:
     """Input payload for one chunk upsert request."""
 

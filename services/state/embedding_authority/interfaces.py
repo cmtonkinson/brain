@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Mapping, Protocol, Sequence
 
 from services.state.embedding_authority.domain import (
@@ -18,6 +19,14 @@ class EmbeddingVectorizer(Protocol):
 
     def embed(self, *, text: str, dimensions: int) -> tuple[float, ...]:
         """Return one embedding vector with exact configured dimensions."""
+
+
+@dataclass(frozen=True)
+class IndexSearchPoint:
+    """Derived index search hit returned from Qdrant-backed lookup."""
+
+    score: float
+    payload: Mapping[str, object]
 
 
 class QdrantIndexBackend(Protocol):
@@ -41,6 +50,16 @@ class QdrantIndexBackend(Protocol):
 
     def delete_point(self, *, spec_id: str, chunk_id: str) -> bool:
         """Delete one point from one spec collection."""
+
+    def search_points(
+        self,
+        *,
+        spec_id: str,
+        source_id: str,
+        query_vector: Sequence[float],
+        limit: int,
+    ) -> list[IndexSearchPoint]:
+        """Search points in one spec collection with optional source filter."""
 
 
 class EmbeddingRepository(Protocol):

@@ -49,6 +49,31 @@ class _FakeSubstrate:
         self.points.pop(point_id, None)
         return existed
 
+    def search_points(
+        self,
+        *,
+        filters: dict[str, str],
+        query_vector: list[float] | tuple[float, ...],
+        limit: int,
+    ) -> list[object]:
+        del query_vector
+
+        class _SearchPoint:
+            def __init__(self, score: float, payload: dict[str, object]) -> None:
+                self.score = score
+                self.payload = payload
+
+        results: list[object] = []
+        for _, (_, payload) in sorted(self.points.items()):
+            if filters and any(
+                payload.get(key) != value for key, value in filters.items()
+            ):
+                continue
+            results.append(_SearchPoint(score=1.0, payload=dict(payload)))
+            if len(results) >= limit:
+                break
+        return results
+
 
 def test_ensure_collection_bootstraps_missing_collection(
     monkeypatch: pytest.MonkeyPatch,
@@ -114,3 +139,46 @@ def test_point_operations_are_scoped_by_spec_id(
 
     assert backend.delete_point(spec_id="spec_x", chunk_id="chunk_1") is True
     assert backend.point_exists(spec_id="spec_x", chunk_id="chunk_1") is False
+
+
+def test_search_points_honors_source_filter_and_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Search should pass optional source filter and enforce limit."""
+    monkeypatch.setattr(qdrant_backend_module, "QdrantClientSubstrate", _FakeSubstrate)
+
+    backend = QdrantEmbeddingBackend(
+        qdrant_url="http://qdrant:6333",
+        request_timeout_seconds=5.0,
+        distance_metric="cosine",
+    )
+
+    backend.upsert_point(
+        spec_id="spec_search",
+        chunk_id="chunk_1",
+        vector=(0.1, 0.2),
+        payload={"source_id": "src_a"},
+    )
+    backend.upsert_point(
+        spec_id="spec_search",
+        chunk_id="chunk_2",
+        vector=(0.2, 0.3),
+        payload={"source_id": "src_b"},
+    )
+
+    filtered = backend.search_points(
+        spec_id="spec_search",
+        source_id="src_a",
+        query_vector=(0.1, 0.2),
+        limit=10,
+    )
+    assert len(filtered) == 1
+    assert filtered[0].payload["source_id"] == "src_a"
+
+    limited = backend.search_points(
+        spec_id="spec_search",
+        source_id="",
+        query_vector=(0.1, 0.2),
+        limit=1,
+    )
+    assert len(limited) == 1

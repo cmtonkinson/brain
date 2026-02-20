@@ -15,12 +15,14 @@ from services.state.embedding_authority.domain import (
     EmbeddingRecord,
     EmbeddingSpec,
     EmbeddingStatus,
+    SearchEmbeddingMatch,
     SourceRecord,
 )
 from services.state.embedding_authority.implementation import (
     DefaultEmbeddingAuthorityService,
     _canonical_spec_string,
 )
+from services.state.embedding_authority.interfaces import IndexSearchPoint
 from services.state.embedding_authority.settings import EmbeddingSettings
 
 
@@ -43,6 +45,7 @@ class FakeQdrantIndex:
     def __init__(self) -> None:
         self.collections: dict[str, int] = {}
         self.points: set[tuple[str, str]] = set()
+        self.payloads: dict[tuple[str, str], dict[str, object]] = {}
         self.upserts: list[_IndexUpsert] = []
         self.deletes: list[tuple[str, str]] = []
 
@@ -57,8 +60,9 @@ class FakeQdrantIndex:
         vector: Sequence[float],
         payload: Mapping[str, object],
     ) -> None:
-        del vector, payload
+        del vector
         self.points.add((spec_id, chunk_id))
+        self.payloads[(spec_id, chunk_id)] = dict(payload)
         self.upserts.append(_IndexUpsert(spec_id=spec_id, chunk_id=chunk_id))
 
     def point_exists(self, *, spec_id: str, chunk_id: str) -> bool:
@@ -68,8 +72,30 @@ class FakeQdrantIndex:
         self.deletes.append((spec_id, chunk_id))
         if (spec_id, chunk_id) in self.points:
             self.points.remove((spec_id, chunk_id))
+            self.payloads.pop((spec_id, chunk_id), None)
             return True
         return False
+
+    def search_points(
+        self,
+        *,
+        spec_id: str,
+        source_id: str,
+        query_vector: Sequence[float],
+        limit: int,
+    ) -> list[IndexSearchPoint]:
+        del query_vector
+        matches: list[IndexSearchPoint] = []
+        for point_spec_id, chunk_id in sorted(self.points):
+            if point_spec_id != spec_id:
+                continue
+            payload = self.payloads.get((point_spec_id, chunk_id), {})
+            if source_id and str(payload.get("source_id", "")) != source_id:
+                continue
+            matches.append(IndexSearchPoint(score=1.0, payload=payload))
+            if len(matches) >= limit:
+                break
+        return matches
 
 
 class FailingDeleteQdrantIndex(FakeQdrantIndex):
@@ -831,3 +857,62 @@ def test_invalid_ulid_is_validation_error_not_transport_error() -> None:
     assert not result.ok
     assert result.errors
     assert result.errors[0].category.value == "validation"
+
+
+def test_search_embeddings_returns_filtered_matches() -> None:
+    """Search should return semantic matches and honor source-scoped filtering."""
+    svc, _, _ = _service()
+    first_source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://search-1",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    second_source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://search-2",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    assert first_source.payload is not None
+    assert second_source.payload is not None
+
+    first_chunk = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=first_source.payload.id,
+        chunk_ordinal=1,
+        reference_range="a",
+        content_hash="h-a",
+        text="alpha",
+        metadata={},
+    )
+    second_chunk = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=second_source.payload.id,
+        chunk_ordinal=1,
+        reference_range="b",
+        content_hash="h-b",
+        text="beta",
+        metadata={},
+    )
+    assert first_chunk.payload is not None
+    assert second_chunk.payload is not None
+
+    result = svc.search_embeddings(
+        meta=_meta(),
+        query_text="any query",
+        source_id=first_source.payload.id,
+        spec_id="",
+        limit=10,
+    )
+    assert result.ok
+    assert result.payload is not None
+    assert len(result.payload) == 1
+
+    match: SearchEmbeddingMatch = result.payload[0]
+    assert match.chunk_id == first_chunk.payload.chunk.id
+    assert match.source_id == first_source.payload.id
