@@ -38,6 +38,7 @@ check:
 		  echo "Install with: make deps"; \
 		  exit 1 )
 	@ruff check .
+	@ruff format --check .
 
 format:
 	@python -c "import ruff" >/dev/null 2>&1 || \
