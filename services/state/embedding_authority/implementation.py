@@ -16,6 +16,7 @@ from packages.brain_shared.errors import (
     validation_error,
 )
 from packages.brain_shared.ids import ulid_str_to_bytes
+from packages.brain_shared.logging import get_logger
 from resources.substrates.postgres.errors import normalize_postgres_error
 from services.state.embedding_authority.data import (
     EmbeddingPostgresRuntime,
@@ -41,6 +42,7 @@ from services.state.embedding_authority.service import EmbeddingAuthorityService
 from services.state.embedding_authority.settings import EmbeddingSettings
 
 _CANON_RE = re.compile(r"[^\.a-z0-9_-]")
+_LOGGER = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -253,10 +255,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 )
 
             for spec_id in self._repository.list_spec_ids():
-                try:
-                    self._index_backend.delete_point(spec_id=spec_id, chunk_id=chunk_id)
-                except Exception:  # noqa: BLE001
-                    pass
+                self._delete_derived_point_best_effort(spec_id=spec_id, chunk_id=chunk_id)
             return success(meta=meta, payload=True)
         except Exception as exc:  # noqa: BLE001
             return failure(meta=meta, errors=[normalize_postgres_error(exc)], payload=False)
@@ -286,10 +285,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             spec_ids = self._repository.list_spec_ids()
             for chunk_id in chunk_ids:
                 for spec_id in spec_ids:
-                    try:
-                        self._index_backend.delete_point(spec_id=spec_id, chunk_id=chunk_id)
-                    except Exception:  # noqa: BLE001
-                        pass
+                    self._delete_derived_point_best_effort(spec_id=spec_id, chunk_id=chunk_id)
             return success(meta=meta, payload=True)
         except Exception as exc:  # noqa: BLE001
             return failure(meta=meta, errors=[normalize_postgres_error(exc)], payload=False)
@@ -599,16 +595,30 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                     if should_reembed:
                         reembedded += 1
 
+            result = RepairSpecResult(
+                spec_id=spec.id,
+                scanned=len(indexed),
+                repaired=repaired,
+                reembedded=reembedded,
+            )
+            _LOGGER.info(
+                "Repair completed: spec_id=%s scanned=%s repaired=%s reembedded=%s",
+                result.spec_id,
+                result.scanned,
+                result.repaired,
+                result.reembedded,
+            )
             return success(
                 meta=meta,
-                payload=RepairSpecResult(
-                    spec_id=spec.id,
-                    scanned=len(indexed),
-                    repaired=repaired,
-                    reembedded=reembedded,
-                ),
+                payload=result,
             )
         except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning(
+                "Repair operation failed: spec_id=%s exception_type=%s",
+                effective_spec_id,
+                type(exc).__name__,
+                exc_info=exc,
+            )
             return failure(
                 meta=meta,
                 errors=[dependency_error("repair failed", code=codes.DEPENDENCY_FAILURE, metadata={"exception_type": type(exc).__name__})],
@@ -633,6 +643,14 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             canonical_string=canonical,
         )
         self._index_backend.ensure_collection(spec_id=spec.id, dimensions=spec.dimensions)
+        _LOGGER.info(
+            "Active embedding spec ensured: spec_id=%s provider=%s name=%s version=%s dimensions=%s",
+            spec.id,
+            spec.provider,
+            spec.name,
+            spec.version,
+            spec.dimensions,
+        )
         return spec
 
     def _materialize_embedding(self, *, chunk: ChunkRecord) -> EmbeddingRecord:
@@ -668,6 +686,14 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 error_detail="",
             )
         except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning(
+                "Embedding materialization failed; row marked FAILED: spec_id=%s chunk_id=%s source_id=%s exception_type=%s",
+                spec.id,
+                chunk.id,
+                chunk.source_id,
+                type(exc).__name__,
+                exc_info=exc,
+            )
             return self._repository.upsert_embedding(
                 chunk_id=chunk.id,
                 spec_id=spec.id,
@@ -700,6 +726,19 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 code=codes.INVALID_ARGUMENT,
             )
         return None
+
+    def _delete_derived_point_best_effort(self, *, spec_id: str, chunk_id: str) -> None:
+        """Best-effort derived index cleanup with explicit observability."""
+        try:
+            self._index_backend.delete_point(spec_id=spec_id, chunk_id=chunk_id)
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning(
+                "Best-effort derived cleanup failed: spec_id=%s chunk_id=%s exception_type=%s",
+                spec_id,
+                chunk_id,
+                type(exc).__name__,
+                exc_info=exc,
+            )
 
 
 def _canonical_spec_string(*, provider: str, name: str, version: str, dimensions: int) -> str:

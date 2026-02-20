@@ -451,10 +451,10 @@ def _to_embedding(row: Mapping[str, object]) -> EmbeddingRecord:
 
 
 def _row_dt(row: Mapping[str, object], key: str) -> datetime:
-    """Return UTC-aware datetime from row key with stable fallback."""
+    """Return UTC-aware datetime from row key with strict type enforcement."""
     value = row.get(key)
     if not isinstance(value, datetime):
-        return datetime.now(UTC)
+        raise ValueError(f"expected datetime column for {key}")
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)

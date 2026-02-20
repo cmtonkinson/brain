@@ -66,6 +66,15 @@ def test_runtime_code_disallows_dynamic_imports() -> None:
     assert not violations, "\n".join(v.format() for v in violations)
 
 
+def test_dynamic_import_allowlist_is_narrow_and_intentional() -> None:
+    """Allowlist must remain limited to the component bootstrap import path."""
+    assert _DYNAMIC_IMPORT_ALLOWLIST == ("packages/brain_shared/component_loader.py",)
+
+    source = Path("packages/brain_shared/component_loader.py").read_text(encoding="utf-8")
+    assert "import importlib" in source
+    assert "importlib.import_module(" in source
+
+
 def _analyze_source_for_dynamic_imports(
     *, source: str, caller_module: str, file_path: Path
 ) -> list[_Violation]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -73,6 +74,22 @@ class FakeQdrantIndex:
             self.points.remove((spec_id, chunk_id))
             return True
         return False
+
+
+class FailingDeleteQdrantIndex(FakeQdrantIndex):
+    """Qdrant fake that raises on delete to exercise best-effort cleanup paths."""
+
+    def delete_point(self, *, spec_id: str, chunk_id: str) -> bool:
+        del spec_id, chunk_id
+        raise RuntimeError("qdrant delete failed")
+
+
+class FailingVectorizer(FakeVectorizer):
+    """Vectorizer fake that always fails to exercise error logging paths."""
+
+    def embed(self, *, text: str, dimensions: int) -> tuple[float, ...]:
+        del text, dimensions
+        raise RuntimeError("vectorizer failed")
 
 
 class FakeRepository:
@@ -310,6 +327,16 @@ def _meta() -> object:
 
 
 def _service() -> tuple[DefaultEmbeddingAuthorityService, FakeRepository, FakeQdrantIndex]:
+    return _service_with()
+
+
+def _service_with(
+    *,
+    repository: FakeRepository | None = None,
+    index_backend: FakeQdrantIndex | None = None,
+    vectorizer: FakeVectorizer | None = None,
+) -> tuple[DefaultEmbeddingAuthorityService, FakeRepository, FakeQdrantIndex]:
+    """Build service with optional fake dependency overrides."""
     settings = EmbeddingSettings(
         provider="ollama",
         name="nomic-embed-text",
@@ -321,15 +348,16 @@ def _service() -> tuple[DefaultEmbeddingAuthorityService, FakeRepository, FakeQd
         max_list_limit=100,
         repair_batch_limit=100,
     )
-    repository = FakeRepository()
-    index = FakeQdrantIndex()
+    resolved_repository = FakeRepository() if repository is None else repository
+    resolved_index = FakeQdrantIndex() if index_backend is None else index_backend
+    resolved_vectorizer = FakeVectorizer() if vectorizer is None else vectorizer
     svc = DefaultEmbeddingAuthorityService(
         settings=settings,
-        repository=repository,
-        index_backend=index,
-        vectorizer=FakeVectorizer(),
+        repository=resolved_repository,
+        index_backend=resolved_index,
+        vectorizer=resolved_vectorizer,
     )
-    return svc, repository, index
+    return svc, resolved_repository, resolved_index
 
 
 def test_canonical_spec_serialization_and_hash_is_deterministic() -> None:
@@ -539,6 +567,81 @@ def test_hard_delete_removes_rows_and_best_effort_qdrant_delete() -> None:
     assert any(chunk_id == deleted_chunk for _, deleted_chunk in index.deletes)
 
 
+def test_best_effort_cleanup_failures_are_logged_for_chunk_delete(caplog: object) -> None:
+    """Chunk delete should remain successful while logging derived cleanup failures."""
+    svc, _, _ = _service_with(index_backend=FailingDeleteQdrantIndex())
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://cleanup-chunk",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    source_id = source.payload.id if source.payload else ""
+
+    upsert = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source_id,
+        chunk_ordinal=1,
+        reference_range="r",
+        content_hash="h",
+        text="text",
+        metadata={},
+    )
+    assert upsert.payload is not None
+    chunk_id = upsert.payload.chunk.id
+
+    with caplog.at_level(logging.WARNING, logger="services.state.embedding_authority.implementation"):
+        deleted = svc.delete_chunk(meta=_meta(), chunk_id=chunk_id)
+
+    assert deleted.ok
+    assert deleted.payload is True
+    assert any("Best-effort derived cleanup failed" in item.message for item in caplog.records)
+
+
+def test_best_effort_cleanup_failures_are_logged_for_source_delete(caplog: object) -> None:
+    """Source delete should remain successful while logging derived cleanup failures."""
+    svc, _, _ = _service_with(index_backend=FailingDeleteQdrantIndex())
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://cleanup-source",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    source_id = source.payload.id if source.payload else ""
+
+    first = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source_id,
+        chunk_ordinal=1,
+        reference_range="r1",
+        content_hash="h1",
+        text="text1",
+        metadata={},
+    )
+    second = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source_id,
+        chunk_ordinal=2,
+        reference_range="r2",
+        content_hash="h2",
+        text="text2",
+        metadata={},
+    )
+    assert first.payload is not None
+    assert second.payload is not None
+
+    with caplog.at_level(logging.WARNING, logger="services.state.embedding_authority.implementation"):
+        deleted = svc.delete_source(meta=_meta(), source_id=source_id)
+
+    assert deleted.ok
+    assert deleted.payload is True
+    assert any("Best-effort derived cleanup failed" in item.message for item in caplog.records)
+
+
 def test_failed_embedding_with_same_hash_is_retried_on_upsert() -> None:
     """A failed row for current hash must be retried, not no-op'd."""
     svc, repository, index = _service()
@@ -592,6 +695,76 @@ def test_failed_embedding_with_same_hash_is_retried_on_upsert() -> None:
     assert retried.payload is not None
     assert retried.payload.embedding.status == EmbeddingStatus.INDEXED
     assert len(index.upserts) > before
+
+
+def test_materialization_failure_is_logged_and_recorded_as_failed(caplog: object) -> None:
+    """Materialization errors should be logged and persisted as FAILED embeddings."""
+    svc, _, _ = _service_with(vectorizer=FailingVectorizer())
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://vectorizer-fail",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    source_id = source.payload.id if source.payload else ""
+
+    with caplog.at_level(logging.WARNING, logger="services.state.embedding_authority.implementation"):
+        upsert = svc.upsert_chunk(
+            meta=_meta(),
+            source_id=source_id,
+            chunk_ordinal=1,
+            reference_range="r",
+            content_hash="h",
+            text="text",
+            metadata={},
+        )
+
+    assert upsert.ok
+    assert upsert.payload is not None
+    assert upsert.payload.embedding.status == EmbeddingStatus.FAILED
+    assert any("Embedding materialization failed" in item.message for item in caplog.records)
+
+
+def test_repair_failure_is_logged_and_returned_as_dependency_error(caplog: object) -> None:
+    """Repair failures should emit logs and return dependency-category errors."""
+    class _FailingPointExistsBackend(FakeQdrantIndex):
+        def point_exists(self, *, spec_id: str, chunk_id: str) -> bool:
+            del spec_id, chunk_id
+            raise RuntimeError("qdrant unavailable")
+
+    failing_backend = _FailingPointExistsBackend()
+    svc, _, _ = _service_with(index_backend=failing_backend)
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://repair-fail",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    source_id = source.payload.id if source.payload else ""
+    upsert = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source_id,
+        chunk_ordinal=1,
+        reference_range="r",
+        content_hash="h",
+        text="text",
+        metadata={},
+    )
+    assert upsert.ok
+    active = svc.get_active_spec(meta=_meta()).payload
+    assert active is not None
+
+    with caplog.at_level(logging.WARNING, logger="services.state.embedding_authority.implementation"):
+        repaired = svc.repair_spec(meta=_meta(), spec_id=active.id, limit=5)
+
+    assert not repaired.ok
+    assert repaired.errors
+    assert repaired.errors[0].category.value == "dependency"
+    assert any("Repair operation failed" in item.message for item in caplog.records)
 
 
 def test_invalid_ulid_is_validation_error_not_transport_error() -> None:
