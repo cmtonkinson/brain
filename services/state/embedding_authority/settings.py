@@ -32,7 +32,9 @@ class EmbeddingSettings:
             dimensions=int(embedding.get("dimensions", 768)),
             qdrant_url=str(embedding.get("qdrant_url", "http://qdrant:6333")),
             distance_metric=str(embedding.get("distance_metric", "cosine")),
-            request_timeout_seconds=float(embedding.get("request_timeout_seconds", 10.0)),
+            request_timeout_seconds=float(
+                embedding.get("request_timeout_seconds", 10.0)
+            ),
             max_list_limit=int(embedding.get("max_list_limit", 500)),
             repair_batch_limit=int(embedding.get("repair_batch_limit", 500)),
         )
@@ -52,7 +54,9 @@ class EmbeddingSettings:
         if not self.qdrant_url:
             raise ValueError("embedding.qdrant_url is required")
         if self.distance_metric not in {"cosine", "dot", "euclid"}:
-            raise ValueError("embedding.distance_metric must be one of: cosine, dot, euclid")
+            raise ValueError(
+                "embedding.distance_metric must be one of: cosine, dot, euclid"
+            )
         if self.request_timeout_seconds <= 0:
             raise ValueError("embedding.request_timeout_seconds must be > 0")
         if self.max_list_limit <= 0:

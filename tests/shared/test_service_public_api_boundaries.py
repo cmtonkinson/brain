@@ -53,7 +53,9 @@ class _ServiceBoundary:
 
     def is_public_module(self, module_name: str) -> bool:
         """Return whether a module is within this service's published API roots."""
-        return any(is_equal_or_child(module_name, root) for root in self.public_api_roots)
+        return any(
+            is_equal_or_child(module_name, root) for root in self.public_api_roots
+        )
 
     def is_private_module(self, module_name: str) -> bool:
         """Return whether a module is owned by the service but not publicly exposed."""
@@ -82,14 +84,19 @@ def test_runtime_code_imports_only_service_public_api_surfaces() -> None:
         )
 
         for import_ref in imports:
-            target_service = _owning_service_for_module(import_ref.module_name, services)
+            target_service = _owning_service_for_module(
+                import_ref.module_name, services
+            )
             if target_service is None:
                 continue
             if not target_service.is_private_module(import_ref.module_name):
                 continue
 
             # Intra-service imports are explicitly allowed.
-            if caller_service is not None and caller_service.service_id == target_service.service_id:
+            if (
+                caller_service is not None
+                and caller_service.service_id == target_service.service_id
+            ):
                 continue
 
             violations.append(
@@ -136,7 +143,9 @@ def _discover_runtime_python_files(*, repo_root: Path) -> tuple[Path, ...]:
 
 def _discover_runtime_python_modules(*, repo_root: Path) -> set[str]:
     """Return known module names for runtime Python files."""
-    modules = discover_runtime_python_modules(repo_root=repo_root, roots=_RUNTIME_SCAN_ROOTS)
+    modules = discover_runtime_python_modules(
+        repo_root=repo_root, roots=_RUNTIME_SCAN_ROOTS
+    )
     return modules
 
 

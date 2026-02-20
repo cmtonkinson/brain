@@ -43,8 +43,18 @@ def upgrade() -> None:
         sa.Column("dimensions", sa.Integer(), nullable=False),
         sa.Column("canonical_string", sa.String(length=512), nullable=False),
         sa.Column("hash", sa.LargeBinary(length=32), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
         sa.UniqueConstraint("hash", name="uq_specs_hash"),
         sa.CheckConstraint("dimensions > 0", name="ck_specs_dimensions_positive"),
         schema=schema,
@@ -57,9 +67,24 @@ def upgrade() -> None:
         sa.Column("canonical_reference", sa.String(length=1024), nullable=False),
         sa.Column("service", sa.String(length=128), nullable=False),
         sa.Column("principal", sa.String(length=128), nullable=False),
-        sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "metadata",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
         sa.UniqueConstraint(
             "canonical_reference",
             "service",
@@ -74,14 +99,35 @@ def upgrade() -> None:
         sa.Column("id", _ulid_domain(schema), primary_key=True, nullable=False),
         sa.Column("source_id", _ulid_domain(schema), nullable=False),
         sa.Column("chunk_ordinal", sa.Integer(), nullable=False),
-        sa.Column("reference_range", sa.String(length=256), nullable=False, server_default=""),
+        sa.Column(
+            "reference_range", sa.String(length=256), nullable=False, server_default=""
+        ),
         sa.Column("content_hash", sa.String(length=128), nullable=False),
         sa.Column("text", sa.Text(), nullable=False),
-        sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(["source_id"], [f"{schema}.sources.id"], ondelete="RESTRICT"),
-        sa.UniqueConstraint("source_id", "chunk_ordinal", name="uq_chunks_source_ordinal"),
+        sa.Column(
+            "metadata",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.ForeignKeyConstraint(
+            ["source_id"], [f"{schema}.sources.id"], ondelete="RESTRICT"
+        ),
+        sa.UniqueConstraint(
+            "source_id", "chunk_ordinal", name="uq_chunks_source_ordinal"
+        ),
         schema=schema,
     )
 
@@ -91,24 +137,62 @@ def upgrade() -> None:
         sa.Column("spec_id", _ulid_domain(schema), nullable=False),
         sa.Column("content_hash", sa.String(length=128), nullable=False),
         sa.Column("status", sa.String(length=32), nullable=False),
-        sa.Column("error_detail", sa.String(length=1024), nullable=False, server_default=""),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.ForeignKeyConstraint(["chunk_id"], [f"{schema}.chunks.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(["spec_id"], [f"{schema}.specs.id"], ondelete="RESTRICT"),
+        sa.Column(
+            "error_detail", sa.String(length=1024), nullable=False, server_default=""
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.ForeignKeyConstraint(
+            ["chunk_id"], [f"{schema}.chunks.id"], ondelete="RESTRICT"
+        ),
+        sa.ForeignKeyConstraint(
+            ["spec_id"], [f"{schema}.specs.id"], ondelete="RESTRICT"
+        ),
         sa.PrimaryKeyConstraint("chunk_id", "spec_id", name="pk_embeddings_chunk_spec"),
         schema=schema,
     )
 
-    op.create_index("ix_sources_canonical_reference", "sources", ["canonical_reference"], unique=False, schema=schema)
-    op.create_index("ix_sources_service", "sources", ["service"], unique=False, schema=schema)
-    op.create_index("ix_sources_principal", "sources", ["principal"], unique=False, schema=schema)
+    op.create_index(
+        "ix_sources_canonical_reference",
+        "sources",
+        ["canonical_reference"],
+        unique=False,
+        schema=schema,
+    )
+    op.create_index(
+        "ix_sources_service", "sources", ["service"], unique=False, schema=schema
+    )
+    op.create_index(
+        "ix_sources_principal", "sources", ["principal"], unique=False, schema=schema
+    )
 
-    op.create_index("ix_chunks_source_id", "chunks", ["source_id"], unique=False, schema=schema)
-    op.create_index("ix_chunks_content_hash", "chunks", ["content_hash"], unique=False, schema=schema)
+    op.create_index(
+        "ix_chunks_source_id", "chunks", ["source_id"], unique=False, schema=schema
+    )
+    op.create_index(
+        "ix_chunks_content_hash",
+        "chunks",
+        ["content_hash"],
+        unique=False,
+        schema=schema,
+    )
 
-    op.create_index("ix_embeddings_spec_id", "embeddings", ["spec_id"], unique=False, schema=schema)
-    op.create_index("ix_embeddings_status", "embeddings", ["status"], unique=False, schema=schema)
+    op.create_index(
+        "ix_embeddings_spec_id", "embeddings", ["spec_id"], unique=False, schema=schema
+    )
+    op.create_index(
+        "ix_embeddings_status", "embeddings", ["status"], unique=False, schema=schema
+    )
 
 
 def downgrade() -> None:

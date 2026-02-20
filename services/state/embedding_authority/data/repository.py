@@ -321,7 +321,9 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
             )
             if spec_id:
                 stmt = stmt.where(embeddings.c.spec_id == ulid_str_to_bytes(spec_id))
-            stmt = stmt.order_by(desc(embeddings.c.updated_at)).limit(_bounded_limit(limit))
+            stmt = stmt.order_by(desc(embeddings.c.updated_at)).limit(
+                _bounded_limit(limit)
+            )
             rows = session.execute(stmt).mappings().all()
             return [_to_embedding(row) for row in rows]
 
@@ -337,7 +339,9 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
             stmt = select(embeddings).where(embeddings.c.status == status.value)
             if spec_id:
                 stmt = stmt.where(embeddings.c.spec_id == ulid_str_to_bytes(spec_id))
-            stmt = stmt.order_by(desc(embeddings.c.updated_at)).limit(_bounded_limit(limit))
+            stmt = stmt.order_by(desc(embeddings.c.updated_at)).limit(
+                _bounded_limit(limit)
+            )
             rows = session.execute(stmt).mappings().all()
             return [_to_embedding(row) for row in rows]
 
@@ -350,7 +354,9 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
             ).all()
             return [ulid_bytes_to_str(row[0]) for row in rows]
 
-    def list_embeddings_for_spec(self, *, spec_id: str, limit: int) -> list[EmbeddingRecord]:
+    def list_embeddings_for_spec(
+        self, *, spec_id: str, limit: int
+    ) -> list[EmbeddingRecord]:
         """List all embeddings for one spec."""
         with self._sessions.session() as session:
             rows = (
@@ -369,8 +375,12 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
         """Delete one chunk and all embedding rows for it."""
         chunk_id_bytes = ulid_str_to_bytes(chunk_id)
         with self._sessions.session() as session:
-            session.execute(delete(embeddings).where(embeddings.c.chunk_id == chunk_id_bytes))
-            result = session.execute(delete(chunks).where(chunks.c.id == chunk_id_bytes))
+            session.execute(
+                delete(embeddings).where(embeddings.c.chunk_id == chunk_id_bytes)
+            )
+            result = session.execute(
+                delete(chunks).where(chunks.c.id == chunk_id_bytes)
+            )
             return bool(result.rowcount)
 
     def delete_source(self, *, source_id: str) -> bool:
@@ -382,9 +392,13 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
             ).all()
             chunk_ids = [row[0] for row in chunk_rows]
             if chunk_ids:
-                session.execute(delete(embeddings).where(embeddings.c.chunk_id.in_(chunk_ids)))
+                session.execute(
+                    delete(embeddings).where(embeddings.c.chunk_id.in_(chunk_ids))
+                )
                 session.execute(delete(chunks).where(chunks.c.id.in_(chunk_ids)))
-            result = session.execute(delete(sources).where(sources.c.id == source_id_bytes))
+            result = session.execute(
+                delete(sources).where(sources.c.id == source_id_bytes)
+            )
             return bool(result.rowcount)
 
 

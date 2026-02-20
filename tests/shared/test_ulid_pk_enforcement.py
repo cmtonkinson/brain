@@ -127,7 +127,9 @@ def _analyze_create_table_call(
     pk_columns: set[str] = set()
 
     for arg in call.args[1:]:
-        if isinstance(arg, ast.Call) and _is_any_call(arg, {("sa", "Column"), (None, "Column")}):
+        if isinstance(arg, ast.Call) and _is_any_call(
+            arg, {("sa", "Column"), (None, "Column")}
+        ):
             column_name = _string_positional_arg(arg, 0)
             type_expr = arg.args[1] if len(arg.args) > 1 else None
             if column_name is None or type_expr is None:
@@ -304,10 +306,14 @@ def _validate_fk_target(
     return []
 
 
-def _allowed_schema_tokens(*, schema_expr: ast.AST | None, service: ServiceManifest) -> set[str]:
+def _allowed_schema_tokens(
+    *, schema_expr: ast.AST | None, service: ServiceManifest
+) -> set[str]:
     """Return accepted schema tokens for one table within the owning service."""
     tokens = {service.schema_name}
-    token = _schema_token_from_schema_expr(schema_expr) if schema_expr is not None else None
+    token = (
+        _schema_token_from_schema_expr(schema_expr) if schema_expr is not None else None
+    )
     if token is not None:
         tokens.add(token)
     return tokens
@@ -346,7 +352,9 @@ def _render_string_expr(expr: ast.AST) -> str | None:
             if isinstance(part, ast.Constant) and isinstance(part.value, str):
                 rendered_parts.append(part.value)
                 continue
-            if isinstance(part, ast.FormattedValue) and isinstance(part.value, ast.Name):
+            if isinstance(part, ast.FormattedValue) and isinstance(
+                part.value, ast.Name
+            ):
                 rendered_parts.append(f"{{{part.value.id}}}")
                 continue
             return None
@@ -365,14 +373,18 @@ def _ulid_helper_functions(module: ast.Module) -> set[str]:
         for function in functions:
             if function.name in ulid_helpers:
                 continue
-            if _function_defines_ulid_bin(function=function, known_helpers=ulid_helpers):
+            if _function_defines_ulid_bin(
+                function=function, known_helpers=ulid_helpers
+            ):
                 ulid_helpers.add(function.name)
                 changed = True
 
     return ulid_helpers
 
 
-def _function_defines_ulid_bin(*, function: ast.FunctionDef, known_helpers: set[str]) -> bool:
+def _function_defines_ulid_bin(
+    *, function: ast.FunctionDef, known_helpers: set[str]
+) -> bool:
     """Return whether a local helper function is provably ``ulid_bin``-producing."""
     for node in ast.walk(function):
         if isinstance(node, ast.Constant) and node.value == "ulid_bin":
@@ -397,7 +409,9 @@ def _expr_is_ulid_bin_type(*, type_expr: ast.AST, ulid_helpers: set[str]) -> boo
         if callee_name is not None:
             normalized = callee_name.lower().replace(".", "_")
             if "ulid" in normalized and (
-                "domain" in normalized or "primary_key" in normalized or normalized.endswith("_pk")
+                "domain" in normalized
+                or "primary_key" in normalized
+                or normalized.endswith("_pk")
             ):
                 return True
 

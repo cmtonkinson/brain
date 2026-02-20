@@ -46,11 +46,7 @@ def test_public_api_analyzer_detects_private_import_violation() -> None:
         public_api_roots=("services.state.example.api",),
     )
 
-    violations = [
-        ref
-        for ref in imports
-        if service.is_private_module(ref.module_name)
-    ]
+    violations = [ref for ref in imports if service.is_private_module(ref.module_name)]
 
     assert violations
 
@@ -80,7 +76,8 @@ def test_layer_analyzer_detects_lower_to_higher_dependency() -> None:
     )
 
     assert any(
-        target.owns_module(ref.module_name) and target.layer > caller.layer for ref in imports
+        target.owns_module(ref.module_name) and target.layer > caller.layer
+        for ref in imports
     )
 
 

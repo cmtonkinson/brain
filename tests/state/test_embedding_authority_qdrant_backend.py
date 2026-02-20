@@ -41,7 +41,9 @@ class _FakeSubstrate:
             return None
 
         class _Point:
-            def __init__(self, vector: tuple[float, ...], payload: dict[str, object]) -> None:
+            def __init__(
+                self, vector: tuple[float, ...], payload: dict[str, object]
+            ) -> None:
                 self.vector = vector
                 self.payload = payload
 
@@ -53,7 +55,9 @@ class _FakeSubstrate:
         return existed
 
 
-def test_ensure_collection_bootstraps_missing_collection(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ensure_collection_bootstraps_missing_collection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Missing collections should be created via temporary bootstrap point."""
     monkeypatch.setattr(qdrant_backend_module, "QdrantClientSubstrate", _FakeSubstrate)
 
@@ -70,7 +74,9 @@ def test_ensure_collection_bootstraps_missing_collection(monkeypatch: pytest.Mon
     assert "__bootstrap__" not in substrate.points
 
 
-def test_ensure_collection_raises_on_dimension_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ensure_collection_raises_on_dimension_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Existing collections with wrong dimensions must fail loudly."""
     monkeypatch.setattr(qdrant_backend_module, "QdrantClientSubstrate", _FakeSubstrate)
 
@@ -89,7 +95,9 @@ def test_ensure_collection_raises_on_dimension_mismatch(monkeypatch: pytest.Monk
         backend.ensure_collection(spec_id="spec_b", dimensions=4)
 
 
-def test_point_operations_are_scoped_by_spec_id(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_point_operations_are_scoped_by_spec_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Point upsert/delete/existence checks should be isolated per spec collection."""
     monkeypatch.setattr(qdrant_backend_module, "QdrantClientSubstrate", _FakeSubstrate)
 

@@ -74,7 +74,9 @@ def test_components_do_not_import_higher_layer_components() -> None:
         )
 
         for import_ref in imports:
-            target_component = _owning_component_for_module(import_ref.module_name, components)
+            target_component = _owning_component_for_module(
+                import_ref.module_name, components
+            )
             if target_component is None:
                 # Shared libraries/non-component modules are intentionally exempt.
                 continue
@@ -127,14 +129,18 @@ def _discover_runtime_python_files(*, repo_root: Path) -> tuple[Path, ...]:
 
 def _discover_runtime_python_modules(*, repo_root: Path) -> set[str]:
     """Return known runtime module names for import-from resolution."""
-    return discover_runtime_python_modules(repo_root=repo_root, roots=_RUNTIME_SCAN_ROOTS)
+    return discover_runtime_python_modules(
+        repo_root=repo_root, roots=_RUNTIME_SCAN_ROOTS
+    )
 
 
 def _owning_component_for_module(
     module_name: str, components: tuple[_ComponentBoundary, ...]
 ) -> _ComponentBoundary | None:
     """Return owning component for a module, preferring the most specific root."""
-    owners = [component for component in components if component.owns_module(module_name)]
+    owners = [
+        component for component in components if component.owns_module(module_name)
+    ]
     if len(owners) == 0:
         return None
     return sorted(

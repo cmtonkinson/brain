@@ -51,7 +51,9 @@ def _result_with_error(*, category: ErrorCategory) -> Result[object]:
     """Construct one failed envelope result with selected error category."""
     meta = new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator")
     if category == ErrorCategory.DEPENDENCY:
-        error = dependency_error("dependency unavailable", code=codes.DEPENDENCY_UNAVAILABLE)
+        error = dependency_error(
+            "dependency unavailable", code=codes.DEPENDENCY_UNAVAILABLE
+        )
     elif category == ErrorCategory.INTERNAL:
         error = internal_error("internal failure", code=codes.INTERNAL_ERROR)
     else:

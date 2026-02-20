@@ -17,7 +17,9 @@ def test_normalize_unique_violation_maps_to_conflict() -> None:
     class UniqueViolation(Exception):
         """Synthetic unique-violation exception."""
 
-    error = normalize_postgres_error(UniqueViolation("duplicate key value violates unique constraint"))
+    error = normalize_postgres_error(
+        UniqueViolation("duplicate key value violates unique constraint")
+    )
     assert error.category.value == "conflict"
     assert error.code == codes.ALREADY_EXISTS
 

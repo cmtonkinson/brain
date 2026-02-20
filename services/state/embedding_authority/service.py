@@ -136,7 +136,9 @@ class EmbeddingAuthorityService(ABC):
         """Return the active spec used for new writes."""
 
     @abstractmethod
-    def list_specs(self, *, meta: EnvelopeMeta, limit: int) -> Result[list[EmbeddingSpec]]:
+    def list_specs(
+        self, *, meta: EnvelopeMeta, limit: int
+    ) -> Result[list[EmbeddingSpec]]:
         """List known specs."""
 
     @abstractmethod

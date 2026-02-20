@@ -70,7 +70,9 @@ def test_dynamic_import_allowlist_is_narrow_and_intentional() -> None:
     """Allowlist must remain limited to the component bootstrap import path."""
     assert _DYNAMIC_IMPORT_ALLOWLIST == ("packages/brain_shared/component_loader.py",)
 
-    source = Path("packages/brain_shared/component_loader.py").read_text(encoding="utf-8")
+    source = Path("packages/brain_shared/component_loader.py").read_text(
+        encoding="utf-8"
+    )
     assert "import importlib" in source
     assert "importlib.import_module(" in source
 

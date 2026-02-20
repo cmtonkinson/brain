@@ -188,7 +188,9 @@ class FakeRepository:
     ) -> list[SourceRecord]:
         rows = list(self.sources.values())
         if canonical_reference:
-            rows = [row for row in rows if row.canonical_reference == canonical_reference]
+            rows = [
+                row for row in rows if row.canonical_reference == canonical_reference
+            ]
         if service:
             rows = [row for row in rows if row.service == service]
         if principal:
@@ -272,7 +274,9 @@ class FakeRepository:
         spec_id: str,
         limit: int,
     ) -> list[EmbeddingRecord]:
-        chunk_ids = {row.id for row in self.chunks.values() if row.source_id == source_id}
+        chunk_ids = {
+            row.id for row in self.chunks.values() if row.source_id == source_id
+        }
         rows = [
             row
             for row in self.embeddings.values()
@@ -295,7 +299,9 @@ class FakeRepository:
     def list_chunk_ids_for_source(self, *, source_id: str) -> list[str]:
         return [row.id for row in self.chunks.values() if row.source_id == source_id]
 
-    def list_embeddings_for_spec(self, *, spec_id: str, limit: int) -> list[EmbeddingRecord]:
+    def list_embeddings_for_spec(
+        self, *, spec_id: str, limit: int
+    ) -> list[EmbeddingRecord]:
         rows = [row for row in self.embeddings.values() if row.spec_id == spec_id]
         return rows[:limit]
 
@@ -326,7 +332,9 @@ def _meta() -> object:
     return new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator")
 
 
-def _service() -> tuple[DefaultEmbeddingAuthorityService, FakeRepository, FakeQdrantIndex]:
+def _service() -> tuple[
+    DefaultEmbeddingAuthorityService, FakeRepository, FakeQdrantIndex
+]:
     return _service_with()
 
 
@@ -461,7 +469,11 @@ def test_upsert_semantics_content_hash_change_rewrites_qdrant() -> None:
     active_spec = svc.get_active_spec(meta=_meta()).payload
     assert active_spec is not None
 
-    writes = [row for row in index.upserts if row.spec_id == active_spec.id and row.chunk_id == chunk_id]
+    writes = [
+        row
+        for row in index.upserts
+        if row.spec_id == active_spec.id and row.chunk_id == chunk_id
+    ]
     assert len(writes) >= 2
 
 
@@ -490,12 +502,44 @@ def test_read_apis_reflect_authoritative_state() -> None:
     chunk_id = chunk.payload.chunk.id if chunk.payload else ""
 
     assert svc.get_source(meta=_meta(), source_id=source_id).ok
-    assert len(svc.list_sources(meta=_meta(), canonical_reference="", service="", principal="", limit=50).payload or []) == 1
+    assert (
+        len(
+            svc.list_sources(
+                meta=_meta(), canonical_reference="", service="", principal="", limit=50
+            ).payload
+            or []
+        )
+        == 1
+    )
     assert svc.get_chunk(meta=_meta(), chunk_id=chunk_id).ok
-    assert len(svc.list_chunks_by_source(meta=_meta(), source_id=source_id, limit=50).payload or []) == 1
+    assert (
+        len(
+            svc.list_chunks_by_source(
+                meta=_meta(), source_id=source_id, limit=50
+            ).payload
+            or []
+        )
+        == 1
+    )
     assert svc.get_embedding(meta=_meta(), chunk_id=chunk_id).ok
-    assert len(svc.list_embeddings_by_source(meta=_meta(), source_id=source_id, spec_id="", limit=50).payload or []) == 1
-    assert len(svc.list_embeddings_by_status(meta=_meta(), status=EmbeddingStatus.INDEXED, spec_id="", limit=50).payload or []) == 1
+    assert (
+        len(
+            svc.list_embeddings_by_source(
+                meta=_meta(), source_id=source_id, spec_id="", limit=50
+            ).payload
+            or []
+        )
+        == 1
+    )
+    assert (
+        len(
+            svc.list_embeddings_by_status(
+                meta=_meta(), status=EmbeddingStatus.INDEXED, spec_id="", limit=50
+            ).payload
+            or []
+        )
+        == 1
+    )
 
 
 def test_repair_detects_missing_qdrant_points() -> None:
@@ -567,7 +611,9 @@ def test_hard_delete_removes_rows_and_best_effort_qdrant_delete() -> None:
     assert any(chunk_id == deleted_chunk for _, deleted_chunk in index.deletes)
 
 
-def test_best_effort_cleanup_failures_are_logged_for_chunk_delete(caplog: object) -> None:
+def test_best_effort_cleanup_failures_are_logged_for_chunk_delete(
+    caplog: object,
+) -> None:
     """Chunk delete should remain successful while logging derived cleanup failures."""
     svc, _, _ = _service_with(index_backend=FailingDeleteQdrantIndex())
     source = svc.upsert_source(
@@ -592,15 +638,21 @@ def test_best_effort_cleanup_failures_are_logged_for_chunk_delete(caplog: object
     assert upsert.payload is not None
     chunk_id = upsert.payload.chunk.id
 
-    with caplog.at_level(logging.WARNING, logger="services.state.embedding_authority.implementation"):
+    with caplog.at_level(
+        logging.WARNING, logger="services.state.embedding_authority.implementation"
+    ):
         deleted = svc.delete_chunk(meta=_meta(), chunk_id=chunk_id)
 
     assert deleted.ok
     assert deleted.payload is True
-    assert any("Best-effort derived cleanup failed" in item.message for item in caplog.records)
+    assert any(
+        "Best-effort derived cleanup failed" in item.message for item in caplog.records
+    )
 
 
-def test_best_effort_cleanup_failures_are_logged_for_source_delete(caplog: object) -> None:
+def test_best_effort_cleanup_failures_are_logged_for_source_delete(
+    caplog: object,
+) -> None:
     """Source delete should remain successful while logging derived cleanup failures."""
     svc, _, _ = _service_with(index_backend=FailingDeleteQdrantIndex())
     source = svc.upsert_source(
@@ -634,12 +686,16 @@ def test_best_effort_cleanup_failures_are_logged_for_source_delete(caplog: objec
     assert first.payload is not None
     assert second.payload is not None
 
-    with caplog.at_level(logging.WARNING, logger="services.state.embedding_authority.implementation"):
+    with caplog.at_level(
+        logging.WARNING, logger="services.state.embedding_authority.implementation"
+    ):
         deleted = svc.delete_source(meta=_meta(), source_id=source_id)
 
     assert deleted.ok
     assert deleted.payload is True
-    assert any("Best-effort derived cleanup failed" in item.message for item in caplog.records)
+    assert any(
+        "Best-effort derived cleanup failed" in item.message for item in caplog.records
+    )
 
 
 def test_failed_embedding_with_same_hash_is_retried_on_upsert() -> None:
@@ -697,7 +753,9 @@ def test_failed_embedding_with_same_hash_is_retried_on_upsert() -> None:
     assert len(index.upserts) > before
 
 
-def test_materialization_failure_is_logged_and_recorded_as_failed(caplog: object) -> None:
+def test_materialization_failure_is_logged_and_recorded_as_failed(
+    caplog: object,
+) -> None:
     """Materialization errors should be logged and persisted as FAILED embeddings."""
     svc, _, _ = _service_with(vectorizer=FailingVectorizer())
     source = svc.upsert_source(
@@ -710,7 +768,9 @@ def test_materialization_failure_is_logged_and_recorded_as_failed(caplog: object
     )
     source_id = source.payload.id if source.payload else ""
 
-    with caplog.at_level(logging.WARNING, logger="services.state.embedding_authority.implementation"):
+    with caplog.at_level(
+        logging.WARNING, logger="services.state.embedding_authority.implementation"
+    ):
         upsert = svc.upsert_chunk(
             meta=_meta(),
             source_id=source_id,
@@ -724,11 +784,16 @@ def test_materialization_failure_is_logged_and_recorded_as_failed(caplog: object
     assert upsert.ok
     assert upsert.payload is not None
     assert upsert.payload.embedding.status == EmbeddingStatus.FAILED
-    assert any("Embedding materialization failed" in item.message for item in caplog.records)
+    assert any(
+        "Embedding materialization failed" in item.message for item in caplog.records
+    )
 
 
-def test_repair_failure_is_logged_and_returned_as_dependency_error(caplog: object) -> None:
+def test_repair_failure_is_logged_and_returned_as_dependency_error(
+    caplog: object,
+) -> None:
     """Repair failures should emit logs and return dependency-category errors."""
+
     class _FailingPointExistsBackend(FakeQdrantIndex):
         def point_exists(self, *, spec_id: str, chunk_id: str) -> bool:
             del spec_id, chunk_id
@@ -758,7 +823,9 @@ def test_repair_failure_is_logged_and_returned_as_dependency_error(caplog: objec
     active = svc.get_active_spec(meta=_meta()).payload
     assert active is not None
 
-    with caplog.at_level(logging.WARNING, logger="services.state.embedding_authority.implementation"):
+    with caplog.at_level(
+        logging.WARNING, logger="services.state.embedding_authority.implementation"
+    ):
         repaired = svc.repair_spec(meta=_meta(), spec_id=active.id, limit=5)
 
     assert not repaired.ok

@@ -91,7 +91,9 @@ def test_services_import_only_owned_or_unowned_resources() -> None:
         )
 
         for import_ref in imports:
-            target_resource = _owning_resource_for_module(import_ref.module_name, resources)
+            target_resource = _owning_resource_for_module(
+                import_ref.module_name, resources
+            )
             if target_resource is None:
                 continue
 
@@ -130,7 +132,9 @@ def test_services_import_only_owned_or_unowned_resources() -> None:
     assert not violations, "\n".join(v.format() for v in violations)
 
 
-def _load_boundaries() -> tuple[tuple[_ServiceBoundary, ...], tuple[_ResourceBoundary, ...]]:
+def _load_boundaries() -> tuple[
+    tuple[_ServiceBoundary, ...], tuple[_ResourceBoundary, ...]
+]:
     """Import manifests and return service/resource boundaries for checks."""
     import_registered_component_modules()
     registry = get_registry()
@@ -152,7 +156,9 @@ def _service_boundary(service: ServiceManifest) -> _ServiceBoundary:
     return _ServiceBoundary(
         service_id=str(service.id),
         module_roots=tuple(sorted(str(root) for root in service.module_roots)),
-        owns_resources=frozenset(str(resource_id) for resource_id in (service.owns_resources or frozenset())),
+        owns_resources=frozenset(
+            str(resource_id) for resource_id in (service.owns_resources or frozenset())
+        ),
     )
 
 
@@ -161,7 +167,9 @@ def _resource_boundary(resource: ResourceManifest) -> _ResourceBoundary:
     return _ResourceBoundary(
         resource_id=str(resource.id),
         owner_service_id=(
-            None if resource.owner_service_id is None else str(resource.owner_service_id)
+            None
+            if resource.owner_service_id is None
+            else str(resource.owner_service_id)
         ),
         module_roots=tuple(sorted(str(root) for root in resource.module_roots)),
     )
@@ -174,7 +182,9 @@ def _discover_service_python_files(*, repo_root: Path) -> tuple[Path, ...]:
 
 def _discover_known_runtime_modules(*, repo_root: Path) -> set[str]:
     """Return known runtime modules used for import-from resolution."""
-    return discover_runtime_python_modules(repo_root=repo_root, roots=_RUNTIME_SCAN_ROOTS)
+    return discover_runtime_python_modules(
+        repo_root=repo_root, roots=_RUNTIME_SCAN_ROOTS
+    )
 
 
 def _owning_service_for_module(

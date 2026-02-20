@@ -7,7 +7,13 @@ import re
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from packages.brain_shared.envelope import EnvelopeMeta, Result, failure, success, validate_meta
+from packages.brain_shared.envelope import (
+    EnvelopeMeta,
+    Result,
+    failure,
+    success,
+    validate_meta,
+)
 from packages.brain_shared.errors import (
     ErrorDetail,
     codes,
@@ -128,13 +134,29 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         """Create/update source row."""
         errors = self._validate_meta(meta)
         if not canonical_reference:
-            errors.append(validation_error("canonical_reference is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "canonical_reference is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if not source_type:
-            errors.append(validation_error("source_type is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "source_type is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if not service:
-            errors.append(validation_error("service is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "service is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if not principal:
-            errors.append(validation_error("principal is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "principal is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if errors:
             return failure(meta=meta, errors=errors)
 
@@ -164,17 +186,31 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         """Create/update chunk row and materialize active-spec embedding."""
         errors = self._validate_meta(meta)
         if not source_id:
-            errors.append(validation_error("source_id is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "source_id is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         else:
             ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
             if ulid_error is not None:
                 errors.append(ulid_error)
         if chunk_ordinal < 0:
-            errors.append(validation_error("chunk_ordinal must be >= 0", code=codes.INVALID_ARGUMENT))
+            errors.append(
+                validation_error(
+                    "chunk_ordinal must be >= 0", code=codes.INVALID_ARGUMENT
+                )
+            )
         if not content_hash:
-            errors.append(validation_error("content_hash is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "content_hash is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if not text:
-            errors.append(validation_error("text is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error("text is required", code=codes.MISSING_REQUIRED_FIELD)
+            )
         if errors:
             return failure(meta=meta, errors=errors)
 
@@ -183,7 +219,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             if source is None:
                 return failure(
                     meta=meta,
-                    errors=[not_found_error("source not found", code=codes.RESOURCE_NOT_FOUND)],
+                    errors=[
+                        not_found_error(
+                            "source not found", code=codes.RESOURCE_NOT_FOUND
+                        )
+                    ],
                 )
 
             chunk = self._repository.upsert_chunk(
@@ -195,7 +235,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 metadata=metadata,
             )
             embedding = self._materialize_embedding(chunk=chunk)
-            return success(meta=meta, payload=UpsertChunkResult(chunk=chunk, embedding=embedding))
+            return success(
+                meta=meta, payload=UpsertChunkResult(chunk=chunk, embedding=embedding)
+            )
         except Exception as exc:  # noqa: BLE001
             return failure(meta=meta, errors=[normalize_postgres_error(exc)])
 
@@ -208,7 +250,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         """Batch upsert convenience API."""
         errors = self._validate_meta(meta)
         if not items:
-            errors.append(validation_error("items must not be empty", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "items must not be empty", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
@@ -237,7 +283,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         """Hard-delete one chunk and best-effort delete derived index points."""
         errors = self._validate_meta(meta)
         if not chunk_id:
-            errors.append(validation_error("chunk_id is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "chunk_id is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         else:
             ulid_error = self._validate_ulid(value=chunk_id, field_name="chunk_id")
             if ulid_error is not None:
@@ -250,21 +300,33 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             if not deleted:
                 return failure(
                     meta=meta,
-                    errors=[not_found_error("chunk not found", code=codes.RESOURCE_NOT_FOUND)],
+                    errors=[
+                        not_found_error(
+                            "chunk not found", code=codes.RESOURCE_NOT_FOUND
+                        )
+                    ],
                     payload=False,
                 )
 
             for spec_id in self._repository.list_spec_ids():
-                self._delete_derived_point_best_effort(spec_id=spec_id, chunk_id=chunk_id)
+                self._delete_derived_point_best_effort(
+                    spec_id=spec_id, chunk_id=chunk_id
+                )
             return success(meta=meta, payload=True)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)], payload=False)
+            return failure(
+                meta=meta, errors=[normalize_postgres_error(exc)], payload=False
+            )
 
     def delete_source(self, *, meta: EnvelopeMeta, source_id: str) -> Result[bool]:
         """Hard-delete one source and all owned chunk/embedding rows."""
         errors = self._validate_meta(meta)
         if not source_id:
-            errors.append(validation_error("source_id is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "source_id is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         else:
             ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
             if ulid_error is not None:
@@ -278,23 +340,35 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             if not deleted:
                 return failure(
                     meta=meta,
-                    errors=[not_found_error("source not found", code=codes.RESOURCE_NOT_FOUND)],
+                    errors=[
+                        not_found_error(
+                            "source not found", code=codes.RESOURCE_NOT_FOUND
+                        )
+                    ],
                     payload=False,
                 )
 
             spec_ids = self._repository.list_spec_ids()
             for chunk_id in chunk_ids:
                 for spec_id in spec_ids:
-                    self._delete_derived_point_best_effort(spec_id=spec_id, chunk_id=chunk_id)
+                    self._delete_derived_point_best_effort(
+                        spec_id=spec_id, chunk_id=chunk_id
+                    )
             return success(meta=meta, payload=True)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)], payload=False)
+            return failure(
+                meta=meta, errors=[normalize_postgres_error(exc)], payload=False
+            )
 
     def get_source(self, *, meta: EnvelopeMeta, source_id: str) -> Result[SourceRecord]:
         """Read one source by id."""
         errors = self._validate_meta(meta)
         if not source_id:
-            errors.append(validation_error("source_id is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "source_id is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         else:
             ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
             if ulid_error is not None:
@@ -307,7 +381,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             if record is None:
                 return failure(
                     meta=meta,
-                    errors=[not_found_error("source not found", code=codes.RESOURCE_NOT_FOUND)],
+                    errors=[
+                        not_found_error(
+                            "source not found", code=codes.RESOURCE_NOT_FOUND
+                        )
+                    ],
                 )
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
@@ -336,13 +414,19 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             )
             return success(meta=meta, payload=records)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)], payload=[])
+            return failure(
+                meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
+            )
 
     def get_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Result[ChunkRecord]:
         """Read one chunk by id."""
         errors = self._validate_meta(meta)
         if not chunk_id:
-            errors.append(validation_error("chunk_id is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "chunk_id is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         else:
             ulid_error = self._validate_ulid(value=chunk_id, field_name="chunk_id")
             if ulid_error is not None:
@@ -355,7 +439,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             if record is None:
                 return failure(
                     meta=meta,
-                    errors=[not_found_error("chunk not found", code=codes.RESOURCE_NOT_FOUND)],
+                    errors=[
+                        not_found_error(
+                            "chunk not found", code=codes.RESOURCE_NOT_FOUND
+                        )
+                    ],
                 )
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
@@ -371,7 +459,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         """List chunk rows for one source."""
         errors = self._validate_meta(meta)
         if not source_id:
-            errors.append(validation_error("source_id is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "source_id is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         else:
             ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
             if ulid_error is not None:
@@ -386,7 +478,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             )
             return success(meta=meta, payload=records)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)], payload=[])
+            return failure(
+                meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
+            )
 
     def get_embedding(
         self,
@@ -398,7 +492,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         """Read one embedding row."""
         errors = self._validate_meta(meta)
         if not chunk_id:
-            errors.append(validation_error("chunk_id is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "chunk_id is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         else:
             ulid_error = self._validate_ulid(value=chunk_id, field_name="chunk_id")
             if ulid_error is not None:
@@ -412,11 +510,17 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
 
         effective_spec_id = spec_id or self._active.spec.id
         try:
-            record = self._repository.get_embedding(chunk_id=chunk_id, spec_id=effective_spec_id)
+            record = self._repository.get_embedding(
+                chunk_id=chunk_id, spec_id=effective_spec_id
+            )
             if record is None:
                 return failure(
                     meta=meta,
-                    errors=[not_found_error("embedding not found", code=codes.RESOURCE_NOT_FOUND)],
+                    errors=[
+                        not_found_error(
+                            "embedding not found", code=codes.RESOURCE_NOT_FOUND
+                        )
+                    ],
                 )
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
@@ -433,7 +537,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         """List embedding rows for one source."""
         errors = self._validate_meta(meta)
         if not source_id:
-            errors.append(validation_error("source_id is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "source_id is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         else:
             ulid_error = self._validate_ulid(value=source_id, field_name="source_id")
             if ulid_error is not None:
@@ -454,7 +562,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             )
             return success(meta=meta, payload=records)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)], payload=[])
+            return failure(
+                meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
+            )
 
     def list_embeddings_by_status(
         self,
@@ -482,7 +592,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             )
             return success(meta=meta, payload=records)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)], payload=[])
+            return failure(
+                meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
+            )
 
     def get_active_spec(self, *, meta: EnvelopeMeta) -> Result[EmbeddingSpec]:
         """Return in-memory active spec."""
@@ -491,7 +603,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             return failure(meta=meta, errors=errors)
         return success(meta=meta, payload=self._active.spec)
 
-    def list_specs(self, *, meta: EnvelopeMeta, limit: int) -> Result[list[EmbeddingSpec]]:
+    def list_specs(
+        self, *, meta: EnvelopeMeta, limit: int
+    ) -> Result[list[EmbeddingSpec]]:
         """List known embedding specs."""
         errors = self._validate_meta(meta)
         if errors:
@@ -501,13 +615,19 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             rows = self._repository.list_specs(limit=self._clamp_limit(limit))
             return success(meta=meta, payload=rows)
         except Exception as exc:  # noqa: BLE001
-            return failure(meta=meta, errors=[normalize_postgres_error(exc)], payload=[])
+            return failure(
+                meta=meta, errors=[normalize_postgres_error(exc)], payload=[]
+            )
 
     def get_spec(self, *, meta: EnvelopeMeta, spec_id: str) -> Result[EmbeddingSpec]:
         """Read one embedding spec by id."""
         errors = self._validate_meta(meta)
         if not spec_id:
-            errors.append(validation_error("spec_id is required", code=codes.MISSING_REQUIRED_FIELD))
+            errors.append(
+                validation_error(
+                    "spec_id is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         else:
             ulid_error = self._validate_ulid(value=spec_id, field_name="spec_id")
             if ulid_error is not None:
@@ -520,7 +640,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             if row is None:
                 return failure(
                     meta=meta,
-                    errors=[not_found_error("spec not found", code=codes.RESOURCE_NOT_FOUND)],
+                    errors=[
+                        not_found_error("spec not found", code=codes.RESOURCE_NOT_FOUND)
+                    ],
                 )
             return success(meta=meta, payload=row)
         except Exception as exc:  # noqa: BLE001
@@ -548,7 +670,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             if spec is None:
                 return failure(
                     meta=meta,
-                    errors=[not_found_error("spec not found", code=codes.RESOURCE_NOT_FOUND)],
+                    errors=[
+                        not_found_error("spec not found", code=codes.RESOURCE_NOT_FOUND)
+                    ],
                 )
 
             indexed = self._repository.list_embeddings_by_status(
@@ -571,7 +695,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 )
 
                 if should_reembed or not point_exists:
-                    vector = self._vectorizer.embed(text=chunk.text, dimensions=spec.dimensions)
+                    vector = self._vectorizer.embed(
+                        text=chunk.text, dimensions=spec.dimensions
+                    )
                     self._index_backend.upsert_point(
                         spec_id=spec.id,
                         chunk_id=chunk.id,
@@ -621,7 +747,13 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             )
             return failure(
                 meta=meta,
-                errors=[dependency_error("repair failed", code=codes.DEPENDENCY_FAILURE, metadata={"exception_type": type(exc).__name__})],
+                errors=[
+                    dependency_error(
+                        "repair failed",
+                        code=codes.DEPENDENCY_FAILURE,
+                        metadata={"exception_type": type(exc).__name__},
+                    )
+                ],
             )
 
     def _bootstrap_active_spec(self) -> EmbeddingSpec:
@@ -642,7 +774,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             hash_bytes=hash_bytes,
             canonical_string=canonical,
         )
-        self._index_backend.ensure_collection(spec_id=spec.id, dimensions=spec.dimensions)
+        self._index_backend.ensure_collection(
+            spec_id=spec.id, dimensions=spec.dimensions
+        )
         _LOGGER.info(
             "Active embedding spec ensured: spec_id=%s provider=%s name=%s version=%s dimensions=%s",
             spec.id,
@@ -741,7 +875,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             )
 
 
-def _canonical_spec_string(*, provider: str, name: str, version: str, dimensions: int) -> str:
+def _canonical_spec_string(
+    *, provider: str, name: str, version: str, dimensions: int
+) -> str:
     """Build canonical spec serialization used for hash identity."""
     parts = (provider, name, version, str(dimensions))
     normalized = []

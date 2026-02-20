@@ -27,13 +27,17 @@ from services.state.embedding_authority.domain import (
 from services.state.embedding_authority.service import EmbeddingAuthorityService
 
 
-class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityServiceServicer):
+class GrpcEmbeddingAuthorityService(
+    embedding_pb2_grpc.EmbeddingAuthorityServiceServicer
+):
     """gRPC servicer mapping transport requests into native EAS API calls."""
 
     def __init__(self, service: EmbeddingAuthorityService) -> None:
         self._service = service
 
-    def UpsertSource(self, request: embedding_pb2.UpsertSourceRequest, context: grpc.ServicerContext) -> embedding_pb2.UpsertSourceResponse:
+    def UpsertSource(
+        self, request: embedding_pb2.UpsertSourceRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.UpsertSourceResponse:
         result = self._service.upsert_source(
             meta=_meta_from_proto(request.metadata),
             canonical_reference=request.payload.canonical_reference,
@@ -49,7 +53,9 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def UpsertChunk(self, request: embedding_pb2.UpsertChunkRequest, context: grpc.ServicerContext) -> embedding_pb2.UpsertChunkResponse:
+    def UpsertChunk(
+        self, request: embedding_pb2.UpsertChunkRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.UpsertChunkResponse:
         result = self._service.upsert_chunk(
             meta=_meta_from_proto(request.metadata),
             source_id=request.payload.source_id,
@@ -66,7 +72,9 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def UpsertChunks(self, request: embedding_pb2.UpsertChunksRequest, context: grpc.ServicerContext) -> embedding_pb2.UpsertChunksResponse:
+    def UpsertChunks(
+        self, request: embedding_pb2.UpsertChunksRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.UpsertChunksResponse:
         items = [
             UpsertChunkInput(
                 source_id=item.source_id,
@@ -78,16 +86,24 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             )
             for item in request.payload.items
         ]
-        result = self._service.upsert_chunks(meta=_meta_from_proto(request.metadata), items=items)
+        result = self._service.upsert_chunks(
+            meta=_meta_from_proto(request.metadata), items=items
+        )
         _abort_for_transport_errors(context=context, result=result)
-        payload = [] if result.payload is None else [_upsert_chunk_result_to_proto(item) for item in result.payload]
+        payload = (
+            []
+            if result.payload is None
+            else [_upsert_chunk_result_to_proto(item) for item in result.payload]
+        )
         return embedding_pb2.UpsertChunksResponse(
             metadata=_meta_to_proto(result.metadata),
             payload=payload,
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def DeleteChunk(self, request: embedding_pb2.DeleteChunkRequest, context: grpc.ServicerContext) -> embedding_pb2.DeleteChunkResponse:
+    def DeleteChunk(
+        self, request: embedding_pb2.DeleteChunkRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.DeleteChunkResponse:
         result = self._service.delete_chunk(
             meta=_meta_from_proto(request.metadata),
             chunk_id=request.payload.chunk_id,
@@ -99,7 +115,9 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def DeleteSource(self, request: embedding_pb2.DeleteSourceRequest, context: grpc.ServicerContext) -> embedding_pb2.DeleteSourceResponse:
+    def DeleteSource(
+        self, request: embedding_pb2.DeleteSourceRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.DeleteSourceResponse:
         result = self._service.delete_source(
             meta=_meta_from_proto(request.metadata),
             source_id=request.payload.source_id,
@@ -111,7 +129,9 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def GetSource(self, request: embedding_pb2.GetSourceRequest, context: grpc.ServicerContext) -> embedding_pb2.GetSourceResponse:
+    def GetSource(
+        self, request: embedding_pb2.GetSourceRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.GetSourceResponse:
         result = self._service.get_source(
             meta=_meta_from_proto(request.metadata),
             source_id=request.payload.source_id,
@@ -123,7 +143,9 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def ListSources(self, request: embedding_pb2.ListSourcesRequest, context: grpc.ServicerContext) -> embedding_pb2.ListSourcesResponse:
+    def ListSources(
+        self, request: embedding_pb2.ListSourcesRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.ListSourcesResponse:
         result = self._service.list_sources(
             meta=_meta_from_proto(request.metadata),
             canonical_reference=request.payload.canonical_reference,
@@ -132,14 +154,20 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             limit=request.payload.limit,
         )
         _abort_for_transport_errors(context=context, result=result)
-        payload = [] if result.payload is None else [_source_to_proto(item) for item in result.payload]
+        payload = (
+            []
+            if result.payload is None
+            else [_source_to_proto(item) for item in result.payload]
+        )
         return embedding_pb2.ListSourcesResponse(
             metadata=_meta_to_proto(result.metadata),
             payload=payload,
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def GetChunk(self, request: embedding_pb2.GetChunkRequest, context: grpc.ServicerContext) -> embedding_pb2.GetChunkResponse:
+    def GetChunk(
+        self, request: embedding_pb2.GetChunkRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.GetChunkResponse:
         result = self._service.get_chunk(
             meta=_meta_from_proto(request.metadata),
             chunk_id=request.payload.chunk_id,
@@ -151,21 +179,31 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def ListChunksBySource(self, request: embedding_pb2.ListChunksBySourceRequest, context: grpc.ServicerContext) -> embedding_pb2.ListChunksBySourceResponse:
+    def ListChunksBySource(
+        self,
+        request: embedding_pb2.ListChunksBySourceRequest,
+        context: grpc.ServicerContext,
+    ) -> embedding_pb2.ListChunksBySourceResponse:
         result = self._service.list_chunks_by_source(
             meta=_meta_from_proto(request.metadata),
             source_id=request.payload.source_id,
             limit=request.payload.limit,
         )
         _abort_for_transport_errors(context=context, result=result)
-        payload = [] if result.payload is None else [_chunk_to_proto(item) for item in result.payload]
+        payload = (
+            []
+            if result.payload is None
+            else [_chunk_to_proto(item) for item in result.payload]
+        )
         return embedding_pb2.ListChunksBySourceResponse(
             metadata=_meta_to_proto(result.metadata),
             payload=payload,
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def GetEmbedding(self, request: embedding_pb2.GetEmbeddingRequest, context: grpc.ServicerContext) -> embedding_pb2.GetEmbeddingResponse:
+    def GetEmbedding(
+        self, request: embedding_pb2.GetEmbeddingRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.GetEmbeddingResponse:
         result = self._service.get_embedding(
             meta=_meta_from_proto(request.metadata),
             chunk_id=request.payload.chunk_id,
@@ -178,7 +216,11 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def ListEmbeddingsBySource(self, request: embedding_pb2.ListEmbeddingsBySourceRequest, context: grpc.ServicerContext) -> embedding_pb2.ListEmbeddingsBySourceResponse:
+    def ListEmbeddingsBySource(
+        self,
+        request: embedding_pb2.ListEmbeddingsBySourceRequest,
+        context: grpc.ServicerContext,
+    ) -> embedding_pb2.ListEmbeddingsBySourceResponse:
         result = self._service.list_embeddings_by_source(
             meta=_meta_from_proto(request.metadata),
             source_id=request.payload.source_id,
@@ -186,14 +228,22 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             limit=request.payload.limit,
         )
         _abort_for_transport_errors(context=context, result=result)
-        payload = [] if result.payload is None else [_embedding_to_proto(item) for item in result.payload]
+        payload = (
+            []
+            if result.payload is None
+            else [_embedding_to_proto(item) for item in result.payload]
+        )
         return embedding_pb2.ListEmbeddingsBySourceResponse(
             metadata=_meta_to_proto(result.metadata),
             payload=payload,
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def ListEmbeddingsByStatus(self, request: embedding_pb2.ListEmbeddingsByStatusRequest, context: grpc.ServicerContext) -> embedding_pb2.ListEmbeddingsByStatusResponse:
+    def ListEmbeddingsByStatus(
+        self,
+        request: embedding_pb2.ListEmbeddingsByStatusRequest,
+        context: grpc.ServicerContext,
+    ) -> embedding_pb2.ListEmbeddingsByStatusResponse:
         mapped_status = _status_from_proto(request.payload.status)
         if mapped_status is None:
             meta = _meta_from_proto(request.metadata)
@@ -216,14 +266,20 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             limit=request.payload.limit,
         )
         _abort_for_transport_errors(context=context, result=result)
-        payload = [] if result.payload is None else [_embedding_to_proto(item) for item in result.payload]
+        payload = (
+            []
+            if result.payload is None
+            else [_embedding_to_proto(item) for item in result.payload]
+        )
         return embedding_pb2.ListEmbeddingsByStatusResponse(
             metadata=_meta_to_proto(result.metadata),
             payload=payload,
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def GetActiveSpec(self, request: embedding_pb2.GetActiveSpecRequest, context: grpc.ServicerContext) -> embedding_pb2.GetActiveSpecResponse:
+    def GetActiveSpec(
+        self, request: embedding_pb2.GetActiveSpecRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.GetActiveSpecResponse:
         result = self._service.get_active_spec(meta=_meta_from_proto(request.metadata))
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.GetActiveSpecResponse(
@@ -232,18 +288,30 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def ListSpecs(self, request: embedding_pb2.ListSpecsRequest, context: grpc.ServicerContext) -> embedding_pb2.ListSpecsResponse:
-        result = self._service.list_specs(meta=_meta_from_proto(request.metadata), limit=request.payload.limit)
+    def ListSpecs(
+        self, request: embedding_pb2.ListSpecsRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.ListSpecsResponse:
+        result = self._service.list_specs(
+            meta=_meta_from_proto(request.metadata), limit=request.payload.limit
+        )
         _abort_for_transport_errors(context=context, result=result)
-        payload = [] if result.payload is None else [_spec_to_proto(item) for item in result.payload]
+        payload = (
+            []
+            if result.payload is None
+            else [_spec_to_proto(item) for item in result.payload]
+        )
         return embedding_pb2.ListSpecsResponse(
             metadata=_meta_to_proto(result.metadata),
             payload=payload,
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def GetSpec(self, request: embedding_pb2.GetSpecRequest, context: grpc.ServicerContext) -> embedding_pb2.GetSpecResponse:
-        result = self._service.get_spec(meta=_meta_from_proto(request.metadata), spec_id=request.payload.spec_id)
+    def GetSpec(
+        self, request: embedding_pb2.GetSpecRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.GetSpecResponse:
+        result = self._service.get_spec(
+            meta=_meta_from_proto(request.metadata), spec_id=request.payload.spec_id
+        )
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.GetSpecResponse(
             metadata=_meta_to_proto(result.metadata),
@@ -251,7 +319,9 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
-    def RepairSpec(self, request: embedding_pb2.RepairSpecRequest, context: grpc.ServicerContext) -> embedding_pb2.RepairSpecResponse:
+    def RepairSpec(
+        self, request: embedding_pb2.RepairSpecRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.RepairSpecResponse:
         result = self._service.repair_spec(
             meta=_meta_from_proto(request.metadata),
             spec_id=request.payload.spec_id,
@@ -265,7 +335,9 @@ class GrpcEmbeddingAuthorityService(embedding_pb2_grpc.EmbeddingAuthorityService
         )
 
 
-def register_embedding_authority_service(server: grpc.Server, service: EmbeddingAuthorityService) -> None:
+def register_embedding_authority_service(
+    server: grpc.Server, service: EmbeddingAuthorityService
+) -> None:
     """Attach the EAS gRPC servicer to a server."""
     embedding_pb2_grpc.add_EmbeddingAuthorityServiceServicer_to_server(
         GrpcEmbeddingAuthorityService(service=service),
@@ -347,7 +419,9 @@ def _chunk_to_proto(chunk: ChunkRecord | None) -> embedding_pb2.ChunkRecord:
     return message
 
 
-def _embedding_to_proto(embedding: EmbeddingRecord | None) -> embedding_pb2.EmbeddingRecord:
+def _embedding_to_proto(
+    embedding: EmbeddingRecord | None,
+) -> embedding_pb2.EmbeddingRecord:
     """Map embedding row to protobuf payload."""
     if embedding is None:
         return embedding_pb2.EmbeddingRecord()
@@ -393,7 +467,9 @@ def _repair_to_proto(repair: RepairSpecResult | None) -> embedding_pb2.RepairSpe
     )
 
 
-def _upsert_chunk_result_to_proto(value: UpsertChunkResult | None) -> embedding_pb2.UpsertChunkResult:
+def _upsert_chunk_result_to_proto(
+    value: UpsertChunkResult | None,
+) -> embedding_pb2.UpsertChunkResult:
     """Map upsert result payload to protobuf payload."""
     if value is None:
         return embedding_pb2.UpsertChunkResult()
@@ -461,7 +537,9 @@ def _error_category_to_proto(category: ErrorCategory) -> envelope_pb2.ErrorCateg
     return mapping.get(category, envelope_pb2.ERROR_CATEGORY_UNSPECIFIED)
 
 
-def _abort_for_transport_errors(*, context: grpc.ServicerContext, result: Result[object]) -> None:
+def _abort_for_transport_errors(
+    *, context: grpc.ServicerContext, result: Result[object]
+) -> None:
     """Map infrastructure failures to transport failures only."""
     for error in result.errors:
         if error.category == ErrorCategory.DEPENDENCY:

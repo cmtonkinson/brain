@@ -35,6 +35,7 @@ def _ulid_domain() -> postgresql.DOMAIN:
         create_type=False,
     )
 
+
 specs = Table(
     "specs",
     metadata,
@@ -45,7 +46,9 @@ specs = Table(
     Column("dimensions", Integer, nullable=False),
     Column("canonical_string", String(512), nullable=False),
     Column("hash", LargeBinary(32), nullable=False),
-    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column(
+        "created_at", DateTime(timezone=True), nullable=False, server_default=func.now()
+    ),
     Column(
         "updated_at",
         DateTime(timezone=True),
@@ -66,7 +69,9 @@ sources = Table(
     Column("service", String(128), nullable=False),
     Column("principal", String(128), nullable=False),
     Column("metadata", JSONB, nullable=False, server_default="{}"),
-    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column(
+        "created_at", DateTime(timezone=True), nullable=False, server_default=func.now()
+    ),
     Column(
         "updated_at",
         DateTime(timezone=True),
@@ -97,7 +102,9 @@ chunks = Table(
     Column("content_hash", String(128), nullable=False),
     Column("text", String, nullable=False),
     Column("metadata", JSONB, nullable=False, server_default="{}"),
-    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column(
+        "created_at", DateTime(timezone=True), nullable=False, server_default=func.now()
+    ),
     Column(
         "updated_at",
         DateTime(timezone=True),
@@ -126,7 +133,9 @@ embeddings = Table(
     Column("content_hash", String(128), nullable=False),
     Column("status", String(32), nullable=False),
     Column("error_detail", String(1024), nullable=False, server_default=""),
-    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column(
+        "created_at", DateTime(timezone=True), nullable=False, server_default=func.now()
+    ),
     Column(
         "updated_at",
         DateTime(timezone=True),
