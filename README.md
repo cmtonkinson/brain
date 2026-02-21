@@ -23,15 +23,16 @@ I wanted a Siri that didn't suck; a Jarvis. An assistant which had access to my:
 - messages
 - the web (news, weather, search, ...)
 - et cetera
+
 and the capability to:
 - answer questions
 - remind me of things (as and when pertinent, not robotically)
 - assist me in tasks
 - ... and continuously learn from all of it
 
-In December 2025, I decided to start by bolting
+On January 1st, 2026, I decided to start by bolting
 [PydanticAI](https://ai.pydantic.dev) on top of [Obsidian](https://obsidian.md)
-and piping it through [Signal](https://signal.org).
+And piping it through [Signal](https://signal.org).
 
 What exists now is a maturation & formalization of that initial prototype,
 redesigned from the ground up with crisp boundaries to ensure:
