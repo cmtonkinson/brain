@@ -2,4 +2,4 @@ syntax = "proto3";
 
 package brain.action.v1;
 
-// Placeholder for Switchboard service API definitions.
+// Placeholder for Switchboard Service API definitions.

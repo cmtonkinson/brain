@@ -7,7 +7,7 @@ of:
 - **Service** (L1)
 - **Actor** (L2)
 
-All Components are defined by and must self-register through
+All Components must self-register by calling `register_component()` from
 `packages/brain_shared/manifest.py`.
 
 ### Required semantics

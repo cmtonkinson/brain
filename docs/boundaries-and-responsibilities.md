@@ -28,7 +28,7 @@ Properties:
 - All Services within L1 are assumed process-local (single container/process)
 - Services may call each other directly (but only via public APIs)
 - No service may import another service's internal implementation
-- Services are reponsible for their own audit logs, per domain
+- Services are responsible for their own audit logs, per domain
 - Services must enforce relevant policies
 
 "East-West" traffic is permitted within L1, but each Service is only permitted
@@ -52,13 +52,13 @@ real-world external systems. Examples include:
 For clarity:
 - L0 Resources are ONLY accessible by the appropriate L1 Services
   - this is defined on a per Resource basis
-  - example: **only** the Vault Authority Service can access Obisidian
+  - example: **only** the Vault Authority Service can access Obsidian
   - example: **only** the Capability Engine can access MCP Servers
 - L2 has no direct access to L0 whatsoever.
 
 ------------------------------------------------------------------------
 # 3. System Model
-Another way to think about boundaries within Brian are the three vertically-
+Another way to think about boundaries within Brain are the three vertically-
 integrated domains of functionality, or **Systems**. These Systems are composed
 of **Services** which are the main coarse units of Brain logic and functionality.
 
@@ -73,7 +73,7 @@ Within a given System, every Service is responsible for:
 The State System is responsible for durable data within Brain. Services within
 the State System are generally referred to as "Authorities," and each Authority
 has access to exactly one Substrate, and is the only component with direct
-access to that substrate. It's a strict owndership boundary.
+access to that substrate. It's a strict ownership boundary.
 
 Current Authorities:
 - **Cache Authority Service** (CAS) owns caching and queueing
@@ -137,10 +137,10 @@ Brain must be able to process workloads:
 Jobs, whether immediate-fire or scheduled, supply a callback for the Job
 Service to invoke. 
 
-### Committment Tracking & Loop Closure
-Committment Tracking & Loop Closure (CTLC) is one of the primary higher-order
+### Commitment Tracking & Loop Closure
+Commitment Tracking & Loop Closure (CTLC) is one of the primary higher-order
 functions of Brain. It exists to find and catalogue the Operators various
-committments, monitor progress/completion against them over time, and escalate
+commitments, monitor progress/completion against them over time, and escalate
 reminders as appropriate to ensure things aren't missed.
 
 ------------------------------------------------------------------------
@@ -152,7 +152,7 @@ Service may access PostgreSQL directly for its own schema only.
 
 To do this cleanly, it means:
 - Each Service has exclusive ownership of its own schema.
-- The Postgres schema for a Service is exactly it's ComponentId.
+- The Postgres schema for a Service is exactly its ComponentId.
 - Direct cross-schema access is prohibited. Services must request foreign
   records via the public API of the owning Service.
 - Cross-service foreign keys are prohibited; referential integrity across
@@ -175,7 +175,7 @@ To do this cleanly, it means:
 
 ------------------------------------------------------------------------
 # APIs
-TL;DR &mdash; `services/*/*/__init__.py` exports a list of interfaces which are
+TL;DR &mdash; `services/*/*/component.py` exports a list of interfaces which are
 the canonical surface area for a given Service.
 
 Each Service must define a Public API. These public APIs:
@@ -228,12 +228,12 @@ single polymorphic wire-envelope type at every RPC boundary.
 - `timestamp`: _required_ int64
 - `kind`: _required_ string (one of `command`, `event`, `result`, `stream`)
 - `source`: _required_ string (e.g. `cli`, `agent`, `switchboard`, `job`)
-- `principal`: _required_ string (e.g. `operator`, `ctlc`, `core`)
+- `principal`: _required_ string (e.g. `operator`, `commitment`, `core`)
 
 Envelope subclasses may append their own metadata. For clarity, `source` is the
 immediate emitting component for _"this" specific Envelope_, whereas `principal`
 is the accountable identity (effective authority) for the request. Components
-are required to propogate `principal` unchanged across calls.
+are required to propagate `principal` unchanged across calls.
 
 **Illustrative (non-literal) example:**  
 The Operator requests a reminder in 1 hour. A message is passed from the
@@ -277,11 +277,11 @@ failure mode/state.
 # Principal Identity Model
 The **Principal** is "who the system treats as accountable" for a given request.
 
-**`operator`** - All "personal assistant" work should utlimately roll up to the
+**`operator`** - All "personal assistant" work should ultimately roll up to the
 Operator.
 
 **`<service>`** (e.g. `switchboard`, `ctlc`) - This represents a Layer 1 Service
-acting autonomously. This is used when Serivces initiate work without an
+acting autonomously. This is used when Services initiate work without an
 immediate upstream request (think scheduled jobs, inbound interrupt, etc.)
 
 **`core`** - Rare. Only used for truly low-level, cross-cutting "infrastructure"
@@ -294,7 +294,7 @@ The Brain SDK is the public interface for L2 Actors of Brain Core using
 Protobuf/gRPC. All L2 Actors must be built on the Brain SDK.
 
 The SDK contains no business logic; it simply exists as an access layer across
-network boundaries to the pulic L1 Servie APIs.
+network boundaries to the public L1 Service APIs.
 
 ## Capability SDK
 The Capability SDK supports registration and management of Capabilities (Ops and

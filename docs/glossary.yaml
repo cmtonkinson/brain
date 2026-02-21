@@ -13,7 +13,7 @@ terms:
   - term: Substrate
     definition: "A Resource which governs state, such as a database, document store, or cache."
   - term: Layer
-    definition: "An abstract 'horizontal' segment of Brian architecture defined by its purpose and access control rules. There are three Layers: 0, 1, and 2."
+    definition: "An abstract 'horizontal' segment of Brain architecture defined by its purpose and access control rules. There are three Layers: 0, 1, and 2."
   - term: System
     definition: "An abstract 'vertical' segment of Brain architecture defined by its ontological purpose. There are three Systems: State, Action and Control."
   - term: Public API

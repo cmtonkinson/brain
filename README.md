@@ -28,7 +28,7 @@ and the capability to:
 - answer questions
 - remind me of things (as and when pertinent, not robotically)
 - assist me in tasks
-- ... and continuously learn from all of it
+- and continuously learn from all of it
 
 On January 1st, 2026, I decided to start by bolting
 [PydanticAI](https://ai.pydantic.dev) onto [Obsidian](https://obsidian.md) and
@@ -48,7 +48,7 @@ _Conceptually_, Brain has three primary domains:
 3. **Capabilities**: governed operations that interact with the real world
    (files, calendars, messaging, etc.) via native APIs or MCP Servers.
 
-_Operationally_, the system takes advantage of Docker for process isolattion. In
+_Operationally_, the system takes advantage of Docker for process isolation. In
 an ideal world every process would be containerized, but for various reasons
 (security, usability, performance) there are a limited number of services that
 need to run directly on your host system:
@@ -97,7 +97,7 @@ What _really_ needs to be backed up?
 **High Priority —** Authoritative Information
 - Custom configuration & policy files under `~/.config/brain`
 - Obsidian vault (canonical knowledge, notes, promoted memory)
-- Postgres (operational state - scheduels, logs, etc.)
+- Postgres (operational state - schedules, logs, etc.)
 - Local object store `root_dir` (raw artifacts)
 
 **Medium Priority —** Durable System State
@@ -116,7 +116,7 @@ What _really_ needs to be backed up?
 - ~~Vault indexer + Qdrant semantic search~~
 - ~~Optional observability stack (OTel)~~
 
-### Phase 2: (✅ DONE) ~~The "Assitant Triangle"~~
+### Phase 2: (✅ DONE) ~~The "Assistant Triangle"~~
 - ~~Skill framework + capability registry~~
 - ~~Attention router + interruption policy~~
 - ~~Commitment tracking + loop closure~~

@@ -1,4 +1,4 @@
-# A Manfiesto for Personal Cognitive Infrastructure
+# A Manifesto for Personal Cognitive Infrastructure
 This project is highly opinionated; less of a general purpose AI assistant than
 a private operating system for attention, memory, and action.
 
@@ -175,13 +175,13 @@ unclosed loop is a signal, not a failure.
 
 ---
 
-## 6. Skills, Not Scripts
-Reusable capability is expressed as **skills**: the units of compounding
-leverage within the system. A skill:
+## 6. Capabilities, Not Scripts
+Reusable Capability is expressed as **Ops** and **Skills**: the units of compounding
+leverage within the system. A Capability:
 - has a clear input/output contract
 - is testable
 - has bounded authority
-- produces inspectable artifacts
+- produces inspectable results
 
 Examples:
 - “Clip and summarize a URL”
@@ -200,7 +200,7 @@ All outputs flow through an attention routing layer that decides:
 Output channels (e.g. Signal) are chosen deliberately.
 
 _No component may bypass this router._ In fact, there are automated test gates
-to ensure callsites do not violate this prinicple.
+to ensure callsites do not violate this principle.
 
 ---
 ## 8. Trust, Autonomy, and Safety
