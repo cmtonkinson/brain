@@ -1,6 +1,6 @@
 # Glossary of Terms
 
-This document is generated from `docs/glossary.yaml`. Do not edit by hand.
+_This document is generated from `docs/glossary.yaml`. Do not edit by hand._
 
 - **Actor &mdash;** A client of the Brain Core SDK, such as the Agent, CLI, or Celery Worker.
 - **Adapter &mdash;** A _Resource_ which governs interaction with the outside world such as an MCP Server, messaging platform, web API, etc.

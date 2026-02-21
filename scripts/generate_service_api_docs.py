@@ -16,7 +16,7 @@ SERVICE_FILE_GLOB = "services/*/*/service.py"
 DEFAULT_OUTPUT = "docs/service-api.md"
 DOC_TITLE = "# L1 Public Service API"
 DOC_GENERATED_NOTE = (
-    "This document is generated from `services/*/*/service.py`. Do not edit by hand."
+    "_This document is generated from `services/*/*/service.py`. Do not edit by hand._"
 )
 DOC_EMPTY_MESSAGE = "No L1 service interfaces were found."
 CHECK_OUT_OF_DATE_MESSAGE = "L1 API docs are out of date. Run: make docs-api"

@@ -13,7 +13,7 @@ import yaml
 DEFAULT_INPUT = "docs/glossary.yaml"
 DEFAULT_OUTPUT = "docs/glossary.md"
 GENERATED_NOTE = (
-    "This document is generated from `docs/glossary.yaml`. Do not edit by hand."
+    "_This document is generated from `docs/glossary.yaml`. Do not edit by hand._"
 )
 
 

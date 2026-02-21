@@ -1,6 +1,6 @@
 # L1 Public Service API
 
-This document is generated from `services/*/*/service.py`. Do not edit by hand.
+_This document is generated from `services/*/*/service.py`. Do not edit by hand._
 
 ---
 
