@@ -9,7 +9,16 @@ from pathlib import Path
 import grpc
 import pytest
 
-repo_root = Path(__file__).resolve().parents[2]
+
+def _repo_root() -> Path:
+    """Resolve repository root by walking up to the directory containing Makefile."""
+    for candidate in Path(__file__).resolve().parents:
+        if (candidate / "Makefile").exists():
+            return candidate
+    raise RuntimeError("repository root not found from test path")
+
+
+repo_root = _repo_root()
 generated_root = repo_root / "generated"
 if not generated_root.exists():
     pytest.skip(

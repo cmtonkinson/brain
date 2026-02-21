@@ -62,7 +62,7 @@ format:
 
 test: build check
 	@if command -v pytest >/dev/null 2>&1; then \
-		pytest -q tests; \
+		pytest -q tests services resources; \
 	else \
 		echo "No test runner found."; \
 		exit 1; \
