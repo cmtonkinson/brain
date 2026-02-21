@@ -3,6 +3,19 @@ PROTO_DIR     := protos
 GENERATED_DIR := generated
 PROTO_FILES   := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
 PROTO_STAMP   := $(GENERATED_DIR)/.proto-stamp
+GLOSSARY_SRC  := docs/glossary.yaml
+GLOSSARY_DOC  := docs/glossary.md
+GLOSSARY_GEN  := scripts/generate_glossary_docs.py
+SERVICE_API_DOC := docs/service-api.md
+SERVICE_API_GEN := scripts/generate_service_api_docs.py
+SERVICE_API_SRC := $(shell find services -type f -path 'services/*/*/service.py' | sort)
+DIAGRAM_SRC := img/diagrams.drawio
+DIAGRAM_GEN := img/export-diagrams.sh
+DIAGRAM_PNGS := \
+	img/c4-context.png \
+	img/c4-container.png \
+	img/c4-component.png \
+	img/boundaries-and-responsibilities.png
 
 .PHONY: all deps clean build check format test docs migrate up down
 
@@ -55,10 +68,16 @@ test: build check
 		exit 1; \
 	fi
 
-docs:
-	@img/export-diagrams.sh
-	@python scripts/generate_glossary_docs.py
-	@python scripts/generate_service_api_docs.py
+docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(DIAGRAM_PNGS)
+
+$(GLOSSARY_DOC): $(GLOSSARY_SRC) $(GLOSSARY_GEN)
+	@python $(GLOSSARY_GEN)
+
+$(SERVICE_API_DOC): $(SERVICE_API_SRC) $(SERVICE_API_GEN)
+	@python $(SERVICE_API_GEN)
+
+$(DIAGRAM_PNGS): $(DIAGRAM_SRC) $(DIAGRAM_GEN)
+	@$(DIAGRAM_GEN) $(DIAGRAM_SRC)
 
 migrate:
 	@python -c "import alembic, psycopg" >/dev/null 2>&1 || \

@@ -174,27 +174,29 @@ To do this cleanly, it means:
    fail if violations are found. (`ulid_bin` is a constrained `bytea(16)`)
 
 ------------------------------------------------------------------------
-# Public APIs
-TL;DR &mdash; `services/*/*/__init__.py` exports a list of interfaces.
+# APIs
+TL;DR &mdash; `services/*/*/__init__.py` exports a list of interfaces which are
+the canonical surface area for a given Service.
 
-Each Service must define a public API. These public APIs:
+Each Service must define a Public API. These public APIs:
+- Start with Protobuf definitions
 - Are the canonical and authoritative (Python) interface to the Service
-- Are the sole permitted surface for callers (e.g. other Components)
-- 
-
-TL;DR &mdash; Package-versioned protobufs w/ gRPC
-
-Each L1 Service must define a public API via a `.proto`. These public APIs:
-- Are the canonical and authoritative (Python) interface to the Service
-- Versioned at the package level (e.g. `serv_a.v1`, `serv_b.v3`)
-- The sole permitted surface for cross-Service calls
+- Are the sole permitted surface for other Component callers
 - Define method signatures using envelope-like request/response messages
-- Describe their Error taxonomy via gRPC status codes and typed structured
-  errors
 
-Protobuf interfaces are exposed to L2 across network boundaries via gRPC over
-Unix domain sockets. Removed fields must be marked `reserved` while breaking
-changes require a new package version (v1 → v2). 
+## Protobufs and gRPC
+The Protobuf definitions themselves exist only to autogen the gRPC code. gRPC
+exists in this project only as the publication/transport mechanism to support
+Layer 2 callers; internal East-West traffic among Services uses the Public
+(Python) API exclusively.
+
+So, despite being responsible for the start-with-Protobufs design of the
+Services Python APIs, the gRPC surface (called the Brain Core SDK) is actually
+additional layer _on top of_ the Public API.
+
+Again - gRPC is not the canonical interface, the Public APIs are. gRPC simply
+exists to create the Brain Core SDK which allows Actors access to the system
+from across network boundaries.
 
 Protos live in `protos/`, Python is regenerated on build, git-ignored, and lives
 in `generated/`, while `services/` holds implementations.

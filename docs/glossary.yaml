@@ -12,3 +12,11 @@ terms:
     definition: "The primary carriers of business logic, responsible for coordinating system state and behavior."
   - term: Substrate
     definition: "A Resource which governs state, such as a database, document store, or cache."
+  - term: Layer
+    definition: "An abstract 'horizontal' segment of Brian architecture defined by its purpose and access control rules. There are three Layers: 0, 1, and 2."
+  - term: System
+    definition: "An abstract 'vertical' segment of Brain architecture defined by its ontological purpose. There are three Systems: State, Action and Control."
+  - term: Public API
+    definition: "The internal, native, Python surface exported by a given Service. The Public API is the canonical interface for any Service."
+  - term: Brain Core SDK
+    definition: "The gRPC interface generated on top of the Public API for direct consumption by Layer 2. This is the only system interface available to Actors."
