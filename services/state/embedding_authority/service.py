@@ -11,11 +11,10 @@ from services.state.embedding_authority.domain import (
     EmbeddingRecord,
     EmbeddingSpec,
     EmbeddingStatus,
-    RepairSpecResult,
     SearchEmbeddingMatch,
     SourceRecord,
     UpsertChunkInput,
-    UpsertChunkResult,
+    UpsertEmbeddingVectorInput,
 )
 
 
@@ -25,6 +24,24 @@ class EmbeddingAuthorityService(ABC):
     This interface is authoritative for in-process calls. gRPC/protobuf adapters
     are layered on top for north-south transport.
     """
+
+    @abstractmethod
+    def upsert_spec(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        provider: str,
+        name: str,
+        version: str,
+        dimensions: int,
+    ) -> Result[EmbeddingSpec]:
+        """Create or return one embedding spec by canonical identity."""
+
+    @abstractmethod
+    def set_active_spec(
+        self, *, meta: EnvelopeMeta, spec_id: str
+    ) -> Result[EmbeddingSpec]:
+        """Persist and return the active spec used for defaulted spec operations."""
 
     @abstractmethod
     def upsert_source(
@@ -50,8 +67,8 @@ class EmbeddingAuthorityService(ABC):
         content_hash: str,
         text: str,
         metadata: Mapping[str, str],
-    ) -> Result[UpsertChunkResult]:
-        """Create or update one chunk and materialize active-spec embedding."""
+    ) -> Result[ChunkRecord]:
+        """Create or update one chunk."""
 
     @abstractmethod
     def upsert_chunks(
@@ -59,8 +76,28 @@ class EmbeddingAuthorityService(ABC):
         *,
         meta: EnvelopeMeta,
         items: Sequence[UpsertChunkInput],
-    ) -> Result[list[UpsertChunkResult]]:
+    ) -> Result[list[ChunkRecord]]:
         """Batch convenience API for chunk upserts."""
+
+    @abstractmethod
+    def upsert_embedding_vector(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        chunk_id: str,
+        spec_id: str,
+        vector: Sequence[float],
+    ) -> Result[EmbeddingRecord]:
+        """Persist one vector point and indexed embedding status row."""
+
+    @abstractmethod
+    def upsert_embedding_vectors(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        items: Sequence[UpsertEmbeddingVectorInput],
+    ) -> Result[list[EmbeddingRecord]]:
+        """Batch convenience API for vector upserts."""
 
     @abstractmethod
     def delete_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Result[bool]:
@@ -137,7 +174,7 @@ class EmbeddingAuthorityService(ABC):
         self,
         *,
         meta: EnvelopeMeta,
-        query_text: str,
+        query_vector: Sequence[float],
         source_id: str,
         spec_id: str,
         limit: int,
@@ -146,7 +183,7 @@ class EmbeddingAuthorityService(ABC):
 
     @abstractmethod
     def get_active_spec(self, *, meta: EnvelopeMeta) -> Result[EmbeddingSpec]:
-        """Return the active spec used for new writes."""
+        """Return persisted active spec used for defaulted operations."""
 
     @abstractmethod
     def list_specs(
@@ -157,13 +194,3 @@ class EmbeddingAuthorityService(ABC):
     @abstractmethod
     def get_spec(self, *, meta: EnvelopeMeta, spec_id: str) -> Result[EmbeddingSpec]:
         """Read one spec by id."""
-
-    @abstractmethod
-    def repair_spec(
-        self,
-        *,
-        meta: EnvelopeMeta,
-        spec_id: str,
-        limit: int,
-    ) -> Result[RepairSpecResult]:
-        """Repair derived Qdrant materialization for one spec."""

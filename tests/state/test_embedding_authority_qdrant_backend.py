@@ -118,7 +118,7 @@ def test_ensure_collection_raises_on_dimension_mismatch(
 def test_point_operations_are_scoped_by_spec_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Point upsert/delete/existence checks should be isolated per spec collection."""
+    """Point upsert/delete operations should be isolated per spec collection."""
     monkeypatch.setattr(qdrant_backend_module, "QdrantClientSubstrate", _FakeSubstrate)
 
     backend = QdrantEmbeddingBackend(
@@ -134,11 +134,8 @@ def test_point_operations_are_scoped_by_spec_id(
         payload={"source_id": "src"},
     )
 
-    assert backend.point_exists(spec_id="spec_x", chunk_id="chunk_1") is True
-    assert backend.point_exists(spec_id="spec_y", chunk_id="chunk_1") is False
-
     assert backend.delete_point(spec_id="spec_x", chunk_id="chunk_1") is True
-    assert backend.point_exists(spec_id="spec_x", chunk_id="chunk_1") is False
+    assert backend.delete_point(spec_id="spec_x", chunk_id="chunk_1") is False
 
 
 def test_search_points_honors_source_filter_and_limit(

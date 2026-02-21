@@ -23,7 +23,7 @@ from services.state.embedding_authority.domain import (
 )
 from services.state.embedding_authority.interfaces import EmbeddingRepository
 
-from .schema import chunks, embeddings, sources, specs
+from .schema import active_spec, chunks, embeddings, sources, specs
 
 
 class PostgresEmbeddingRepository(EmbeddingRepository):
@@ -32,7 +32,7 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
     def __init__(self, sessions: ServiceSchemaSessionProvider) -> None:
         self._sessions = sessions
 
-    def ensure_spec(
+    def upsert_spec(
         self,
         *,
         provider: str,
@@ -62,6 +62,33 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
                 .one()
             )
             return _to_spec(row)
+
+    def get_active_spec_id(self) -> str | None:
+        """Read persisted active-spec id singleton."""
+        with self._sessions.session() as session:
+            row = session.execute(
+                select(active_spec.c.spec_id).where(
+                    active_spec.c.singleton_marker == "active"
+                )
+            ).one_or_none()
+            if row is None:
+                return None
+            return ulid_bytes_to_str(row[0])
+
+    def set_active_spec(self, *, spec_id: str) -> None:
+        """Persist active-spec id singleton using idempotent upsert."""
+        spec_id_bytes = ulid_str_to_bytes(spec_id)
+        with self._sessions.session() as session:
+            stmt = insert(active_spec).values(
+                id=generate_ulid_bytes(),
+                singleton_marker="active",
+                spec_id=spec_id_bytes,
+            )
+            stmt = stmt.on_conflict_do_update(
+                constraint="uq_active_spec_singleton_marker",
+                set_={"spec_id": spec_id_bytes, "updated_at": datetime.now(UTC)},
+            )
+            session.execute(stmt)
 
     def get_spec(self, *, spec_id: str) -> EmbeddingSpec | None:
         """Fetch one spec by id."""

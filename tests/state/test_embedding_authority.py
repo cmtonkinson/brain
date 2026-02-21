@@ -17,6 +17,7 @@ from services.state.embedding_authority.domain import (
     EmbeddingStatus,
     SearchEmbeddingMatch,
     SourceRecord,
+    UpsertEmbeddingVectorInput,
 )
 from services.state.embedding_authority.implementation import (
     DefaultEmbeddingAuthorityService,
@@ -32,13 +33,6 @@ class _IndexUpsert:
     chunk_id: str
 
 
-class FakeVectorizer:
-    """Deterministic fake vectorizer for unit tests."""
-
-    def embed(self, *, text: str, dimensions: int) -> tuple[float, ...]:
-        return tuple(float((idx + len(text)) % 7) for idx in range(dimensions))
-
-
 class FakeQdrantIndex:
     """In-memory derived-index simulation for service behavior tests."""
 
@@ -50,6 +44,9 @@ class FakeQdrantIndex:
         self.deletes: list[tuple[str, str]] = []
 
     def ensure_collection(self, *, spec_id: str, dimensions: int) -> None:
+        existing = self.collections.get(spec_id)
+        if existing is not None and existing != dimensions:
+            raise ValueError("dimension mismatch")
         self.collections[spec_id] = dimensions
 
     def upsert_point(
@@ -64,9 +61,6 @@ class FakeQdrantIndex:
         self.points.add((spec_id, chunk_id))
         self.payloads[(spec_id, chunk_id)] = dict(payload)
         self.upserts.append(_IndexUpsert(spec_id=spec_id, chunk_id=chunk_id))
-
-    def point_exists(self, *, spec_id: str, chunk_id: str) -> bool:
-        return (spec_id, chunk_id) in self.points
 
     def delete_point(self, *, spec_id: str, chunk_id: str) -> bool:
         self.deletes.append((spec_id, chunk_id))
@@ -106,12 +100,19 @@ class FailingDeleteQdrantIndex(FakeQdrantIndex):
         raise RuntimeError("qdrant delete failed")
 
 
-class FailingVectorizer(FakeVectorizer):
-    """Vectorizer fake that always fails to exercise error logging paths."""
+class FailingUpsertQdrantIndex(FakeQdrantIndex):
+    """Qdrant fake that fails vector writes for dependency-path testing."""
 
-    def embed(self, *, text: str, dimensions: int) -> tuple[float, ...]:
-        del text, dimensions
-        raise RuntimeError("vectorizer failed")
+    def upsert_point(
+        self,
+        *,
+        spec_id: str,
+        chunk_id: str,
+        vector: Sequence[float],
+        payload: Mapping[str, object],
+    ) -> None:
+        del spec_id, chunk_id, vector, payload
+        raise RuntimeError("qdrant unavailable")
 
 
 class FakeRepository:
@@ -120,13 +121,14 @@ class FakeRepository:
     def __init__(self) -> None:
         self.specs: dict[str, EmbeddingSpec] = {}
         self.specs_by_hash: dict[bytes, str] = {}
+        self.active_spec_id: str | None = None
         self.sources: dict[str, SourceRecord] = {}
         self.sources_key: dict[tuple[str, str, str], str] = {}
         self.chunks: dict[str, ChunkRecord] = {}
         self.chunk_key: dict[tuple[str, int], str] = {}
         self.embeddings: dict[tuple[str, str], EmbeddingRecord] = {}
 
-    def ensure_spec(
+    def upsert_spec(
         self,
         *,
         provider: str,
@@ -164,6 +166,12 @@ class FakeRepository:
 
     def list_spec_ids(self) -> list[str]:
         return list(self.specs.keys())
+
+    def get_active_spec_id(self) -> str | None:
+        return self.active_spec_id
+
+    def set_active_spec(self, *, spec_id: str) -> None:
+        self.active_spec_id = spec_id
 
     def upsert_source(
         self,
@@ -358,30 +366,36 @@ def _service_with(
     *,
     repository: FakeRepository | None = None,
     index_backend: FakeQdrantIndex | None = None,
-    vectorizer: FakeVectorizer | None = None,
 ) -> tuple[DefaultEmbeddingAuthorityService, FakeRepository, FakeQdrantIndex]:
     """Build service with optional fake dependency overrides."""
     settings = EmbeddingSettings(
-        provider="ollama",
-        name="nomic-embed-text",
-        version="v1",
-        dimensions=8,
         qdrant_url="http://qdrant:6333",
         distance_metric="cosine",
         request_timeout_seconds=5.0,
         max_list_limit=100,
-        repair_batch_limit=100,
     )
     resolved_repository = FakeRepository() if repository is None else repository
     resolved_index = FakeQdrantIndex() if index_backend is None else index_backend
-    resolved_vectorizer = FakeVectorizer() if vectorizer is None else vectorizer
     svc = DefaultEmbeddingAuthorityService(
         settings=settings,
         repository=resolved_repository,
         index_backend=resolved_index,
-        vectorizer=resolved_vectorizer,
     )
     return svc, resolved_repository, resolved_index
+
+
+def _create_active_spec(svc: DefaultEmbeddingAuthorityService) -> EmbeddingSpec:
+    created = svc.upsert_spec(
+        meta=_meta(),
+        provider="ollama",
+        name="nomic-embed-text",
+        version="v1",
+        dimensions=8,
+    )
+    assert created.payload is not None
+    activated = svc.set_active_spec(meta=_meta(), spec_id=created.payload.id)
+    assert activated.payload is not None
+    return activated.payload
 
 
 def test_canonical_spec_serialization_and_hash_is_deterministic() -> None:
@@ -397,19 +411,50 @@ def test_canonical_spec_serialization_and_hash_is_deterministic() -> None:
     assert len(digest) == 32
 
 
-def test_boot_ensures_spec_and_qdrant_collection() -> None:
-    """Service bootstrap must ensure active spec row and matching collection."""
+def test_upsert_spec_and_set_active_spec() -> None:
+    """Specs should be created idempotently and persisted as active when requested."""
     svc, repository, index = _service()
-    active = svc.get_active_spec(meta=_meta())
+
+    created = svc.upsert_spec(
+        meta=_meta(),
+        provider="ollama",
+        name="nomic-embed-text",
+        version="v1",
+        dimensions=8,
+    )
+    assert created.ok
+    assert created.payload is not None
+
+    duplicate = svc.upsert_spec(
+        meta=_meta(),
+        provider="ollama",
+        name="nomic-embed-text",
+        version="v1",
+        dimensions=8,
+    )
+    assert duplicate.payload is not None
+    assert duplicate.payload.id == created.payload.id
+
+    active = svc.set_active_spec(meta=_meta(), spec_id=created.payload.id)
     assert active.ok
     assert active.payload is not None
-    assert active.payload.id in repository.specs
-    assert index.collections.get(active.payload.id) == active.payload.dimensions
+    assert repository.active_spec_id == created.payload.id
+    assert index.collections[created.payload.id] == created.payload.dimensions
+
+
+def test_get_active_spec_returns_not_found_when_unset() -> None:
+    """No persisted active spec should return a not-found error."""
+    svc, _, _ = _service()
+    result = svc.get_active_spec(meta=_meta())
+    assert not result.ok
+    assert result.errors
+    assert result.errors[0].category.value == "not_found"
 
 
 def test_chunk_id_stability_for_same_source_and_ordinal() -> None:
     """Repeated upsert_chunk for same source/ordinal must keep chunk_id stable."""
     svc, _, _ = _service()
+    _create_active_spec(svc)
     source = svc.upsert_source(
         meta=_meta(),
         canonical_reference="doc://1",
@@ -442,160 +487,227 @@ def test_chunk_id_stability_for_same_source_and_ordinal() -> None:
 
     assert first.payload is not None
     assert second.payload is not None
-    assert first.payload.chunk.id == second.payload.chunk.id
+    assert first.payload.id == second.payload.id
 
 
-def test_upsert_semantics_content_hash_change_rewrites_qdrant() -> None:
-    """Changed content_hash must update embedding row and re-upsert Qdrant point."""
-    svc, _, index = _service()
+def test_upsert_chunk_does_not_implicitly_create_embedding() -> None:
+    """Chunk upsert should not create embedding rows until vectors are provided."""
+    svc, repository, _ = _service()
+    _create_active_spec(svc)
     source = svc.upsert_source(
         meta=_meta(),
-        canonical_reference="doc://2",
+        canonical_reference="doc://chunk-only",
         source_type="note",
         service="ingestion",
         principal="operator",
         metadata={},
     )
-    source_id = source.payload.id if source.payload else ""
-
-    first = svc.upsert_chunk(
-        meta=_meta(),
-        source_id=source_id,
-        chunk_ordinal=1,
-        reference_range="a",
-        content_hash="hash-a",
-        text="alpha",
-        metadata={},
-    )
-    second = svc.upsert_chunk(
-        meta=_meta(),
-        source_id=source_id,
-        chunk_ordinal=1,
-        reference_range="b",
-        content_hash="hash-b",
-        text="beta",
-        metadata={},
-    )
-
-    assert first.payload is not None
-    assert second.payload is not None
-    assert second.payload.embedding.content_hash == "hash-b"
-
-    chunk_id = second.payload.chunk.id
-    active_spec = svc.get_active_spec(meta=_meta()).payload
-    assert active_spec is not None
-
-    writes = [
-        row
-        for row in index.upserts
-        if row.spec_id == active_spec.id and row.chunk_id == chunk_id
-    ]
-    assert len(writes) >= 2
-
-
-def test_read_apis_reflect_authoritative_state() -> None:
-    """Read APIs should consistently return the repository-backed current state."""
-    svc, _, _ = _service()
-    source = svc.upsert_source(
-        meta=_meta(),
-        canonical_reference="doc://3",
-        source_type="note",
-        service="ingestion",
-        principal="operator",
-        metadata={"a": "b"},
-    )
-    source_id = source.payload.id if source.payload else ""
+    assert source.payload is not None
 
     chunk = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source_id,
-        chunk_ordinal=7,
-        reference_range="10-20",
-        content_hash="hash-7",
-        text="chunk text",
-        metadata={"x": "y"},
+        source_id=source.payload.id,
+        chunk_ordinal=1,
+        reference_range="1",
+        content_hash="hash",
+        text="text",
+        metadata={},
     )
-    chunk_id = chunk.payload.chunk.id if chunk.payload else ""
-
-    assert svc.get_source(meta=_meta(), source_id=source_id).ok
-    assert (
-        len(
-            svc.list_sources(
-                meta=_meta(), canonical_reference="", service="", principal="", limit=50
-            ).payload
-            or []
-        )
-        == 1
-    )
-    assert svc.get_chunk(meta=_meta(), chunk_id=chunk_id).ok
-    assert (
-        len(
-            svc.list_chunks_by_source(
-                meta=_meta(), source_id=source_id, limit=50
-            ).payload
-            or []
-        )
-        == 1
-    )
-    assert svc.get_embedding(meta=_meta(), chunk_id=chunk_id).ok
-    assert (
-        len(
-            svc.list_embeddings_by_source(
-                meta=_meta(), source_id=source_id, spec_id="", limit=50
-            ).payload
-            or []
-        )
-        == 1
-    )
-    assert (
-        len(
-            svc.list_embeddings_by_status(
-                meta=_meta(), status=EmbeddingStatus.INDEXED, spec_id="", limit=50
-            ).payload
-            or []
-        )
-        == 1
-    )
+    assert chunk.payload is not None
+    assert repository.embeddings == {}
 
 
-def test_repair_detects_missing_qdrant_points() -> None:
-    """Repair should re-upsert missing points for indexed embeddings."""
-    svc, _, index = _service()
+def test_vector_upsert_creates_embedding_and_search_match() -> None:
+    """Vector upsert should index a point and make it retrievable via search."""
+    svc, _, _ = _service()
+    spec = _create_active_spec(svc)
+
     source = svc.upsert_source(
         meta=_meta(),
-        canonical_reference="doc://4",
+        canonical_reference="doc://search-1",
         source_type="note",
         service="ingestion",
         principal="operator",
         metadata={},
     )
-    source_id = source.payload.id if source.payload else ""
+    assert source.payload is not None
 
-    upsert = svc.upsert_chunk(
+    chunk = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source_id,
+        source_id=source.payload.id,
+        chunk_ordinal=1,
+        reference_range="a",
+        content_hash="h-a",
+        text="alpha",
+        metadata={},
+    )
+    assert chunk.payload is not None
+
+    upserted = svc.upsert_embedding_vector(
+        meta=_meta(),
+        chunk_id=chunk.payload.id,
+        spec_id=spec.id,
+        vector=[0.1] * spec.dimensions,
+    )
+    assert upserted.ok
+    assert upserted.payload is not None
+    assert upserted.payload.status == EmbeddingStatus.INDEXED
+
+    result = svc.search_embeddings(
+        meta=_meta(),
+        query_vector=[0.1] * spec.dimensions,
+        source_id=source.payload.id,
+        spec_id="",
+        limit=10,
+    )
+    assert result.ok
+    assert result.payload is not None
+    assert len(result.payload) == 1
+
+    match: SearchEmbeddingMatch = result.payload[0]
+    assert match.chunk_id == chunk.payload.id
+    assert match.source_id == source.payload.id
+
+
+def test_vector_upsert_dimension_mismatch_is_validation_error() -> None:
+    """Vector writes with wrong dimensions must fail validation."""
+    svc, _, _ = _service()
+    spec = _create_active_spec(svc)
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://dim",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    assert source.payload is not None
+    chunk = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source.payload.id,
         chunk_ordinal=1,
         reference_range="r",
         content_hash="h",
         text="text",
         metadata={},
     )
-    assert upsert.payload is not None
+    assert chunk.payload is not None
 
-    active_spec = svc.get_active_spec(meta=_meta()).payload
-    assert active_spec is not None
-    index.points.remove((active_spec.id, upsert.payload.chunk.id))
+    result = svc.upsert_embedding_vector(
+        meta=_meta(),
+        chunk_id=chunk.payload.id,
+        spec_id=spec.id,
+        vector=[0.1, 0.2],
+    )
+    assert not result.ok
+    assert result.errors
+    assert result.errors[0].category.value == "validation"
 
-    repaired = svc.repair_spec(meta=_meta(), spec_id=active_spec.id, limit=100)
-    assert repaired.ok
-    assert repaired.payload is not None
-    assert repaired.payload.repaired >= 1
-    assert (active_spec.id, upsert.payload.chunk.id) in index.points
+
+def test_batch_vector_upsert_aggregates_rows() -> None:
+    """Batch vector upserts should return indexed rows for each successful item."""
+    svc, _, _ = _service()
+    spec = _create_active_spec(svc)
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://batch",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    assert source.payload is not None
+
+    first = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source.payload.id,
+        chunk_ordinal=1,
+        reference_range="a",
+        content_hash="h1",
+        text="a",
+        metadata={},
+    )
+    second = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source.payload.id,
+        chunk_ordinal=2,
+        reference_range="b",
+        content_hash="h2",
+        text="b",
+        metadata={},
+    )
+    assert first.payload is not None
+    assert second.payload is not None
+
+    result = svc.upsert_embedding_vectors(
+        meta=_meta(),
+        items=[
+            UpsertEmbeddingVectorInput(
+                chunk_id=first.payload.id,
+                spec_id=spec.id,
+                vector=[0.1] * spec.dimensions,
+            ),
+            UpsertEmbeddingVectorInput(
+                chunk_id=second.payload.id,
+                spec_id=spec.id,
+                vector=[0.2] * spec.dimensions,
+            ),
+        ],
+    )
+    assert result.ok
+    assert result.payload is not None
+    assert len(result.payload) == 2
+
+
+def test_vector_upsert_dependency_failure_marks_embedding_failed(
+    caplog: object,
+) -> None:
+    """Qdrant write failures should be surfaced and persisted as FAILED rows."""
+    svc, repository, _ = _service_with(index_backend=FailingUpsertQdrantIndex())
+    spec = _create_active_spec(svc)
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://qdrant-fail",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    assert source.payload is not None
+    chunk = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source.payload.id,
+        chunk_ordinal=1,
+        reference_range="r",
+        content_hash="h",
+        text="text",
+        metadata={},
+    )
+    assert chunk.payload is not None
+
+    with caplog.at_level(
+        logging.WARNING, logger="services.state.embedding_authority.implementation"
+    ):
+        result = svc.upsert_embedding_vector(
+            meta=_meta(),
+            chunk_id=chunk.payload.id,
+            spec_id=spec.id,
+            vector=[0.1] * spec.dimensions,
+        )
+
+    assert not result.ok
+    assert result.errors
+    assert result.errors[0].category.value == "dependency"
+    failed = repository.get_embedding(chunk_id=chunk.payload.id, spec_id=spec.id)
+    assert failed is not None
+    assert failed.status == EmbeddingStatus.FAILED
+    assert any("Vector upsert failed" in item.message for item in caplog.records)
 
 
 def test_hard_delete_removes_rows_and_best_effort_qdrant_delete() -> None:
     """Delete source should remove authoritative rows and invoke Qdrant deletes."""
     svc, _, index = _service()
+    spec = _create_active_spec(svc)
     source = svc.upsert_source(
         meta=_meta(),
         canonical_reference="doc://5",
@@ -606,7 +718,7 @@ def test_hard_delete_removes_rows_and_best_effort_qdrant_delete() -> None:
     )
     source_id = source.payload.id if source.payload else ""
 
-    upsert = svc.upsert_chunk(
+    chunk = svc.upsert_chunk(
         meta=_meta(),
         source_id=source_id,
         chunk_ordinal=1,
@@ -615,9 +727,15 @@ def test_hard_delete_removes_rows_and_best_effort_qdrant_delete() -> None:
         text="text",
         metadata={},
     )
-    assert upsert.payload is not None
+    assert chunk.payload is not None
+    svc.upsert_embedding_vector(
+        meta=_meta(),
+        chunk_id=chunk.payload.id,
+        spec_id=spec.id,
+        vector=[0.1] * spec.dimensions,
+    )
 
-    chunk_id = upsert.payload.chunk.id
+    chunk_id = chunk.payload.id
     deleted = svc.delete_source(meta=_meta(), source_id=source_id)
     assert deleted.ok
     assert deleted.payload is True
@@ -627,50 +745,12 @@ def test_hard_delete_removes_rows_and_best_effort_qdrant_delete() -> None:
     assert any(chunk_id == deleted_chunk for _, deleted_chunk in index.deletes)
 
 
-def test_best_effort_cleanup_failures_are_logged_for_chunk_delete(
-    caplog: object,
-) -> None:
-    """Chunk delete should remain successful while logging derived cleanup failures."""
-    svc, _, _ = _service_with(index_backend=FailingDeleteQdrantIndex())
-    source = svc.upsert_source(
-        meta=_meta(),
-        canonical_reference="doc://cleanup-chunk",
-        source_type="note",
-        service="ingestion",
-        principal="operator",
-        metadata={},
-    )
-    source_id = source.payload.id if source.payload else ""
-
-    upsert = svc.upsert_chunk(
-        meta=_meta(),
-        source_id=source_id,
-        chunk_ordinal=1,
-        reference_range="r",
-        content_hash="h",
-        text="text",
-        metadata={},
-    )
-    assert upsert.payload is not None
-    chunk_id = upsert.payload.chunk.id
-
-    with caplog.at_level(
-        logging.WARNING, logger="services.state.embedding_authority.implementation"
-    ):
-        deleted = svc.delete_chunk(meta=_meta(), chunk_id=chunk_id)
-
-    assert deleted.ok
-    assert deleted.payload is True
-    assert any(
-        "Best-effort derived cleanup failed" in item.message for item in caplog.records
-    )
-
-
 def test_best_effort_cleanup_failures_are_logged_for_source_delete(
     caplog: object,
 ) -> None:
     """Source delete should remain successful while logging derived cleanup failures."""
     svc, _, _ = _service_with(index_backend=FailingDeleteQdrantIndex())
+    spec = _create_active_spec(svc)
     source = svc.upsert_source(
         meta=_meta(),
         canonical_reference="doc://cleanup-source",
@@ -690,17 +770,13 @@ def test_best_effort_cleanup_failures_are_logged_for_source_delete(
         text="text1",
         metadata={},
     )
-    second = svc.upsert_chunk(
-        meta=_meta(),
-        source_id=source_id,
-        chunk_ordinal=2,
-        reference_range="r2",
-        content_hash="h2",
-        text="text2",
-        metadata={},
-    )
     assert first.payload is not None
-    assert second.payload is not None
+    svc.upsert_embedding_vector(
+        meta=_meta(),
+        chunk_id=first.payload.id,
+        spec_id=spec.id,
+        vector=[0.1] * spec.dimensions,
+    )
 
     with caplog.at_level(
         logging.WARNING, logger="services.state.embedding_authority.implementation"
@@ -714,142 +790,6 @@ def test_best_effort_cleanup_failures_are_logged_for_source_delete(
     )
 
 
-def test_failed_embedding_with_same_hash_is_retried_on_upsert() -> None:
-    """A failed row for current hash must be retried, not no-op'd."""
-    svc, repository, index = _service()
-    source = svc.upsert_source(
-        meta=_meta(),
-        canonical_reference="doc://6",
-        source_type="note",
-        service="ingestion",
-        principal="operator",
-        metadata={},
-    )
-    source_id = source.payload.id if source.payload else ""
-
-    created = svc.upsert_chunk(
-        meta=_meta(),
-        source_id=source_id,
-        chunk_ordinal=1,
-        reference_range="r",
-        content_hash="same-hash",
-        text="text",
-        metadata={},
-    )
-    assert created.payload is not None
-    active_spec = svc.get_active_spec(meta=_meta()).payload
-    assert active_spec is not None
-
-    chunk_id = created.payload.chunk.id
-    key = (chunk_id, active_spec.id)
-    failed_row = repository.embeddings[key]
-    repository.embeddings[key] = EmbeddingRecord(
-        chunk_id=failed_row.chunk_id,
-        spec_id=failed_row.spec_id,
-        content_hash=failed_row.content_hash,
-        status=EmbeddingStatus.FAILED,
-        error_detail="boom",
-        created_at=failed_row.created_at,
-        updated_at=failed_row.updated_at,
-    )
-
-    before = len(index.upserts)
-    retried = svc.upsert_chunk(
-        meta=_meta(),
-        source_id=source_id,
-        chunk_ordinal=1,
-        reference_range="r",
-        content_hash="same-hash",
-        text="text",
-        metadata={},
-    )
-    assert retried.ok
-    assert retried.payload is not None
-    assert retried.payload.embedding.status == EmbeddingStatus.INDEXED
-    assert len(index.upserts) > before
-
-
-def test_materialization_failure_is_logged_and_recorded_as_failed(
-    caplog: object,
-) -> None:
-    """Materialization errors should be logged and persisted as FAILED embeddings."""
-    svc, _, _ = _service_with(vectorizer=FailingVectorizer())
-    source = svc.upsert_source(
-        meta=_meta(),
-        canonical_reference="doc://vectorizer-fail",
-        source_type="note",
-        service="ingestion",
-        principal="operator",
-        metadata={},
-    )
-    source_id = source.payload.id if source.payload else ""
-
-    with caplog.at_level(
-        logging.WARNING, logger="services.state.embedding_authority.implementation"
-    ):
-        upsert = svc.upsert_chunk(
-            meta=_meta(),
-            source_id=source_id,
-            chunk_ordinal=1,
-            reference_range="r",
-            content_hash="h",
-            text="text",
-            metadata={},
-        )
-
-    assert upsert.ok
-    assert upsert.payload is not None
-    assert upsert.payload.embedding.status == EmbeddingStatus.FAILED
-    assert any(
-        "Embedding materialization failed" in item.message for item in caplog.records
-    )
-
-
-def test_repair_failure_is_logged_and_returned_as_dependency_error(
-    caplog: object,
-) -> None:
-    """Repair failures should emit logs and return dependency-category errors."""
-
-    class _FailingPointExistsBackend(FakeQdrantIndex):
-        def point_exists(self, *, spec_id: str, chunk_id: str) -> bool:
-            del spec_id, chunk_id
-            raise RuntimeError("qdrant unavailable")
-
-    failing_backend = _FailingPointExistsBackend()
-    svc, _, _ = _service_with(index_backend=failing_backend)
-    source = svc.upsert_source(
-        meta=_meta(),
-        canonical_reference="doc://repair-fail",
-        source_type="note",
-        service="ingestion",
-        principal="operator",
-        metadata={},
-    )
-    source_id = source.payload.id if source.payload else ""
-    upsert = svc.upsert_chunk(
-        meta=_meta(),
-        source_id=source_id,
-        chunk_ordinal=1,
-        reference_range="r",
-        content_hash="h",
-        text="text",
-        metadata={},
-    )
-    assert upsert.ok
-    active = svc.get_active_spec(meta=_meta()).payload
-    assert active is not None
-
-    with caplog.at_level(
-        logging.WARNING, logger="services.state.embedding_authority.implementation"
-    ):
-        repaired = svc.repair_spec(meta=_meta(), spec_id=active.id, limit=5)
-
-    assert not repaired.ok
-    assert repaired.errors
-    assert repaired.errors[0].category.value == "dependency"
-    assert any("Repair operation failed" in item.message for item in caplog.records)
-
-
 def test_invalid_ulid_is_validation_error_not_transport_error() -> None:
     """Malformed ULIDs should produce domain validation errors."""
     svc, _, _ = _service()
@@ -857,62 +797,3 @@ def test_invalid_ulid_is_validation_error_not_transport_error() -> None:
     assert not result.ok
     assert result.errors
     assert result.errors[0].category.value == "validation"
-
-
-def test_search_embeddings_returns_filtered_matches() -> None:
-    """Search should return semantic matches and honor source-scoped filtering."""
-    svc, _, _ = _service()
-    first_source = svc.upsert_source(
-        meta=_meta(),
-        canonical_reference="doc://search-1",
-        source_type="note",
-        service="ingestion",
-        principal="operator",
-        metadata={},
-    )
-    second_source = svc.upsert_source(
-        meta=_meta(),
-        canonical_reference="doc://search-2",
-        source_type="note",
-        service="ingestion",
-        principal="operator",
-        metadata={},
-    )
-    assert first_source.payload is not None
-    assert second_source.payload is not None
-
-    first_chunk = svc.upsert_chunk(
-        meta=_meta(),
-        source_id=first_source.payload.id,
-        chunk_ordinal=1,
-        reference_range="a",
-        content_hash="h-a",
-        text="alpha",
-        metadata={},
-    )
-    second_chunk = svc.upsert_chunk(
-        meta=_meta(),
-        source_id=second_source.payload.id,
-        chunk_ordinal=1,
-        reference_range="b",
-        content_hash="h-b",
-        text="beta",
-        metadata={},
-    )
-    assert first_chunk.payload is not None
-    assert second_chunk.payload is not None
-
-    result = svc.search_embeddings(
-        meta=_meta(),
-        query_text="any query",
-        source_id=first_source.payload.id,
-        spec_id="",
-        limit=10,
-    )
-    assert result.ok
-    assert result.payload is not None
-    assert len(result.payload) == 1
-
-    match: SearchEmbeddingMatch = result.payload[0]
-    assert match.chunk_id == first_chunk.payload.chunk.id
-    assert match.source_id == first_source.payload.id

@@ -25,15 +25,10 @@ BUILTIN_DEFAULTS: dict[str, Any] = {
         "sslmode": "prefer",
     },
     "embedding": {
-        "provider": "ollama",
-        "name": "nomic-embed-text",
-        "version": "v1",
-        "dimensions": 768,
         "qdrant_url": "http://qdrant:6333",
         "distance_metric": "cosine",
         "request_timeout_seconds": 10.0,
         "max_list_limit": 500,
-        "repair_batch_limit": 500,
     },
     "observability": {
         "public_api": {

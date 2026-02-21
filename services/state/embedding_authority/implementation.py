@@ -34,15 +34,13 @@ from services.state.embedding_authority.domain import (
     EmbeddingRecord,
     EmbeddingSpec,
     EmbeddingStatus,
-    RepairSpecResult,
     SearchEmbeddingMatch,
     SourceRecord,
     UpsertChunkInput,
-    UpsertChunkResult,
+    UpsertEmbeddingVectorInput,
 )
 from services.state.embedding_authority.interfaces import (
     EmbeddingRepository,
-    EmbeddingVectorizer,
     QdrantIndexBackend,
 )
 from services.state.embedding_authority.qdrant_backend import QdrantEmbeddingBackend
@@ -54,36 +52,11 @@ _LOGGER = get_logger(__name__)
 _NO_PAYLOAD = object()
 
 
-@dataclass(frozen=True)
-class _ActiveSpec:
-    """Cached active-spec state used for new writes."""
+@dataclass
+class _ActiveSpecState:
+    """In-memory cache of persisted active-spec identity."""
 
-    spec: EmbeddingSpec
-
-
-class DeterministicHashVectorizer(EmbeddingVectorizer):
-    """Deterministic fallback vectorizer for current EAS implementation.
-
-    This is intentionally simple so EAS lifecycle behavior is testable without
-    embedding-provider dependencies.
-    """
-
-    def embed(self, *, text: str, dimensions: int) -> tuple[float, ...]:
-        """Map text deterministically to a fixed-length float vector."""
-        seed = hashlib.sha256(text.encode("utf-8")).digest()
-        values: list[float] = []
-        counter = 0
-        while len(values) < dimensions:
-            block = hashlib.sha256(seed + counter.to_bytes(8, "big")).digest()
-            for idx in range(0, len(block), 4):
-                chunk = block[idx : idx + 4]
-                if len(chunk) < 4:
-                    break
-                values.append(int.from_bytes(chunk, "big") / 4_294_967_295.0)
-                if len(values) >= dimensions:
-                    break
-            counter += 1
-        return tuple(values)
+    spec_id: str | None
 
 
 class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
@@ -95,13 +68,13 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         settings: EmbeddingSettings,
         repository: EmbeddingRepository,
         index_backend: QdrantIndexBackend,
-        vectorizer: EmbeddingVectorizer,
     ) -> None:
         self._settings = settings
         self._repository = repository
         self._index_backend = index_backend
-        self._vectorizer = vectorizer
-        self._active = _ActiveSpec(spec=self._bootstrap_active_spec())
+        self._active_state = _ActiveSpecState(
+            spec_id=self._repository.get_active_spec_id()
+        )
 
     @classmethod
     def from_config(
@@ -116,13 +89,125 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             request_timeout_seconds=settings.request_timeout_seconds,
             distance_metric=settings.distance_metric,
         )
-        vectorizer = DeterministicHashVectorizer()
         return cls(
             settings=settings,
             repository=repository,
             index_backend=index_backend,
-            vectorizer=vectorizer,
         )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
+    def upsert_spec(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        provider: str,
+        name: str,
+        version: str,
+        dimensions: int,
+    ) -> Result[EmbeddingSpec]:
+        """Create or return one embedding spec by canonical identity."""
+        errors = self._collect_errors(
+            meta=meta,
+            required_fields={
+                "provider": provider,
+                "name": name,
+                "version": version,
+            },
+        )
+        if dimensions <= 0:
+            errors.append(
+                validation_error("dimensions must be > 0", code=codes.INVALID_ARGUMENT)
+            )
+        if errors:
+            return failure(meta=meta, errors=errors)
+
+        canonical = _canonical_spec_string(
+            provider=provider,
+            name=name,
+            version=version,
+            dimensions=dimensions,
+        )
+        hash_bytes = hashlib.sha256(canonical.encode("utf-8")).digest()
+
+        try:
+            spec = self._repository.upsert_spec(
+                provider=provider,
+                name=name,
+                version=version,
+                dimensions=dimensions,
+                hash_bytes=hash_bytes,
+                canonical_string=canonical,
+            )
+            self._index_backend.ensure_collection(
+                spec_id=spec.id,
+                dimensions=spec.dimensions,
+            )
+            return success(meta=meta, payload=spec)
+        except Exception as exc:  # noqa: BLE001
+            if self._is_postgres_error(exc):
+                return self._postgres_failure(meta=meta, exc=exc)
+            _LOGGER.warning(
+                "Spec upsert failed due to dependency error: exception_type=%s",
+                type(exc).__name__,
+                exc_info=exc,
+            )
+            return failure(
+                meta=meta,
+                errors=[
+                    dependency_error(
+                        "spec upsert failed",
+                        code=codes.DEPENDENCY_FAILURE,
+                        metadata={"exception_type": type(exc).__name__},
+                    )
+                ],
+            )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("spec_id",),
+    )
+    def set_active_spec(
+        self, *, meta: EnvelopeMeta, spec_id: str
+    ) -> Result[EmbeddingSpec]:
+        """Persist and return active spec used for defaulted operations."""
+        errors = self._collect_errors(meta=meta, required_ulids={"spec_id": spec_id})
+        if errors:
+            return failure(meta=meta, errors=errors)
+
+        try:
+            spec = self._repository.get_spec(spec_id=spec_id)
+            if spec is None:
+                return self._not_found_failure(meta=meta, message="spec not found")
+            self._index_backend.ensure_collection(
+                spec_id=spec.id,
+                dimensions=spec.dimensions,
+            )
+            self._repository.set_active_spec(spec_id=spec.id)
+            self._active_state.spec_id = spec.id
+            return success(meta=meta, payload=spec)
+        except Exception as exc:  # noqa: BLE001
+            if self._is_postgres_error(exc):
+                return self._postgres_failure(meta=meta, exc=exc)
+            _LOGGER.warning(
+                "Set active spec failed due to dependency error: spec_id=%s exception_type=%s",
+                spec_id,
+                type(exc).__name__,
+                exc_info=exc,
+            )
+            return failure(
+                meta=meta,
+                errors=[
+                    dependency_error(
+                        "set active spec failed",
+                        code=codes.DEPENDENCY_FAILURE,
+                        metadata={"exception_type": type(exc).__name__},
+                    )
+                ],
+            )
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -179,8 +264,8 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         content_hash: str,
         text: str,
         metadata: Mapping[str, str],
-    ) -> Result[UpsertChunkResult]:
-        """Create/update chunk row and materialize active-spec embedding."""
+    ) -> Result[ChunkRecord]:
+        """Create/update chunk row."""
         errors = self._collect_errors(
             meta=meta,
             required_ulids={"source_id": source_id},
@@ -211,10 +296,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 text=text,
                 metadata=metadata,
             )
-            embedding = self._materialize_embedding(chunk=chunk)
-            return success(
-                meta=meta, payload=UpsertChunkResult(chunk=chunk, embedding=embedding)
-            )
+            return success(meta=meta, payload=chunk)
         except Exception as exc:  # noqa: BLE001
             return self._postgres_failure(meta=meta, exc=exc)
 
@@ -227,7 +309,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         *,
         meta: EnvelopeMeta,
         items: Sequence[UpsertChunkInput],
-    ) -> Result[list[UpsertChunkResult]]:
+    ) -> Result[list[ChunkRecord]]:
         """Batch upsert convenience API."""
         errors = self._validate_meta(meta)
         if not items:
@@ -239,7 +321,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
-        results: list[UpsertChunkResult] = []
+        results: list[ChunkRecord] = []
         aggregate_errors: list[ErrorDetail] = []
         for item in items:
             item_result = self.upsert_chunk(
@@ -250,6 +332,153 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 content_hash=item.content_hash,
                 text=item.text,
                 metadata=item.metadata,
+            )
+            if item_result.payload is not None:
+                results.append(item_result.payload)
+            if item_result.errors:
+                aggregate_errors.extend(item_result.errors)
+
+        if aggregate_errors:
+            return failure(meta=meta, errors=aggregate_errors, payload=results)
+        return success(meta=meta, payload=results)
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("chunk_id", "spec_id"),
+    )
+    def upsert_embedding_vector(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        chunk_id: str,
+        spec_id: str,
+        vector: Sequence[float],
+    ) -> Result[EmbeddingRecord]:
+        """Persist one vector point and indexed embedding status row."""
+        errors = self._collect_errors(
+            meta=meta,
+            required_ulids={"chunk_id": chunk_id},
+            optional_ulids={"spec_id": spec_id},
+        )
+        if not vector:
+            errors.append(
+                validation_error(
+                    "vector is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
+        if errors:
+            return failure(meta=meta, errors=errors)
+
+        try:
+            chunk = self._repository.get_chunk(chunk_id=chunk_id)
+            if chunk is None:
+                return self._not_found_failure(meta=meta, message="chunk not found")
+
+            spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
+            if spec_result.errors:
+                return failure(meta=meta, errors=spec_result.errors)
+            spec = spec_result.payload
+            if spec is None:
+                return self._not_found_failure(meta=meta, message="spec not found")
+
+            normalized_vector = tuple(float(value) for value in vector)
+            if len(normalized_vector) != spec.dimensions:
+                return failure(
+                    meta=meta,
+                    errors=[
+                        validation_error(
+                            f"vector dimension mismatch: expected {spec.dimensions}, got {len(normalized_vector)}",
+                            code=codes.INVALID_ARGUMENT,
+                        )
+                    ],
+                )
+
+            try:
+                self._index_backend.ensure_collection(
+                    spec_id=spec.id,
+                    dimensions=spec.dimensions,
+                )
+                self._index_backend.upsert_point(
+                    spec_id=spec.id,
+                    chunk_id=chunk.id,
+                    vector=normalized_vector,
+                    payload={
+                        "chunk_id": chunk.id,
+                        "source_id": chunk.source_id,
+                        "spec_id": spec.id,
+                        "chunk_ordinal": chunk.chunk_ordinal,
+                        "reference_range": chunk.reference_range,
+                        "content_hash": chunk.content_hash,
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.warning(
+                    "Vector upsert failed; row marked FAILED: spec_id=%s chunk_id=%s source_id=%s exception_type=%s",
+                    spec.id,
+                    chunk.id,
+                    chunk.source_id,
+                    type(exc).__name__,
+                    exc_info=exc,
+                )
+                self._repository.upsert_embedding(
+                    chunk_id=chunk.id,
+                    spec_id=spec.id,
+                    content_hash=chunk.content_hash,
+                    status=EmbeddingStatus.FAILED,
+                    error_detail=f"{type(exc).__name__}: {exc}",
+                )
+                return failure(
+                    meta=meta,
+                    errors=[
+                        dependency_error(
+                            "vector upsert failed",
+                            code=codes.DEPENDENCY_FAILURE,
+                            metadata={"exception_type": type(exc).__name__},
+                        )
+                    ],
+                )
+
+            record = self._repository.upsert_embedding(
+                chunk_id=chunk.id,
+                spec_id=spec.id,
+                content_hash=chunk.content_hash,
+                status=EmbeddingStatus.INDEXED,
+                error_detail="",
+            )
+            return success(meta=meta, payload=record)
+        except Exception as exc:  # noqa: BLE001
+            return self._postgres_failure(meta=meta, exc=exc)
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
+    def upsert_embedding_vectors(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        items: Sequence[UpsertEmbeddingVectorInput],
+    ) -> Result[list[EmbeddingRecord]]:
+        """Batch upsert convenience API for vector writes."""
+        errors = self._validate_meta(meta)
+        if not items:
+            errors.append(
+                validation_error(
+                    "items must not be empty", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
+        if errors:
+            return failure(meta=meta, errors=errors, payload=[])
+
+        results: list[EmbeddingRecord] = []
+        aggregate_errors: list[ErrorDetail] = []
+        for item in items:
+            item_result = self.upsert_embedding_vector(
+                meta=meta,
+                chunk_id=item.chunk_id,
+                spec_id=item.spec_id,
+                vector=item.vector,
             )
             if item_result.payload is not None:
                 results.append(item_result.payload)
@@ -312,10 +541,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 )
 
             spec_ids = self._repository.list_spec_ids()
-            for chunk_id in chunk_ids:
+            for chunk_row_id in chunk_ids:
                 for spec_id in spec_ids:
                     self._delete_derived_point_best_effort(
-                        spec_id=spec_id, chunk_id=chunk_id
+                        spec_id=spec_id, chunk_id=chunk_row_id
                     )
             return success(meta=meta, payload=True)
         except Exception as exc:  # noqa: BLE001
@@ -442,11 +671,15 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         if errors:
             return failure(meta=meta, errors=errors)
 
-        effective_spec_id = spec_id or self._active.spec.id
+        spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
+        if spec_result.errors:
+            return failure(meta=meta, errors=spec_result.errors)
+        spec = spec_result.payload
+        if spec is None:
+            return self._not_found_failure(meta=meta, message="spec not found")
+
         try:
-            record = self._repository.get_embedding(
-                chunk_id=chunk_id, spec_id=effective_spec_id
-            )
+            record = self._repository.get_embedding(chunk_id=chunk_id, spec_id=spec.id)
             if record is None:
                 return self._not_found_failure(meta=meta, message="embedding not found")
             return success(meta=meta, payload=record)
@@ -475,11 +708,19 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
-        effective_spec_id = spec_id or self._active.spec.id
+        spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
+        if spec_result.errors:
+            return failure(meta=meta, errors=spec_result.errors, payload=[])
+        spec = spec_result.payload
+        if spec is None:
+            return self._not_found_failure(
+                meta=meta, message="spec not found", payload=[]
+            )
+
         try:
             records = self._repository.list_embeddings_by_source(
                 source_id=source_id,
-                spec_id=effective_spec_id,
+                spec_id=spec.id,
                 limit=self._clamp_limit(limit),
             )
             return success(meta=meta, payload=records)
@@ -507,11 +748,19 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
-        effective_spec_id = spec_id or self._active.spec.id
+        spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
+        if spec_result.errors:
+            return failure(meta=meta, errors=spec_result.errors, payload=[])
+        spec = spec_result.payload
+        if spec is None:
+            return self._not_found_failure(
+                meta=meta, message="spec not found", payload=[]
+            )
+
         try:
             records = self._repository.list_embeddings_by_status(
                 status=status,
-                spec_id=effective_spec_id,
+                spec_id=spec.id,
                 limit=self._clamp_limit(limit),
             )
             return success(meta=meta, payload=records)
@@ -527,7 +776,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         self,
         *,
         meta: EnvelopeMeta,
-        query_text: str,
+        query_vector: Sequence[float],
         source_id: str,
         spec_id: str,
         limit: int,
@@ -535,26 +784,43 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         """Search derived embeddings by semantic similarity."""
         errors = self._collect_errors(
             meta=meta,
-            required_fields={"query_text": query_text},
             optional_ulids={
                 "source_id": source_id,
                 "spec_id": spec_id,
             },
         )
+        if not query_vector:
+            errors.append(
+                validation_error(
+                    "query_vector is required", code=codes.MISSING_REQUIRED_FIELD
+                )
+            )
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
-        effective_spec_id = spec_id or self._active.spec.id
-        try:
-            spec = self._repository.get_spec(spec_id=effective_spec_id)
-            if spec is None:
-                return self._not_found_failure(
-                    meta=meta,
-                    message="spec not found",
-                    payload=[],
-                )
+        spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
+        if spec_result.errors:
+            return failure(meta=meta, errors=spec_result.errors, payload=[])
+        spec = spec_result.payload
+        if spec is None:
+            return self._not_found_failure(
+                meta=meta, message="spec not found", payload=[]
+            )
 
-            vector = self._vectorizer.embed(text=query_text, dimensions=spec.dimensions)
+        vector = tuple(float(value) for value in query_vector)
+        if len(vector) != spec.dimensions:
+            return failure(
+                meta=meta,
+                errors=[
+                    validation_error(
+                        f"query_vector dimension mismatch: expected {spec.dimensions}, got {len(vector)}",
+                        code=codes.INVALID_ARGUMENT,
+                    )
+                ],
+                payload=[],
+            )
+
+        try:
             hits = self._index_backend.search_points(
                 spec_id=spec.id,
                 source_id=source_id,
@@ -587,7 +853,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         except Exception as exc:  # noqa: BLE001
             _LOGGER.warning(
                 "Search operation failed: spec_id=%s source_id=%s exception_type=%s",
-                effective_spec_id,
+                spec.id,
                 source_id,
                 type(exc).__name__,
                 exc_info=exc,
@@ -609,11 +875,18 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         component_id=str(SERVICE_COMPONENT_ID),
     )
     def get_active_spec(self, *, meta: EnvelopeMeta) -> Result[EmbeddingSpec]:
-        """Return in-memory active spec."""
+        """Return persisted active spec."""
         errors = self._validate_meta(meta)
         if errors:
             return failure(meta=meta, errors=errors)
-        return success(meta=meta, payload=self._active.spec)
+
+        spec_result = self._resolve_spec(meta=meta, spec_id="")
+        if spec_result.errors:
+            return failure(meta=meta, errors=spec_result.errors)
+        spec = spec_result.payload
+        if spec is None:
+            return self._not_found_failure(meta=meta, message="active spec not set")
+        return success(meta=meta, payload=spec)
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -654,194 +927,38 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         except Exception as exc:  # noqa: BLE001
             return self._postgres_failure(meta=meta, exc=exc)
 
-    @public_api_instrumented(
-        logger=_LOGGER,
-        component_id=str(SERVICE_COMPONENT_ID),
-        id_fields=("spec_id",),
-    )
-    def repair_spec(
-        self,
-        *,
-        meta: EnvelopeMeta,
-        spec_id: str,
-        limit: int,
-    ) -> Result[RepairSpecResult]:
-        """Repair missing/stale derived Qdrant points for one spec."""
-        errors = self._collect_errors(
-            meta=meta,
-            optional_ulids={"spec_id": spec_id},
-        )
-        effective_spec_id = spec_id or self._active.spec.id
-        if errors:
-            return failure(meta=meta, errors=errors)
-
+    def _resolve_spec(
+        self, *, meta: EnvelopeMeta, spec_id: str
+    ) -> Result[EmbeddingSpec]:
+        """Resolve explicit spec id or persisted active spec id to a full spec row."""
         try:
-            spec = self._repository.get_spec(spec_id=effective_spec_id)
-            if spec is None:
-                return self._not_found_failure(meta=meta, message="spec not found")
-
-            indexed = self._repository.list_embeddings_by_status(
-                status=EmbeddingStatus.INDEXED,
-                spec_id=spec.id,
-                limit=min(self._clamp_limit(limit), self._settings.repair_batch_limit),
+            effective_id = (
+                spec_id
+                or self._active_state.spec_id
+                or self._repository.get_active_spec_id()
             )
-
-            repaired = 0
-            reembedded = 0
-            for item in indexed:
-                chunk = self._repository.get_chunk(chunk_id=item.chunk_id)
-                if chunk is None:
-                    continue
-
-                should_reembed = chunk.content_hash != item.content_hash
-                point_exists = self._index_backend.point_exists(
-                    spec_id=spec.id,
-                    chunk_id=chunk.id,
+            self._active_state.spec_id = effective_id
+            if not effective_id:
+                return failure(
+                    meta=meta,
+                    errors=[
+                        not_found_error(
+                            "active spec not set",
+                            code=codes.RESOURCE_NOT_FOUND,
+                        )
+                    ],
                 )
-
-                if should_reembed or not point_exists:
-                    vector = self._vectorizer.embed(
-                        text=chunk.text, dimensions=spec.dimensions
-                    )
-                    self._index_backend.upsert_point(
-                        spec_id=spec.id,
-                        chunk_id=chunk.id,
-                        vector=vector,
-                        payload={
-                            "chunk_id": chunk.id,
-                            "source_id": chunk.source_id,
-                            "spec_id": spec.id,
-                            "chunk_ordinal": chunk.chunk_ordinal,
-                            "reference_range": chunk.reference_range,
-                            "content_hash": chunk.content_hash,
-                        },
-                    )
-                    self._repository.upsert_embedding(
-                        chunk_id=chunk.id,
-                        spec_id=spec.id,
-                        content_hash=chunk.content_hash,
-                        status=EmbeddingStatus.INDEXED,
-                        error_detail="",
-                    )
-                    repaired += 1
-                    if should_reembed:
-                        reembedded += 1
-
-            result = RepairSpecResult(
-                spec_id=spec.id,
-                scanned=len(indexed),
-                repaired=repaired,
-                reembedded=reembedded,
-            )
-            _LOGGER.info(
-                "Repair completed: spec_id=%s scanned=%s repaired=%s reembedded=%s",
-                result.spec_id,
-                result.scanned,
-                result.repaired,
-                result.reembedded,
-            )
-            return success(
-                meta=meta,
-                payload=result,
-            )
+            row = self._repository.get_spec(spec_id=effective_id)
+            if row is None:
+                return failure(
+                    meta=meta,
+                    errors=[
+                        not_found_error("spec not found", code=codes.RESOURCE_NOT_FOUND)
+                    ],
+                )
+            return success(meta=meta, payload=row)
         except Exception as exc:  # noqa: BLE001
-            _LOGGER.warning(
-                "Repair operation failed: spec_id=%s exception_type=%s",
-                effective_spec_id,
-                type(exc).__name__,
-                exc_info=exc,
-            )
-            return failure(
-                meta=meta,
-                errors=[
-                    dependency_error(
-                        "repair failed",
-                        code=codes.DEPENDENCY_FAILURE,
-                        metadata={"exception_type": type(exc).__name__},
-                    )
-                ],
-            )
-
-    def _bootstrap_active_spec(self) -> EmbeddingSpec:
-        """Ensure active spec exists in Postgres and Qdrant on startup."""
-        canonical = _canonical_spec_string(
-            provider=self._settings.provider,
-            name=self._settings.name,
-            version=self._settings.version,
-            dimensions=self._settings.dimensions,
-        )
-        hash_bytes = hashlib.sha256(canonical.encode("utf-8")).digest()
-
-        spec = self._repository.ensure_spec(
-            provider=self._settings.provider,
-            name=self._settings.name,
-            version=self._settings.version,
-            dimensions=self._settings.dimensions,
-            hash_bytes=hash_bytes,
-            canonical_string=canonical,
-        )
-        self._index_backend.ensure_collection(
-            spec_id=spec.id, dimensions=spec.dimensions
-        )
-        _LOGGER.info(
-            "Active embedding spec ensured: spec_id=%s provider=%s name=%s version=%s dimensions=%s",
-            spec.id,
-            spec.provider,
-            spec.name,
-            spec.version,
-            spec.dimensions,
-        )
-        return spec
-
-    def _materialize_embedding(self, *, chunk: ChunkRecord) -> EmbeddingRecord:
-        """Upsert active-spec embedding row and derived Qdrant point for one chunk."""
-        spec = self._active.spec
-        existing = self._repository.get_embedding(chunk_id=chunk.id, spec_id=spec.id)
-        if (
-            existing is not None
-            and existing.content_hash == chunk.content_hash
-            and existing.status == EmbeddingStatus.INDEXED
-        ):
-            return existing
-
-        try:
-            vector = self._vectorizer.embed(text=chunk.text, dimensions=spec.dimensions)
-            self._index_backend.upsert_point(
-                spec_id=spec.id,
-                chunk_id=chunk.id,
-                vector=vector,
-                payload={
-                    "chunk_id": chunk.id,
-                    "source_id": chunk.source_id,
-                    "spec_id": spec.id,
-                    "chunk_ordinal": chunk.chunk_ordinal,
-                    "reference_range": chunk.reference_range,
-                    "content_hash": chunk.content_hash,
-                },
-            )
-            return self._repository.upsert_embedding(
-                chunk_id=chunk.id,
-                spec_id=spec.id,
-                content_hash=chunk.content_hash,
-                status=EmbeddingStatus.INDEXED,
-                error_detail="",
-            )
-        except Exception as exc:  # noqa: BLE001
-            _LOGGER.warning(
-                "Embedding materialization failed; row marked FAILED: spec_id=%s chunk_id=%s source_id=%s exception_type=%s",
-                spec.id,
-                chunk.id,
-                chunk.source_id,
-                type(exc).__name__,
-                exc_info=exc,
-            )
-            return self._repository.upsert_embedding(
-                chunk_id=chunk.id,
-                spec_id=spec.id,
-                content_hash=chunk.content_hash,
-                status=EmbeddingStatus.FAILED,
-                error_detail=f"{type(exc).__name__}: {exc}",
-            )
+            return failure(meta=meta, errors=[normalize_postgres_error(exc)])
 
     def _validate_meta(self, meta: EnvelopeMeta) -> list[ErrorDetail]:
         """Validate envelope metadata and convert failures to typed errors."""
@@ -947,6 +1064,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 type(exc).__name__,
                 exc_info=exc,
             )
+
+    def _is_postgres_error(self, exc: Exception) -> bool:
+        """Best-effort classifier for SQL-related exceptions."""
+        module_name = type(exc).__module__
+        return "sqlalchemy" in module_name or "psycopg" in module_name
 
 
 def _canonical_spec_string(

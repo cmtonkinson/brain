@@ -19,11 +19,10 @@ from services.state.embedding_authority.domain import (
     EmbeddingRecord,
     EmbeddingSpec,
     EmbeddingStatus,
-    RepairSpecResult,
     SearchEmbeddingMatch,
     SourceRecord,
     UpsertChunkInput,
-    UpsertChunkResult,
+    UpsertEmbeddingVectorInput,
 )
 from services.state.embedding_authority.service import EmbeddingAuthorityService
 
@@ -35,6 +34,39 @@ class GrpcEmbeddingAuthorityService(
 
     def __init__(self, service: EmbeddingAuthorityService) -> None:
         self._service = service
+
+    def UpsertSpec(
+        self, request: embedding_pb2.UpsertSpecRequest, context: grpc.ServicerContext
+    ) -> embedding_pb2.UpsertSpecResponse:
+        result = self._service.upsert_spec(
+            meta=_meta_from_proto(request.metadata),
+            provider=request.payload.provider,
+            name=request.payload.name,
+            version=request.payload.version,
+            dimensions=request.payload.dimensions,
+        )
+        _abort_for_transport_errors(context=context, result=result)
+        return embedding_pb2.UpsertSpecResponse(
+            metadata=_meta_to_proto(result.metadata),
+            payload=_spec_to_proto(result.payload),
+            errors=[_error_to_proto(item) for item in result.errors],
+        )
+
+    def SetActiveSpec(
+        self,
+        request: embedding_pb2.SetActiveSpecRequest,
+        context: grpc.ServicerContext,
+    ) -> embedding_pb2.SetActiveSpecResponse:
+        result = self._service.set_active_spec(
+            meta=_meta_from_proto(request.metadata),
+            spec_id=request.payload.spec_id,
+        )
+        _abort_for_transport_errors(context=context, result=result)
+        return embedding_pb2.SetActiveSpecResponse(
+            metadata=_meta_to_proto(result.metadata),
+            payload=_spec_to_proto(result.payload),
+            errors=[_error_to_proto(item) for item in result.errors],
+        )
 
     def UpsertSource(
         self, request: embedding_pb2.UpsertSourceRequest, context: grpc.ServicerContext
@@ -69,7 +101,7 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.UpsertChunkResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=_upsert_chunk_result_to_proto(result.payload),
+            payload=_chunk_to_proto(result.payload),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -94,9 +126,56 @@ class GrpcEmbeddingAuthorityService(
         payload = (
             []
             if result.payload is None
-            else [_upsert_chunk_result_to_proto(item) for item in result.payload]
+            else [_chunk_to_proto(item) for item in result.payload]
         )
         return embedding_pb2.UpsertChunksResponse(
+            metadata=_meta_to_proto(result.metadata),
+            payload=payload,
+            errors=[_error_to_proto(item) for item in result.errors],
+        )
+
+    def UpsertEmbeddingVector(
+        self,
+        request: embedding_pb2.UpsertEmbeddingVectorRequest,
+        context: grpc.ServicerContext,
+    ) -> embedding_pb2.UpsertEmbeddingVectorResponse:
+        result = self._service.upsert_embedding_vector(
+            meta=_meta_from_proto(request.metadata),
+            chunk_id=request.payload.chunk_id,
+            spec_id=request.payload.spec_id,
+            vector=list(request.payload.vector),
+        )
+        _abort_for_transport_errors(context=context, result=result)
+        return embedding_pb2.UpsertEmbeddingVectorResponse(
+            metadata=_meta_to_proto(result.metadata),
+            payload=_embedding_to_proto(result.payload),
+            errors=[_error_to_proto(item) for item in result.errors],
+        )
+
+    def UpsertEmbeddingVectors(
+        self,
+        request: embedding_pb2.UpsertEmbeddingVectorsRequest,
+        context: grpc.ServicerContext,
+    ) -> embedding_pb2.UpsertEmbeddingVectorsResponse:
+        items = [
+            UpsertEmbeddingVectorInput(
+                chunk_id=item.chunk_id,
+                spec_id=item.spec_id,
+                vector=list(item.vector),
+            )
+            for item in request.payload.items
+        ]
+        result = self._service.upsert_embedding_vectors(
+            meta=_meta_from_proto(request.metadata),
+            items=items,
+        )
+        _abort_for_transport_errors(context=context, result=result)
+        payload = (
+            []
+            if result.payload is None
+            else [_embedding_to_proto(item) for item in result.payload]
+        )
+        return embedding_pb2.UpsertEmbeddingVectorsResponse(
             metadata=_meta_to_proto(result.metadata),
             payload=payload,
             errors=[_error_to_proto(item) for item in result.errors],
@@ -285,7 +364,7 @@ class GrpcEmbeddingAuthorityService(
     ) -> embedding_pb2.SearchEmbeddingsResponse:
         result = self._service.search_embeddings(
             meta=_meta_from_proto(request.metadata),
-            query_text=request.payload.query_text,
+            query_vector=list(request.payload.query_vector),
             source_id=request.payload.source_id,
             spec_id=request.payload.spec_id,
             limit=request.payload.limit,
@@ -341,21 +420,6 @@ class GrpcEmbeddingAuthorityService(
         return embedding_pb2.GetSpecResponse(
             metadata=_meta_to_proto(result.metadata),
             payload=_spec_to_proto(result.payload),
-            errors=[_error_to_proto(item) for item in result.errors],
-        )
-
-    def RepairSpec(
-        self, request: embedding_pb2.RepairSpecRequest, context: grpc.ServicerContext
-    ) -> embedding_pb2.RepairSpecResponse:
-        result = self._service.repair_spec(
-            meta=_meta_from_proto(request.metadata),
-            spec_id=request.payload.spec_id,
-            limit=request.payload.limit,
-        )
-        _abort_for_transport_errors(context=context, result=result)
-        return embedding_pb2.RepairSpecResponse(
-            metadata=_meta_to_proto(result.metadata),
-            payload=_repair_to_proto(result.payload),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -480,18 +544,6 @@ def _spec_to_proto(spec: EmbeddingSpec | None) -> embedding_pb2.EmbeddingSpec:
     return message
 
 
-def _repair_to_proto(repair: RepairSpecResult | None) -> embedding_pb2.RepairSpecResult:
-    """Map repair summary to protobuf payload."""
-    if repair is None:
-        return embedding_pb2.RepairSpecResult()
-    return embedding_pb2.RepairSpecResult(
-        spec_id=repair.spec_id,
-        scanned=repair.scanned,
-        repaired=repair.repaired,
-        reembedded=repair.reembedded,
-    )
-
-
 def _search_match_to_proto(
     match: SearchEmbeddingMatch | None,
 ) -> embedding_pb2.SearchEmbeddingMatch:
@@ -506,18 +558,6 @@ def _search_match_to_proto(
         chunk_ordinal=match.chunk_ordinal,
         reference_range=match.reference_range,
         content_hash=match.content_hash,
-    )
-
-
-def _upsert_chunk_result_to_proto(
-    value: UpsertChunkResult | None,
-) -> embedding_pb2.UpsertChunkResult:
-    """Map upsert result payload to protobuf payload."""
-    if value is None:
-        return embedding_pb2.UpsertChunkResult()
-    return embedding_pb2.UpsertChunkResult(
-        chunk=_chunk_to_proto(value.chunk),
-        embedding=_embedding_to_proto(value.embedding),
     )
 
 

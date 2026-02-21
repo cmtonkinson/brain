@@ -14,13 +14,6 @@ from services.state.embedding_authority.domain import (
 )
 
 
-class EmbeddingVectorizer(Protocol):
-    """Vectorization contract for mapping text to embedding vectors."""
-
-    def embed(self, *, text: str, dimensions: int) -> tuple[float, ...]:
-        """Return one embedding vector with exact configured dimensions."""
-
-
 @dataclass(frozen=True)
 class IndexSearchPoint:
     """Derived index search hit returned from Qdrant-backed lookup."""
@@ -45,9 +38,6 @@ class QdrantIndexBackend(Protocol):
     ) -> None:
         """Upsert one point in the spec collection."""
 
-    def point_exists(self, *, spec_id: str, chunk_id: str) -> bool:
-        """Return True when one point is present in the spec collection."""
-
     def delete_point(self, *, spec_id: str, chunk_id: str) -> bool:
         """Delete one point from one spec collection."""
 
@@ -65,7 +55,7 @@ class QdrantIndexBackend(Protocol):
 class EmbeddingRepository(Protocol):
     """Authoritative Postgres repository contract for EAS state."""
 
-    def ensure_spec(
+    def upsert_spec(
         self,
         *,
         provider: str,
@@ -85,6 +75,12 @@ class EmbeddingRepository(Protocol):
 
     def list_spec_ids(self) -> list[str]:
         """List all known spec ids."""
+
+    def get_active_spec_id(self) -> str | None:
+        """Read active spec id singleton from authoritative storage."""
+
+    def set_active_spec(self, *, spec_id: str) -> None:
+        """Persist active spec id singleton in authoritative storage."""
 
     def upsert_source(
         self,

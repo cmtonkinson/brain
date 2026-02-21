@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Mapping
+from typing import Mapping, Sequence
 
 
 class EmbeddingStatus(StrEnum):
@@ -102,18 +102,9 @@ class UpsertChunkInput:
 
 
 @dataclass(frozen=True)
-class UpsertChunkResult:
-    """Result payload for one chunk upsert operation."""
+class UpsertEmbeddingVectorInput:
+    """Input payload for one vector upsert request."""
 
-    chunk: ChunkRecord
-    embedding: EmbeddingRecord
-
-
-@dataclass(frozen=True)
-class RepairSpecResult:
-    """Summary of one repair run for one embedding spec."""
-
+    chunk_id: str
     spec_id: str
-    scanned: int
-    repaired: int
-    reembedded: int
+    vector: Sequence[float]

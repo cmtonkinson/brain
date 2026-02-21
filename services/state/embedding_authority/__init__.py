@@ -8,11 +8,10 @@ from services.state.embedding_authority.domain import (
     EmbeddingRecord,
     EmbeddingSpec,
     EmbeddingStatus,
-    RepairSpecResult,
     SearchEmbeddingMatch,
     SourceRecord,
     UpsertChunkInput,
-    UpsertChunkResult,
+    UpsertEmbeddingVectorInput,
 )
 from services.state.embedding_authority.implementation import (
     DefaultEmbeddingAuthorityService,
@@ -31,8 +30,7 @@ __all__ = [
     "EmbeddingStatus",
     "SearchEmbeddingMatch",
     "UpsertChunkInput",
-    "UpsertChunkResult",
-    "RepairSpecResult",
+    "UpsertEmbeddingVectorInput",
     "EnvelopeKind",
     "EnvelopeMeta",
     "ErrorCategory",

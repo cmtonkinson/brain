@@ -59,11 +59,6 @@ class QdrantEmbeddingBackend:
             payload=payload,
         )
 
-    def point_exists(self, *, spec_id: str, chunk_id: str) -> bool:
-        """Return True when point exists in one spec collection."""
-        point = self._substrate_for(spec_id).retrieve_point(point_id=chunk_id)
-        return point is not None
-
     def delete_point(self, *, spec_id: str, chunk_id: str) -> bool:
         """Delete one point from one spec collection."""
         return self._substrate_for(spec_id).delete_point(point_id=chunk_id)

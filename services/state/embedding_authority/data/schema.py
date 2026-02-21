@@ -61,6 +61,34 @@ specs = Table(
     CheckConstraint("dimensions > 0", name="ck_specs_dimensions_positive"),
 )
 
+active_spec = Table(
+    "active_spec",
+    metadata,
+    ulid_primary_key_column("id", schema_name=embedding_postgres_schema()),
+    Column("singleton_marker", String(16), nullable=False),
+    Column(
+        "spec_id",
+        _ulid_domain(),
+        ForeignKey(f"{embedding_postgres_schema()}.specs.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column(
+        "created_at", DateTime(timezone=True), nullable=False, server_default=func.now()
+    ),
+    Column(
+        "updated_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    ),
+    UniqueConstraint("singleton_marker", name="uq_active_spec_singleton_marker"),
+    CheckConstraint(
+        "singleton_marker = 'active'",
+        name="ck_active_spec_singleton_marker",
+    ),
+)
+
 sources = Table(
     "sources",
     metadata,
