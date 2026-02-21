@@ -15,6 +15,30 @@ know it's safe(r) to use._
 
 ![Brain](img/brain-purple-512.png)
 
+## Motivation
+I wanted a Siri that didn't suck; a Jarvis. An assistant which had access to my:
+- files
+- meeting transcripts
+- calendar events
+- messages
+- the web (news, weather, search, ...)
+- et cetera
+and the capability to:
+- answer questions
+- remind me of things (as and when pertinent, not robotically)
+- assist me in tasks
+- ... and continuously learn from all of it
+
+In December 2025, I decided to start by bolting
+[PydanticAI](https://ai.pydantic.dev) on top of [Obsidian](https://obsidian.md)
+and piping it through [Signal](https://signal.org).
+
+What exists now is a maturation & formalization of that initial prototype,
+redesigned from the ground up with crisp boundaries to ensure:
+- data sovereignty
+- security & governance
+- extensibility
+
 ## Overview
 _Conceptually_, Brain has three primary domains:
 1. A **personal knowledge base**: durable, human-readable, locally-stored
@@ -104,7 +128,7 @@ What _really_ needs to be backed up?
 - Extensive testing for enforcement of new semantics
 - Review all documentation to ensure truth & alignment with actual system
 
-### Phase 3: Voice + telephony + SMS (unstarted)
+### Phase 4: Voice + telephony + SMS (unstarted)
 - Local voice (whisper.cpp + Piper, openWakeWord)
 - POTS phone support (Twilio Media Streams)
 - SMS fallback (Google Voice)
