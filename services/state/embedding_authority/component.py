@@ -17,7 +17,12 @@ MANIFEST = register_component(
         layer=1,
         system="state",
         module_roots=frozenset({ModuleRoot("services.state.embedding_authority")}),
-        public_api_roots=frozenset({ModuleRoot("services.state.embedding_authority")}),
+        public_api_roots=frozenset(
+            {
+                # Authoritative L1 public API contract (no transport adapter surface).
+                ModuleRoot("services.state.embedding_authority.service")
+            }
+        ),
         # EAS owns Qdrant substrate; Postgres is shared infrastructure.
         owns_resources=frozenset({ComponentId("substrate_qdrant")}),
     )

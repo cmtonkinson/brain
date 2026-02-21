@@ -708,19 +708,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
-        spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
-        if spec_result.errors:
-            return failure(meta=meta, errors=spec_result.errors, payload=[])
-        spec = spec_result.payload
-        if spec is None:
-            return self._not_found_failure(
-                meta=meta, message="spec not found", payload=[]
-            )
-
         try:
             records = self._repository.list_embeddings_by_source(
                 source_id=source_id,
-                spec_id=spec.id,
+                spec_id=spec_id,
                 limit=self._clamp_limit(limit),
             )
             return success(meta=meta, payload=records)
@@ -748,19 +739,10 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
 
-        spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
-        if spec_result.errors:
-            return failure(meta=meta, errors=spec_result.errors, payload=[])
-        spec = spec_result.payload
-        if spec is None:
-            return self._not_found_failure(
-                meta=meta, message="spec not found", payload=[]
-            )
-
         try:
             records = self._repository.list_embeddings_by_status(
                 status=status,
-                spec_id=spec.id,
+                spec_id=spec_id,
                 limit=self._clamp_limit(limit),
             )
             return success(meta=meta, payload=records)
@@ -934,10 +916,11 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         try:
             effective_id = (
                 spec_id
-                or self._active_state.spec_id
-                or self._repository.get_active_spec_id()
+                if spec_id
+                else (
+                    self._active_state.spec_id or self._repository.get_active_spec_id()
+                )
             )
-            self._active_state.spec_id = effective_id
             if not effective_id:
                 return failure(
                     meta=meta,

@@ -109,7 +109,7 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
                 session.execute(
                     select(specs)
                     .order_by(desc(specs.c.created_at), desc(specs.c.id))
-                    .limit(_bounded_limit(limit))
+                    .limit(limit)
                 )
                 .mappings()
                 .all()
@@ -194,7 +194,7 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
             if principal:
                 stmt = stmt.where(sources.c.principal == principal)
             stmt = stmt.order_by(desc(sources.c.updated_at), desc(sources.c.id)).limit(
-                _bounded_limit(limit)
+                limit
             )
             rows = session.execute(stmt).mappings().all()
             return [_to_source(row) for row in rows]
@@ -266,7 +266,7 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
                     select(chunks)
                     .where(chunks.c.source_id == source_id_bytes)
                     .order_by(chunks.c.chunk_ordinal.asc(), chunks.c.id.asc())
-                    .limit(_bounded_limit(limit))
+                    .limit(limit)
                 )
                 .mappings()
                 .all()
@@ -348,9 +348,7 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
             )
             if spec_id:
                 stmt = stmt.where(embeddings.c.spec_id == ulid_str_to_bytes(spec_id))
-            stmt = stmt.order_by(desc(embeddings.c.updated_at)).limit(
-                _bounded_limit(limit)
-            )
+            stmt = stmt.order_by(desc(embeddings.c.updated_at)).limit(limit)
             rows = session.execute(stmt).mappings().all()
             return [_to_embedding(row) for row in rows]
 
@@ -366,9 +364,7 @@ class PostgresEmbeddingRepository(EmbeddingRepository):
             stmt = select(embeddings).where(embeddings.c.status == status.value)
             if spec_id:
                 stmt = stmt.where(embeddings.c.spec_id == ulid_str_to_bytes(spec_id))
-            stmt = stmt.order_by(desc(embeddings.c.updated_at)).limit(
-                _bounded_limit(limit)
-            )
+            stmt = stmt.order_by(desc(embeddings.c.updated_at)).limit(limit)
             rows = session.execute(stmt).mappings().all()
             return [_to_embedding(row) for row in rows]
 
@@ -490,10 +486,3 @@ def _row_bytes(row: Mapping[str, object], key: str) -> bytes:
     if isinstance(value, (bytes, bytearray)):
         return bytes(value)
     raise ValueError(f"expected bytes column for {key}")
-
-
-def _bounded_limit(limit: int) -> int:
-    """Clamp potentially invalid limits to a safe positive range."""
-    if limit <= 0:
-        return 100
-    return min(limit, 5_000)

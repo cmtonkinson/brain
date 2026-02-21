@@ -71,13 +71,15 @@ def _service_contract_public_methods(
     """Return public method names declared by service API contract classes."""
     names: set[str] = set()
     for root in sorted(str(item) for item in service.public_api_roots):
-        service_file = _module_to_file(repo_root=repo_root, module=f"{root}.service")
-        contract_files: tuple[Path, ...]
-        if service_file is not None:
-            contract_files = (service_file,)
-        else:
-            api_file = _module_to_file(repo_root=repo_root, module=f"{root}.api")
-            contract_files = (api_file,) if api_file is not None else ()
+        contract_files = tuple(
+            path
+            for path in (
+                _module_to_file(repo_root=repo_root, module=root),
+                _module_to_file(repo_root=repo_root, module=f"{root}.service"),
+                _module_to_file(repo_root=repo_root, module=f"{root}.api"),
+            )
+            if path is not None
+        )
 
         for file_path in contract_files:
             module = ast.parse(file_path.read_text(encoding="utf-8"))

@@ -797,3 +797,200 @@ def test_invalid_ulid_is_validation_error_not_transport_error() -> None:
     assert not result.ok
     assert result.errors
     assert result.errors[0].category.value == "validation"
+
+
+def test_explicit_spec_reads_do_not_mutate_active_spec() -> None:
+    """Explicit spec reads must not mutate in-memory active-spec defaults."""
+    svc, repository, _ = _service()
+    first = svc.upsert_spec(
+        meta=_meta(),
+        provider="ollama",
+        name="nomic-embed-text",
+        version="v1",
+        dimensions=8,
+    )
+    second = svc.upsert_spec(
+        meta=_meta(),
+        provider="openai",
+        name="text-embedding-3-large",
+        version="v1",
+        dimensions=8,
+    )
+    assert first.payload is not None
+    assert second.payload is not None
+
+    active = svc.set_active_spec(meta=_meta(), spec_id=first.payload.id)
+    assert active.payload is not None
+    assert repository.active_spec_id == first.payload.id
+
+    # Force explicit-spec resolution path.
+    _ = svc.get_embedding(
+        meta=_meta(),
+        chunk_id=generate_ulid_str(),
+        spec_id=second.payload.id,
+    )
+
+    resolved = svc.get_active_spec(meta=_meta())
+    assert resolved.payload is not None
+    assert resolved.payload.id == first.payload.id
+
+
+def test_list_embeddings_by_source_spec_filter_is_optional() -> None:
+    """Source listing should not default to active spec when spec_id is empty."""
+    svc, _, _ = _service()
+    spec_a = svc.upsert_spec(
+        meta=_meta(),
+        provider="ollama",
+        name="nomic-embed-text",
+        version="v1",
+        dimensions=8,
+    )
+    spec_b = svc.upsert_spec(
+        meta=_meta(),
+        provider="openai",
+        name="text-embedding-3-large",
+        version="v1",
+        dimensions=8,
+    )
+    assert spec_a.payload is not None
+    assert spec_b.payload is not None
+
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://optional-source-filter",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    assert source.payload is not None
+    chunk = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source.payload.id,
+        chunk_ordinal=1,
+        reference_range="r",
+        content_hash="h",
+        text="text",
+        metadata={},
+    )
+    assert chunk.payload is not None
+
+    svc.upsert_embedding_vector(
+        meta=_meta(),
+        chunk_id=chunk.payload.id,
+        spec_id=spec_a.payload.id,
+        vector=[0.1] * spec_a.payload.dimensions,
+    )
+    svc.upsert_embedding_vector(
+        meta=_meta(),
+        chunk_id=chunk.payload.id,
+        spec_id=spec_b.payload.id,
+        vector=[0.2] * spec_b.payload.dimensions,
+    )
+
+    all_specs = svc.list_embeddings_by_source(
+        meta=_meta(),
+        source_id=source.payload.id,
+        spec_id="",
+        limit=10,
+    )
+    assert all_specs.ok
+    assert all_specs.payload is not None
+    assert len(all_specs.payload) == 2
+
+    only_a = svc.list_embeddings_by_source(
+        meta=_meta(),
+        source_id=source.payload.id,
+        spec_id=spec_a.payload.id,
+        limit=10,
+    )
+    assert only_a.ok
+    assert only_a.payload is not None
+    assert len(only_a.payload) == 1
+    assert only_a.payload[0].spec_id == spec_a.payload.id
+
+
+def test_list_embeddings_by_status_spec_filter_is_optional() -> None:
+    """Status listing should support all-spec queries when spec_id is empty."""
+    svc, _, _ = _service()
+    spec_a = svc.upsert_spec(
+        meta=_meta(),
+        provider="ollama",
+        name="nomic-embed-text",
+        version="v1",
+        dimensions=8,
+    )
+    spec_b = svc.upsert_spec(
+        meta=_meta(),
+        provider="openai",
+        name="text-embedding-3-large",
+        version="v1",
+        dimensions=8,
+    )
+    assert spec_a.payload is not None
+    assert spec_b.payload is not None
+
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://optional-status-filter",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    assert source.payload is not None
+
+    first_chunk = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source.payload.id,
+        chunk_ordinal=1,
+        reference_range="r1",
+        content_hash="h1",
+        text="text1",
+        metadata={},
+    )
+    second_chunk = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source.payload.id,
+        chunk_ordinal=2,
+        reference_range="r2",
+        content_hash="h2",
+        text="text2",
+        metadata={},
+    )
+    assert first_chunk.payload is not None
+    assert second_chunk.payload is not None
+
+    svc.upsert_embedding_vector(
+        meta=_meta(),
+        chunk_id=first_chunk.payload.id,
+        spec_id=spec_a.payload.id,
+        vector=[0.1] * spec_a.payload.dimensions,
+    )
+    svc.upsert_embedding_vector(
+        meta=_meta(),
+        chunk_id=second_chunk.payload.id,
+        spec_id=spec_b.payload.id,
+        vector=[0.2] * spec_b.payload.dimensions,
+    )
+
+    all_specs = svc.list_embeddings_by_status(
+        meta=_meta(),
+        status=EmbeddingStatus.INDEXED,
+        spec_id="",
+        limit=10,
+    )
+    assert all_specs.ok
+    assert all_specs.payload is not None
+    assert len(all_specs.payload) == 2
+
+    only_b = svc.list_embeddings_by_status(
+        meta=_meta(),
+        status=EmbeddingStatus.INDEXED,
+        spec_id=spec_b.payload.id,
+        limit=10,
+    )
+    assert only_b.ok
+    assert only_b.payload is not None
+    assert len(only_b.payload) == 1
+    assert only_b.payload[0].spec_id == spec_b.payload.id

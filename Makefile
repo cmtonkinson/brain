@@ -4,9 +4,9 @@ GENERATED_DIR := generated
 PROTO_FILES   := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
 PROTO_STAMP   := $(GENERATED_DIR)/.proto-stamp
 
-.PHONY: all deps clean build check format test docs-api migrate up down
+.PHONY: all deps clean build check format test docs migrate up down
 
-all: deps clean build test docs-api
+all: deps clean build test docs
 
 deps:
 	@pip install --requirement requirements.txt
@@ -55,7 +55,8 @@ test: build check
 		exit 1; \
 	fi
 
-docs-api:
+docs:
+	@img/export-diagrams.sh
 	@python scripts/generate_service_api_docs.py
 
 migrate:
@@ -82,7 +83,7 @@ migrate:
 		done'
 
 up:
-	@docker compose up -d
+	@docker compose up --detach --build
 
 down:
 	@docker compose down
