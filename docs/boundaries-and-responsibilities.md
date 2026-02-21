@@ -76,15 +76,21 @@ has access to exactly one Substrate, and is the only component with direct
 access to that substrate. It's a strict owndership boundary.
 
 Current Authorities:
-- **Vault Authority Service** (VAS) owns the Personal Knowledge Base 
 - **Cache Authority Service** (CAS) owns caching and queueing
-- **Object Authority Service** (OAS) owns blobs
+- **Embedding Authority Service** (EAS) owns vector search by source/chunk
 - **Memory Authority Service** (MAS) owns Agent recall & context management
+- **Object Authority Service** (OAS) owns blobs
+- **Vault Authority Service** (VAS) owns the Personal Knowledge Base 
 
 ## Action System
 The Action System is responsible for "doing" things with external (real-world)
 consequences: consuming and producing signals/triggers/messages, reading and
 writing state, and the invocation of such logic.
+
+### Language Model
+- Gates access to Large Language Models
+- Exposes both Embedding and Inference capabilities
+- Allows config-parameterization of providers, models, version, flags, etc.
 
 ### Capability Engine
 - Owns Capability registry (Ops and Skills)
@@ -169,6 +175,13 @@ To do this cleanly, it means:
 
 ------------------------------------------------------------------------
 # Public APIs
+TL;DR &mdash; `services/*/*/__init__.py` exports a list of interfaces.
+
+Each Service must define a public API. These public APIs:
+- Are the canonical and authoritative (Python) interface to the Service
+- Are the sole permitted surface for callers (e.g. other Components)
+- 
+
 TL;DR &mdash; Package-versioned protobufs w/ gRPC
 
 Each L1 Service must define a public API via a `.proto`. These public APIs:

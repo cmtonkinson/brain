@@ -1,0 +1,14 @@
+title: "Glossary of Terms"
+terms:
+  - term: Actor
+    definition: "A client of the Brain Core SDK, such as the Agent, CLI, or Celery Worker."
+  - term: Adapter
+    definition: "A Resource which governs interaction with the outside world such as an MCP Server, messaging platform, web API, etc."
+  - term: Component
+    definition: "An isolated unit of responsibility or work. Each Actor, Service, and Resource is a Component."
+  - term: Resource
+    definition: "Trustees of side effects. All real-world consequences are gated by a Resource Component. Types are `Substrate` and `Adapter`."
+  - term: Service
+    definition: "The primary carriers of business logic, responsible for coordinating system state and behavior."
+  - term: Substrate
+    definition: "A Resource which governs state, such as a database, document store, or cache."

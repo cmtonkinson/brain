@@ -57,6 +57,7 @@ test: build check
 
 docs:
 	@img/export-diagrams.sh
+	@python scripts/generate_glossary_docs.py
 	@python scripts/generate_service_api_docs.py
 
 migrate:
