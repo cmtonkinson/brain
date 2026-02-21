@@ -8,7 +8,7 @@ unstable. Don't @ me, bro. When it gets a non-Cthullian version number, you'll
 know it's safe(r) to use._
 
 ![Status: Pre-Alpha](https://img.shields.io/badge/Pre--Alpha-red?style=flat)
-![CI](https://github.com/cmtonkinson/brain/actions/workflows/tests.yml/badge.svg?branch=main)
+![CI](https://github.com/cmtonkinson/brain/actions/workflows/tests.yaml/badge.svg?branch=main)
 ![Python: 3.13](https://img.shields.io/badge/Python-3.13-blue.svg)
 ![macOS](https://img.shields.io/badge/macOS-supported-lightgrey?logo=apple&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)

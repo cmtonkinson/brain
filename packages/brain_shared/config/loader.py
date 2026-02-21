@@ -3,7 +3,7 @@
 The cascade is always:
 1) CLI params
 2) Environment variables
-3) ~/.config/brain/brain.yml
+3) ~/.config/brain/brain.yaml
 4) Built-in defaults
 
 Environment variable format:
@@ -22,7 +22,7 @@ from typing import Any, Mapping
 
 from .defaults import BUILTIN_DEFAULTS
 
-DEFAULT_CONFIG_PATH = Path.home() / ".config" / "brain" / "brain.yml"
+DEFAULT_CONFIG_PATH = Path.home() / ".config" / "brain" / "brain.yaml"
 
 
 def load_config(
