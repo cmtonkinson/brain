@@ -19,7 +19,7 @@ from services.state.embedding_authority.domain import (
 
 
 class EmbeddingAuthorityService(ABC):
-    """Public east-west API for EAS.
+    """Public API for the Embedding Authority Service.
 
     This interface is authoritative for in-process calls. gRPC/protobuf adapters
     are layered on top for north-south transport.

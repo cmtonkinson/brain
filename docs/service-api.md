@@ -1,0 +1,71 @@
+# L1 Public Service API
+
+This document is generated from `services/*/*/service.py`. Do not edit by hand.
+
+---
+
+## `EmbeddingAuthorityService`
+
+- Module: `services/state/embedding_authority/service.py`
+- Summary: Public API for the Embedding Authority Service.
+
+`upsert_chunk(*, meta: EnvelopeMeta, source_id: str, chunk_ordinal: int, reference_range: str, content_hash: str, text: str, metadata: Mapping[str, str]) -> Result[ChunkRecord]`  
+_Create or update one chunk._
+
+`get_chunk(*, meta: EnvelopeMeta, chunk_id: str) -> Result[ChunkRecord]`  
+_Read one chunk by id._
+
+`delete_chunk(*, meta: EnvelopeMeta, chunk_id: str) -> Result[bool]`  
+_Hard-delete one chunk and derived embedding rows._
+
+`upsert_chunks(*, meta: EnvelopeMeta, items: Sequence[UpsertChunkInput]) -> Result[list[ChunkRecord]]`  
+_Batch convenience API for chunk upserts._
+
+`list_chunks_by_source(*, meta: EnvelopeMeta, source_id: str, limit: int) -> Result[list[ChunkRecord]]`  
+_List chunks for one source._
+
+`upsert_embedding_vector(*, meta: EnvelopeMeta, chunk_id: str, spec_id: str, vector: Sequence[float]) -> Result[EmbeddingRecord]`  
+_Persist one vector point and indexed embedding status row._
+
+`upsert_embedding_vectors(*, meta: EnvelopeMeta, items: Sequence[UpsertEmbeddingVectorInput]) -> Result[list[EmbeddingRecord]]`  
+_Batch convenience API for vector upserts._
+
+`get_embedding(*, meta: EnvelopeMeta, chunk_id: str, spec_id: str = '') -> Result[EmbeddingRecord]`  
+_Read one embedding row; default ``spec_id`` is active spec._
+
+`list_embeddings_by_source(*, meta: EnvelopeMeta, source_id: str, spec_id: str, limit: int) -> Result[list[EmbeddingRecord]]`  
+_List embedding rows for chunks under one source._
+
+`list_embeddings_by_status(*, meta: EnvelopeMeta, status: EmbeddingStatus, spec_id: str, limit: int) -> Result[list[EmbeddingRecord]]`  
+_List embedding rows by status, optionally scoped to one spec._
+
+`search_embeddings(*, meta: EnvelopeMeta, query_vector: Sequence[float], source_id: str, spec_id: str, limit: int) -> Result[list[SearchEmbeddingMatch]]`  
+_Search derived embeddings by semantic similarity._
+
+`upsert_source(*, meta: EnvelopeMeta, canonical_reference: str, source_type: str, service: str, principal: str, metadata: Mapping[str, str]) -> Result[SourceRecord]`  
+_Create or update one source._
+
+`get_source(*, meta: EnvelopeMeta, source_id: str) -> Result[SourceRecord]`  
+_Read one source by id._
+
+`delete_source(*, meta: EnvelopeMeta, source_id: str) -> Result[bool]`  
+_Hard-delete one source and all owned chunks/embeddings._
+
+`list_sources(*, meta: EnvelopeMeta, canonical_reference: str, service: str, principal: str, limit: int) -> Result[list[SourceRecord]]`  
+_List sources by optional filters._
+
+`upsert_spec(*, meta: EnvelopeMeta, provider: str, name: str, version: str, dimensions: int) -> Result[EmbeddingSpec]`  
+_Create or return one embedding spec by canonical identity._
+
+`get_spec(*, meta: EnvelopeMeta, spec_id: str) -> Result[EmbeddingSpec]`  
+_Read one spec by id._
+
+`get_active_spec(*, meta: EnvelopeMeta) -> Result[EmbeddingSpec]`  
+_Return persisted active spec used for defaulted operations._
+
+`set_active_spec(*, meta: EnvelopeMeta, spec_id: str) -> Result[EmbeddingSpec]`  
+_Persist and return the active spec used for defaulted spec operations._
+
+`list_specs(*, meta: EnvelopeMeta, limit: int) -> Result[list[EmbeddingSpec]]`  
+_List known specs._
+

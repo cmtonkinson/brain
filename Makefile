@@ -4,9 +4,9 @@ GENERATED_DIR := generated
 PROTO_FILES   := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
 PROTO_STAMP   := $(GENERATED_DIR)/.proto-stamp
 
-.PHONY: all deps clean build check format test migrate up down
+.PHONY: all deps clean build check format test docs-api migrate up down
 
-all: clean build test
+all: deps clean build test docs-api
 
 deps:
 	@pip install --requirement requirements.txt
@@ -54,6 +54,9 @@ test: build check
 		echo "No test runner found."; \
 		exit 1; \
 	fi
+
+docs-api:
+	@python scripts/generate_service_api_docs.py
 
 migrate:
 	@python -c "import alembic, psycopg" >/dev/null 2>&1 || \
