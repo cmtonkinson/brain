@@ -31,11 +31,10 @@ and the capability to:
 - ... and continuously learn from all of it
 
 On January 1st, 2026, I decided to start by bolting
-[PydanticAI](https://ai.pydantic.dev) onto [Obsidian](https://obsidian.md)
-and piping it through [Signal](https://signal.org).
-
-What exists now is a maturation & formalization of that initial prototype,
-redesigned from the ground up with crisp boundaries to ensure:
+[PydanticAI](https://ai.pydantic.dev) onto [Obsidian](https://obsidian.md) and
+piping it through [Signal](https://signal.org). What exists now is a maturation
+& formalization of that initial prototype, redesigned from the ground up with
+crisp boundaries to ensure:
 - data sovereignty
 - security & governance
 - extensibility
