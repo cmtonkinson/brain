@@ -123,12 +123,8 @@ class QdrantClientSubstrate(QdrantSubstrate):
         id_fields=("point_id",),
     )
     def delete_point(self, *, point_id: str) -> bool:
-        """Delete one point by id, returning whether a point existed."""
+        """Delete one point by id, returning whether a delete was issued."""
         if not self._collection_exists():
-            return False
-
-        existed = self.retrieve_point(point_id=point_id) is not None
-        if not existed:
             return False
 
         self._client.delete(

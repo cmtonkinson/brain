@@ -41,7 +41,7 @@ class QdrantSubstrate(Protocol):
         """Fetch one point by id from the configured collection."""
 
     def delete_point(self, *, point_id: str) -> bool:
-        """Delete one point by id, returning whether a point existed."""
+        """Delete one point by id, returning whether a delete was issued."""
 
     def search_points(
         self,

@@ -366,13 +366,14 @@ def _service_with(
     *,
     repository: FakeRepository | None = None,
     index_backend: FakeQdrantIndex | None = None,
+    max_list_limit: int = 100,
 ) -> tuple[DefaultEmbeddingAuthorityService, FakeRepository, FakeQdrantIndex]:
     """Build service with optional fake dependency overrides."""
     settings = EmbeddingSettings(
         qdrant_url="http://qdrant:6333",
         distance_metric="cosine",
         request_timeout_seconds=5.0,
-        max_list_limit=100,
+        max_list_limit=max_list_limit,
     )
     resolved_repository = FakeRepository() if repository is None else repository
     resolved_index = FakeQdrantIndex() if index_backend is None else index_backend
@@ -994,3 +995,202 @@ def test_list_embeddings_by_status_spec_filter_is_optional() -> None:
     assert only_b.payload is not None
     assert len(only_b.payload) == 1
     assert only_b.payload[0].spec_id == spec_b.payload.id
+
+
+def test_get_embedding_without_active_spec_returns_not_found() -> None:
+    """Embedding read without explicit spec should fail when active spec is unset."""
+    svc, _, _ = _service()
+    chunk_id = generate_ulid_str()
+
+    result = svc.get_embedding(meta=_meta(), chunk_id=chunk_id, spec_id="")
+
+    assert not result.ok
+    assert result.errors
+    assert result.errors[0].category.value == "not_found"
+    assert "active spec not set" in result.errors[0].message
+
+
+def test_get_embedding_with_unknown_spec_returns_not_found() -> None:
+    """Embedding read should fail when explicit spec id does not exist."""
+    svc, _, _ = _service()
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://missing-spec",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    assert source.payload is not None
+    chunk = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source.payload.id,
+        chunk_ordinal=1,
+        reference_range="r",
+        content_hash="h",
+        text="text",
+        metadata={},
+    )
+    assert chunk.payload is not None
+
+    result = svc.get_embedding(
+        meta=_meta(),
+        chunk_id=chunk.payload.id,
+        spec_id=generate_ulid_str(),
+    )
+
+    assert not result.ok
+    assert result.errors
+    assert result.errors[0].category.value == "not_found"
+    assert "spec not found" in result.errors[0].message
+
+
+def test_get_embedding_returns_not_found_when_row_missing() -> None:
+    """Embedding read should return not-found when chunk/spec exist but row is absent."""
+    svc, _, _ = _service()
+    spec = _create_active_spec(svc)
+    source = svc.upsert_source(
+        meta=_meta(),
+        canonical_reference="doc://missing-embedding-row",
+        source_type="note",
+        service="ingestion",
+        principal="operator",
+        metadata={},
+    )
+    assert source.payload is not None
+    chunk = svc.upsert_chunk(
+        meta=_meta(),
+        source_id=source.payload.id,
+        chunk_ordinal=1,
+        reference_range="r",
+        content_hash="h",
+        text="text",
+        metadata={},
+    )
+    assert chunk.payload is not None
+
+    result = svc.get_embedding(meta=_meta(), chunk_id=chunk.payload.id, spec_id=spec.id)
+
+    assert not result.ok
+    assert result.errors
+    assert result.errors[0].category.value == "not_found"
+    assert "embedding not found" in result.errors[0].message
+
+
+def test_search_embeddings_requires_query_vector() -> None:
+    """Search should reject empty query vectors with a validation error."""
+    svc, _, _ = _service()
+    _create_active_spec(svc)
+
+    result = svc.search_embeddings(
+        meta=_meta(),
+        query_vector=[],
+        source_id="",
+        spec_id="",
+        limit=10,
+    )
+
+    assert not result.ok
+    assert result.payload == []
+    assert result.errors
+    assert result.errors[0].category.value == "validation"
+    assert "query_vector is required" in result.errors[0].message
+
+
+def test_search_embeddings_rejects_dimension_mismatch() -> None:
+    """Search should validate query-vector dimensions against resolved spec."""
+    svc, _, _ = _service()
+    spec = _create_active_spec(svc)
+
+    result = svc.search_embeddings(
+        meta=_meta(),
+        query_vector=[0.1] * (spec.dimensions - 1),
+        source_id="",
+        spec_id="",
+        limit=10,
+    )
+
+    assert not result.ok
+    assert result.payload == []
+    assert result.errors
+    assert result.errors[0].category.value == "validation"
+    assert "query_vector dimension mismatch" in result.errors[0].message
+
+
+def test_search_embeddings_rejects_invalid_optional_ulids() -> None:
+    """Search should reject malformed optional ULID filters."""
+    svc, _, _ = _service()
+    _create_active_spec(svc)
+
+    result = svc.search_embeddings(
+        meta=_meta(),
+        query_vector=[0.1] * 8,
+        source_id="not-a-ulid",
+        spec_id="",
+        limit=10,
+    )
+
+    assert not result.ok
+    assert result.payload == []
+    assert result.errors
+    assert result.errors[0].category.value == "validation"
+    assert "source_id must be a valid ULID string" in result.errors[0].message
+
+
+def test_list_sources_reports_meta_validation_failures() -> None:
+    """List sources should fail validation when required metadata fields are missing."""
+    svc, _, _ = _service()
+    invalid_meta = new_meta(kind=EnvelopeKind.COMMAND, source="", principal="operator")
+
+    result = svc.list_sources(
+        meta=invalid_meta,
+        canonical_reference="",
+        service="",
+        principal="",
+        limit=10,
+    )
+
+    assert not result.ok
+    assert result.payload == []
+    assert result.errors
+    assert result.errors[0].category.value == "validation"
+    assert "metadata.source is required" in result.errors[0].message
+
+
+def test_list_chunks_by_source_rejects_invalid_ulid() -> None:
+    """Chunk listing should reject malformed source ULIDs with validation errors."""
+    svc, _, _ = _service()
+
+    result = svc.list_chunks_by_source(meta=_meta(), source_id="not-a-ulid", limit=10)
+
+    assert not result.ok
+    assert result.payload == []
+    assert result.errors
+    assert result.errors[0].category.value == "validation"
+    assert "source_id must be a valid ULID string" in result.errors[0].message
+
+
+def test_list_sources_clamps_limit_to_service_setting() -> None:
+    """Source listing should clamp limit requests to configured service maximum."""
+    svc, _, _ = _service_with(max_list_limit=2)
+    for index in range(5):
+        _ = svc.upsert_source(
+            meta=_meta(),
+            canonical_reference=f"doc://limit-{index}",
+            source_type="note",
+            service="ingestion",
+            principal="operator",
+            metadata={},
+        )
+
+    result = svc.list_sources(
+        meta=_meta(),
+        canonical_reference="",
+        service="",
+        principal="",
+        limit=999,
+    )
+
+    assert result.ok
+    assert result.payload is not None
+    assert len(result.payload) == 2
