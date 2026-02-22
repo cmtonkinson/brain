@@ -15,7 +15,6 @@ Yes, this is a meta doc about docs &mdash; Yo Dawg.
   `> Check the [Glossary] for key terms such as _X_, _Y_, et cetera.`
 - **Footer** — every doc ends with a 72-dash hr followed by `_End of <title>_`
   where `<title>` matches the h1 text exactly.
-- `README.md` uses the project title as its h1 as an exception.
 
 ------------------------------------------------------------------------
 ## Headings
@@ -56,6 +55,11 @@ Yes, this is a meta doc about docs &mdash; Yo Dawg.
 ## Generated Docs
 - Generated documentation (e.g. `docs/glossary.md`, managed by `make docs`)
   should also adhere to these rules.
+
+------------------------------------------------------------------------
+## Exceptions
+- `README.md` carries a single exception to these rules: it uses the project
+  title as its h1, rather than document name.
 
 ------------------------------------------------------------------------
 _End of Documentation Conventions_
