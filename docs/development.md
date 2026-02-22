@@ -1,0 +1,117 @@
+# Development Guide
+This document covers how to set up, build, test, and contribute to Brain.
+
+> Check the [Glossary] for key terms such as _Layer_, _System_, _Resource_,
+> _Service_, et cetera.
+
+------------------------------------------------------------------------
+## Prerequisites
+- **Python 3.13**
+- **Docker** and **Docker Compose** (for Postgres, Qdrant, and other services)
+- **Ollama** (recommended for embedding, optional for inference)
+- **Obsidian** with the Local REST API plugin
+
+------------------------------------------------------------------------
+## Environment Setup
+1. Clone the repository and install Python dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+
+2. Start infrastructure services:
+   ```
+   make up
+   ```
+   This runs Docker Compose, which starts Postgres, Qdrant, and any other
+   containerized services defined in `docker-compose.yaml`.
+
+3. Copy and edit the configuration sample:
+   ```
+   cp config/brain.yml.sample ~/.config/brain/brain.yml
+   ```
+   At minimum, configure `postgres.url` (or export `BRAIN_POSTGRES__URL`).
+
+4. Run database migrations:
+   ```
+   make migrate
+   ```
+
+------------------------------------------------------------------------
+## Make Targets
+
+| Target | Description |
+|---|---|
+| `make all` | Full pipeline: deps, clean, build, test, docs |
+| `make deps` | Install Python dependencies from `requirements.txt` |
+| `make clean` | Remove generated code and Python cache files |
+| `make build` | Compile Protobufs into `generated/` |
+| `make check` | Run linting and format checks (ruff) |
+| `make format` | Auto-format code (ruff) |
+| `make test` | Build, lint, then run pytest across `tests/`, `services/`, and `resources/` |
+| `make docs` | Regenerate glossary, service-api docs, and diagrams |
+| `make migrate` | Bootstrap schemas and run Alembic migrations for all _Services_ |
+| `make up` | Start Docker Compose services (detached) |
+| `make down` | Stop Docker Compose services |
+
+------------------------------------------------------------------------
+## Running Tests
+```
+make test
+```
+
+This runs `make build` and `make check` first, then executes pytest. Tests are
+discovered in three locations:
+- `tests/` -- shared and cross-cutting tests
+- `services/` -- _Component_-level tests in `services/<system>/<service>/tests/`
+- `resources/` -- _Resource_-level tests
+
+------------------------------------------------------------------------
+## Adding a New Service
+1. Create `services/<system>/<service>/` with an `__init__.py`.
+2. Add a `component.py` exporting a `ServiceManifest` via
+   `register_component()` (see [Components]).
+3. Implement the _Public API_ in `service.py`.
+4. For database-backed _Services_:
+   - Schema name is derived from the `ComponentId`.
+   - Use shared ULID PK helpers targeting `<schema>.ulid_bin`.
+   - Create an Alembic environment under `migrations/`.
+   - See the Shared Infrastructure section of
+     [Boundaries & Responsibilities].
+5. Run `make migrate` to bootstrap your schema.
+6. Add tests in `services/<system>/<service>/tests/`.
+
+------------------------------------------------------------------------
+## Adding a New Resource
+1. Create `resources/<kind>/<resource>/` (`kind` is `substrates/` or
+   `adapters/`).
+2. Add a `component.py` exporting a `ResourceManifest` via
+   `register_component()`.
+3. Set `owner_service_id` to the L1 _Service_ that owns this _Resource_.
+4. See [Components] for full registration details.
+
+------------------------------------------------------------------------
+## Linting and Formatting
+Brain uses [Ruff] for both linting and formatting. Configuration is in
+`ruff.toml`.
+
+```
+make check    # lint + format check
+make format   # auto-format
+```
+
+------------------------------------------------------------------------
+## Running Migrations
+```
+make migrate
+```
+
+This bootstraps schemas, creates the `ulid_bin` domain, and runs Alembic
+migrations in _System_-order (_State_ -> _Action_ -> _Control_). See the Shared
+Infrastructure section of [Boundaries & Responsibilities] for details.
+
+------------------------------------------------------------------------
+_End of Development Guide_
+
+[Components]: components.md
+[Boundaries & Responsibilities]: boundaries-and-responsibilities.md
+[Ruff]: https://docs.astral.sh/ruff/

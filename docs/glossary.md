@@ -1,7 +1,7 @@
-# Glossary of Terms
-
+# Glossary
 _This document is generated from `docs/glossary.yaml`. Do not edit by hand._
 
+------------------------------------------------------------------------
 - **Action System &mdash;** The _System_ responsible for external consequences: comprises Services and _Adapter_ Resources responsible for external I/O.
 - **Actor &mdash;** A client of the _Brain Core Sdk_, such as the Agent, CLI, or Celery Worker.
 - **Adapter &mdash;** A _Resource_ which governs interaction with the outside world such as an MCP Server, messaging platform, web API, etc.
@@ -24,3 +24,6 @@ _This document is generated from `docs/glossary.yaml`. Do not edit by hand._
 - **Substrate &mdash;** A _Resource_ which governs state, such as a database, document store, or cache.
 - **System &mdash;** An abstract 'vertical' segment of Brain architecture defined by its ontological purpose. There are three Systems: State, Action and Control.
 - **Trace &mdash;** A `trace_id`-scoped execution episode linking causally related Envelopes. Cross-_Trace_ causality is preserved via `parent_id` references.
+
+------------------------------------------------------------------------
+_End of Glossary_

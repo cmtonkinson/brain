@@ -1,2 +1,4 @@
-rsync --recursive --delete --verbose docs/ ~/vault/projects/brain/docs
-rsync --recursive --delete --verbose img/*.png ~/vault/projects/brain/img
+TARGET="${HOME}/vault/projects/brain/"
+cp README.md "${TARGET}/README.md"
+rsync --recursive --delete --verbose docs/ "${TARGET}/docs"
+rsync --recursive --delete --verbose img/*.png "${TARGET}/img"

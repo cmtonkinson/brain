@@ -1,31 +1,31 @@
 # Component Design
-
-## 1) Component Rules (Global)
-A **Component** is any registered unit of functionality in Brain and must be one
-of:
-- **Resource** (L0)
-- **Service** (L1)
-- **Actor** (L2)
-
-All Components must self-register by calling `register_component()` from
+A _Component_ is any registered unit of functionality in Brain and must be one
+of: _Resource_ (L0), _Service_ (L1), or _Actor_ (L2). All _Components_ must
+self-register by calling `register_component()` from
 `packages/brain_shared/manifest.py`.
 
+> Check the [Glossary] for key terms such as _Component_, _Manifest_,
+> _Resource_, _Service_, et cetera.
+
+------------------------------------------------------------------------
+## Component Rules (Global)
 ### Required semantics
-- Every Component has a globally unique `ComponentId`.
-- Every Component declares `layer`, `system`, and one or more `module_roots`.
+- Every _Component_ has a globally unique `ComponentId`.
+- Every _Component_ declares `layer`, `system`, and one or more `module_roots`.
 - `ComponentId` is schema-safe (`^[a-z][a-z0-9_]{1,62}$`).
 - Registration is global and process-local via `register_component(...)`.
 - Registry is the source of truth for identity and ownership validation.
 
 ### Registry behavior
-- One global registry contains all component types.
+- One global registry contains all _Component_ types.
 - `list_components()` is the canonical complete view.
 - Ownership checks are enforced for L0/L1 relationships:
   - on registration (non-strict owner existence; import-order tolerant)
   - on `assert_valid()` (strict owner existence)
 
-## 2) L0 Resource Design
-An L0 Resource is infrastructure with durable or real-world side effects.
+------------------------------------------------------------------------
+## L0 Resource Design
+An L0 _Resource_ is infrastructure with durable or real-world side effects.
 
 ### Model
 - Declared via `ResourceManifest`.
@@ -35,22 +35,23 @@ An L0 Resource is infrastructure with durable or real-world side effects.
   - `kind in {"substrate", "adapter"}`
   - `module_roots`
 - Optional:
-  - `owner_service_id` (required in practice for owned resources)
+  - `owner_service_id` (required in practice for owned _Resources_)
 
 ### Architectural expectations
-- L0 access is gated by owning L1 Service(s), never by L2 directly.
-- Resource ownership must be explicit and unambiguous.
-- If `owner_service_id` is set, it must resolve to a registered L1 Service.
-- Resource IDs must match what owning services declare in `owns_resources`.
+- L0 access is gated by owning L1 _Service(s)_, never by L2 directly.
+- _Resource_ ownership must be explicit and unambiguous.
+- If `owner_service_id` is set, it must resolve to a registered L1 _Service_.
+- _Resource_ IDs must match what owning _Services_ declare in `owns_resources`.
 
 ### Implementation expectations
 - Package should export a top-level `MANIFEST` constant that calls
   `register_component(ResourceManifest(...))`.
-- Resource modules contain substrate/adapter implementation, not business
+- _Resource_ modules contain _Substrate_/_Adapter_ implementation, not business
   policy.
 
-## 3) L1 Service Design
-An L1 Service is Brain business logic with authoritative public contracts.
+------------------------------------------------------------------------
+## L1 Service Design
+An L1 _Service_ is Brain business logic with authoritative public contracts.
 
 ### Model
 Declared via `ServiceManifest`. Required:
@@ -62,30 +63,38 @@ Declared via `ServiceManifest`. Required:
   - `owns_resources: FrozenSet[ComponentId]`
 
 ### Architectural expectations
-- Services may call other services **only** through their public APIs.
-- Services may not import other services' internal implementations.
-- Services gate all L0 access and enforce domain invariants/policy.
-- Service ID is canonical for schema naming (`schema_name == ComponentId`).
-- For PostgreSQL, which is a shared Substrate:
-  - each Service owns exactly its schema
+- _Services_ may call other _Services_ **only** through their _Public APIs_.
+- _Services_ may not import other _Services'_ internal implementations.
+- _Services_ gate all L0 access and enforce domain invariants/policy.
+- _Service_ ID is canonical for schema naming (`schema_name == ComponentId`).
+- For PostgreSQL, which is a shared _Substrate_:
+  - each _Service_ owns exactly its schema
   - no cross-schema direct access
-  - no cross-service foreign keys
+  - no cross-_Service_ foreign keys
   - this means you have to do joins and RI in code; deal with it
 
 ### Implementation expectations
-- Service package should export `MANIFEST =
+- _Service_ package should export `MANIFEST =
   register_component(ServiceManifest(...))`.
-- `owns_resources` must list L0 component IDs it owns.
-- If a Resource declares `owner_service_id`, it must match the owning Service
-  `id`.
-- Public API methods exposed must be decorated with
+- `owns_resources` must list L0 _Component_ IDs it owns.
+- If a _Resource_ declares `owner_service_id`, it must match the owning
+  _Service_ `id`.
+- _Public API_ methods exposed must be decorated with
   `packages.brain_shared.logging.public_api_instrumented(...)` so invocation
   observability concerns (logging, metrics, tracing) remain consistent and
-  composable across Services.
+  composable across _Services_.
 
-## 4) Practical Registration Pattern
-Each component package should self-register at import time with a single exported `MANIFEST` symbol:
-- Service example: `services/state/<service>/__init__.py`
-- Resource example: `resources/substrates/<resource>/__init__.py`
+------------------------------------------------------------------------
+## Practical Registration Pattern
+Each _Component_ package should self-register at import time with a single
+exported `MANIFEST` symbol:
+- _Service_ example: `services/state/<service>/__init__.py`
+- _Resource_ example: `resources/substrates/<resource>/__init__.py`
 
-This enables deterministic pre-flight checks and bootstrap orchestration from the global registry.
+This enables deterministic pre-flight checks and bootstrap orchestration from
+the global registry.
+
+------------------------------------------------------------------------
+_End of Component Design_
+
+[Glossary]: glossary.md

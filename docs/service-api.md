@@ -1,11 +1,8 @@
-# L1 Public Service API
-
+# Service API
 _This document is generated from `services/*/*/service.py`. Do not edit by hand._
 
----
-
+------------------------------------------------------------------------
 ## `EmbeddingAuthorityService`
-
 - Module: `services/state/embedding_authority/service.py`
 - Summary: Public API for the Embedding Authority Service.
 
@@ -69,3 +66,5 @@ _Persist and return the active spec used for defaulted spec operations._
 `list_specs(*, meta: EnvelopeMeta, limit: int) -> Result[list[EmbeddingSpec]]`  
 _List known specs._
 
+------------------------------------------------------------------------
+_End of Service API_

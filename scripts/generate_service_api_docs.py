@@ -14,7 +14,9 @@ from pathlib import Path
 
 SERVICE_FILE_GLOB = "services/*/*/service.py"
 DEFAULT_OUTPUT = "docs/service-api.md"
-DOC_TITLE = "# L1 Public Service API"
+DOC_NAME = "Service API"
+DOC_TITLE = f"# {DOC_NAME}"
+HR = "------------------------------------------------------------------------"
 DOC_GENERATED_NOTE = (
     "_This document is generated from `services/*/*/service.py`. Do not edit by hand._"
 )
@@ -232,18 +234,19 @@ def _collect_services(repo_root: Path) -> list[ServiceDoc]:
 
 def _render_markdown(services: list[ServiceDoc]) -> str:
     """Render deterministic API markdown from collected service docs."""
-    lines: list[str] = [DOC_TITLE, "", DOC_GENERATED_NOTE, ""]
+    lines: list[str] = [DOC_TITLE, DOC_GENERATED_NOTE, ""]
 
     if not services:
         lines.append(DOC_EMPTY_MESSAGE)
         lines.append("")
+        lines.append(HR)
+        lines.append(f"_End of {DOC_NAME}_")
+        lines.append("")
         return "\n".join(lines)
 
     for service in services:
-        lines.append("---")
-        lines.append("")
+        lines.append(HR)
         lines.append(f"## `{service.class_name}`")
-        lines.append("")
         lines.append(f"- Module: `{service.module_path}`")
         if service.summary:
             lines.append(f"- Summary: {service.summary}")
@@ -252,8 +255,10 @@ def _render_markdown(services: list[ServiceDoc]) -> str:
             lines.append(f"`{method.signature}`  ")
             lines.append(f"_{method.summary}_")
             lines.append("")
-        lines.append("")
 
+    lines.append(HR)
+    lines.append(f"_End of {DOC_NAME}_")
+    lines.append("")
     return "\n".join(lines)
 
 

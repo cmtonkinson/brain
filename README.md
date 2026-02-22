@@ -3,7 +3,7 @@ An exocortex for attention, memory, and action. This is a local-first AI system
 grounded in data sovereignty and durable knowledge; cognitive infrastructure
 that prioritizes context, directs intent deliberately, and closes loops.
 
-_**NOTE:** 🚫 This project is in active/experimental development and extremely
+_**NOTE:** This project is in active/experimental development and extremely
 unstable. Don't @ me, bro. When it gets a non-Cthullian version number, you'll
 know it's safe(r) to use._
 
@@ -15,6 +15,7 @@ know it's safe(r) to use._
 
 ![Brain](img/brain-purple-512.png)
 
+------------------------------------------------------------------------
 ## Motivation
 I wanted a Siri that didn't suck; a Jarvis. An assistant which had access to my:
 - files
@@ -30,15 +31,15 @@ and the capability to:
 - assist me in tasks
 - and continuously learn from all of it
 
-On January 1st, 2026, I decided to start by bolting
-[PydanticAI](https://ai.pydantic.dev) onto [Obsidian](https://obsidian.md) and
-piping it through [Signal](https://signal.org). What exists now is a maturation
-& formalization of that initial prototype, redesigned from the ground up with
+On January 1st, 2026, I decided to start by bolting [PydanticAI] onto
+[Obsidian] and piping it through [Signal]. What exists now is a maturation &
+formalization of that initial prototype, redesigned from the ground up with
 crisp boundaries to ensure:
 - data sovereignty
 - security & governance
 - extensibility
 
+------------------------------------------------------------------------
 ## Overview
 _Conceptually_, Brain has three primary domains:
 1. A **personal knowledge base**: durable, human-readable, locally-stored
@@ -70,9 +71,14 @@ There is also an optional OpenTelemetry-based observability stack (a separate
 but related Docker Compose) which leverages **Prometheus**, **Loki**,
 **Grafana**, and **cAdvisor**.
 
+------------------------------------------------------------------------
+## Getting Started
+See the [Development Guide][development] for prerequisites, environment setup,
+and how to build/test.
+
+------------------------------------------------------------------------
 ## Architecture
-If you aren't familiar with the [C4 Model](https://c4model.com), I'd highly
-recommend it.
+If you aren't familiar with the [C4 Model], I'd highly recommend it.
 
 ### C4 System Context Diagram
 It's just you, your agent, and your local system ...and whatever parts of the
@@ -87,28 +93,32 @@ Internet you choose to aim it at.
 Boundaries & Responsibilities are one of the most useful ways to think about the
 system architecture... just remember, this is conceptual - it's not a
 deployment, network, or data flow diagram. This is a companion visualization for
-the full [Boundaries &
-Responsibilities](docs/boundaries-and-responsibilities.md) document.
+the full [Boundaries & Responsibilities][boundaries] document.
 ![Boundaries & Responsibilities](img/boundaries-and-responsibilities.png)
 
-## Data Protection
-What _really_ needs to be backed up?
+------------------------------------------------------------------------
+## Documentation
+Recommended reading order:
 
-**High Priority —** Authoritative Information
-- Custom configuration & policy files under `~/.config/brain`
-- Obsidian vault (canonical knowledge, notes, promoted memory)
-- Postgres (operational state - schedules, logs, etc.)
-- Local object store `root_dir` (raw artifacts)
+1. **[Manifesto]** &mdash; Design philosophy, first principles, and
+   architectural invariants.
+2. **[Boundaries & Responsibilities][boundaries]** &mdash; Layer model, system
+   model, service catalog, and shared infrastructure.
+3. **[Conventions]** &mdash; APIs, envelopes, principals, error taxonomy, SDKs,
+   and policy enforcement.
+4. **[Components]** &mdash; Component registration, manifests, and
+   implementation patterns.
+5. **[Project Layout][layout]** &mdash; Directory structure mapped to the
+   conceptual model.
+6. **[Development Guide][development]** &mdash; Setup, make targets, testing,
+   and contributor workflows.
+7. **[Glossary]** &mdash; Term definitions (generated from YAML).
+8. **[Service API Reference][service-api]** &mdash; Public API surface
+   (generated from code).
 
-**Medium Priority —** Durable System State
-- Signal CLI state (device + message metadata)
-
-**Low Priority —** Derived / Cache
-- Qdrant embeddings and indexes
-- TODO: Add Redis
-
+------------------------------------------------------------------------
 ## Phased Implementation
-### Phase 1: (✅ DONE) ~~Text interaction + memory + MCP tools~~
+### Phase 1: (done) ~~Text interaction + memory + MCP tools~~
 - ~~Obsidian Local REST API integration (read/write)~~
 - ~~Letta archival memory~~
 - ~~Code-Mode (UTCP) for MCP tool calls~~
@@ -116,13 +126,13 @@ What _really_ needs to be backed up?
 - ~~Vault indexer + Qdrant semantic search~~
 - ~~Optional observability stack (OTel)~~
 
-### Phase 2: (✅ DONE) ~~The "Assistant Triangle"~~
+### Phase 2: (done) ~~The "Assistant Triangle"~~
 - ~~Skill framework + capability registry~~
 - ~~Attention router + interruption policy~~
 - ~~Commitment tracking + loop closure~~
 - ~~Requires scheduled/background jobs, policy engine, ingestion pipeline~~
 
-### Phase 3: (⚠️ IN WORK) Refactor
+### Phase 3: (in progress) Refactor
 - ~~Define clean subsystem boundaries & responsibilities~~
 - Refactor codebase along clean boundaries with crisp public APIs
 - Extensive testing for enforcement of new semantics
@@ -132,3 +142,16 @@ What _really_ needs to be backed up?
 - Local voice (whisper.cpp + Piper, openWakeWord)
 - POTS phone support (Twilio Media Streams)
 - SMS fallback (Google Voice)
+
+[PydanticAI]: https://ai.pydantic.dev
+[Obsidian]: https://obsidian.md
+[Signal]: https://signal.org
+[C4 Model]: https://c4model.com
+[Manifesto]: docs/manifesto.md
+[boundaries]: docs/boundaries-and-responsibilities.md
+[Conventions]: docs/conventions.md
+[Components]: docs/components.md
+[layout]: docs/project-layout.md
+[development]: docs/development.md
+[Glossary]: docs/glossary.md
+[service-api]: docs/service-api.md
