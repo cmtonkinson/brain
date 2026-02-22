@@ -1,9 +1,9 @@
 # Conventions
 This document defines how _Components_ communicate, behave, and enforce rules
 within Brain. For the structural model of _Layers_, _Systems_, and boundaries,
-see [Boundaries & Responsibilities].
+see [Boundaries & Responsibilities](boundaries-and-responsibilities.md).
 
-> Check the [Glossary] for key terms such as _Layer_, _System_, _Resource_,
+> Check the [Glossary](glossary.md) for key terms such as _Layer_, _System_, _Resource_,
 > _Service_, et cetera.
 
 ------------------------------------------------------------------------
@@ -98,7 +98,7 @@ DAG of _Envelopes_ across time, with _Trace_ segments as execution partitions.
 Domain-specific content.
 
 > You can use these oats to make oatmeal, bread, whatever you want. I don't
-> care, they're your oats.
+> care, they're your oats.  
 > &mdash; Dwight K. Schrute
 
 ### Errors
@@ -175,6 +175,3 @@ recursive.
 
 ------------------------------------------------------------------------
 _End of Conventions_
-
-[Boundaries & Responsibilities]: boundaries-and-responsibilities.md
-[Glossary]: glossary.md

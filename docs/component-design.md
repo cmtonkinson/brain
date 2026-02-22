@@ -4,7 +4,7 @@ of: _Resource_ (L0), _Service_ (L1), or _Actor_ (L2). All _Components_ must
 self-register by calling `register_component()` from
 `packages/brain_shared/manifest.py`.
 
-> Check the [Glossary] for key terms such as _Component_, _Manifest_,
+> Check the [Glossary](glossary.md) for key terms such as _Component_, _Manifest_,
 > _Resource_, _Service_, et cetera.
 
 ------------------------------------------------------------------------
@@ -96,5 +96,3 @@ the global registry.
 
 ------------------------------------------------------------------------
 _End of Component Design_
-
-[Glossary]: glossary.md

@@ -1,8 +1,8 @@
 # Project Layout
 This document maps the repository's directory structure to the conceptual model
-described in [Boundaries & Responsibilities].
+described in [Boundaries & Responsibilities](boundaries-and-responsibilities.md).
 
-> Check the [Glossary] for key terms such as _Layer_, _System_, _Resource_,
+> Check the [Glossary](glossary.md) for key terms such as _Layer_, _System_, _Resource_,
 > _Service_, et cetera.
 
 ------------------------------------------------------------------------
@@ -109,11 +109,7 @@ provided at `config/brain.yml.sample`.
 - _Component_-level tests live alongside their _Service_ in
   `services/<system>/<service>/tests/`.
 - _Resource_-level tests live alongside their _Resource_.
-- Run all tests with `make test` (see [Development]).
+- Run all tests with `make test` (see [Development Guide](development-guide.md)).
 
 ------------------------------------------------------------------------
 _End of Project Layout_
-
-[Boundaries & Responsibilities]: boundaries-and-responsibilities.md
-[Glossary]: glossary.md
-[Development]: development.md

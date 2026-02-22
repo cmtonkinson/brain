@@ -73,7 +73,7 @@ but related Docker Compose) which leverages **Prometheus**, **Loki**,
 
 ------------------------------------------------------------------------
 ## Getting Started
-See the [Development Guide][development] for prerequisites, environment setup,
+See the [Development Guide](docs/development-guide.md) for prerequisites, environment setup,
 and how to build/test.
 
 ------------------------------------------------------------------------
@@ -93,27 +93,29 @@ Internet you choose to aim it at.
 Boundaries & Responsibilities are one of the most useful ways to think about the
 system architecture... just remember, this is conceptual - it's not a
 deployment, network, or data flow diagram. This is a companion visualization for
-the full [Boundaries & Responsibilities][boundaries] document.
+the full [Boundaries & Responsibilities](docs/boundaries-and-responsibilities.md) document.
 ![Boundaries & Responsibilities](img/boundaries-and-responsibilities.png)
 
 ------------------------------------------------------------------------
 ## Documentation
 Recommended reading order:
 
-1. **[Manifesto]** &mdash; Design philosophy, first principles, and
+1. **[Manifesto](docs/manifesto.md)** &mdash; Design philosophy, first principles, and
    architectural invariants.
-2. **[Boundaries & Responsibilities][boundaries]** &mdash; Layer model, system
+2. **[Boundaries & Responsibilities](docs/boundaries-and-responsibilities.md)** &mdash; Layer model, system
    model, service catalog, and shared infrastructure.
-3. **[Conventions]** &mdash; APIs, envelopes, principals, error taxonomy, SDKs,
+3. **[Conventions](docs/conventions.md)** &mdash; APIs, envelopes, principals, error taxonomy, SDKs,
    and policy enforcement.
-4. **[Components]** &mdash; Component registration, manifests, and
+4. **[Component Design](docs/component-design.md)** &mdash; Component registration, manifests, and
    implementation patterns.
-5. **[Project Layout][layout]** &mdash; Directory structure mapped to the
+5. **[Project Layout](docs/project-layout.md)** &mdash; Directory structure mapped to the
    conceptual model.
-6. **[Development Guide][development]** &mdash; Setup, make targets, testing,
+6. **[Development Guide](docs/development-guide.md)** &mdash; Setup, make targets, testing,
    and contributor workflows.
-7. **[Glossary]** &mdash; Term definitions (generated from YAML).
-8. **[Service API Reference][service-api]** &mdash; Public API surface
+7. **[Configuration Reference](docs/configuration.md)** &mdash; Config file schema,
+   environment variable overrides, and per-section key reference.
+8. **[Glossary](docs/glossary.md)** &mdash; Term definitions (generated from YAML).
+9. **[Service API Reference](docs/service-api.md)** &mdash; Public API surface
    (generated from code).
 
 ------------------------------------------------------------------------
@@ -147,11 +149,3 @@ Recommended reading order:
 [Obsidian]: https://obsidian.md
 [Signal]: https://signal.org
 [C4 Model]: https://c4model.com
-[Manifesto]: docs/manifesto.md
-[boundaries]: docs/boundaries-and-responsibilities.md
-[Conventions]: docs/conventions.md
-[Components]: docs/components.md
-[layout]: docs/project-layout.md
-[development]: docs/development.md
-[Glossary]: docs/glossary.md
-[service-api]: docs/service-api.md

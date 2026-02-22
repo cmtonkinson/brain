@@ -2,7 +2,7 @@
 This document defines the coarse boundaries of responsibility and ownership
 within Brain.
 
-> Check the [Glossary] for key terms such as _Layer_, _System_, _Resource_,
+> Check the [Glossary](glossary.md) for key terms such as _Layer_, _System_, _Resource_,
 > _Service_, et cetera.
 
 ------------------------------------------------------------------------
@@ -196,10 +196,7 @@ bootstrapping.
 5. Never query/mutate other _Service_ schemas directly.
 
 For communication rules, wire protocols, error handling, SDKs, and other
-behavioral conventions, see [Conventions].
+behavioral conventions, see [Conventions](conventions.md).
 
 ------------------------------------------------------------------------
 _End of Boundaries & Responsibilities_
-
-[Glossary]: glossary.md
-[Conventions]: conventions.md
