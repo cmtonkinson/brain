@@ -2,7 +2,7 @@
 Phased implementation plan and current development status.
 
 ------------------------------------------------------------------------
-## Phase 1: (done) ~~Text interaction + memory + MCP tools~~
+## Phase 1: (✅ done) ~~Text interaction + memory + MCP tools~~
 - ~~Obsidian Local REST API integration (read/write)~~
 - ~~Letta archival memory~~
 - ~~Code-Mode (UTCP) for MCP tool calls~~
@@ -11,14 +11,14 @@ Phased implementation plan and current development status.
 - ~~Optional observability stack (OTel)~~
 
 ------------------------------------------------------------------------
-## Phase 2: (done) ~~The "Assistant Triangle"~~
+## Phase 2: (✅ done) ~~The "Assistant Triangle"~~
 - ~~Skill framework + capability registry~~
 - ~~Attention router + interruption policy~~
 - ~~Commitment tracking + loop closure~~
 - ~~Requires scheduled/background jobs, policy engine, ingestion pipeline~~
 
 ------------------------------------------------------------------------
-## Phase 3: (in progress) Refactor
+## Phase 3: (⚠️ in progress) Refactor
 - ~~Define clean subsystem boundaries & responsibilities~~
 - Refactor codebase along clean boundaries with crisp public APIs
 - Extensive testing for enforcement of new semantics

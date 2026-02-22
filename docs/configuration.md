@@ -3,7 +3,7 @@ This document describes Brain's configuration system: how settings are loaded,
 where they live, and what every key does.
 
 The config file for a running Brain is `~/.config/brain/brain.yaml`. A sample
-with all defaults is at `config/brain.yml.sample` in the repository.
+with all defaults is at `config/brain.yaml.sample` in the repository.
 
 ------------------------------------------------------------------------
 ## Precedence Cascade
@@ -42,8 +42,7 @@ Controls structured log output.
 
 ------------------------------------------------------------------------
 ## `postgres`
-PostgreSQL connection settings. **`url` is required** — there is no usable
-built-in default for a local setup.
+PostgreSQL connection settings.
 
 | Key | Default | Description |
 |---|---|---|

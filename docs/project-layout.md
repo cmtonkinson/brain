@@ -10,7 +10,7 @@ described in [Boundaries & Responsibilities](boundaries-and-responsibilities.md)
 | Directory | Purpose |
 |---|---|
 | `actors/` | L2 _Actor_ processes: `agent/`, `beat/`, `cli/`, `worker/` |
-| `config/` | Configuration samples (`brain.yml.sample`) |
+| `config/` | Configuration samples (`brain.yaml.sample`) |
 | `docs/` | Architecture & contributor documentation |
 | `generated/` | Auto-generated Python from Protobuf (git-ignored) |
 | `host-mcp-gateway/` | Go-based HTTP proxy for host-level MCP Servers |
@@ -99,8 +99,8 @@ provides the gRPC layer that backs the _Brain Core SDK_.
 
 ------------------------------------------------------------------------
 ## Configuration
-Runtime configuration is loaded from `~/.config/brain/brain.yml`. A sample is
-provided at `config/brain.yml.sample`.
+Runtime configuration is loaded from `~/.config/brain/brain.yaml`. A sample is
+provided at `config/brain.yaml.sample`.
 
 ------------------------------------------------------------------------
 ## Tests

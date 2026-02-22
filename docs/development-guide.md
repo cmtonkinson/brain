@@ -25,12 +25,13 @@ This document covers how to set up, build, test, and contribute to Brain.
    This runs Docker Compose, which starts Postgres, Qdrant, and any other
    containerized services defined in `docker-compose.yaml`.
 
-3. Copy and edit the configuration sample:
+   3. Copy and edit the configuration sample:
    ```
-   cp config/brain.yml.sample ~/.config/brain/brain.yml
+   cp config/brain.yaml.sample ~/.config/brain/brain.yaml
    ```
-   At minimum, configure `postgres.url` (or export `BRAIN_POSTGRES__URL`). See
-   the [Configuration Reference](configuration.md) for all available keys.
+   The sample includes a default `postgres.url`; override it (or export
+   `BRAIN_POSTGRES__URL`) if your environment differs. See the
+   [Configuration Reference](configuration.md) for all available keys.
 
 4. Run database migrations:
    ```
