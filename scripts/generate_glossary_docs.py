@@ -32,27 +32,30 @@ def _title_case_term(term: str) -> str:
 
 
 def _normalize_definition_terms(*, definition: str, known_terms: list[str]) -> str:
-    """Ensure known term references are title-cased and italicized in a definition."""
-    normalized = definition
+    """Ensure known term references are title-cased and italicized in a definition.
+
+    Backtick-quoted spans are protected from replacement so inline code
+    like ``trace_id`` is never mangled by partial term matches.
+    """
+    # Temporarily replace backtick-quoted spans with placeholders.
+    code_spans: list[str] = []
+
+    def _shelter_code(match: re.Match[str]) -> str:
+        code_spans.append(match.group(0))
+        return f"\x00CODE{len(code_spans) - 1}\x00"
+
+    normalized = re.sub(r"`[^`]+`", _shelter_code, definition)
 
     for source_term in sorted(known_terms, key=len, reverse=True):
         display_term = _title_case_term(source_term)
         escaped = re.escape(source_term)
 
-        # Normalize backticked glossary terms to plain text before italics pass.
-        normalized = re.sub(
-            rf"`\s*{escaped}\s*`",
-            display_term,
-            normalized,
-            flags=re.IGNORECASE,
-        )
-
         pattern = re.compile(
-            rf"(?<![A-Za-z0-9])({escaped})(?![A-Za-z0-9])",
+            rf"(?<![A-Za-z0-9_])({escaped})(?![A-Za-z0-9_])",
             flags=re.IGNORECASE,
         )
 
-        def _replace(match: re.Match[str]) -> str:
+        def _replace(match: re.Match[str], _dt: str = display_term) -> str:
             start = match.start()
             end = match.end()
             left_char = normalized[start - 1] if start > 0 else ""
@@ -60,10 +63,14 @@ def _normalize_definition_terms(*, definition: str, known_terms: list[str]) -> s
 
             # If already italicized, just enforce title casing.
             if left_char == "_" and right_char == "_":
-                return display_term
-            return f"_{display_term}_"
+                return _dt
+            return f"_{_dt}_"
 
         normalized = pattern.sub(_replace, normalized)
+
+    # Restore backtick-quoted spans.
+    for i, span in enumerate(code_spans):
+        normalized = normalized.replace(f"\x00CODE{i}\x00", span)
 
     return normalized
 

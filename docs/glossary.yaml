@@ -20,3 +20,27 @@ terms:
     definition: "The internal, native, Python surface exported by a given Service. The Public API is the canonical interface for any Service."
   - term: Brain Core SDK
     definition: "The gRPC interface generated on top of the Public API for direct consumption by Layer 2. This is the only system interface available to Actors."
+  - term: Capability
+    definition: "A governed, testable unit of action with a clear input/output contract, bounded authority, and inspectable results. Types are `Op` and `Skill`."
+  - term: Envelope
+    definition: "The structured message wrapper used for all cross-Layer and cross-Service communication, consisting of metadata, payload, and errors."
+  - term: Op
+    definition: "A Capability which wraps a Resource API call. Ops are the foundational units of work exposed to Actors."
+  - term: Operator
+    definition: "The human user of the system. All personal-assistant work rolls up to the Operator as the accountable Principal."
+  - term: Principal
+    definition: "The accountable identity for a request, propagated unchanged across calls in Envelope metadata. Examples: `operator`, `core`, or a Service name."
+  - term: Skill
+    definition: "A compound Capability implementing either a sequence of Ops or custom Python code."
+  - term: Action System
+    definition: "The System responsible for external consequences: comprises Services and Adapter Resources responsible for external I/O."
+  - term: Capability SDK
+    definition: "The SDK for definition, registration, and management of Capabilities (Ops and Skills) including logic and metadata such as Policy declarations."
+  - term: Control System
+    definition: "The System housing higher-order executive functions by composing functionality from the State System and Action System."
+  - term: Manifest
+    definition: "The self-registration declaration that each Component exports to join the global registry at import time."
+  - term: State System
+    definition: "The System responsible for durable data, comprised of Authority Services and Substrate Resources."
+  - term: Trace
+    definition: "A `trace_id`-scoped execution episode linking causally related Envelopes. Cross-trace causality is preserved via `parent_id` references."
