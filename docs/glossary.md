@@ -2,6 +2,7 @@
 _This document is generated from `docs/glossary.yaml`. Do not edit by hand._
 
 ------------------------------------------------------------------------
+## Terms
 - **Action System &mdash;** The _System_ responsible for external consequences: comprises Services and _Adapter_ Resources responsible for external I/O.
 - **Actor &mdash;** A client of the _Brain Core Sdk_, such as the Agent, CLI, or Celery Worker.
 - **Adapter &mdash;** A _Resource_ which governs interaction with the outside world such as an MCP Server, messaging platform, web API, etc.

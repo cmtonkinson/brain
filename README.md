@@ -117,8 +117,6 @@ Recommended reading order:
 See the [Development Guide](docs/development-guide.md) for prerequisites,
 environment setup, and how to build/test.
 
-------------------------------------------------------------------------
-_End of README_ 
 
 [cAdvisor]: https://github.com/google/cadvisor
 [Local REST API]: https://github.com/coddingtonbear/obsidian-local-rest-api
@@ -135,3 +133,6 @@ _End of README_
 [Qdrant]: https://qdrant.tech
 [Redis]: https://redis.io
 [Signal]: https://signal.org
+
+------------------------------------------------------------------------
+_End of README_ 

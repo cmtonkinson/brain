@@ -114,7 +114,8 @@ This bootstraps schemas, creates the `ulid_bin` domain, and runs Alembic
 migrations in _System_-order (_State_ -> _Action_ -> _Control_). See the Shared
 Infrastructure section of [Boundaries & Responsibilities](boundaries-and-responsibilities.md) for details.
 
-------------------------------------------------------------------------
-_End of Development Guide_
 
 [Ruff]: https://docs.astral.sh/ruff/
+
+------------------------------------------------------------------------
+_End of Development Guide_

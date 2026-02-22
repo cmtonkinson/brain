@@ -7,7 +7,6 @@ described in [Boundaries & Responsibilities](boundaries-and-responsibilities.md)
 
 ------------------------------------------------------------------------
 ## Top-Level Directories
-
 | Directory | Purpose |
 |---|---|
 | `actors/` | L2 _Actor_ processes: `agent/`, `beat/`, `cli/`, `worker/` |

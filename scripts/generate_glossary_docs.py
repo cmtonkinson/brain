@@ -137,7 +137,7 @@ def _load_glossary(path: Path) -> tuple[str, list[GlossaryTerm]]:
 
 def _render_markdown(*, title: str, terms: list[GlossaryTerm]) -> str:
     """Render glossary markdown in deterministic bullet format."""
-    lines = [f"# {DOC_NAME}", GENERATED_NOTE, "", HR]
+    lines = [f"# {DOC_NAME}", GENERATED_NOTE, "", HR, "## Terms"]
     for item in terms:
         lines.append(f"- **{item.term} &mdash;** {item.definition}")
     lines.append("")
