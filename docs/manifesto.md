@@ -99,32 +99,9 @@ The system should get better over time, not just bigger.
 
 ---
 ## 3. Architectural Doctrine
-### 3.1 Layered Data Model
-The system is composed of data tiers with explicit boundaries.
-
-#### Tier 0 — Authoritative Truth
-**Prioritize backups** for this data at all costs:
-- Obsidian vault (Markdown knowledge, promoted memory)
-- Postgres (authoritative system state and commitments)
-- Object storage (raw blobs: HTML, PDFs, audio, images)
 
 ---
-#### Tier 1 — System State
-Loss of data here would be painful, but not crippling:
-- Agent memory store (Letta internal state)
-- Scheduler / job state
-- Message linkage state (e.g. Signal CLI identity)
-
----
-#### Tier 2 — Derived / Cache
-All of this is rebuildable:
-- Vector indexes
-- Embeddings
-- Summaries
-- Temporary artifacts
-
----
-### 3.2 Ingestion Is a First-Class Pipeline
+### 3.1 Ingestion Is a First-Class Pipeline
 Anything entering the system follows a deterministic path.
 1. **Capture** - raw data stored as a blob
 2. **Normalize** - text extraction, cleaning, structure
@@ -133,7 +110,7 @@ Anything entering the system follows a deterministic path.
 5. **Reflect** - optional summarization or synthesis
 
 ---
-### 3.3 Memory Promotion Is a Privileged Operation
+### 3.2 Memory Promotion Is a Privileged Operation
 Any component may propose, reference, and query memory, but only the memory
 manager (Letta) may promote information into durable memory (meaning commit
 memory into Obisidian). This ensures:
@@ -143,7 +120,7 @@ memory into Obisidian). This ensures:
 - auditability
 
 ---
-### 3.4 Human-Auditable Memory
+### 3.3 Human-Auditable Memory
 Because memories are written _for the human first_ (and the machine second),
 promoted memory must be:
 - readable without tooling
