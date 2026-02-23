@@ -66,6 +66,7 @@ need to run directly on your host system:
 All other services are run with Docker Compose:
 - Brain Agent, built with [PydanticAI]
 - Brain Core, which houses all runtime _State_, _Action_, and _Control_ services
+- LLM functionality proxied over [LiteLLM]
 - Secure messaging thanks to [Signal]
 - Durable working state and application logs are kept in [Postgres]
 - Caching and queueing are handled by [Redis]
@@ -118,11 +119,11 @@ See the [Development Guide](docs/development-guide.md) for prerequisites,
 environment setup, and how to build/test.
 
 
-[cAdvisor]: https://github.com/google/cadvisor
-[Local REST API]: https://github.com/coddingtonbear/obsidian-local-rest-api
 [Claude Cowork]: https://claude.com/product/cowork
 [Grafana]: https://grafana.com
 [Letta]: https://www.letta.com
+[LiteLLM]: https://docs.litellm.ai
+[Local REST API]: https://github.com/coddingtonbear/obsidian-local-rest-api
 [Loki]: https://grafana.com/oss/loki/
 [Obsidian]: https://obsidian.md
 [Ollama]: https://ollama.com
@@ -133,6 +134,7 @@ environment setup, and how to build/test.
 [Qdrant]: https://qdrant.tech
 [Redis]: https://redis.io
 [Signal]: https://signal.org
+[cAdvisor]: https://github.com/google/cadvisor
 
 ------------------------------------------------------------------------
 _End of README_ 
