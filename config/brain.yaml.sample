@@ -37,12 +37,20 @@ components:
         api_base: http://localhost:11434
       openai:
         api_key_env: OPENAI_API_KEY
+  adapter_obsidian:
+    base_url: http://127.0.0.1:27124
+    api_key: ""
+    timeout_seconds: 10.0
+    max_retries: 2
   service_embedding_authority:
     max_list_limit: 500
   service_cache_authority:
     key_prefix: brain
     default_ttl_seconds: 300
     allow_non_expiring_keys: true
+  service_vault_authority:
+    max_list_limit: 500
+    max_search_limit: 200
   service_language_model:
     embedding:
       provider: ollama

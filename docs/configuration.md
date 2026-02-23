@@ -109,6 +109,16 @@ LiteLLM adapter connection defaults.
 | `timeout_seconds` | `30.0` | Per-request HTTP timeout. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
 
+### `components.adapter_obsidian`
+Obsidian Local REST API adapter defaults.
+
+| Key | Default | Description |
+|---|---|---|
+| `base_url` | `http://127.0.0.1:27124` | Base URL for the Obsidian Local REST API instance. |
+| `api_key` | `""` | Optional API token sent as `Authorization: Bearer <token>`. |
+| `timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds. Must be > 0. |
+| `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx/429). Must be >= 0. |
+
 ### `components.service_embedding_authority`
 Embedding Authority Service runtime settings.
 
@@ -124,6 +134,14 @@ Cache Authority Service runtime settings.
 | `key_prefix` | `brain` | Non-empty prefix used for Redis key and queue namespacing. |
 | `default_ttl_seconds` | `300` | Default TTL applied when `set_value` is called without explicit TTL. Must be > 0. |
 | `allow_non_expiring_keys` | `true` | When `true`, `ttl_seconds=0` is allowed and maps to non-expiring keys. |
+
+### `components.service_vault_authority`
+Vault Authority Service runtime settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `max_list_limit` | `500` | Maximum list operation limit accepted by VAS. Must be > 0. |
+| `max_search_limit` | `200` | Maximum lexical search result limit accepted by VAS. Must be > 0. |
 
 ### `components.service_language_model`
 Language Model Service profile settings.
