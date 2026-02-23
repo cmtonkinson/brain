@@ -33,8 +33,10 @@ BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL=postgresql+psycopg://user:pass@host:54
 BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__POOL_SIZE=10
 BRAIN_COMPONENTS__SUBSTRATE_QDRANT__URL=http://localhost:6333
 BRAIN_COMPONENTS__SUBSTRATE_REDIS__URL=redis://redis:6379/0
+BRAIN_COMPONENTS__ADAPTER_FILESYSTEM__ROOT_DIR=/var/lib/brain/blobs
 BRAIN_COMPONENTS__SERVICE_EMBEDDING_AUTHORITY__MAX_LIST_LIMIT=1000
 BRAIN_COMPONENTS__SERVICE_CACHE_AUTHORITY__DEFAULT_TTL_SECONDS=600
+BRAIN_COMPONENTS__SERVICE_OBJECT_AUTHORITY__MAX_BLOB_SIZE_BYTES=10485760
 BRAIN_COMPONENTS__ADAPTER_LITELLM__BASE_URL=http://litellm:4000
 BRAIN_COMPONENTS__SERVICE_LANGUAGE_MODEL__CHAT_DEFAULT__MODEL=gpt-oss
 ```
@@ -99,6 +101,16 @@ Redis substrate connection defaults.
 | `socket_timeout_seconds` | `5.0` | Socket operation timeout in seconds. Must be > 0. |
 | `max_connections` | `20` | Maximum client pool connections. Must be > 0. |
 
+### `components.adapter_filesystem`
+Filesystem adapter defaults for OAS blob persistence.
+
+| Key | Default | Description |
+|---|---|---|
+| `root_dir` | `./var/blobs` | Root directory where blob files are persisted. |
+| `temp_prefix` | `blobtmp` | Prefix used for temporary files created during atomic writes. |
+| `fsync_writes` | `true` | When `true`, fsync temp files before atomic replace. |
+| `default_extension` | `blob` | Default extension used when OAS put requests omit extension. |
+
 ### `components.adapter_litellm`
 LiteLLM adapter connection defaults.
 
@@ -124,6 +136,15 @@ Cache Authority Service runtime settings.
 | `key_prefix` | `brain` | Non-empty prefix used for Redis key and queue namespacing. |
 | `default_ttl_seconds` | `300` | Default TTL applied when `set_value` is called without explicit TTL. Must be > 0. |
 | `allow_non_expiring_keys` | `true` | When `true`, `ttl_seconds=0` is allowed and maps to non-expiring keys. |
+
+### `components.service_object_authority`
+Object Authority Service runtime settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `digest_algorithm` | `sha256` | Digest algorithm used for object key generation. Currently only `sha256` is supported. |
+| `digest_version` | `b1` | Object key version prefix used in canonical object keys. |
+| `max_blob_size_bytes` | `52428800` | Maximum accepted blob payload size in bytes for `put_object`. Must be > 0. |
 
 ### `components.service_language_model`
 Language Model Service profile settings.

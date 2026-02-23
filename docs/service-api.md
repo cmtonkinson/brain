@@ -113,4 +113,21 @@ _Persist and return the active spec used for defaulted spec operations._
 _List known specs._
 
 ------------------------------------------------------------------------
+## `ObjectAuthorityService`
+- Module: `services/state/object_authority/service.py`
+- Summary: Public API for durable blob object operations.
+
+`put_object(*, meta: EnvelopeMeta, content: bytes, extension: str, content_type: str, original_filename: str, source_uri: str) -> Envelope[ObjectRecord]`  
+_Persist one blob and return authoritative object record._
+
+`get_object(*, meta: EnvelopeMeta, object_key: str) -> Envelope[ObjectGetResult]`  
+_Read one blob and metadata by canonical object key._
+
+`delete_object(*, meta: EnvelopeMeta, object_key: str) -> Envelope[bool]`  
+_Delete one blob by canonical object key with idempotent semantics._
+
+`stat_object(*, meta: EnvelopeMeta, object_key: str) -> Envelope[ObjectRecord]`  
+_Read metadata for one blob by canonical object key._
+
+------------------------------------------------------------------------
 _End of Service API_

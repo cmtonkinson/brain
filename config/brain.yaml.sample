@@ -29,6 +29,11 @@ components:
     connect_timeout_seconds: 5.0
     socket_timeout_seconds: 5.0
     max_connections: 20
+  adapter_filesystem:
+    root_dir: ./var/blobs
+    temp_prefix: blobtmp
+    fsync_writes: true
+    default_extension: blob
   adapter_litellm:
     timeout_seconds: 30.0
     max_retries: 2
@@ -43,6 +48,10 @@ components:
     key_prefix: brain
     default_ttl_seconds: 300
     allow_non_expiring_keys: true
+  service_object_authority:
+    digest_algorithm: sha256
+    digest_version: b1
+    max_blob_size_bytes: 52428800
   service_language_model:
     embedding:
       provider: ollama
