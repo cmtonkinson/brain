@@ -62,7 +62,6 @@ Each _Service_ directory contains at minimum an `__init__.py` with its
 | `api.py` | gRPC _Service_ adapter (bridges SDK to _Public API_) |
 | `data/` | Data layer: `schema.py`, `repository.py`, `runtime.py` |
 | `migrations/` | Alembic env: `alembic.ini`, `env.py`, `versions/` |
-| `settings.py` | _Service_-specific configuration |
 | `tests/` | _Component_-level tests |
 
 ------------------------------------------------------------------------

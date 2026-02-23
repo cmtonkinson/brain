@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
+from packages.brain_shared.config import BrainSettings, EmbeddingServiceSettings
 from packages.brain_shared.envelope import (
     EnvelopeMeta,
     Result,
@@ -45,7 +46,6 @@ from services.state.embedding_authority.interfaces import (
 )
 from services.state.embedding_authority.qdrant_backend import QdrantEmbeddingBackend
 from services.state.embedding_authority.service import EmbeddingAuthorityService
-from services.state.embedding_authority.settings import EmbeddingSettings
 
 _CANON_RE = re.compile(r"[^\.a-z0-9_-]")
 _LOGGER = get_logger(__name__)
@@ -65,7 +65,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     def __init__(
         self,
         *,
-        settings: EmbeddingSettings,
+        settings: EmbeddingServiceSettings,
         repository: EmbeddingRepository,
         index_backend: QdrantIndexBackend,
     ) -> None:
@@ -77,20 +77,20 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         )
 
     @classmethod
-    def from_config(
-        cls, config: Mapping[str, object]
+    def from_settings(
+        cls, settings: BrainSettings
     ) -> "DefaultEmbeddingAuthorityService":
-        """Build EAS from merged config and shared substrate runtimes."""
-        settings = EmbeddingSettings.from_config(config)
-        runtime = EmbeddingPostgresRuntime.from_config(config)
+        """Build EAS from typed application settings and substrate runtimes."""
+        embedding_settings = EmbeddingServiceSettings.model_validate(settings.embedding)
+        runtime = EmbeddingPostgresRuntime.from_settings(settings)
         repository = PostgresEmbeddingRepository(runtime.schema_sessions)
         index_backend = QdrantEmbeddingBackend(
-            qdrant_url=settings.qdrant_url,
-            request_timeout_seconds=settings.request_timeout_seconds,
-            distance_metric=settings.distance_metric,
+            qdrant_url=embedding_settings.qdrant_url,
+            request_timeout_seconds=embedding_settings.request_timeout_seconds,
+            distance_metric=embedding_settings.distance_metric,
         )
         return cls(
-            settings=settings,
+            settings=embedding_settings,
             repository=repository,
             index_backend=index_backend,
         )

@@ -12,7 +12,7 @@ Settings are resolved in this order (highest wins):
 1. **CLI parameters** — passed programmatically at process startup
 2. **Environment variables** — prefixed with `BRAIN_`, `__`-separated for nesting
 3. **Config file** — `~/.config/brain/brain.yaml`
-4. **Built-in defaults** — defined in `packages/brain_shared/config/defaults.py`
+4. **Model defaults** — defined in `packages/brain_shared/config/models.py`
 
 ### Environment Variable Format
 Any config key can be set via environment variable:

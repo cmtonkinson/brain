@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from sqlalchemy import Engine, create_engine
 
-from resources.substrates.postgres.config import PostgresConfig
+from packages.brain_shared.config import PostgresSettings
 
 
-def create_postgres_engine(config: PostgresConfig) -> Engine:
+def create_postgres_engine(config: PostgresSettings) -> Engine:
     """Construct a configured SQLAlchemy engine using psycopg."""
     config.validate()
     connect_args = {

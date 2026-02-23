@@ -7,14 +7,13 @@ runtime that enforces EAS schema scoping via ``search_path``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
 
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from packages.brain_shared.config import BrainSettings, PostgresSettings
 from packages.brain_shared.manifest import component_id_to_schema_name
 from resources.substrates.postgres import (
-    PostgresConfig,
     ServiceSchemaSessionProvider,
     create_postgres_engine,
     create_session_factory,
@@ -32,9 +31,9 @@ class EmbeddingPostgresRuntime:
     schema_sessions: ServiceSchemaSessionProvider
 
     @classmethod
-    def from_config(cls, config: Mapping[str, Any]) -> "EmbeddingPostgresRuntime":
-        """Build EAS DB runtime from merged application configuration."""
-        postgres_config = PostgresConfig.from_config(config)
+    def from_settings(cls, settings: BrainSettings) -> "EmbeddingPostgresRuntime":
+        """Build EAS DB runtime from typed application settings."""
+        postgres_config = PostgresSettings.model_validate(settings.postgres)
         engine = create_postgres_engine(postgres_config)
         session_factory = create_session_factory(engine)
         schema = embedding_postgres_schema()

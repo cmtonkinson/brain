@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Mapping, Sequence
 
+from packages.brain_shared.config import EmbeddingServiceSettings
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from packages.brain_shared.ids import generate_ulid_str
 from services.state.embedding_authority.domain import (
@@ -24,7 +25,6 @@ from services.state.embedding_authority.implementation import (
     _canonical_spec_string,
 )
 from services.state.embedding_authority.interfaces import IndexSearchPoint
-from services.state.embedding_authority.settings import EmbeddingSettings
 
 
 @dataclass
@@ -369,7 +369,7 @@ def _service_with(
     max_list_limit: int = 100,
 ) -> tuple[DefaultEmbeddingAuthorityService, FakeRepository, FakeQdrantIndex]:
     """Build service with optional fake dependency overrides."""
-    settings = EmbeddingSettings(
+    settings = EmbeddingServiceSettings(
         qdrant_url="http://qdrant:6333",
         distance_metric="cosine",
         request_timeout_seconds=5.0,

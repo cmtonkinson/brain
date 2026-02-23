@@ -87,7 +87,7 @@ migrate:
 	@bash -lc '\
 		set -euo pipefail; \
 		if [ -z "$${BRAIN_POSTGRES__URL:-}" ]; then \
-			export BRAIN_POSTGRES__URL="$$(python -c '\''from packages.brain_shared.config import load_config; print(str(load_config().get("postgres", {}).get("url", "")).strip())'\'')"; \
+			export BRAIN_POSTGRES__URL="$$(python -c '\''from packages.brain_shared.config import load_settings; print((load_settings().postgres.url or "").strip())'\'')"; \
 		fi; \
 		if [ -z "$$BRAIN_POSTGRES__URL" ]; then \
 			echo "BRAIN_POSTGRES__URL resolved to empty value; set postgres.url in config or export BRAIN_POSTGRES__URL."; \

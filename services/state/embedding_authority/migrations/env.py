@@ -7,7 +7,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from packages.brain_shared.config import load_config
+from packages.brain_shared.config import load_settings
 from services.state.embedding_authority.data.runtime import embedding_postgres_schema
 from services.state.embedding_authority.data.schema import metadata
 
@@ -18,9 +18,8 @@ if config.config_file_name is not None:
 
 target_metadata = metadata
 
-merged_config = load_config()
-postgres = merged_config.get("postgres", {})
-sqlalchemy_url = postgres.get("url", "") if isinstance(postgres, dict) else ""
+settings = load_settings()
+sqlalchemy_url = settings.postgres.url
 if not sqlalchemy_url:
     raise ValueError("postgres.url is required for EAS migrations")
 

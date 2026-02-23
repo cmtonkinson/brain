@@ -13,7 +13,7 @@ from functools import lru_cache, wraps
 from time import perf_counter
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
-from packages.brain_shared.config import load_config
+from packages.brain_shared.config import load_settings
 
 from . import fields
 from .context import log_context
@@ -575,12 +575,7 @@ class _PublicApiOtelNames:
 @lru_cache(maxsize=1)
 def _public_api_otel_names() -> _PublicApiOtelNames:
     """Resolve OTel names from config with safe built-in defaults."""
-    config = load_config()
-    observability = config.get("observability", {})
-    public_api = observability.get("public_api", {})
-    otel = public_api.get("otel", {})
-    if not isinstance(otel, Mapping):
-        otel = {}
+    otel = load_settings().observability.public_api.otel.model_dump(mode="python")
 
     return _PublicApiOtelNames(
         meter_name=_configured_name(otel, "meter_name", _DEFAULT_METER_NAME),

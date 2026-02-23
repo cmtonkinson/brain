@@ -36,8 +36,8 @@ crisp boundaries to ensure:
 - security & governance
 - extensibility
 
-Since starting, Anthropic released [Claude Cowork] and then [OpenClaw] happened.
-If you want a direct comparison, Brain is:
+Shortly after that, Anthropic released [Claude Cowork] and then the [OpenClaw]
+thin happened. If you want a direct comparison, Brain is:
 - Not vendor-locked.
 - Privacy-, security-, and local-first.
 - Constrained by design: every real-world consequence the system can effect must

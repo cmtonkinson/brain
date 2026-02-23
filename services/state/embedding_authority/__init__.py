@@ -1,5 +1,6 @@
 """Embedding Authority Service native package exports."""
 
+from packages.brain_shared.config import EmbeddingServiceSettings
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Result
 from packages.brain_shared.errors import ErrorCategory, ErrorDetail
 from services.state.embedding_authority.component import MANIFEST
@@ -17,11 +18,10 @@ from services.state.embedding_authority.implementation import (
     DefaultEmbeddingAuthorityService,
 )
 from services.state.embedding_authority.service import EmbeddingAuthorityService
-from services.state.embedding_authority.settings import EmbeddingSettings
 
 __all__ = [
     "EmbeddingAuthorityService",
-    "EmbeddingSettings",
+    "EmbeddingServiceSettings",
     "DefaultEmbeddingAuthorityService",
     "EmbeddingSpec",
     "SourceRecord",

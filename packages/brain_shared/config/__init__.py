@@ -1,10 +1,21 @@
 """Public API for shared Brain configuration utilities."""
 
-from .defaults import BUILTIN_DEFAULTS
-from .loader import DEFAULT_CONFIG_PATH, load_config
+from .loader import load_settings
+from .models import (
+    DEFAULT_CONFIG_PATH,
+    BrainSettings,
+    EmbeddingServiceSettings,
+    LoggingSettings,
+    ObservabilitySettings,
+    PostgresSettings,
+)
 
 __all__ = [
-    "BUILTIN_DEFAULTS",
     "DEFAULT_CONFIG_PATH",
-    "load_config",
+    "BrainSettings",
+    "LoggingSettings",
+    "PostgresSettings",
+    "EmbeddingServiceSettings",
+    "ObservabilitySettings",
+    "load_settings",
 ]
