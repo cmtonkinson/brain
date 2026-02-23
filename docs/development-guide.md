@@ -95,7 +95,8 @@ discovered in three locations:
 ------------------------------------------------------------------------
 ## Contributing Documentation
 When writing or editing documentation, follow the formatting rules in
-[Documentation Conventions](documentation-conventions.md).
+[Documentation Conventions](meta/documentation-conventions.md). For per-component
+README files, follow [Component README Guide](meta/component-readme-guide.md).
 
 ------------------------------------------------------------------------
 ## Linting and Formatting

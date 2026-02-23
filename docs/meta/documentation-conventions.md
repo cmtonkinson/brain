@@ -57,9 +57,19 @@ Yes, this is a meta doc about docs &mdash; Yo Dawg.
   should also adhere to these rules.
 
 ------------------------------------------------------------------------
+## Component READMEs
+- Component-local README structure and content rules are defined in
+  [Component README Guide](component-readme-guide.md).
+- Use that guide for all files named `README.md` under `services/`,
+  `resources/`, and `actors/`.
+
+------------------------------------------------------------------------
 ## Exceptions
-- `README.md` carries a single exception to these rules: it uses the project
-  title as its h1, rather than document name.
+- The primary Brain project `README.md` uses `Brain` as it's h1, which doesn't
+  match the end-of-doc marker `End of README`
+- Individual Component READMEs use `End of <name> README` as their end-of-doc
+  marker.
+
 
 ------------------------------------------------------------------------
 _End of Documentation Conventions_

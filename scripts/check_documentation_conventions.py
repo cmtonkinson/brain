@@ -1,7 +1,7 @@
 """Validate project Markdown docs against documentation-conventions rules.
 
-The checker targets ``README.md`` and ``docs/*.md`` and enforces the subset of
-rules in ``docs/documentation-conventions.md`` that can be validated
+The checker targets ``README.md`` and ``docs/**/*.md`` and enforces the subset
+of rules in ``docs/meta/documentation-conventions.md`` that can be validated
 mechanically with low false-positive risk.
 """
 
@@ -15,7 +15,7 @@ from pathlib import Path
 
 HR = "------------------------------------------------------------------------"
 README_PATH = Path("README.md")
-DOCS_GLOB = "docs/*.md"
+DOCS_GLOB = "docs/**/*.md"
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 H2_RE = re.compile(r"^##\s+.+")
@@ -56,7 +56,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "paths",
         nargs="*",
-        help="Optional Markdown file paths to validate. Defaults to README + docs/*.md.",
+        help="Optional Markdown file paths to validate. Defaults to README + docs/**/*.md.",
     )
     parser.add_argument(
         "--check",
@@ -82,8 +82,7 @@ def _discover_targets(repo_root: Path, requested_paths: list[str]) -> tuple[Path
     if requested_paths:
         return tuple((repo_root / path).resolve() for path in requested_paths)
 
-    docs_dir = repo_root / "docs"
-    docs_paths = sorted(path.resolve() for path in docs_dir.glob("*.md"))
+    docs_paths = sorted(path.resolve() for path in repo_root.glob(DOCS_GLOB))
     return ((repo_root / README_PATH).resolve(), *docs_paths)
 
 
@@ -114,7 +113,10 @@ def _headings_for_lines(lines: list[str]) -> tuple[Heading, ...]:
 
 def _validate_file(*, repo_root: Path, file_path: Path) -> tuple[Violation, ...]:
     """Validate one Markdown file against mechanical convention rules."""
-    rel_path = file_path.relative_to(repo_root)
+    try:
+        rel_path = file_path.relative_to(repo_root)
+    except ValueError:
+        rel_path = file_path
     violations: list[Violation] = []
 
     if not file_path.exists():
