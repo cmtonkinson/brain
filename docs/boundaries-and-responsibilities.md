@@ -194,6 +194,8 @@ bootstrapping.
 3. Use shared ULID PK helpers that target `<schema>.ulid_bin`.
 4. Keep migrations in that _Service's_ own Alembic environment only.
 5. Never query/mutate other _Service_ schemas directly.
+6. Keep service configuration and typed boundary contracts aligned with
+   Pydantic usage rules in [Conventions](conventions.md).
 
 For communication rules, wire protocols, error handling, SDKs, and other
 behavioral conventions, see [Conventions](conventions.md).

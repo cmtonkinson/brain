@@ -78,6 +78,8 @@ discovered in three locations:
    - Create an Alembic environment under `migrations/`.
    - See the Shared Infrastructure section of
      [Boundaries & Responsibilities](boundaries-and-responsibilities.md).
+   - Keep runtime settings and typed service contracts aligned with the
+     Pydantic usage rules in [Conventions](conventions.md).
 5. Run `make migrate` to bootstrap your schema.
 6. Add tests in `services/<system>/<service>/tests/`.
 

@@ -35,6 +35,38 @@ Protos live in `protos/`, Python is regenerated on build, git-ignored, and lives
 in `generated/`, while `services/` holds implementations.
 
 ------------------------------------------------------------------------
+## Pydantic Contracts
+Pydantic is the canonical contract system for configuration and typed data
+exchange in Brain.
+
+### Scope
+- Use `BaseSettings`/`pydantic-settings` for runtime configuration models.
+- Use `BaseModel` for cross-_Service_ and cross-_Layer_ boundary contracts.
+- Use `BaseModel` for shared structured error and envelope primitives.
+
+### Required model defaults
+- Set `extra="forbid"` unless there is a concrete, documented reason not to.
+- Set `frozen=True` unless the model is explicitly stateful and mutable by
+  design.
+
+### Validation boundaries
+- Validate at ingress boundaries using `model_validate(...)`.
+- Treat validated models as authoritative inside domain logic; avoid re-validating
+  ad hoc dictionaries throughout call chains.
+- Prefer explicit validation failures with stable error messages over silent
+  coercion paths.
+
+### Serialization boundaries
+- Use `model_dump(mode="python")` for in-process structured handoff where a
+  plain mapping is required.
+- Keep transport adapters explicit about mapping to/from wire types.
+
+### Contract shape rule
+- Do not maintain parallel contract shapes for the same boundary (for example:
+  dataclass + dict + Pydantic for one message type). One boundary contract,
+  one canonical typed model.
+
+------------------------------------------------------------------------
 ## Envelopes
 All cross-_Layer_ and cross-_Service_ communication must use _Envelopes_. An
 _Envelope_ consists of:

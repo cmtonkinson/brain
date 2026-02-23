@@ -96,7 +96,7 @@ Recommended reading order:
    &mdash; Layer model, system model, service catalog, and shared
    infrastructure.
 3. **[Conventions](docs/conventions.md)** &mdash; APIs, envelopes, principals,
-   error taxonomy, SDKs, and policy enforcement.
+   error taxonomy, SDKs, policy enforcement, and Pydantic contract rules.
 4. **[Component Design](docs/component-design.md)** &mdash; Component
    registration, manifests, and implementation patterns.
 5. **[Project Layout](docs/project-layout.md)** &mdash; Directory structure

@@ -85,7 +85,7 @@ Shared code lives in `packages/`:
 
 | Package | Purpose |
 |---|---|
-| `brain_shared/` | Cross-cutting utilities: `manifest.py` (_Component_ registry), `envelope/`, `errors/`, `ids/` (ULID helpers), `logging/`, `config/`, `embeddings.py`, `component_loader.py` |
+| `brain_shared/` | Cross-cutting utilities: `manifest.py` (_Component_ registry), `envelope/`, `errors/`, `ids/` (ULID helpers), `logging/`, `config/`, `embeddings.py`, `component_loader.py`; contract conventions for these shared types are defined in [Conventions](conventions.md) |
 | `brain_core/` | Brain Core runtime (L1 _Service_ orchestration) |
 | `brain_sdk/` | _Brain Core SDK_ for L2 _Actors_ (gRPC client) |
 | `capability_sdk/` | _Capability SDK_ for _Op_/_Skill_ registration and management |
@@ -99,7 +99,8 @@ provides the gRPC layer that backs the _Brain Core SDK_.
 ------------------------------------------------------------------------
 ## Configuration
 Runtime configuration is loaded from `~/.config/brain/brain.yaml`. A sample is
-provided at `config/brain.yaml.sample`.
+provided at `config/brain.yaml.sample`. See [Configuration Reference](configuration.md)
+for keys and [Conventions](conventions.md) for Pydantic contract rules.
 
 ------------------------------------------------------------------------
 ## Tests

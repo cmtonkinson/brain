@@ -83,6 +83,11 @@ Declared via `ServiceManifest`. Required:
   `packages.brain_shared.logging.public_api_instrumented(...)` so invocation
   observability concerns (logging, metrics, tracing) remain consistent and
   composable across _Services_.
+- Typed contracts (settings, envelopes, request/response models, structured
+  errors) should follow the Pydantic contract rules in
+  [Conventions](conventions.md).
+- Service settings key definitions and override behavior should align with
+  [Configuration Reference](configuration.md).
 
 ------------------------------------------------------------------------
 ## Practical Registration Pattern

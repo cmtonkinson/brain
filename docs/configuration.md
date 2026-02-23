@@ -14,6 +14,9 @@ Settings are resolved in this order (highest wins):
 3. **Config file** — `~/.config/brain/brain.yaml`
 4. **Model defaults** — defined in `packages/brain_shared/config/models.py`
 
+Configuration models follow the canonical Pydantic contract rules in
+[Conventions](conventions.md).
+
 ### Environment Variable Format
 Any config key can be set via environment variable:
 - Prefix: `BRAIN_`
