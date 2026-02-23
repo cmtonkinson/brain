@@ -1,8 +1,13 @@
 """Validate project Markdown docs against documentation-conventions rules.
 
-The checker targets ``README.md`` and ``docs/**/*.md`` and enforces the subset
-of rules in ``docs/meta/documentation-conventions.md`` that can be validated
-mechanically with low false-positive risk.
+The checker targets:
+- ``README.md``
+- ``docs/**/*.md``
+- component READMEs under ``services/**/README.md``,
+  ``resources/**/README.md``, and ``actors/**/README.md``
+
+It enforces the subset of rules in ``docs/meta/documentation-conventions.md``
+that can be validated mechanically with low false-positive risk.
 """
 
 from __future__ import annotations
@@ -16,6 +21,11 @@ from pathlib import Path
 HR = "------------------------------------------------------------------------"
 README_PATH = Path("README.md")
 DOCS_GLOB = "docs/**/*.md"
+COMPONENT_README_GLOBS = (
+    "services/**/README.md",
+    "resources/**/README.md",
+    "actors/**/README.md",
+)
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 H2_RE = re.compile(r"^##\s+.+")
@@ -25,6 +35,13 @@ STAR_BULLET_RE = re.compile(r"^\s*\*\s+")
 SINGLE_ASTERISK_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+?)\*(?!\*)")
 REFERENCE_LINK_DEF_RE = re.compile(r"^\[([^\]]+)\]:\s+(\S+)")
 INLINE_LINK_RE = re.compile(r"(?<!!)(\[[^\]]+\])\(([^)]+)\)")
+
+
+def _is_component_readme(path: Path) -> bool:
+    """Return True when path is a component-local README target."""
+    if path.name != "README.md" or len(path.parts) < 2:
+        return False
+    return path.parts[0] in {"services", "resources", "actors"}
 
 
 @dataclass(frozen=True)
@@ -56,7 +73,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "paths",
         nargs="*",
-        help="Optional Markdown file paths to validate. Defaults to README + docs/**/*.md.",
+        help=(
+            "Optional Markdown file paths to validate. Defaults to README + "
+            "docs/**/*.md + component READMEs."
+        ),
     )
     parser.add_argument(
         "--check",
@@ -83,7 +103,17 @@ def _discover_targets(repo_root: Path, requested_paths: list[str]) -> tuple[Path
         return tuple((repo_root / path).resolve() for path in requested_paths)
 
     docs_paths = sorted(path.resolve() for path in repo_root.glob(DOCS_GLOB))
-    return ((repo_root / README_PATH).resolve(), *docs_paths)
+    component_readmes = sorted(
+        path.resolve()
+        for glob in COMPONENT_README_GLOBS
+        for path in repo_root.glob(glob)
+    )
+    unique_targets = {
+        (repo_root / README_PATH).resolve(),
+        *docs_paths,
+        *component_readmes,
+    }
+    return tuple(sorted(unique_targets))
 
 
 def _headings_for_lines(lines: list[str]) -> tuple[Heading, ...]:
@@ -404,6 +434,8 @@ def _validate_file(*, repo_root: Path, file_path: Path) -> tuple[Violation, ...]
         footer_title = footer_match.group(1)
         if rel_path == README_PATH:
             expected_footer_title = "README"
+        elif _is_component_readme(rel_path):
+            expected_footer_title = f"{h1_title} README"
         else:
             expected_footer_title = h1_title
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def test_project_docs_follow_documentation_conventions() -> None:
-    """README and docs markdown should satisfy documentation convention checks."""
+    """Project docs and component READMEs should satisfy conventions checks."""
     repo_root = Path(__file__).resolve().parents[2]
     command = [
         sys.executable,
