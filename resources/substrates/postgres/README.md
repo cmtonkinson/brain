@@ -67,8 +67,7 @@ Mappings are implemented in `resources/substrates/postgres/errors.py` and return
 
 ------------------------------------------------------------------------
 ## Configuration Surface
-This component consumes `postgres` settings from the global Brain config model
-(`packages/brain_shared/config/models.py`), including:
+This component consumes settings from `components.substrate_postgres`:
 - `url`
 - `pool_size`
 - `max_overflow`
@@ -76,6 +75,11 @@ This component consumes `postgres` settings from the global Brain config model
 - `pool_pre_ping`
 - `connect_timeout_seconds`
 - `sslmode`
+- `host`
+- `port`
+- `database`
+- `user`
+- `password`
 
 See `docs/configuration.md` for full key definitions and environment override
 rules.

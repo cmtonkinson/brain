@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 from pydantic import BaseModel, ValidationError
-from packages.brain_shared.config import BrainSettings, EmbeddingServiceSettings
+from packages.brain_shared.config import BrainSettings, resolve_component_settings
 from packages.brain_shared.envelope import (
     EnvelopeMeta,
     Envelope,
@@ -25,7 +25,12 @@ from packages.brain_shared.errors import (
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.substrates.postgres.errors import normalize_postgres_error
+from resources.substrates.qdrant import QdrantSettings
+from resources.substrates.qdrant.component import (
+    RESOURCE_COMPONENT_ID as QDRANT_COMPONENT_ID,
+)
 from services.state.embedding_authority.component import SERVICE_COMPONENT_ID
+from services.state.embedding_authority.config import EmbeddingServiceSettings
 from services.state.embedding_authority.data import (
     EmbeddingPostgresRuntime,
     PostgresEmbeddingRepository,
@@ -96,13 +101,20 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         cls, settings: BrainSettings
     ) -> "DefaultEmbeddingAuthorityService":
         """Build EAS from typed application settings and substrate runtimes."""
-        embedding_settings = EmbeddingServiceSettings.model_validate(settings.embedding)
+        embedding_settings = resolve_component_settings(
+            settings=settings,
+            component_id=str(SERVICE_COMPONENT_ID),
+            model=EmbeddingServiceSettings,
+        )
+        qdrant_settings = resolve_component_settings(
+            settings=settings,
+            component_id=str(QDRANT_COMPONENT_ID),
+            model=QdrantSettings,
+        )
         runtime = EmbeddingPostgresRuntime.from_settings(settings)
         repository = PostgresEmbeddingRepository(runtime.schema_sessions)
         index_backend = QdrantEmbeddingBackend(
-            qdrant_url=embedding_settings.qdrant_url,
-            request_timeout_seconds=embedding_settings.request_timeout_seconds,
-            distance_metric=embedding_settings.distance_metric,
+            settings=qdrant_settings,
         )
         return cls(
             settings=embedding_settings,

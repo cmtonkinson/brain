@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from resources.substrates.qdrant.config import QdrantSettings
 import services.state.embedding_authority.qdrant_backend as qdrant_backend_module
 from services.state.embedding_authority.qdrant_backend import QdrantEmbeddingBackend
 
@@ -75,17 +76,21 @@ class _FakeSubstrate:
         return results
 
 
+def _qdrant_settings() -> QdrantSettings:
+    return QdrantSettings(
+        url="http://qdrant:6333",
+        request_timeout_seconds=5.0,
+        distance_metric="cosine",
+    )
+
+
 def test_ensure_collection_bootstraps_missing_collection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Missing collections should be created via temporary bootstrap point."""
     monkeypatch.setattr(qdrant_backend_module, "QdrantClientSubstrate", _FakeSubstrate)
 
-    backend = QdrantEmbeddingBackend(
-        qdrant_url="http://qdrant:6333",
-        request_timeout_seconds=5.0,
-        distance_metric="cosine",
-    )
+    backend = QdrantEmbeddingBackend(settings=_qdrant_settings())
     backend.ensure_collection(spec_id="spec_a", dimensions=8)
 
     substrate = backend._substrates["spec_a"]
@@ -100,11 +105,7 @@ def test_ensure_collection_raises_on_dimension_mismatch(
     """Existing collections with wrong dimensions must fail loudly."""
     monkeypatch.setattr(qdrant_backend_module, "QdrantClientSubstrate", _FakeSubstrate)
 
-    backend = QdrantEmbeddingBackend(
-        qdrant_url="http://qdrant:6333",
-        request_timeout_seconds=5.0,
-        distance_metric="cosine",
-    )
+    backend = QdrantEmbeddingBackend(settings=_qdrant_settings())
     backend.ensure_collection(spec_id="spec_b", dimensions=4)
 
     substrate = backend._substrates["spec_b"]
@@ -121,11 +122,7 @@ def test_point_operations_are_scoped_by_spec_id(
     """Point upsert/delete operations should be isolated per spec collection."""
     monkeypatch.setattr(qdrant_backend_module, "QdrantClientSubstrate", _FakeSubstrate)
 
-    backend = QdrantEmbeddingBackend(
-        qdrant_url="http://qdrant:6333",
-        request_timeout_seconds=5.0,
-        distance_metric="cosine",
-    )
+    backend = QdrantEmbeddingBackend(settings=_qdrant_settings())
 
     backend.upsert_point(
         spec_id="spec_x",
@@ -144,11 +141,7 @@ def test_search_points_honors_source_filter_and_limit(
     """Search should pass optional source filter and enforce limit."""
     monkeypatch.setattr(qdrant_backend_module, "QdrantClientSubstrate", _FakeSubstrate)
 
-    backend = QdrantEmbeddingBackend(
-        qdrant_url="http://qdrant:6333",
-        request_timeout_seconds=5.0,
-        distance_metric="cosine",
-    )
+    backend = QdrantEmbeddingBackend(settings=_qdrant_settings())
 
     backend.upsert_point(
         spec_id="spec_search",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.config import PostgresSettings
+from resources.substrates.postgres.config import PostgresSettings
 from resources.substrates.postgres.engine import create_postgres_engine
 
 

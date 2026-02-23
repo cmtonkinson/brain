@@ -1,9 +1,9 @@
 """Embedding Authority Service native package exports."""
 
-from packages.brain_shared.config import EmbeddingServiceSettings
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Envelope
 from packages.brain_shared.errors import ErrorCategory, ErrorDetail
 from services.state.embedding_authority.component import MANIFEST
+from services.state.embedding_authority.config import EmbeddingServiceSettings
 from services.state.embedding_authority.domain import (
     ChunkRecord,
     EmbeddingRecord,

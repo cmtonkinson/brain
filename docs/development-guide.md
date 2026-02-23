@@ -29,8 +29,9 @@ This document covers how to set up, build, test, and contribute to Brain.
    ```
    cp config/brain.yaml.sample ~/.config/brain/brain.yaml
    ```
-   The sample includes a default `postgres.url`; override it (or export
-   `BRAIN_POSTGRES__URL`) if your environment differs. See the
+   The sample includes a default `components.substrate_postgres.url`; override
+   it (or export `BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL`) if your
+   environment differs. See the
    [Configuration Reference](configuration.md) for all available keys.
 
 4. Run database migrations:

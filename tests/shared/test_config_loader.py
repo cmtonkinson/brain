@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from packages.brain_shared.config import load_settings
+from packages.brain_shared.config import load_settings, resolve_component_settings
+from resources.substrates.postgres.config import PostgresSettings
+from services.state.embedding_authority.component import SERVICE_COMPONENT_ID
+from services.state.embedding_authority.config import EmbeddingServiceSettings
 
 
 def test_load_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
@@ -15,8 +18,9 @@ def test_load_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
             [
                 "logging:",
                 "  level: WARNING",
-                "postgres:",
-                "  pool_size: 7",
+                "components:",
+                "  substrate_postgres:",
+                "    pool_size: 7",
             ]
         ),
         encoding="utf-8",
@@ -26,20 +30,36 @@ def test_load_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
         cli_params={"logging": {"level": "DEBUG"}},
         environ={
             "BRAIN_LOGGING__LEVEL": "ERROR",
-            "BRAIN_POSTGRES__POOL_SIZE": "9",
+            "BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__POOL_SIZE": "9",
         },
         config_path=config_file,
     )
 
+    postgres = resolve_component_settings(
+        settings=settings,
+        component_id="substrate_postgres",
+        model=PostgresSettings,
+    )
+    embedding = resolve_component_settings(
+        settings=settings,
+        component_id=str(SERVICE_COMPONENT_ID),
+        model=EmbeddingServiceSettings,
+    )
+
     assert settings.logging.level == "DEBUG"
-    assert settings.postgres.pool_size == 9
-    assert settings.embedding.max_list_limit == 500
+    assert postgres.pool_size == 9
+    assert embedding.max_list_limit == 500
 
 
 def test_load_settings_uses_model_defaults_when_sources_missing() -> None:
     """Settings should fall back to model defaults when env and YAML are absent."""
     settings = load_settings(environ={})
+    postgres = resolve_component_settings(
+        settings=settings,
+        component_id="substrate_postgres",
+        model=PostgresSettings,
+    )
 
     assert settings.logging.service == "brain"
-    assert settings.postgres.pool_size == 5
+    assert postgres.pool_size == 5
     assert settings.logging.level == "INFO"

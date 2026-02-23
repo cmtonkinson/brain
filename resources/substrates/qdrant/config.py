@@ -2,11 +2,28 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from packages.brain_shared.embeddings import (
     SUPPORTED_DISTANCE_METRICS,
     SUPPORTED_DISTANCE_METRICS_TEXT,
 )
+
+
+class QdrantSettings(BaseModel):
+    """Qdrant connection defaults for substrate usage."""
+
+    url: str = "http://qdrant:6333"
+    request_timeout_seconds: float = Field(default=10.0, gt=0)
+    distance_metric: str = "cosine"
+
+    @model_validator(mode="after")
+    def _validate_distance_metric(self) -> "QdrantSettings":
+        """Validate supported distance metric names."""
+        _validate_distance_metric(
+            value=self.distance_metric,
+            field_path="components.substrate_qdrant.distance_metric",
+        )
+        return self
 
 
 class QdrantConfig(BaseModel):
@@ -28,8 +45,16 @@ class QdrantConfig(BaseModel):
             raise ValueError("qdrant.timeout_seconds must be > 0")
         if self.collection_name.strip() == "":
             raise ValueError("qdrant.collection_name is required")
-        if self.distance_metric not in SUPPORTED_DISTANCE_METRICS:
-            raise ValueError(
-                f"qdrant.distance_metric must be one of: {SUPPORTED_DISTANCE_METRICS_TEXT}"
-            )
+        _validate_distance_metric(
+            value=self.distance_metric,
+            field_path="qdrant.distance_metric",
+        )
         return self
+
+
+def _validate_distance_metric(*, value: str, field_path: str) -> None:
+    """Raise when distance metric is outside the supported set."""
+    if value not in SUPPORTED_DISTANCE_METRICS:
+        raise ValueError(
+            f"{field_path} must be one of: {SUPPORTED_DISTANCE_METRICS_TEXT}"
+        )

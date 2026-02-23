@@ -6,6 +6,7 @@ from threading import Lock
 from typing import Mapping, Sequence
 
 from resources.substrates.qdrant import QdrantClientSubstrate, QdrantConfig
+from resources.substrates.qdrant.config import QdrantSettings
 from services.state.embedding_authority.interfaces import IndexSearchPoint
 
 
@@ -15,13 +16,9 @@ class QdrantEmbeddingBackend:
     def __init__(
         self,
         *,
-        qdrant_url: str,
-        request_timeout_seconds: float,
-        distance_metric: str,
+        settings: QdrantSettings,
     ) -> None:
-        self._url = qdrant_url
-        self._timeout_seconds = request_timeout_seconds
-        self._distance_metric = distance_metric
+        self._settings = settings
         self._lock = Lock()
         self._substrates: dict[str, QdrantClientSubstrate] = {}
 
@@ -95,10 +92,10 @@ class QdrantEmbeddingBackend:
             if existing is not None:
                 return existing
             config = QdrantConfig(
-                url=self._url,
-                timeout_seconds=self._timeout_seconds,
+                url=self._settings.url,
+                timeout_seconds=self._settings.request_timeout_seconds,
                 collection_name=spec_id,
-                distance_metric=self._distance_metric,
+                distance_metric=self._settings.distance_metric,
             )
             substrate = QdrantClientSubstrate(config)
             self._substrates[spec_id] = substrate

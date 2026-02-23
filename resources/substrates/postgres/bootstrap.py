@@ -8,9 +8,10 @@ from typing import Any
 from sqlalchemy import text
 
 from packages.brain_shared.component_loader import import_registered_component_modules
-from packages.brain_shared.config import BrainSettings, PostgresSettings, load_settings
+from packages.brain_shared.config import BrainSettings, load_settings
 from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
 from packages.brain_shared.manifest import ServiceManifest, get_registry
+from resources.substrates.postgres.config import resolve_postgres_settings
 from resources.substrates.postgres.engine import create_postgres_engine
 
 ULID_DOMAIN_DEFINITION_SQL = (
@@ -32,7 +33,7 @@ def bootstrap_service_schemas(
 ) -> BootstrapResult:
     """Provision all registered service schemas and shared SQL domains."""
     resolved_settings = load_settings() if settings is None else settings
-    postgres_config = PostgresSettings.model_validate(resolved_settings.postgres)
+    postgres_config = resolve_postgres_settings(resolved_settings)
 
     imported = import_registered_component_modules()
     registry = get_registry()

@@ -8,6 +8,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from packages.brain_shared.config import load_settings
+from resources.substrates.postgres.config import resolve_postgres_settings
 from services.state.embedding_authority.data.runtime import embedding_postgres_schema
 from services.state.embedding_authority.data.schema import metadata
 
@@ -19,9 +20,10 @@ if config.config_file_name is not None:
 target_metadata = metadata
 
 settings = load_settings()
-sqlalchemy_url = settings.postgres.url
+postgres_settings = resolve_postgres_settings(settings)
+sqlalchemy_url = postgres_settings.url
 if not sqlalchemy_url:
-    raise ValueError("postgres.url is required for EAS migrations")
+    raise ValueError("components.substrate_postgres.url is required for EAS migrations")
 
 schema_name = embedding_postgres_schema()
 config.set_main_option("sqlalchemy.url", str(sqlalchemy_url))

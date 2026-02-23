@@ -78,14 +78,17 @@ Key behavior patterns:
 
 ------------------------------------------------------------------------
 ## Configuration Surface
-EAS uses typed settings from `packages/brain_shared/config/models.py`:
-- `embedding.qdrant_url`
-- `embedding.distance_metric`
-- `embedding.request_timeout_seconds`
-- `embedding.max_list_limit`
+EAS service-local settings are sourced from
+`components.service_embedding_authority`:
+- `max_list_limit`
 
-Postgres connection/runtime settings are consumed through the shared
-`postgres` config section by `EmbeddingPostgresRuntime`.
+Qdrant substrate settings are sourced from `components.substrate_qdrant`:
+- `url`
+- `request_timeout_seconds`
+- `distance_metric`
+
+Postgres substrate settings are sourced from `components.substrate_postgres` by
+`EmbeddingPostgresRuntime`.
 
 See `docs/configuration.md` for canonical key definitions and override rules.
 

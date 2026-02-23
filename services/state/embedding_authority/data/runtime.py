@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from packages.brain_shared.config import BrainSettings, PostgresSettings
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.manifest import component_id_to_schema_name
 from resources.substrates.postgres import (
     ServiceSchemaSessionProvider,
@@ -19,6 +19,7 @@ from resources.substrates.postgres import (
     create_session_factory,
     ping,
 )
+from resources.substrates.postgres.config import resolve_postgres_settings
 from services.state.embedding_authority.component import SERVICE_COMPONENT_ID
 
 
@@ -33,7 +34,7 @@ class EmbeddingPostgresRuntime:
     @classmethod
     def from_settings(cls, settings: BrainSettings) -> "EmbeddingPostgresRuntime":
         """Build EAS DB runtime from typed application settings."""
-        postgres_config = PostgresSettings.model_validate(settings.postgres)
+        postgres_config = resolve_postgres_settings(settings)
         engine = create_postgres_engine(postgres_config)
         session_factory = create_session_factory(engine)
         schema = embedding_postgres_schema()
