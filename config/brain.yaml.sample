@@ -17,8 +17,26 @@ components:
     url: http://qdrant:6333
     request_timeout_seconds: 10.0
     distance_metric: cosine
+  adapter_litellm:
+    timeout_seconds: 30.0
+    max_retries: 2
+    providers:
+      ollama:
+        api_base: http://localhost:11434
+      openai:
+        api_key_env: OPENAI_API_KEY
   service_embedding_authority:
     max_list_limit: 500
+  service_language_model:
+    embedding:
+      provider: ollama
+      model: mxbai-embed-large
+    chat_default:
+      provider: ollama
+      model: gpt-oss
+    chat_advanced:
+      provider: ""
+      model: ""
 
 observability:
   public_api:

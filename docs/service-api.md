@@ -2,6 +2,26 @@
 _This document is generated from `services/*/*/service.py`. Do not edit by hand._
 
 ------------------------------------------------------------------------
+## `LanguageModelService`
+- Module: `services/action/language_model/service.py`
+- Summary: Public API for chat and embedding operations.
+
+`chat(*, meta: EnvelopeMeta, prompt: str, profile: ModelProfile = ModelProfile.CHAT_DEFAULT) -> Envelope[ChatResponse]`  
+_Generate one chat completion._
+
+`embed(*, meta: EnvelopeMeta, text: str, profile: ModelProfile = ModelProfile.EMBEDDING) -> Envelope[EmbeddingVector]`  
+_Generate one embedding vector._
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return LMS and adapter health state._
+
+`chat_batch(*, meta: EnvelopeMeta, prompts: Sequence[str], profile: ModelProfile = ModelProfile.CHAT_DEFAULT) -> Envelope[list[ChatResponse]]`  
+_Generate a batch of chat completions._
+
+`embed_batch(*, meta: EnvelopeMeta, texts: Sequence[str], profile: ModelProfile = ModelProfile.EMBEDDING) -> Envelope[list[EmbeddingVector]]`  
+_Generate a batch of embedding vectors._
+
+------------------------------------------------------------------------
 ## `EmbeddingAuthorityService`
 - Module: `services/state/embedding_authority/service.py`
 - Summary: Public API for the Embedding Authority Service.

@@ -33,6 +33,8 @@ BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL=postgresql+psycopg://user:pass@host:54
 BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__POOL_SIZE=10
 BRAIN_COMPONENTS__SUBSTRATE_QDRANT__URL=http://localhost:6333
 BRAIN_COMPONENTS__SERVICE_EMBEDDING_AUTHORITY__MAX_LIST_LIMIT=1000
+BRAIN_COMPONENTS__ADAPTER_LITELLM__BASE_URL=http://litellm:4000
+BRAIN_COMPONENTS__SERVICE_LANGUAGE_MODEL__CHAT_DEFAULT__MODEL=gpt-oss
 ```
 
 ------------------------------------------------------------------------
@@ -78,12 +80,34 @@ Qdrant substrate defaults.
 | `distance_metric` | `cosine` | Vector distance metric. One of `cosine`, `dot`, `euclid`. |
 | `request_timeout_seconds` | `10.0` | Per-request timeout for Qdrant operations. Must be > 0. |
 
+### `components.adapter_litellm`
+LiteLLM adapter connection defaults.
+
+| Key | Default | Description |
+|---|---|---|
+| `base_url` | `http://litellm:4000` | Base URL for LiteLLM gateway HTTP endpoints. |
+| `api_key` | `""` | Optional API token sent as `Authorization: Bearer <token>`. |
+| `timeout_seconds` | `30.0` | Per-request HTTP timeout. Must be > 0. |
+| `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
+
 ### `components.service_embedding_authority`
 Embedding Authority Service runtime settings.
 
 | Key | Default | Description |
 |---|---|---|
 | `max_list_limit` | `500` | Maximum number of results returned by list operations. Must be > 0. |
+
+### `components.service_language_model`
+Language Model Service profile settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `embedding.provider` | `ollama` | Provider used for embedding generation requests. |
+| `embedding.model` | `mxbai-embed-large` | Model identifier used for embedding generation requests. |
+| `chat_default.provider` | `ollama` | Default provider used for chat requests. |
+| `chat_default.model` | `gpt-oss` | Default model identifier used for chat requests. |
+| `chat_advanced.provider` | `""` | Optional advanced provider override; falls back to `chat_default.provider` when unset. |
+| `chat_advanced.model` | `""` | Optional advanced model override; falls back to `chat_default.model` when unset. |
 
 ------------------------------------------------------------------------
 ## `observability`

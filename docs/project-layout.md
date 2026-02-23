@@ -71,6 +71,7 @@ _Resources_ follow the convention `resources/<kind>/<resource>/`:
 ```
 resources/
   adapters/                     # Adapter Resources (external I/O)
+    litellm/                    # LLM gateway adapter owned by Language Model Service
   substrates/                   # Substrate Resources (state)
     postgres/                   # Shared Infrastructure (bootstrap, engine, sessions)
     qdrant/                     # Vector search backend
