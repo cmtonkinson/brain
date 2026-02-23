@@ -22,6 +22,32 @@ _Generate a batch of chat completions._
 _Generate a batch of embedding vectors._
 
 ------------------------------------------------------------------------
+## `CacheAuthorityService`
+- Module: `services/state/cache_authority/service.py`
+- Summary: Public API for component-scoped cache and queue operations.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return CAS and Redis substrate readiness._
+
+`peek_queue(*, meta: EnvelopeMeta, component_id: str, queue: str) -> Envelope[QueueEntry | None]`  
+_Peek next component-scoped queue value without removal._
+
+`pop_queue(*, meta: EnvelopeMeta, component_id: str, queue: str) -> Envelope[QueueEntry | None]`  
+_Pop one component-scoped queue value using FIFO order._
+
+`push_queue(*, meta: EnvelopeMeta, component_id: str, queue: str, value: JsonValue) -> Envelope[QueueDepth]`  
+_Push one component-scoped queue value._
+
+`get_value(*, meta: EnvelopeMeta, component_id: str, key: str) -> Envelope[CacheEntry | None]`  
+_Get one component-scoped cache value by key._
+
+`delete_value(*, meta: EnvelopeMeta, component_id: str, key: str) -> Envelope[bool]`  
+_Delete one component-scoped cache value._
+
+`set_value(*, meta: EnvelopeMeta, component_id: str, key: str, value: JsonValue, ttl_seconds: int | None = None) -> Envelope[CacheEntry]`  
+_Set one component-scoped cache value._
+
+------------------------------------------------------------------------
 ## `EmbeddingAuthorityService`
 - Module: `services/state/embedding_authority/service.py`
 - Summary: Public API for the Embedding Authority Service.

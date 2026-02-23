@@ -32,7 +32,9 @@ BRAIN_LOGGING__LEVEL=DEBUG
 BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
 BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__POOL_SIZE=10
 BRAIN_COMPONENTS__SUBSTRATE_QDRANT__URL=http://localhost:6333
+BRAIN_COMPONENTS__SUBSTRATE_REDIS__URL=redis://redis:6379/0
 BRAIN_COMPONENTS__SERVICE_EMBEDDING_AUTHORITY__MAX_LIST_LIMIT=1000
+BRAIN_COMPONENTS__SERVICE_CACHE_AUTHORITY__DEFAULT_TTL_SECONDS=600
 BRAIN_COMPONENTS__ADAPTER_LITELLM__BASE_URL=http://litellm:4000
 BRAIN_COMPONENTS__SERVICE_LANGUAGE_MODEL__CHAT_DEFAULT__MODEL=gpt-oss
 ```
@@ -80,6 +82,23 @@ Qdrant substrate defaults.
 | `distance_metric` | `cosine` | Vector distance metric. One of `cosine`, `dot`, `euclid`. |
 | `request_timeout_seconds` | `10.0` | Per-request timeout for Qdrant operations. Must be > 0. |
 
+### `components.substrate_redis`
+Redis substrate connection defaults.
+
+| Key | Default | Description |
+|---|---|---|
+| `url` | `redis://redis:6379/0` | Redis URL. When non-empty, this is authoritative and split fields are ignored for URL construction. |
+| `host` | `redis` | Hostname used when `url` is unset/blank and split-field URL mode is used. |
+| `port` | `6379` | Port used when split-field URL mode is used. Must be > 0. |
+| `db` | `0` | Redis logical database index used when split-field URL mode is used. Must be >= 0. |
+| `username` | `""` | Optional Redis username for split-field URL mode. |
+| `password` | `""` | Optional inline Redis password for split-field URL mode. Mutually exclusive with `password_env`. |
+| `password_env` | `""` | Optional environment variable name containing Redis password for split-field URL mode. |
+| `ssl` | `false` | Use TLS (`rediss://`) in split-field URL mode. |
+| `connect_timeout_seconds` | `5.0` | Socket connect timeout in seconds. Must be > 0. |
+| `socket_timeout_seconds` | `5.0` | Socket operation timeout in seconds. Must be > 0. |
+| `max_connections` | `20` | Maximum client pool connections. Must be > 0. |
+
 ### `components.adapter_litellm`
 LiteLLM adapter connection defaults.
 
@@ -96,6 +115,15 @@ Embedding Authority Service runtime settings.
 | Key | Default | Description |
 |---|---|---|
 | `max_list_limit` | `500` | Maximum number of results returned by list operations. Must be > 0. |
+
+### `components.service_cache_authority`
+Cache Authority Service runtime settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `key_prefix` | `brain` | Non-empty prefix used for Redis key and queue namespacing. |
+| `default_ttl_seconds` | `300` | Default TTL applied when `set_value` is called without explicit TTL. Must be > 0. |
+| `allow_non_expiring_keys` | `true` | When `true`, `ttl_seconds=0` is allowed and maps to non-expiring keys. |
 
 ### `components.service_language_model`
 Language Model Service profile settings.

@@ -17,6 +17,18 @@ components:
     url: http://qdrant:6333
     request_timeout_seconds: 10.0
     distance_metric: cosine
+  substrate_redis:
+    url: redis://redis:6379/0
+    host: redis
+    port: 6379
+    db: 0
+    username: ""
+    password: ""
+    password_env: ""
+    ssl: false
+    connect_timeout_seconds: 5.0
+    socket_timeout_seconds: 5.0
+    max_connections: 20
   adapter_litellm:
     timeout_seconds: 30.0
     max_retries: 2
@@ -27,6 +39,10 @@ components:
         api_key_env: OPENAI_API_KEY
   service_embedding_authority:
     max_list_limit: 500
+  service_cache_authority:
+    key_prefix: brain
+    default_ttl_seconds: 300
+    allow_non_expiring_keys: true
   service_language_model:
     embedding:
       provider: ollama
