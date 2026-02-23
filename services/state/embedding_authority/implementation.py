@@ -10,7 +10,7 @@ from typing import Mapping, Sequence
 from packages.brain_shared.config import BrainSettings, EmbeddingServiceSettings
 from packages.brain_shared.envelope import (
     EnvelopeMeta,
-    Result,
+    Envelope,
     failure,
     success,
     validate_meta,
@@ -107,7 +107,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         name: str,
         version: str,
         dimensions: int,
-    ) -> Result[EmbeddingSpec]:
+    ) -> Envelope[EmbeddingSpec]:
         """Create or return one embedding spec by canonical identity."""
         errors = self._collect_errors(
             meta=meta,
@@ -172,7 +172,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     )
     def set_active_spec(
         self, *, meta: EnvelopeMeta, spec_id: str
-    ) -> Result[EmbeddingSpec]:
+    ) -> Envelope[EmbeddingSpec]:
         """Persist and return active spec used for defaulted operations."""
         errors = self._collect_errors(meta=meta, required_ulids={"spec_id": spec_id})
         if errors:
@@ -223,7 +223,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         service: str,
         principal: str,
         metadata: Mapping[str, str],
-    ) -> Result[SourceRecord]:
+    ) -> Envelope[SourceRecord]:
         """Create/update source row."""
         errors = self._collect_errors(
             meta=meta,
@@ -264,7 +264,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         content_hash: str,
         text: str,
         metadata: Mapping[str, str],
-    ) -> Result[ChunkRecord]:
+    ) -> Envelope[ChunkRecord]:
         """Create/update chunk row."""
         errors = self._collect_errors(
             meta=meta,
@@ -309,7 +309,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         *,
         meta: EnvelopeMeta,
         items: Sequence[UpsertChunkInput],
-    ) -> Result[list[ChunkRecord]]:
+    ) -> Envelope[list[ChunkRecord]]:
         """Batch upsert convenience API."""
         errors = self._validate_meta(meta)
         if not items:
@@ -334,7 +334,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 metadata=item.metadata,
             )
             if item_result.payload is not None:
-                results.append(item_result.payload)
+                results.append(item_result.payload.value)
             if item_result.errors:
                 aggregate_errors.extend(item_result.errors)
 
@@ -354,7 +354,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         chunk_id: str,
         spec_id: str,
         vector: Sequence[float],
-    ) -> Result[EmbeddingRecord]:
+    ) -> Envelope[EmbeddingRecord]:
         """Persist one vector point and indexed embedding status row."""
         errors = self._collect_errors(
             meta=meta,
@@ -378,7 +378,8 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
             if spec_result.errors:
                 return failure(meta=meta, errors=spec_result.errors)
-            spec = spec_result.payload
+            spec_payload = spec_result.payload
+            spec = None if spec_payload is None else spec_payload.value
             if spec is None:
                 return self._not_found_failure(meta=meta, message="spec not found")
 
@@ -459,7 +460,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         *,
         meta: EnvelopeMeta,
         items: Sequence[UpsertEmbeddingVectorInput],
-    ) -> Result[list[EmbeddingRecord]]:
+    ) -> Envelope[list[EmbeddingRecord]]:
         """Batch upsert convenience API for vector writes."""
         errors = self._validate_meta(meta)
         if not items:
@@ -481,7 +482,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 vector=item.vector,
             )
             if item_result.payload is not None:
-                results.append(item_result.payload)
+                results.append(item_result.payload.value)
             if item_result.errors:
                 aggregate_errors.extend(item_result.errors)
 
@@ -494,7 +495,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         component_id=str(SERVICE_COMPONENT_ID),
         id_fields=("chunk_id",),
     )
-    def delete_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Result[bool]:
+    def delete_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Envelope[bool]:
         """Hard-delete one chunk and best-effort delete derived index points."""
         errors = self._collect_errors(meta=meta, required_ulids={"chunk_id": chunk_id})
         if errors:
@@ -522,7 +523,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         component_id=str(SERVICE_COMPONENT_ID),
         id_fields=("source_id",),
     )
-    def delete_source(self, *, meta: EnvelopeMeta, source_id: str) -> Result[bool]:
+    def delete_source(self, *, meta: EnvelopeMeta, source_id: str) -> Envelope[bool]:
         """Hard-delete one source and all owned chunk/embedding rows."""
         errors = self._collect_errors(
             meta=meta, required_ulids={"source_id": source_id}
@@ -555,7 +556,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         component_id=str(SERVICE_COMPONENT_ID),
         id_fields=("source_id",),
     )
-    def get_source(self, *, meta: EnvelopeMeta, source_id: str) -> Result[SourceRecord]:
+    def get_source(
+        self, *, meta: EnvelopeMeta, source_id: str
+    ) -> Envelope[SourceRecord]:
         """Read one source by id."""
         errors = self._collect_errors(
             meta=meta, required_ulids={"source_id": source_id}
@@ -584,7 +587,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         service: str,
         principal: str,
         limit: int,
-    ) -> Result[list[SourceRecord]]:
+    ) -> Envelope[list[SourceRecord]]:
         """List sources by optional filters."""
         errors = self._validate_meta(meta)
         if errors:
@@ -608,7 +611,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         component_id=str(SERVICE_COMPONENT_ID),
         id_fields=("chunk_id",),
     )
-    def get_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Result[ChunkRecord]:
+    def get_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Envelope[ChunkRecord]:
         """Read one chunk by id."""
         errors = self._collect_errors(meta=meta, required_ulids={"chunk_id": chunk_id})
         if errors:
@@ -633,7 +636,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         meta: EnvelopeMeta,
         source_id: str,
         limit: int,
-    ) -> Result[list[ChunkRecord]]:
+    ) -> Envelope[list[ChunkRecord]]:
         """List chunk rows for one source."""
         errors = self._collect_errors(
             meta=meta, required_ulids={"source_id": source_id}
@@ -661,7 +664,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         meta: EnvelopeMeta,
         chunk_id: str,
         spec_id: str = "",
-    ) -> Result[EmbeddingRecord]:
+    ) -> Envelope[EmbeddingRecord]:
         """Read one embedding row."""
         errors = self._collect_errors(
             meta=meta,
@@ -674,7 +677,8 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
         if spec_result.errors:
             return failure(meta=meta, errors=spec_result.errors)
-        spec = spec_result.payload
+        spec_payload = spec_result.payload
+        spec = None if spec_payload is None else spec_payload.value
         if spec is None:
             return self._not_found_failure(meta=meta, message="spec not found")
 
@@ -698,7 +702,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         source_id: str,
         spec_id: str,
         limit: int,
-    ) -> Result[list[EmbeddingRecord]]:
+    ) -> Envelope[list[EmbeddingRecord]]:
         """List embedding rows for one source."""
         errors = self._collect_errors(
             meta=meta,
@@ -730,7 +734,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         status: EmbeddingStatus,
         spec_id: str,
         limit: int,
-    ) -> Result[list[EmbeddingRecord]]:
+    ) -> Envelope[list[EmbeddingRecord]]:
         """List embedding rows by status."""
         errors = self._collect_errors(
             meta=meta,
@@ -762,7 +766,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         source_id: str,
         spec_id: str,
         limit: int,
-    ) -> Result[list[SearchEmbeddingMatch]]:
+    ) -> Envelope[list[SearchEmbeddingMatch]]:
         """Search derived embeddings by semantic similarity."""
         errors = self._collect_errors(
             meta=meta,
@@ -783,7 +787,8 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
         if spec_result.errors:
             return failure(meta=meta, errors=spec_result.errors, payload=[])
-        spec = spec_result.payload
+        spec_payload = spec_result.payload
+        spec = None if spec_payload is None else spec_payload.value
         if spec is None:
             return self._not_found_failure(
                 meta=meta, message="spec not found", payload=[]
@@ -856,7 +861,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
     )
-    def get_active_spec(self, *, meta: EnvelopeMeta) -> Result[EmbeddingSpec]:
+    def get_active_spec(self, *, meta: EnvelopeMeta) -> Envelope[EmbeddingSpec]:
         """Return persisted active spec."""
         errors = self._validate_meta(meta)
         if errors:
@@ -865,7 +870,8 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         spec_result = self._resolve_spec(meta=meta, spec_id="")
         if spec_result.errors:
             return failure(meta=meta, errors=spec_result.errors)
-        spec = spec_result.payload
+        spec_payload = spec_result.payload
+        spec = None if spec_payload is None else spec_payload.value
         if spec is None:
             return self._not_found_failure(meta=meta, message="active spec not set")
         return success(meta=meta, payload=spec)
@@ -876,7 +882,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     )
     def list_specs(
         self, *, meta: EnvelopeMeta, limit: int
-    ) -> Result[list[EmbeddingSpec]]:
+    ) -> Envelope[list[EmbeddingSpec]]:
         """List known embedding specs."""
         errors = self._validate_meta(meta)
         if errors:
@@ -895,7 +901,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         component_id=str(SERVICE_COMPONENT_ID),
         id_fields=("spec_id",),
     )
-    def get_spec(self, *, meta: EnvelopeMeta, spec_id: str) -> Result[EmbeddingSpec]:
+    def get_spec(self, *, meta: EnvelopeMeta, spec_id: str) -> Envelope[EmbeddingSpec]:
         """Read one embedding spec by id."""
         errors = self._collect_errors(meta=meta, required_ulids={"spec_id": spec_id})
         if errors:
@@ -911,7 +917,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
 
     def _resolve_spec(
         self, *, meta: EnvelopeMeta, spec_id: str
-    ) -> Result[EmbeddingSpec]:
+    ) -> Envelope[EmbeddingSpec]:
         """Resolve explicit spec id or persisted active spec id to a full spec row."""
         try:
             effective_id = (
@@ -1015,8 +1021,8 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         meta: EnvelopeMeta,
         message: str,
         payload: object = _NO_PAYLOAD,
-    ) -> Result[object]:
-        """Return standardized not-found failure result."""
+    ) -> Envelope[object]:
+        """Return standardized not-found failure envelope."""
         errors = [not_found_error(message, code=codes.RESOURCE_NOT_FOUND)]
         if payload is _NO_PAYLOAD:
             return failure(meta=meta, errors=errors)
@@ -1028,8 +1034,8 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         meta: EnvelopeMeta,
         exc: Exception,
         payload: object = _NO_PAYLOAD,
-    ) -> Result[object]:
-        """Return standardized Postgres-normalized failure result."""
+    ) -> Envelope[object]:
+        """Return standardized Postgres-normalized failure envelope."""
         errors = [normalize_postgres_error(exc)]
         if payload is _NO_PAYLOAD:
             return failure(meta=meta, errors=errors)

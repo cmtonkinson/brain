@@ -394,9 +394,9 @@ def _create_active_spec(svc: DefaultEmbeddingAuthorityService) -> EmbeddingSpec:
         dimensions=8,
     )
     assert created.payload is not None
-    activated = svc.set_active_spec(meta=_meta(), spec_id=created.payload.id)
+    activated = svc.set_active_spec(meta=_meta(), spec_id=created.payload.value.id)
     assert activated.payload is not None
-    return activated.payload
+    return activated.payload.value
 
 
 def test_canonical_spec_serialization_and_hash_is_deterministic() -> None:
@@ -434,13 +434,15 @@ def test_upsert_spec_and_set_active_spec() -> None:
         dimensions=8,
     )
     assert duplicate.payload is not None
-    assert duplicate.payload.id == created.payload.id
+    assert duplicate.payload.value.id == created.payload.value.id
 
-    active = svc.set_active_spec(meta=_meta(), spec_id=created.payload.id)
+    active = svc.set_active_spec(meta=_meta(), spec_id=created.payload.value.id)
     assert active.ok
     assert active.payload is not None
-    assert repository.active_spec_id == created.payload.id
-    assert index.collections[created.payload.id] == created.payload.dimensions
+    assert repository.active_spec_id == created.payload.value.id
+    assert (
+        index.collections[created.payload.value.id] == created.payload.value.dimensions
+    )
 
 
 def test_get_active_spec_returns_not_found_when_unset() -> None:
@@ -465,7 +467,7 @@ def test_chunk_id_stability_for_same_source_and_ordinal() -> None:
         metadata={},
     )
     assert source.payload is not None
-    source_id = source.payload.id
+    source_id = source.payload.value.id
 
     first = svc.upsert_chunk(
         meta=_meta(),
@@ -488,7 +490,7 @@ def test_chunk_id_stability_for_same_source_and_ordinal() -> None:
 
     assert first.payload is not None
     assert second.payload is not None
-    assert first.payload.id == second.payload.id
+    assert first.payload.value.id == second.payload.value.id
 
 
 def test_upsert_chunk_does_not_implicitly_create_embedding() -> None:
@@ -507,7 +509,7 @@ def test_upsert_chunk_does_not_implicitly_create_embedding() -> None:
 
     chunk = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         chunk_ordinal=1,
         reference_range="1",
         content_hash="hash",
@@ -535,7 +537,7 @@ def test_vector_upsert_creates_embedding_and_search_match() -> None:
 
     chunk = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         chunk_ordinal=1,
         reference_range="a",
         content_hash="h-a",
@@ -546,28 +548,28 @@ def test_vector_upsert_creates_embedding_and_search_match() -> None:
 
     upserted = svc.upsert_embedding_vector(
         meta=_meta(),
-        chunk_id=chunk.payload.id,
+        chunk_id=chunk.payload.value.id,
         spec_id=spec.id,
         vector=[0.1] * spec.dimensions,
     )
     assert upserted.ok
     assert upserted.payload is not None
-    assert upserted.payload.status == EmbeddingStatus.INDEXED
+    assert upserted.payload.value.status == EmbeddingStatus.INDEXED
 
     result = svc.search_embeddings(
         meta=_meta(),
         query_vector=[0.1] * spec.dimensions,
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         spec_id="",
         limit=10,
     )
     assert result.ok
     assert result.payload is not None
-    assert len(result.payload) == 1
+    assert len(result.payload.value) == 1
 
-    match: SearchEmbeddingMatch = result.payload[0]
-    assert match.chunk_id == chunk.payload.id
-    assert match.source_id == source.payload.id
+    match: SearchEmbeddingMatch = result.payload.value[0]
+    assert match.chunk_id == chunk.payload.value.id
+    assert match.source_id == source.payload.value.id
 
 
 def test_vector_upsert_dimension_mismatch_is_validation_error() -> None:
@@ -585,7 +587,7 @@ def test_vector_upsert_dimension_mismatch_is_validation_error() -> None:
     assert source.payload is not None
     chunk = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         chunk_ordinal=1,
         reference_range="r",
         content_hash="h",
@@ -596,7 +598,7 @@ def test_vector_upsert_dimension_mismatch_is_validation_error() -> None:
 
     result = svc.upsert_embedding_vector(
         meta=_meta(),
-        chunk_id=chunk.payload.id,
+        chunk_id=chunk.payload.value.id,
         spec_id=spec.id,
         vector=[0.1, 0.2],
     )
@@ -621,7 +623,7 @@ def test_batch_vector_upsert_aggregates_rows() -> None:
 
     first = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         chunk_ordinal=1,
         reference_range="a",
         content_hash="h1",
@@ -630,7 +632,7 @@ def test_batch_vector_upsert_aggregates_rows() -> None:
     )
     second = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         chunk_ordinal=2,
         reference_range="b",
         content_hash="h2",
@@ -644,12 +646,12 @@ def test_batch_vector_upsert_aggregates_rows() -> None:
         meta=_meta(),
         items=[
             UpsertEmbeddingVectorInput(
-                chunk_id=first.payload.id,
+                chunk_id=first.payload.value.id,
                 spec_id=spec.id,
                 vector=[0.1] * spec.dimensions,
             ),
             UpsertEmbeddingVectorInput(
-                chunk_id=second.payload.id,
+                chunk_id=second.payload.value.id,
                 spec_id=spec.id,
                 vector=[0.2] * spec.dimensions,
             ),
@@ -657,7 +659,7 @@ def test_batch_vector_upsert_aggregates_rows() -> None:
     )
     assert result.ok
     assert result.payload is not None
-    assert len(result.payload) == 2
+    assert len(result.payload.value) == 2
 
 
 def test_vector_upsert_dependency_failure_marks_embedding_failed(
@@ -677,7 +679,7 @@ def test_vector_upsert_dependency_failure_marks_embedding_failed(
     assert source.payload is not None
     chunk = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         chunk_ordinal=1,
         reference_range="r",
         content_hash="h",
@@ -691,7 +693,7 @@ def test_vector_upsert_dependency_failure_marks_embedding_failed(
     ):
         result = svc.upsert_embedding_vector(
             meta=_meta(),
-            chunk_id=chunk.payload.id,
+            chunk_id=chunk.payload.value.id,
             spec_id=spec.id,
             vector=[0.1] * spec.dimensions,
         )
@@ -699,7 +701,7 @@ def test_vector_upsert_dependency_failure_marks_embedding_failed(
     assert not result.ok
     assert result.errors
     assert result.errors[0].category.value == "dependency"
-    failed = repository.get_embedding(chunk_id=chunk.payload.id, spec_id=spec.id)
+    failed = repository.get_embedding(chunk_id=chunk.payload.value.id, spec_id=spec.id)
     assert failed is not None
     assert failed.status == EmbeddingStatus.FAILED
     assert any("Vector upsert failed" in item.message for item in caplog.records)
@@ -717,7 +719,7 @@ def test_hard_delete_removes_rows_and_best_effort_qdrant_delete() -> None:
         principal="operator",
         metadata={},
     )
-    source_id = source.payload.id if source.payload else ""
+    source_id = source.payload.value.id if source.payload else ""
 
     chunk = svc.upsert_chunk(
         meta=_meta(),
@@ -731,15 +733,16 @@ def test_hard_delete_removes_rows_and_best_effort_qdrant_delete() -> None:
     assert chunk.payload is not None
     svc.upsert_embedding_vector(
         meta=_meta(),
-        chunk_id=chunk.payload.id,
+        chunk_id=chunk.payload.value.id,
         spec_id=spec.id,
         vector=[0.1] * spec.dimensions,
     )
 
-    chunk_id = chunk.payload.id
+    chunk_id = chunk.payload.value.id
     deleted = svc.delete_source(meta=_meta(), source_id=source_id)
     assert deleted.ok
-    assert deleted.payload is True
+    assert deleted.payload is not None
+    assert deleted.payload.value is True
 
     assert not svc.get_source(meta=_meta(), source_id=source_id).ok
     assert not svc.get_chunk(meta=_meta(), chunk_id=chunk_id).ok
@@ -760,7 +763,7 @@ def test_best_effort_cleanup_failures_are_logged_for_source_delete(
         principal="operator",
         metadata={},
     )
-    source_id = source.payload.id if source.payload else ""
+    source_id = source.payload.value.id if source.payload else ""
 
     first = svc.upsert_chunk(
         meta=_meta(),
@@ -774,7 +777,7 @@ def test_best_effort_cleanup_failures_are_logged_for_source_delete(
     assert first.payload is not None
     svc.upsert_embedding_vector(
         meta=_meta(),
-        chunk_id=first.payload.id,
+        chunk_id=first.payload.value.id,
         spec_id=spec.id,
         vector=[0.1] * spec.dimensions,
     )
@@ -785,7 +788,8 @@ def test_best_effort_cleanup_failures_are_logged_for_source_delete(
         deleted = svc.delete_source(meta=_meta(), source_id=source_id)
 
     assert deleted.ok
-    assert deleted.payload is True
+    assert deleted.payload is not None
+    assert deleted.payload.value is True
     assert any(
         "Best-effort derived cleanup failed" in item.message for item in caplog.records
     )
@@ -820,20 +824,20 @@ def test_explicit_spec_reads_do_not_mutate_active_spec() -> None:
     assert first.payload is not None
     assert second.payload is not None
 
-    active = svc.set_active_spec(meta=_meta(), spec_id=first.payload.id)
+    active = svc.set_active_spec(meta=_meta(), spec_id=first.payload.value.id)
     assert active.payload is not None
-    assert repository.active_spec_id == first.payload.id
+    assert repository.active_spec_id == first.payload.value.id
 
     # Force explicit-spec resolution path.
     _ = svc.get_embedding(
         meta=_meta(),
         chunk_id=generate_ulid_str(),
-        spec_id=second.payload.id,
+        spec_id=second.payload.value.id,
     )
 
     resolved = svc.get_active_spec(meta=_meta())
     assert resolved.payload is not None
-    assert resolved.payload.id == first.payload.id
+    assert resolved.payload.value.id == first.payload.value.id
 
 
 def test_list_embeddings_by_source_spec_filter_is_optional() -> None:
@@ -867,7 +871,7 @@ def test_list_embeddings_by_source_spec_filter_is_optional() -> None:
     assert source.payload is not None
     chunk = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         chunk_ordinal=1,
         reference_range="r",
         content_hash="h",
@@ -878,37 +882,37 @@ def test_list_embeddings_by_source_spec_filter_is_optional() -> None:
 
     svc.upsert_embedding_vector(
         meta=_meta(),
-        chunk_id=chunk.payload.id,
-        spec_id=spec_a.payload.id,
-        vector=[0.1] * spec_a.payload.dimensions,
+        chunk_id=chunk.payload.value.id,
+        spec_id=spec_a.payload.value.id,
+        vector=[0.1] * spec_a.payload.value.dimensions,
     )
     svc.upsert_embedding_vector(
         meta=_meta(),
-        chunk_id=chunk.payload.id,
-        spec_id=spec_b.payload.id,
-        vector=[0.2] * spec_b.payload.dimensions,
+        chunk_id=chunk.payload.value.id,
+        spec_id=spec_b.payload.value.id,
+        vector=[0.2] * spec_b.payload.value.dimensions,
     )
 
     all_specs = svc.list_embeddings_by_source(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         spec_id="",
         limit=10,
     )
     assert all_specs.ok
     assert all_specs.payload is not None
-    assert len(all_specs.payload) == 2
+    assert len(all_specs.payload.value) == 2
 
     only_a = svc.list_embeddings_by_source(
         meta=_meta(),
-        source_id=source.payload.id,
-        spec_id=spec_a.payload.id,
+        source_id=source.payload.value.id,
+        spec_id=spec_a.payload.value.id,
         limit=10,
     )
     assert only_a.ok
     assert only_a.payload is not None
-    assert len(only_a.payload) == 1
-    assert only_a.payload[0].spec_id == spec_a.payload.id
+    assert len(only_a.payload.value) == 1
+    assert only_a.payload.value[0].spec_id == spec_a.payload.value.id
 
 
 def test_list_embeddings_by_status_spec_filter_is_optional() -> None:
@@ -943,7 +947,7 @@ def test_list_embeddings_by_status_spec_filter_is_optional() -> None:
 
     first_chunk = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         chunk_ordinal=1,
         reference_range="r1",
         content_hash="h1",
@@ -952,7 +956,7 @@ def test_list_embeddings_by_status_spec_filter_is_optional() -> None:
     )
     second_chunk = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         chunk_ordinal=2,
         reference_range="r2",
         content_hash="h2",
@@ -964,15 +968,15 @@ def test_list_embeddings_by_status_spec_filter_is_optional() -> None:
 
     svc.upsert_embedding_vector(
         meta=_meta(),
-        chunk_id=first_chunk.payload.id,
-        spec_id=spec_a.payload.id,
-        vector=[0.1] * spec_a.payload.dimensions,
+        chunk_id=first_chunk.payload.value.id,
+        spec_id=spec_a.payload.value.id,
+        vector=[0.1] * spec_a.payload.value.dimensions,
     )
     svc.upsert_embedding_vector(
         meta=_meta(),
-        chunk_id=second_chunk.payload.id,
-        spec_id=spec_b.payload.id,
-        vector=[0.2] * spec_b.payload.dimensions,
+        chunk_id=second_chunk.payload.value.id,
+        spec_id=spec_b.payload.value.id,
+        vector=[0.2] * spec_b.payload.value.dimensions,
     )
 
     all_specs = svc.list_embeddings_by_status(
@@ -983,18 +987,18 @@ def test_list_embeddings_by_status_spec_filter_is_optional() -> None:
     )
     assert all_specs.ok
     assert all_specs.payload is not None
-    assert len(all_specs.payload) == 2
+    assert len(all_specs.payload.value) == 2
 
     only_b = svc.list_embeddings_by_status(
         meta=_meta(),
         status=EmbeddingStatus.INDEXED,
-        spec_id=spec_b.payload.id,
+        spec_id=spec_b.payload.value.id,
         limit=10,
     )
     assert only_b.ok
     assert only_b.payload is not None
-    assert len(only_b.payload) == 1
-    assert only_b.payload[0].spec_id == spec_b.payload.id
+    assert len(only_b.payload.value) == 1
+    assert only_b.payload.value[0].spec_id == spec_b.payload.value.id
 
 
 def test_get_embedding_without_active_spec_returns_not_found() -> None:
@@ -1024,7 +1028,7 @@ def test_get_embedding_with_unknown_spec_returns_not_found() -> None:
     assert source.payload is not None
     chunk = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         chunk_ordinal=1,
         reference_range="r",
         content_hash="h",
@@ -1035,7 +1039,7 @@ def test_get_embedding_with_unknown_spec_returns_not_found() -> None:
 
     result = svc.get_embedding(
         meta=_meta(),
-        chunk_id=chunk.payload.id,
+        chunk_id=chunk.payload.value.id,
         spec_id=generate_ulid_str(),
     )
 
@@ -1060,7 +1064,7 @@ def test_get_embedding_returns_not_found_when_row_missing() -> None:
     assert source.payload is not None
     chunk = svc.upsert_chunk(
         meta=_meta(),
-        source_id=source.payload.id,
+        source_id=source.payload.value.id,
         chunk_ordinal=1,
         reference_range="r",
         content_hash="h",
@@ -1069,7 +1073,9 @@ def test_get_embedding_returns_not_found_when_row_missing() -> None:
     )
     assert chunk.payload is not None
 
-    result = svc.get_embedding(meta=_meta(), chunk_id=chunk.payload.id, spec_id=spec.id)
+    result = svc.get_embedding(
+        meta=_meta(), chunk_id=chunk.payload.value.id, spec_id=spec.id
+    )
 
     assert not result.ok
     assert result.errors
@@ -1091,7 +1097,8 @@ def test_search_embeddings_requires_query_vector() -> None:
     )
 
     assert not result.ok
-    assert result.payload == []
+    assert result.payload is not None
+    assert result.payload.value == []
     assert result.errors
     assert result.errors[0].category.value == "validation"
     assert "query_vector is required" in result.errors[0].message
@@ -1111,7 +1118,8 @@ def test_search_embeddings_rejects_dimension_mismatch() -> None:
     )
 
     assert not result.ok
-    assert result.payload == []
+    assert result.payload is not None
+    assert result.payload.value == []
     assert result.errors
     assert result.errors[0].category.value == "validation"
     assert "query_vector dimension mismatch" in result.errors[0].message
@@ -1131,7 +1139,8 @@ def test_search_embeddings_rejects_invalid_optional_ulids() -> None:
     )
 
     assert not result.ok
-    assert result.payload == []
+    assert result.payload is not None
+    assert result.payload.value == []
     assert result.errors
     assert result.errors[0].category.value == "validation"
     assert "source_id must be a valid ULID string" in result.errors[0].message
@@ -1151,7 +1160,8 @@ def test_list_sources_reports_meta_validation_failures() -> None:
     )
 
     assert not result.ok
-    assert result.payload == []
+    assert result.payload is not None
+    assert result.payload.value == []
     assert result.errors
     assert result.errors[0].category.value == "validation"
     assert "metadata.source is required" in result.errors[0].message
@@ -1164,7 +1174,8 @@ def test_list_chunks_by_source_rejects_invalid_ulid() -> None:
     result = svc.list_chunks_by_source(meta=_meta(), source_id="not-a-ulid", limit=10)
 
     assert not result.ok
-    assert result.payload == []
+    assert result.payload is not None
+    assert result.payload.value == []
     assert result.errors
     assert result.errors[0].category.value == "validation"
     assert "source_id must be a valid ULID string" in result.errors[0].message
@@ -1193,4 +1204,4 @@ def test_list_sources_clamps_limit_to_service_setting() -> None:
 
     assert result.ok
     assert result.payload is not None
-    assert len(result.payload) == 2
+    assert len(result.payload.value) == 2

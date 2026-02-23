@@ -27,7 +27,8 @@ if not generated_root.exists():
     )
 sys.path.insert(0, str(generated_root))
 
-from packages.brain_shared.envelope import EnvelopeKind, Result, new_meta  # noqa: E402
+from packages.brain_shared.envelope import EnvelopeKind, new_meta  # noqa: E402
+from packages.brain_shared.envelope.envelope import Envelope  # noqa: E402
 from packages.brain_shared.errors import (
     ErrorCategory,
     codes,
@@ -55,8 +56,8 @@ class _FakeServicerContext:
         raise _AbortCalled(details)
 
 
-def _result_with_error(*, category: ErrorCategory) -> Result[object]:
-    """Construct one failed envelope result with selected error category."""
+def _envelope_with_error(*, category: ErrorCategory) -> Envelope[object]:
+    """Construct one failed envelope with selected error category."""
     meta = new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator")
     if category == ErrorCategory.DEPENDENCY:
         error = dependency_error(
@@ -66,16 +67,16 @@ def _result_with_error(*, category: ErrorCategory) -> Result[object]:
         error = internal_error("internal failure", code=codes.INTERNAL_ERROR)
     else:
         error = validation_error("invalid", code=codes.INVALID_ARGUMENT)
-    return Result(metadata=meta, payload=None, errors=[error])
+    return Envelope(metadata=meta, payload=None, errors=[error])
 
 
 def test_abort_maps_dependency_errors_to_unavailable() -> None:
     """Dependency-category errors must map to gRPC UNAVAILABLE transport failures."""
     context = _FakeServicerContext()
-    result = _result_with_error(category=ErrorCategory.DEPENDENCY)
+    envelope = _envelope_with_error(category=ErrorCategory.DEPENDENCY)
 
     with pytest.raises(_AbortCalled):
-        _abort_for_transport_errors(context=context, result=result)
+        _abort_for_transport_errors(context=context, result=envelope)
 
     assert context.code == grpc.StatusCode.UNAVAILABLE
     assert context.details is not None
@@ -85,10 +86,10 @@ def test_abort_maps_dependency_errors_to_unavailable() -> None:
 def test_abort_maps_internal_errors_to_internal() -> None:
     """Internal-category errors must map to gRPC INTERNAL transport failures."""
     context = _FakeServicerContext()
-    result = _result_with_error(category=ErrorCategory.INTERNAL)
+    envelope = _envelope_with_error(category=ErrorCategory.INTERNAL)
 
     with pytest.raises(_AbortCalled):
-        _abort_for_transport_errors(context=context, result=result)
+        _abort_for_transport_errors(context=context, result=envelope)
 
     assert context.code == grpc.StatusCode.INTERNAL
     assert context.details is not None
@@ -98,9 +99,9 @@ def test_abort_maps_internal_errors_to_internal() -> None:
 def test_abort_ignores_domain_errors() -> None:
     """Domain errors should stay in envelope errors and not abort transport."""
     context = _FakeServicerContext()
-    result = _result_with_error(category=ErrorCategory.VALIDATION)
+    envelope = _envelope_with_error(category=ErrorCategory.VALIDATION)
 
-    _abort_for_transport_errors(context=context, result=result)
+    _abort_for_transport_errors(context=context, result=envelope)
 
     assert context.code is None
     assert context.details is None

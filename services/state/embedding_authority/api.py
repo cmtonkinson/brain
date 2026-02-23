@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import grpc
 from brain.shared.v1 import envelope_pb2
 from brain.state.v1 import embedding_pb2, embedding_pb2_grpc
-from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Result
+from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, Envelope
 from packages.brain_shared.errors import (
     ErrorCategory,
     ErrorDetail,
@@ -48,7 +48,9 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.UpsertSpecResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=_spec_to_proto(result.payload),
+            payload=_spec_to_proto(
+                None if result.payload is None else result.payload.value
+            ),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -64,7 +66,9 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.SetActiveSpecResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=_spec_to_proto(result.payload),
+            payload=_spec_to_proto(
+                None if result.payload is None else result.payload.value
+            ),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -82,7 +86,9 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.UpsertSourceResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=_source_to_proto(result.payload),
+            payload=_source_to_proto(
+                None if result.payload is None else result.payload.value
+            ),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -101,7 +107,9 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.UpsertChunkResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=_chunk_to_proto(result.payload),
+            payload=_chunk_to_proto(
+                None if result.payload is None else result.payload.value
+            ),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -126,7 +134,7 @@ class GrpcEmbeddingAuthorityService(
         payload = (
             []
             if result.payload is None
-            else [_chunk_to_proto(item) for item in result.payload]
+            else [_chunk_to_proto(item) for item in result.payload.value]
         )
         return embedding_pb2.UpsertChunksResponse(
             metadata=_meta_to_proto(result.metadata),
@@ -148,7 +156,9 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.UpsertEmbeddingVectorResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=_embedding_to_proto(result.payload),
+            payload=_embedding_to_proto(
+                None if result.payload is None else result.payload.value
+            ),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -173,7 +183,7 @@ class GrpcEmbeddingAuthorityService(
         payload = (
             []
             if result.payload is None
-            else [_embedding_to_proto(item) for item in result.payload]
+            else [_embedding_to_proto(item) for item in result.payload.value]
         )
         return embedding_pb2.UpsertEmbeddingVectorsResponse(
             metadata=_meta_to_proto(result.metadata),
@@ -191,7 +201,7 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.DeleteChunkResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=bool(result.payload),
+            payload=bool(result.payload.value) if result.payload is not None else False,
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -205,7 +215,7 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.DeleteSourceResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=bool(result.payload),
+            payload=bool(result.payload.value) if result.payload is not None else False,
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -219,7 +229,9 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.GetSourceResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=_source_to_proto(result.payload),
+            payload=_source_to_proto(
+                None if result.payload is None else result.payload.value
+            ),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -237,7 +249,7 @@ class GrpcEmbeddingAuthorityService(
         payload = (
             []
             if result.payload is None
-            else [_source_to_proto(item) for item in result.payload]
+            else [_source_to_proto(item) for item in result.payload.value]
         )
         return embedding_pb2.ListSourcesResponse(
             metadata=_meta_to_proto(result.metadata),
@@ -255,7 +267,9 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.GetChunkResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=_chunk_to_proto(result.payload),
+            payload=_chunk_to_proto(
+                None if result.payload is None else result.payload.value
+            ),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -273,7 +287,7 @@ class GrpcEmbeddingAuthorityService(
         payload = (
             []
             if result.payload is None
-            else [_chunk_to_proto(item) for item in result.payload]
+            else [_chunk_to_proto(item) for item in result.payload.value]
         )
         return embedding_pb2.ListChunksBySourceResponse(
             metadata=_meta_to_proto(result.metadata),
@@ -292,7 +306,9 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.GetEmbeddingResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=_embedding_to_proto(result.payload),
+            payload=_embedding_to_proto(
+                None if result.payload is None else result.payload.value
+            ),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -311,7 +327,7 @@ class GrpcEmbeddingAuthorityService(
         payload = (
             []
             if result.payload is None
-            else [_embedding_to_proto(item) for item in result.payload]
+            else [_embedding_to_proto(item) for item in result.payload.value]
         )
         return embedding_pb2.ListEmbeddingsBySourceResponse(
             metadata=_meta_to_proto(result.metadata),
@@ -349,7 +365,7 @@ class GrpcEmbeddingAuthorityService(
         payload = (
             []
             if result.payload is None
-            else [_embedding_to_proto(item) for item in result.payload]
+            else [_embedding_to_proto(item) for item in result.payload.value]
         )
         return embedding_pb2.ListEmbeddingsByStatusResponse(
             metadata=_meta_to_proto(result.metadata),
@@ -373,7 +389,7 @@ class GrpcEmbeddingAuthorityService(
         payload = (
             []
             if result.payload is None
-            else [_search_match_to_proto(item) for item in result.payload]
+            else [_search_match_to_proto(item) for item in result.payload.value]
         )
         return embedding_pb2.SearchEmbeddingsResponse(
             metadata=_meta_to_proto(result.metadata),
@@ -388,7 +404,9 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.GetActiveSpecResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=_spec_to_proto(result.payload),
+            payload=_spec_to_proto(
+                None if result.payload is None else result.payload.value
+            ),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -402,7 +420,7 @@ class GrpcEmbeddingAuthorityService(
         payload = (
             []
             if result.payload is None
-            else [_spec_to_proto(item) for item in result.payload]
+            else [_spec_to_proto(item) for item in result.payload.value]
         )
         return embedding_pb2.ListSpecsResponse(
             metadata=_meta_to_proto(result.metadata),
@@ -419,7 +437,9 @@ class GrpcEmbeddingAuthorityService(
         _abort_for_transport_errors(context=context, result=result)
         return embedding_pb2.GetSpecResponse(
             metadata=_meta_to_proto(result.metadata),
-            payload=_spec_to_proto(result.payload),
+            payload=_spec_to_proto(
+                None if result.payload is None else result.payload.value
+            ),
             errors=[_error_to_proto(item) for item in result.errors],
         )
 
@@ -620,7 +640,7 @@ def _error_category_to_proto(category: ErrorCategory) -> envelope_pb2.ErrorCateg
 
 
 def _abort_for_transport_errors(
-    *, context: grpc.ServicerContext, result: Result[object]
+    *, context: grpc.ServicerContext, result: Envelope[object]
 ) -> None:
     """Map infrastructure failures to transport failures only."""
     for error in result.errors:

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from uuid import uuid4
+
+from pydantic import BaseModel, ConfigDict
 
 
 class EnvelopeKind(str, Enum):
@@ -18,9 +19,10 @@ class EnvelopeKind(str, Enum):
     STREAM = "stream"
 
 
-@dataclass(frozen=True)
-class EnvelopeMeta:
-    """Canonical metadata attached to every envelope result."""
+class EnvelopeMeta(BaseModel):
+    """Canonical metadata attached to every envelope."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     envelope_id: str
     trace_id: str

@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Mapping, Sequence
 
-from packages.brain_shared.envelope import EnvelopeMeta, Result
+from packages.brain_shared.envelope import EnvelopeMeta, Envelope
 from services.state.embedding_authority.domain import (
     ChunkRecord,
     EmbeddingRecord,
@@ -34,13 +34,13 @@ class EmbeddingAuthorityService(ABC):
         name: str,
         version: str,
         dimensions: int,
-    ) -> Result[EmbeddingSpec]:
+    ) -> Envelope[EmbeddingSpec]:
         """Create or return one embedding spec by canonical identity."""
 
     @abstractmethod
     def set_active_spec(
         self, *, meta: EnvelopeMeta, spec_id: str
-    ) -> Result[EmbeddingSpec]:
+    ) -> Envelope[EmbeddingSpec]:
         """Persist and return the active spec used for defaulted spec operations."""
 
     @abstractmethod
@@ -53,7 +53,7 @@ class EmbeddingAuthorityService(ABC):
         service: str,
         principal: str,
         metadata: Mapping[str, str],
-    ) -> Result[SourceRecord]:
+    ) -> Envelope[SourceRecord]:
         """Create or update one source."""
 
     @abstractmethod
@@ -67,7 +67,7 @@ class EmbeddingAuthorityService(ABC):
         content_hash: str,
         text: str,
         metadata: Mapping[str, str],
-    ) -> Result[ChunkRecord]:
+    ) -> Envelope[ChunkRecord]:
         """Create or update one chunk."""
 
     @abstractmethod
@@ -76,7 +76,7 @@ class EmbeddingAuthorityService(ABC):
         *,
         meta: EnvelopeMeta,
         items: Sequence[UpsertChunkInput],
-    ) -> Result[list[ChunkRecord]]:
+    ) -> Envelope[list[ChunkRecord]]:
         """Batch convenience API for chunk upserts."""
 
     @abstractmethod
@@ -87,7 +87,7 @@ class EmbeddingAuthorityService(ABC):
         chunk_id: str,
         spec_id: str,
         vector: Sequence[float],
-    ) -> Result[EmbeddingRecord]:
+    ) -> Envelope[EmbeddingRecord]:
         """Persist one vector point and indexed embedding status row."""
 
     @abstractmethod
@@ -96,19 +96,21 @@ class EmbeddingAuthorityService(ABC):
         *,
         meta: EnvelopeMeta,
         items: Sequence[UpsertEmbeddingVectorInput],
-    ) -> Result[list[EmbeddingRecord]]:
+    ) -> Envelope[list[EmbeddingRecord]]:
         """Batch convenience API for vector upserts."""
 
     @abstractmethod
-    def delete_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Result[bool]:
+    def delete_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Envelope[bool]:
         """Hard-delete one chunk and derived embedding rows."""
 
     @abstractmethod
-    def delete_source(self, *, meta: EnvelopeMeta, source_id: str) -> Result[bool]:
+    def delete_source(self, *, meta: EnvelopeMeta, source_id: str) -> Envelope[bool]:
         """Hard-delete one source and all owned chunks/embeddings."""
 
     @abstractmethod
-    def get_source(self, *, meta: EnvelopeMeta, source_id: str) -> Result[SourceRecord]:
+    def get_source(
+        self, *, meta: EnvelopeMeta, source_id: str
+    ) -> Envelope[SourceRecord]:
         """Read one source by id."""
 
     @abstractmethod
@@ -120,11 +122,11 @@ class EmbeddingAuthorityService(ABC):
         service: str,
         principal: str,
         limit: int,
-    ) -> Result[list[SourceRecord]]:
+    ) -> Envelope[list[SourceRecord]]:
         """List sources by optional filters."""
 
     @abstractmethod
-    def get_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Result[ChunkRecord]:
+    def get_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Envelope[ChunkRecord]:
         """Read one chunk by id."""
 
     @abstractmethod
@@ -134,7 +136,7 @@ class EmbeddingAuthorityService(ABC):
         meta: EnvelopeMeta,
         source_id: str,
         limit: int,
-    ) -> Result[list[ChunkRecord]]:
+    ) -> Envelope[list[ChunkRecord]]:
         """List chunks for one source."""
 
     @abstractmethod
@@ -144,7 +146,7 @@ class EmbeddingAuthorityService(ABC):
         meta: EnvelopeMeta,
         chunk_id: str,
         spec_id: str = "",
-    ) -> Result[EmbeddingRecord]:
+    ) -> Envelope[EmbeddingRecord]:
         """Read one embedding row; default ``spec_id`` is active spec."""
 
     @abstractmethod
@@ -155,7 +157,7 @@ class EmbeddingAuthorityService(ABC):
         source_id: str,
         spec_id: str,
         limit: int,
-    ) -> Result[list[EmbeddingRecord]]:
+    ) -> Envelope[list[EmbeddingRecord]]:
         """List embedding rows for chunks under one source."""
 
     @abstractmethod
@@ -166,7 +168,7 @@ class EmbeddingAuthorityService(ABC):
         status: EmbeddingStatus,
         spec_id: str,
         limit: int,
-    ) -> Result[list[EmbeddingRecord]]:
+    ) -> Envelope[list[EmbeddingRecord]]:
         """List embedding rows by status, optionally scoped to one spec."""
 
     @abstractmethod
@@ -178,19 +180,19 @@ class EmbeddingAuthorityService(ABC):
         source_id: str,
         spec_id: str,
         limit: int,
-    ) -> Result[list[SearchEmbeddingMatch]]:
+    ) -> Envelope[list[SearchEmbeddingMatch]]:
         """Search derived embeddings by semantic similarity."""
 
     @abstractmethod
-    def get_active_spec(self, *, meta: EnvelopeMeta) -> Result[EmbeddingSpec]:
+    def get_active_spec(self, *, meta: EnvelopeMeta) -> Envelope[EmbeddingSpec]:
         """Return persisted active spec used for defaulted operations."""
 
     @abstractmethod
     def list_specs(
         self, *, meta: EnvelopeMeta, limit: int
-    ) -> Result[list[EmbeddingSpec]]:
+    ) -> Envelope[list[EmbeddingSpec]]:
         """List known specs."""
 
     @abstractmethod
-    def get_spec(self, *, meta: EnvelopeMeta, spec_id: str) -> Result[EmbeddingSpec]:
+    def get_spec(self, *, meta: EnvelopeMeta, spec_id: str) -> Envelope[EmbeddingSpec]:
         """Read one spec by id."""
