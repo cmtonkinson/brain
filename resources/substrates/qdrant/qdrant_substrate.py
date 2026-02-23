@@ -34,7 +34,6 @@ class QdrantClientSubstrate(QdrantSubstrate):
     """Direct Qdrant substrate implementation for one configured collection."""
 
     def __init__(self, config: QdrantConfig) -> None:
-        config.validate()
         self._config = config
         self._client = create_qdrant_client(config)
         self._collection = config.collection_name

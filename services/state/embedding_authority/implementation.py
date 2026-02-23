@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
+from pydantic import BaseModel, ValidationError
 from packages.brain_shared.config import BrainSettings, EmbeddingServiceSettings
 from packages.brain_shared.envelope import (
     EnvelopeMeta,
@@ -22,7 +23,6 @@ from packages.brain_shared.errors import (
     not_found_error,
     validation_error,
 )
-from packages.brain_shared.ids import ulid_str_to_bytes
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.substrates.postgres.errors import normalize_postgres_error
 from services.state.embedding_authority.component import SERVICE_COMPONENT_ID
@@ -46,6 +46,21 @@ from services.state.embedding_authority.interfaces import (
 )
 from services.state.embedding_authority.qdrant_backend import QdrantEmbeddingBackend
 from services.state.embedding_authority.service import EmbeddingAuthorityService
+from services.state.embedding_authority.validation import (
+    BatchChunkUpsertRequest,
+    BatchEmbeddingVectorUpsertRequest,
+    ChunkIdRequest,
+    ChunkUpsertRequest,
+    EmbeddingVectorUpsertRequest,
+    GetEmbeddingRequest,
+    ListEmbeddingsBySourceRequest,
+    ListEmbeddingsByStatusRequest,
+    SearchEmbeddingsRequest,
+    SourceIdRequest,
+    SourceUpsertRequest,
+    SpecIdRequest,
+    SpecUpsertRequest,
+)
 
 _CANON_RE = re.compile(r"[^\.a-z0-9_-]")
 _LOGGER = get_logger(__name__)
@@ -109,35 +124,34 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         dimensions: int,
     ) -> Envelope[EmbeddingSpec]:
         """Create or return one embedding spec by canonical identity."""
-        errors = self._collect_errors(
+        spec_request, errors = self._validate_request(
             meta=meta,
-            required_fields={
+            model=SpecUpsertRequest,
+            payload={
                 "provider": provider,
                 "name": name,
                 "version": version,
+                "dimensions": dimensions,
             },
         )
-        if dimensions <= 0:
-            errors.append(
-                validation_error("dimensions must be > 0", code=codes.INVALID_ARGUMENT)
-            )
         if errors:
             return failure(meta=meta, errors=errors)
+        assert spec_request is not None
 
         canonical = _canonical_spec_string(
-            provider=provider,
-            name=name,
-            version=version,
-            dimensions=dimensions,
+            provider=spec_request.provider,
+            name=spec_request.name,
+            version=spec_request.version,
+            dimensions=spec_request.dimensions,
         )
         hash_bytes = hashlib.sha256(canonical.encode("utf-8")).digest()
 
         try:
             spec = self._repository.upsert_spec(
-                provider=provider,
-                name=name,
-                version=version,
-                dimensions=dimensions,
+                provider=spec_request.provider,
+                name=spec_request.name,
+                version=spec_request.version,
+                dimensions=spec_request.dimensions,
                 hash_bytes=hash_bytes,
                 canonical_string=canonical,
             )
@@ -174,12 +188,17 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         self, *, meta: EnvelopeMeta, spec_id: str
     ) -> Envelope[EmbeddingSpec]:
         """Persist and return active spec used for defaulted operations."""
-        errors = self._collect_errors(meta=meta, required_ulids={"spec_id": spec_id})
+        spec_request, errors = self._validate_request(
+            meta=meta,
+            model=SpecIdRequest,
+            payload={"spec_id": spec_id},
+        )
         if errors:
             return failure(meta=meta, errors=errors)
+        assert spec_request is not None
 
         try:
-            spec = self._repository.get_spec(spec_id=spec_id)
+            spec = self._repository.get_spec(spec_id=spec_request.spec_id)
             if spec is None:
                 return self._not_found_failure(meta=meta, message="spec not found")
             self._index_backend.ensure_collection(
@@ -194,7 +213,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 return self._postgres_failure(meta=meta, exc=exc)
             _LOGGER.warning(
                 "Set active spec failed due to dependency error: spec_id=%s exception_type=%s",
-                spec_id,
+                spec_request.spec_id,
                 type(exc).__name__,
                 exc_info=exc,
             )
@@ -225,25 +244,28 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         metadata: Mapping[str, str],
     ) -> Envelope[SourceRecord]:
         """Create/update source row."""
-        errors = self._collect_errors(
+        source_request, errors = self._validate_request(
             meta=meta,
-            required_fields={
+            model=SourceUpsertRequest,
+            payload={
                 "canonical_reference": canonical_reference,
                 "source_type": source_type,
                 "service": service,
                 "principal": principal,
+                "metadata": metadata,
             },
         )
         if errors:
             return failure(meta=meta, errors=errors)
+        assert source_request is not None
 
         try:
             record = self._repository.upsert_source(
-                canonical_reference=canonical_reference,
-                source_type=source_type,
-                service=service,
-                principal=principal,
-                metadata=metadata,
+                canonical_reference=source_request.canonical_reference,
+                source_type=source_request.source_type,
+                service=source_request.service,
+                principal=source_request.principal,
+                metadata=source_request.metadata,
             )
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
@@ -266,35 +288,34 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         metadata: Mapping[str, str],
     ) -> Envelope[ChunkRecord]:
         """Create/update chunk row."""
-        errors = self._collect_errors(
+        chunk_request, errors = self._validate_request(
             meta=meta,
-            required_ulids={"source_id": source_id},
-            required_fields={
+            model=ChunkUpsertRequest,
+            payload={
+                "source_id": source_id,
+                "chunk_ordinal": chunk_ordinal,
+                "reference_range": reference_range,
                 "content_hash": content_hash,
                 "text": text,
+                "metadata": metadata,
             },
         )
-        if chunk_ordinal < 0:
-            errors.append(
-                validation_error(
-                    "chunk_ordinal must be >= 0", code=codes.INVALID_ARGUMENT
-                )
-            )
         if errors:
             return failure(meta=meta, errors=errors)
+        assert chunk_request is not None
 
         try:
-            source = self._repository.get_source(source_id=source_id)
+            source = self._repository.get_source(source_id=chunk_request.source_id)
             if source is None:
                 return self._not_found_failure(meta=meta, message="source not found")
 
             chunk = self._repository.upsert_chunk(
                 source_id=source.id,
-                chunk_ordinal=chunk_ordinal,
-                reference_range=reference_range,
-                content_hash=content_hash,
-                text=text,
-                metadata=metadata,
+                chunk_ordinal=chunk_request.chunk_ordinal,
+                reference_range=chunk_request.reference_range,
+                content_hash=chunk_request.content_hash,
+                text=chunk_request.text,
+                metadata=chunk_request.metadata,
             )
             return success(meta=meta, payload=chunk)
         except Exception as exc:  # noqa: BLE001
@@ -311,19 +332,18 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         items: Sequence[UpsertChunkInput],
     ) -> Envelope[list[ChunkRecord]]:
         """Batch upsert convenience API."""
-        errors = self._validate_meta(meta)
-        if not items:
-            errors.append(
-                validation_error(
-                    "items must not be empty", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
+        chunk_batch, errors = self._validate_request(
+            meta=meta,
+            model=BatchChunkUpsertRequest,
+            payload={"items": items},
+        )
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
+        assert chunk_batch is not None
 
         results: list[ChunkRecord] = []
         aggregate_errors: list[ErrorDetail] = []
-        for item in items:
+        for item in chunk_batch.items:
             item_result = self.upsert_chunk(
                 meta=meta,
                 source_id=item.source_id,
@@ -356,26 +376,21 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         vector: Sequence[float],
     ) -> Envelope[EmbeddingRecord]:
         """Persist one vector point and indexed embedding status row."""
-        errors = self._collect_errors(
+        vector_request, errors = self._validate_request(
             meta=meta,
-            required_ulids={"chunk_id": chunk_id},
-            optional_ulids={"spec_id": spec_id},
+            model=EmbeddingVectorUpsertRequest,
+            payload={"chunk_id": chunk_id, "spec_id": spec_id, "vector": vector},
         )
-        if not vector:
-            errors.append(
-                validation_error(
-                    "vector is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
         if errors:
             return failure(meta=meta, errors=errors)
+        assert vector_request is not None
 
         try:
-            chunk = self._repository.get_chunk(chunk_id=chunk_id)
+            chunk = self._repository.get_chunk(chunk_id=vector_request.chunk_id)
             if chunk is None:
                 return self._not_found_failure(meta=meta, message="chunk not found")
 
-            spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
+            spec_result = self._resolve_spec(meta=meta, spec_id=vector_request.spec_id)
             if spec_result.errors:
                 return failure(meta=meta, errors=spec_result.errors)
             spec_payload = spec_result.payload
@@ -383,7 +398,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             if spec is None:
                 return self._not_found_failure(meta=meta, message="spec not found")
 
-            normalized_vector = tuple(float(value) for value in vector)
+            normalized_vector = tuple(float(value) for value in vector_request.vector)
             if len(normalized_vector) != spec.dimensions:
                 return failure(
                     meta=meta,
@@ -462,19 +477,18 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         items: Sequence[UpsertEmbeddingVectorInput],
     ) -> Envelope[list[EmbeddingRecord]]:
         """Batch upsert convenience API for vector writes."""
-        errors = self._validate_meta(meta)
-        if not items:
-            errors.append(
-                validation_error(
-                    "items must not be empty", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
+        vector_batch, errors = self._validate_request(
+            meta=meta,
+            model=BatchEmbeddingVectorUpsertRequest,
+            payload={"items": items},
+        )
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
+        assert vector_batch is not None
 
         results: list[EmbeddingRecord] = []
         aggregate_errors: list[ErrorDetail] = []
-        for item in items:
+        for item in vector_batch.items:
             item_result = self.upsert_embedding_vector(
                 meta=meta,
                 chunk_id=item.chunk_id,
@@ -497,12 +511,17 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     )
     def delete_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Envelope[bool]:
         """Hard-delete one chunk and best-effort delete derived index points."""
-        errors = self._collect_errors(meta=meta, required_ulids={"chunk_id": chunk_id})
+        chunk_request, errors = self._validate_request(
+            meta=meta,
+            model=ChunkIdRequest,
+            payload={"chunk_id": chunk_id},
+        )
         if errors:
             return failure(meta=meta, errors=errors, payload=False)
+        assert chunk_request is not None
 
         try:
-            deleted = self._repository.delete_chunk(chunk_id=chunk_id)
+            deleted = self._repository.delete_chunk(chunk_id=chunk_request.chunk_id)
             if not deleted:
                 return self._not_found_failure(
                     meta=meta,
@@ -512,7 +531,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
 
             for spec_id in self._repository.list_spec_ids():
                 self._delete_derived_point_best_effort(
-                    spec_id=spec_id, chunk_id=chunk_id
+                    spec_id=spec_id, chunk_id=chunk_request.chunk_id
                 )
             return success(meta=meta, payload=True)
         except Exception as exc:  # noqa: BLE001
@@ -525,15 +544,20 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     )
     def delete_source(self, *, meta: EnvelopeMeta, source_id: str) -> Envelope[bool]:
         """Hard-delete one source and all owned chunk/embedding rows."""
-        errors = self._collect_errors(
-            meta=meta, required_ulids={"source_id": source_id}
+        source_request, errors = self._validate_request(
+            meta=meta,
+            model=SourceIdRequest,
+            payload={"source_id": source_id},
         )
         if errors:
             return failure(meta=meta, errors=errors, payload=False)
+        assert source_request is not None
 
         try:
-            chunk_ids = self._repository.list_chunk_ids_for_source(source_id=source_id)
-            deleted = self._repository.delete_source(source_id=source_id)
+            chunk_ids = self._repository.list_chunk_ids_for_source(
+                source_id=source_request.source_id
+            )
+            deleted = self._repository.delete_source(source_id=source_request.source_id)
             if not deleted:
                 return self._not_found_failure(
                     meta=meta,
@@ -560,14 +584,17 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         self, *, meta: EnvelopeMeta, source_id: str
     ) -> Envelope[SourceRecord]:
         """Read one source by id."""
-        errors = self._collect_errors(
-            meta=meta, required_ulids={"source_id": source_id}
+        source_request, errors = self._validate_request(
+            meta=meta,
+            model=SourceIdRequest,
+            payload={"source_id": source_id},
         )
         if errors:
             return failure(meta=meta, errors=errors)
+        assert source_request is not None
 
         try:
-            record = self._repository.get_source(source_id=source_id)
+            record = self._repository.get_source(source_id=source_request.source_id)
             if record is None:
                 return self._not_found_failure(meta=meta, message="source not found")
             return success(meta=meta, payload=record)
@@ -613,12 +640,17 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     )
     def get_chunk(self, *, meta: EnvelopeMeta, chunk_id: str) -> Envelope[ChunkRecord]:
         """Read one chunk by id."""
-        errors = self._collect_errors(meta=meta, required_ulids={"chunk_id": chunk_id})
+        chunk_request, errors = self._validate_request(
+            meta=meta,
+            model=ChunkIdRequest,
+            payload={"chunk_id": chunk_id},
+        )
         if errors:
             return failure(meta=meta, errors=errors)
+        assert chunk_request is not None
 
         try:
-            record = self._repository.get_chunk(chunk_id=chunk_id)
+            record = self._repository.get_chunk(chunk_id=chunk_request.chunk_id)
             if record is None:
                 return self._not_found_failure(meta=meta, message="chunk not found")
             return success(meta=meta, payload=record)
@@ -638,15 +670,18 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         limit: int,
     ) -> Envelope[list[ChunkRecord]]:
         """List chunk rows for one source."""
-        errors = self._collect_errors(
-            meta=meta, required_ulids={"source_id": source_id}
+        source_request, errors = self._validate_request(
+            meta=meta,
+            model=SourceIdRequest,
+            payload={"source_id": source_id},
         )
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
+        assert source_request is not None
 
         try:
             records = self._repository.list_chunks_by_source(
-                source_id=source_id,
+                source_id=source_request.source_id,
                 limit=self._clamp_limit(limit),
             )
             return success(meta=meta, payload=records)
@@ -666,15 +701,16 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         spec_id: str = "",
     ) -> Envelope[EmbeddingRecord]:
         """Read one embedding row."""
-        errors = self._collect_errors(
+        embedding_request, errors = self._validate_request(
             meta=meta,
-            required_ulids={"chunk_id": chunk_id},
-            optional_ulids={"spec_id": spec_id},
+            model=GetEmbeddingRequest,
+            payload={"chunk_id": chunk_id, "spec_id": spec_id},
         )
         if errors:
             return failure(meta=meta, errors=errors)
+        assert embedding_request is not None
 
-        spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
+        spec_result = self._resolve_spec(meta=meta, spec_id=embedding_request.spec_id)
         if spec_result.errors:
             return failure(meta=meta, errors=spec_result.errors)
         spec_payload = spec_result.payload
@@ -683,7 +719,9 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             return self._not_found_failure(meta=meta, message="spec not found")
 
         try:
-            record = self._repository.get_embedding(chunk_id=chunk_id, spec_id=spec.id)
+            record = self._repository.get_embedding(
+                chunk_id=embedding_request.chunk_id, spec_id=spec.id
+            )
             if record is None:
                 return self._not_found_failure(meta=meta, message="embedding not found")
             return success(meta=meta, payload=record)
@@ -704,18 +742,19 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         limit: int,
     ) -> Envelope[list[EmbeddingRecord]]:
         """List embedding rows for one source."""
-        errors = self._collect_errors(
+        list_request, errors = self._validate_request(
             meta=meta,
-            required_ulids={"source_id": source_id},
-            optional_ulids={"spec_id": spec_id},
+            model=ListEmbeddingsBySourceRequest,
+            payload={"source_id": source_id, "spec_id": spec_id},
         )
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
+        assert list_request is not None
 
         try:
             records = self._repository.list_embeddings_by_source(
-                source_id=source_id,
-                spec_id=spec_id,
+                source_id=list_request.source_id,
+                spec_id=list_request.spec_id,
                 limit=self._clamp_limit(limit),
             )
             return success(meta=meta, payload=records)
@@ -736,17 +775,19 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         limit: int,
     ) -> Envelope[list[EmbeddingRecord]]:
         """List embedding rows by status."""
-        errors = self._collect_errors(
+        status_request, errors = self._validate_request(
             meta=meta,
-            optional_ulids={"spec_id": spec_id},
+            model=ListEmbeddingsByStatusRequest,
+            payload={"spec_id": spec_id},
         )
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
+        assert status_request is not None
 
         try:
             records = self._repository.list_embeddings_by_status(
                 status=status,
-                spec_id=spec_id,
+                spec_id=status_request.spec_id,
                 limit=self._clamp_limit(limit),
             )
             return success(meta=meta, payload=records)
@@ -768,23 +809,20 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         limit: int,
     ) -> Envelope[list[SearchEmbeddingMatch]]:
         """Search derived embeddings by semantic similarity."""
-        errors = self._collect_errors(
+        search_request, errors = self._validate_request(
             meta=meta,
-            optional_ulids={
+            model=SearchEmbeddingsRequest,
+            payload={
+                "query_vector": query_vector,
                 "source_id": source_id,
                 "spec_id": spec_id,
             },
         )
-        if not query_vector:
-            errors.append(
-                validation_error(
-                    "query_vector is required", code=codes.MISSING_REQUIRED_FIELD
-                )
-            )
         if errors:
             return failure(meta=meta, errors=errors, payload=[])
+        assert search_request is not None
 
-        spec_result = self._resolve_spec(meta=meta, spec_id=spec_id)
+        spec_result = self._resolve_spec(meta=meta, spec_id=search_request.spec_id)
         if spec_result.errors:
             return failure(meta=meta, errors=spec_result.errors, payload=[])
         spec_payload = spec_result.payload
@@ -794,7 +832,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 meta=meta, message="spec not found", payload=[]
             )
 
-        vector = tuple(float(value) for value in query_vector)
+        vector = tuple(float(value) for value in search_request.query_vector)
         if len(vector) != spec.dimensions:
             return failure(
                 meta=meta,
@@ -810,7 +848,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
         try:
             hits = self._index_backend.search_points(
                 spec_id=spec.id,
-                source_id=source_id,
+                source_id=search_request.source_id,
                 query_vector=vector,
                 limit=self._clamp_limit(limit),
             )
@@ -841,7 +879,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             _LOGGER.warning(
                 "Search operation failed: spec_id=%s source_id=%s exception_type=%s",
                 spec.id,
-                source_id,
+                search_request.source_id,
                 type(exc).__name__,
                 exc_info=exc,
             )
@@ -903,12 +941,17 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
     )
     def get_spec(self, *, meta: EnvelopeMeta, spec_id: str) -> Envelope[EmbeddingSpec]:
         """Read one embedding spec by id."""
-        errors = self._collect_errors(meta=meta, required_ulids={"spec_id": spec_id})
+        spec_request, errors = self._validate_request(
+            meta=meta,
+            model=SpecIdRequest,
+            payload={"spec_id": spec_id},
+        )
         if errors:
             return failure(meta=meta, errors=errors)
+        assert spec_request is not None
 
         try:
-            row = self._repository.get_spec(spec_id=spec_id)
+            row = self._repository.get_spec(spec_id=spec_request.spec_id)
             if row is None:
                 return self._not_found_failure(meta=meta, message="spec not found")
             return success(meta=meta, payload=row)
@@ -963,57 +1006,42 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             return min(100, self._settings.max_list_limit)
         return min(limit, self._settings.max_list_limit)
 
-    def _validate_ulid(self, *, value: str, field_name: str) -> ErrorDetail | None:
-        """Validate ULID string fields and return a typed validation error."""
-        try:
-            ulid_str_to_bytes(value)
-        except ValueError:
-            return validation_error(
-                f"{field_name} must be a valid ULID string",
-                code=codes.INVALID_ARGUMENT,
-            )
-        return None
-
-    def _collect_errors(
+    def _validate_request(
         self,
         *,
         meta: EnvelopeMeta,
-        required_fields: Mapping[str, str] | None = None,
-        required_ulids: Mapping[str, str] | None = None,
-        optional_ulids: Mapping[str, str] | None = None,
-    ) -> list[ErrorDetail]:
-        """Collect and return validation errors for common request shapes."""
+        model: type[BaseModel],
+        payload: Mapping[str, object],
+    ) -> tuple[BaseModel | None, list[ErrorDetail]]:
+        """Validate envelope metadata and one request payload model."""
         errors = self._validate_meta(meta)
-        if required_fields:
-            for field_name, value in required_fields.items():
-                if not value:
-                    errors.append(
-                        validation_error(
-                            f"{field_name} is required",
-                            code=codes.MISSING_REQUIRED_FIELD,
-                        )
-                    )
-        if required_ulids:
-            for field_name, value in required_ulids.items():
-                if not value:
-                    errors.append(
-                        validation_error(
-                            f"{field_name} is required",
-                            code=codes.MISSING_REQUIRED_FIELD,
-                        )
-                    )
-                    continue
-                ulid_error = self._validate_ulid(value=value, field_name=field_name)
-                if ulid_error is not None:
-                    errors.append(ulid_error)
-        if optional_ulids:
-            for field_name, value in optional_ulids.items():
-                if not value:
-                    continue
-                ulid_error = self._validate_ulid(value=value, field_name=field_name)
-                if ulid_error is not None:
-                    errors.append(ulid_error)
-        return errors
+        if errors:
+            return None, errors
+        try:
+            return model.model_validate(payload), []
+        except ValidationError as exc:
+            return None, self._validation_errors(exc)
+
+    def _validation_errors(self, exc: ValidationError) -> list[ErrorDetail]:
+        """Normalize Pydantic validation failures to typed domain errors."""
+        normalized: list[ErrorDetail] = []
+        for item in exc.errors():
+            message = str(item.get("msg", "invalid request"))
+            normalized.append(
+                validation_error(
+                    message,
+                    code=self._validation_code_for_message(message),
+                )
+            )
+        return normalized
+
+    def _validation_code_for_message(self, message: str) -> str:
+        """Map one validation message to a stable public error code."""
+        if message.endswith("is required"):
+            return codes.MISSING_REQUIRED_FIELD
+        if message.endswith("must not be empty"):
+            return codes.MISSING_REQUIRED_FIELD
+        return codes.INVALID_ARGUMENT
 
     def _not_found_failure(
         self,

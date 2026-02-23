@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Mapping, Protocol, Sequence
 
+from pydantic import BaseModel, ConfigDict
 
-@dataclass(frozen=True)
-class RetrievedPoint:
+
+class RetrievedPoint(BaseModel):
     """Retrieved Qdrant point data."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     vector: tuple[float, ...]
     payload: Mapping[str, object]
 
 
-@dataclass(frozen=True)
-class SearchPoint:
+class SearchPoint(BaseModel):
     """Qdrant search result with score and payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     score: float
     payload: Mapping[str, object]

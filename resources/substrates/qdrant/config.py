@@ -2,32 +2,34 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
+from pydantic import BaseModel, ConfigDict, model_validator
 from packages.brain_shared.embeddings import (
     SUPPORTED_DISTANCE_METRICS,
     SUPPORTED_DISTANCE_METRICS_TEXT,
 )
 
 
-@dataclass(frozen=True)
-class QdrantConfig:
+class QdrantConfig(BaseModel):
     """Runtime configuration required for Qdrant substrate access."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     url: str
     timeout_seconds: float
     collection_name: str
     distance_metric: str
 
-    def validate(self) -> None:
+    @model_validator(mode="after")
+    def _validate_fields(self) -> "QdrantConfig":
         """Validate required Qdrant substrate configuration invariants."""
-        if not self.url:
+        if self.url.strip() == "":
             raise ValueError("qdrant.url is required")
         if self.timeout_seconds <= 0:
             raise ValueError("qdrant.timeout_seconds must be > 0")
-        if not self.collection_name:
+        if self.collection_name.strip() == "":
             raise ValueError("qdrant.collection_name is required")
         if self.distance_metric not in SUPPORTED_DISTANCE_METRICS:
             raise ValueError(
                 f"qdrant.distance_metric must be one of: {SUPPORTED_DISTANCE_METRICS_TEXT}"
             )
+        return self

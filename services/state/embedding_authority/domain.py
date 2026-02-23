@@ -5,10 +5,11 @@ These are transport-agnostic types used by east-west in-process callers.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Mapping, Sequence
+
+from pydantic import BaseModel, ConfigDict
 
 
 class EmbeddingStatus(StrEnum):
@@ -19,9 +20,10 @@ class EmbeddingStatus(StrEnum):
     FAILED = "failed"
 
 
-@dataclass(frozen=True)
-class EmbeddingSpec:
+class EmbeddingSpec(BaseModel):
     """Authoritative embedding specification row."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: str
     provider: str
@@ -34,9 +36,10 @@ class EmbeddingSpec:
     updated_at: datetime
 
 
-@dataclass(frozen=True)
-class SourceRecord:
+class SourceRecord(BaseModel):
     """Authoritative source row owned by EAS."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: str
     source_type: str
@@ -48,9 +51,10 @@ class SourceRecord:
     updated_at: datetime
 
 
-@dataclass(frozen=True)
-class ChunkRecord:
+class ChunkRecord(BaseModel):
     """Authoritative logical chunk row owned by EAS."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: str
     source_id: str
@@ -63,9 +67,10 @@ class ChunkRecord:
     updated_at: datetime
 
 
-@dataclass(frozen=True)
-class EmbeddingRecord:
+class EmbeddingRecord(BaseModel):
     """Authoritative embedding materialization state for (chunk_id, spec_id)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     chunk_id: str
     spec_id: str
@@ -76,9 +81,10 @@ class EmbeddingRecord:
     updated_at: datetime
 
 
-@dataclass(frozen=True)
-class SearchEmbeddingMatch:
+class SearchEmbeddingMatch(BaseModel):
     """Derived semantic-search match returned by EAS query operations."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     score: float
     chunk_id: str
@@ -89,9 +95,10 @@ class SearchEmbeddingMatch:
     content_hash: str
 
 
-@dataclass(frozen=True)
-class UpsertChunkInput:
+class UpsertChunkInput(BaseModel):
     """Input payload for one chunk upsert request."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     source_id: str
     chunk_ordinal: int
@@ -101,9 +108,10 @@ class UpsertChunkInput:
     metadata: Mapping[str, str]
 
 
-@dataclass(frozen=True)
-class UpsertEmbeddingVectorInput:
+class UpsertEmbeddingVectorInput(BaseModel):
     """Input payload for one vector upsert request."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     chunk_id: str
     spec_id: str
