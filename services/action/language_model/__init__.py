@@ -16,7 +16,7 @@ from services.action.language_model.domain import (
 )
 from services.action.language_model.implementation import DefaultLanguageModelService
 from services.action.language_model.service import LanguageModelService
-from services.action.language_model.validation import ModelProfile
+from services.action.language_model.validation import EmbeddingProfile, ReasoningLevel
 
 __all__ = [
     "ChatResponse",
@@ -28,11 +28,12 @@ __all__ = [
     "ErrorCategory",
     "ErrorDetail",
     "HealthStatus",
+    "EmbeddingProfile",
     "LanguageModelOptionalProfileSettings",
     "LanguageModelProfileSettings",
     "LanguageModelService",
     "LanguageModelServiceSettings",
     "MANIFEST",
-    "ModelProfile",
+    "ReasoningLevel",
     "resolve_language_model_service_settings",
 ]

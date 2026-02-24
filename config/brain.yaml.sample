@@ -64,10 +64,13 @@ components:
     embedding:
       provider: ollama
       model: mxbai-embed-large
-    chat_default:
+    quick:
+      provider: ""
+      model: ""
+    standard:
       provider: ollama
       model: gpt-oss
-    chat_advanced:
+    deep:
       provider: ""
       model: ""
 

@@ -38,7 +38,7 @@ BRAIN_COMPONENTS__SERVICE_EMBEDDING_AUTHORITY__MAX_LIST_LIMIT=1000
 BRAIN_COMPONENTS__SERVICE_CACHE_AUTHORITY__DEFAULT_TTL_SECONDS=600
 BRAIN_COMPONENTS__SERVICE_OBJECT_AUTHORITY__MAX_BLOB_SIZE_BYTES=10485760
 BRAIN_COMPONENTS__ADAPTER_LITELLM__BASE_URL=http://litellm:4000
-BRAIN_COMPONENTS__SERVICE_LANGUAGE_MODEL__CHAT_DEFAULT__MODEL=gpt-oss
+BRAIN_COMPONENTS__SERVICE_LANGUAGE_MODEL__STANDARD__MODEL=gpt-oss
 ```
 
 ------------------------------------------------------------------------
@@ -171,10 +171,12 @@ Language Model Service profile settings.
 |---|---|---|
 | `embedding.provider` | `ollama` | Provider used for embedding generation requests. |
 | `embedding.model` | `mxbai-embed-large` | Model identifier used for embedding generation requests. |
-| `chat_default.provider` | `ollama` | Default provider used for chat requests. |
-| `chat_default.model` | `gpt-oss` | Default model identifier used for chat requests. |
-| `chat_advanced.provider` | `""` | Optional advanced provider override; falls back to `chat_default.provider` when unset. |
-| `chat_advanced.model` | `""` | Optional advanced model override; falls back to `chat_default.model` when unset. |
+| `quick.provider` | `""` | Optional quick provider override; falls back to `standard.provider` when unset/blank. |
+| `quick.model` | `""` | Optional quick model override; falls back to `standard.model` when unset/blank. |
+| `standard.provider` | _(required)_ | Required provider used for standard chat requests and fallback resolution. |
+| `standard.model` | _(required)_ | Required model identifier used for standard chat requests and fallback resolution. |
+| `deep.provider` | `""` | Optional deep provider override; falls back to `standard.provider` when unset/blank. |
+| `deep.model` | `""` | Optional deep model override; falls back to `standard.model` when unset/blank. |
 
 ------------------------------------------------------------------------
 ## `observability`

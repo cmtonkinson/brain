@@ -8,12 +8,18 @@ from typing import Sequence
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
 
 
-class ModelProfile(StrEnum):
-    """Supported LMS model-profile selectors."""
+class ReasoningLevel(StrEnum):
+    """Supported chat reasoning selectors."""
+
+    QUICK = "quick"
+    STANDARD = "standard"
+    DEEP = "deep"
+
+
+class EmbeddingProfile(StrEnum):
+    """Supported embedding profile selectors."""
 
     EMBEDDING = "embedding"
-    CHAT_DEFAULT = "chat_default"
-    CHAT_ADVANCED = "chat_advanced"
 
 
 class _ValidationModel(BaseModel):
@@ -47,7 +53,7 @@ class ChatRequest(_ValidationModel):
     """Validated request shape for single chat generation."""
 
     prompt: str
-    profile: ModelProfile
+    profile: ReasoningLevel
 
     @field_validator("prompt")
     @classmethod
@@ -55,20 +61,12 @@ class ChatRequest(_ValidationModel):
         """Validate one non-empty prompt."""
         return _require_text(value, field_name=info.field_name)
 
-    @field_validator("profile")
-    @classmethod
-    def _validate_profile(cls, value: ModelProfile) -> ModelProfile:
-        """Restrict chat operation to chat-capable profiles."""
-        if value not in {ModelProfile.CHAT_DEFAULT, ModelProfile.CHAT_ADVANCED}:
-            raise ValueError("profile must be chat_default or chat_advanced")
-        return value
-
 
 class ChatBatchRequest(_ValidationModel):
     """Validated request shape for batch chat generation."""
 
     prompts: tuple[str, ...]
-    profile: ModelProfile
+    profile: ReasoningLevel
 
     @field_validator("prompts")
     @classmethod
@@ -78,20 +76,12 @@ class ChatBatchRequest(_ValidationModel):
         """Validate one non-empty prompt list."""
         return _require_text_items(value, field_name=info.field_name)
 
-    @field_validator("profile")
-    @classmethod
-    def _validate_profile(cls, value: ModelProfile) -> ModelProfile:
-        """Restrict chat batch operation to chat-capable profiles."""
-        if value not in {ModelProfile.CHAT_DEFAULT, ModelProfile.CHAT_ADVANCED}:
-            raise ValueError("profile must be chat_default or chat_advanced")
-        return value
-
 
 class EmbedRequest(_ValidationModel):
     """Validated request shape for single embedding generation."""
 
     text: str
-    profile: ModelProfile
+    profile: EmbeddingProfile
 
     @field_validator("text")
     @classmethod
@@ -101,9 +91,9 @@ class EmbedRequest(_ValidationModel):
 
     @field_validator("profile")
     @classmethod
-    def _validate_profile(cls, value: ModelProfile) -> ModelProfile:
+    def _validate_profile(cls, value: EmbeddingProfile) -> EmbeddingProfile:
         """Restrict single embed operation to embedding profile."""
-        if value is not ModelProfile.EMBEDDING:
+        if value is not EmbeddingProfile.EMBEDDING:
             raise ValueError("profile must be embedding")
         return value
 
@@ -112,7 +102,7 @@ class EmbedBatchRequest(_ValidationModel):
     """Validated request shape for batch embedding generation."""
 
     texts: tuple[str, ...]
-    profile: ModelProfile
+    profile: EmbeddingProfile
 
     @field_validator("texts")
     @classmethod
@@ -124,8 +114,8 @@ class EmbedBatchRequest(_ValidationModel):
 
     @field_validator("profile")
     @classmethod
-    def _validate_profile(cls, value: ModelProfile) -> ModelProfile:
+    def _validate_profile(cls, value: EmbeddingProfile) -> EmbeddingProfile:
         """Restrict batch embed operation to embedding profile."""
-        if value is not ModelProfile.EMBEDDING:
+        if value is not EmbeddingProfile.EMBEDDING:
             raise ValueError("profile must be embedding")
         return value

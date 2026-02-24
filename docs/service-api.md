@@ -6,19 +6,19 @@ _This document is generated from `services/*/*/service.py`. Do not edit by hand.
 - Module: `services/action/language_model/service.py`
 - Summary: Public API for chat and embedding operations.
 
-`chat(*, meta: EnvelopeMeta, prompt: str, profile: ModelProfile = ModelProfile.CHAT_DEFAULT) -> Envelope[ChatResponse]`  
+`chat(*, meta: EnvelopeMeta, prompt: str, profile: ReasoningLevel = ReasoningLevel.STANDARD) -> Envelope[ChatResponse]`  
 _Generate one chat completion._
 
-`embed(*, meta: EnvelopeMeta, text: str, profile: ModelProfile = ModelProfile.EMBEDDING) -> Envelope[EmbeddingVector]`  
+`embed(*, meta: EnvelopeMeta, text: str, profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING) -> Envelope[EmbeddingVector]`  
 _Generate one embedding vector._
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
 _Return LMS and adapter health state._
 
-`chat_batch(*, meta: EnvelopeMeta, prompts: Sequence[str], profile: ModelProfile = ModelProfile.CHAT_DEFAULT) -> Envelope[list[ChatResponse]]`  
+`chat_batch(*, meta: EnvelopeMeta, prompts: Sequence[str], profile: ReasoningLevel = ReasoningLevel.STANDARD) -> Envelope[list[ChatResponse]]`  
 _Generate a batch of chat completions._
 
-`embed_batch(*, meta: EnvelopeMeta, texts: Sequence[str], profile: ModelProfile = ModelProfile.EMBEDDING) -> Envelope[list[EmbeddingVector]]`  
+`embed_batch(*, meta: EnvelopeMeta, texts: Sequence[str], profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING) -> Envelope[list[EmbeddingVector]]`  
 _Generate a batch of embedding vectors._
 
 ------------------------------------------------------------------------

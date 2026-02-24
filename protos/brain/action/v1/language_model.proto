@@ -12,11 +12,16 @@ service LanguageModelService {
   rpc Health(HealthRequest) returns (HealthResponse);
 }
 
-enum ModelProfile {
-  MODEL_PROFILE_UNSPECIFIED   = 0;
-  MODEL_PROFILE_EMBEDDING     = 1;
-  MODEL_PROFILE_CHAT_DEFAULT  = 2;
-  MODEL_PROFILE_CHAT_ADVANCED = 3;
+enum ReasoningLevel {
+  REASONING_LEVEL_UNSPECIFIED = 0;
+  REASONING_LEVEL_QUICK       = 1;
+  REASONING_LEVEL_STANDARD    = 2;
+  REASONING_LEVEL_DEEP        = 3;
+}
+
+enum EmbeddingProfile {
+  EMBEDDING_PROFILE_UNSPECIFIED = 0;
+  EMBEDDING_PROFILE_EMBEDDING   = 1;
 }
 
 message ChatResult {
@@ -38,8 +43,8 @@ message HealthStatus {
 }
 
 message ChatPayload {
-  string prompt        = 1;
-  ModelProfile profile = 2;
+  string prompt          = 1;
+  ReasoningLevel profile = 2;
 }
 
 message ChatRequest {
@@ -54,8 +59,8 @@ message ChatResponse {
 }
 
 message ChatBatchPayload {
-  repeated string prompts = 1;
-  ModelProfile profile    = 2;
+  repeated string prompts   = 1;
+  ReasoningLevel profile    = 2;
 }
 
 message ChatBatchRequest {
@@ -70,8 +75,8 @@ message ChatBatchResponse {
 }
 
 message EmbedPayload {
-  string text          = 1;
-  ModelProfile profile = 2;
+  string text               = 1;
+  EmbeddingProfile profile  = 2;
 }
 
 message EmbedRequest {
@@ -86,8 +91,8 @@ message EmbedResponse {
 }
 
 message EmbedBatchPayload {
-  repeated string texts = 1;
-  ModelProfile profile  = 2;
+  repeated string texts      = 1;
+  EmbeddingProfile profile   = 2;
 }
 
 message EmbedBatchRequest {

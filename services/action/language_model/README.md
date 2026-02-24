@@ -43,8 +43,8 @@ Primary system interactions:
 ## Operational Flow (High Level)
 1. LMS receives envelope metadata plus typed request parameters.
 2. LMS validates metadata and request shape using Pydantic request models.
-3. LMS resolves one model profile (`embedding`, `chat_default`,
-   `chat_advanced`) with fallback from `chat_advanced` to `chat_default`.
+3. LMS resolves one model profile (`embedding`, `quick`, `standard`, `deep`)
+   with fallback from `quick`/`deep` to `standard`.
 4. LMS dispatches to the LiteLLM adapter resource.
 5. LMS returns typed envelope payloads (`ChatResponse`, `EmbeddingVector`,
    `HealthStatus`) or structured errors.
@@ -63,10 +63,12 @@ Primary system interactions:
 Service settings are sourced from `components.service_language_model`:
 - `embedding.provider`
 - `embedding.model`
-- `chat_default.provider`
-- `chat_default.model`
-- `chat_advanced.provider`
-- `chat_advanced.model`
+- `quick.provider`
+- `quick.model`
+- `standard.provider`
+- `standard.model`
+- `deep.provider`
+- `deep.model`
 
 Adapter settings are sourced from `components.adapter_litellm`.
 

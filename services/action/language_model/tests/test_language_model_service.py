@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
+import pytest
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from resources.adapters.litellm import (
     AdapterChatResult,
@@ -15,12 +17,12 @@ from resources.adapters.litellm import (
     LiteLlmAdapter,
 )
 from services.action.language_model.config import (
-    LanguageModelOptionalProfileSettings,
     LanguageModelProfileSettings,
     LanguageModelServiceSettings,
+    resolve_language_model_service_settings,
 )
 from services.action.language_model.implementation import DefaultLanguageModelService
-from services.action.language_model.validation import ModelProfile
+from services.action.language_model.validation import EmbeddingProfile, ReasoningLevel
 
 
 @dataclass
@@ -137,11 +139,9 @@ def _settings() -> LanguageModelServiceSettings:
     """Build deterministic service settings for tests."""
     return LanguageModelServiceSettings(
         embedding=LanguageModelProfileSettings(provider="ollama", model="embed-a"),
-        chat_default=LanguageModelProfileSettings(provider="ollama", model="chat-a"),
-        chat_advanced=LanguageModelOptionalProfileSettings(
-            provider="openai",
-            model="chat-b",
-        ),
+        quick=LanguageModelProfileSettings(provider="openai", model="chat-q"),
+        standard=LanguageModelProfileSettings(provider="ollama", model="chat-a"),
+        deep=LanguageModelProfileSettings(provider="openai", model="chat-d"),
     )
 
 
@@ -151,7 +151,7 @@ def _meta() -> object:
 
 
 def test_chat_uses_default_profile_by_default() -> None:
-    """Single chat should use chat_default profile when no override is provided."""
+    """Single chat should use standard reasoning level by default."""
     adapter = _FakeAdapter()
     service = DefaultLanguageModelService(settings=_settings(), adapter=adapter)
 
@@ -166,42 +166,33 @@ def test_chat_uses_default_profile_by_default() -> None:
     ]
 
 
-def test_chat_advanced_uses_advanced_profile_when_set() -> None:
-    """Advanced chat should use configured chat_advanced profile."""
+def test_chat_deep_uses_deep_profile_when_set() -> None:
+    """Deep chat should use configured deep profile."""
     adapter = _FakeAdapter()
     service = DefaultLanguageModelService(settings=_settings(), adapter=adapter)
 
     result = service.chat(
         meta=_meta(),
         prompt="hello",
-        profile=ModelProfile.CHAT_ADVANCED,
+        profile=ReasoningLevel.DEEP,
     )
 
     assert result.ok is True
     assert adapter.chat_calls == [
-        _ChatCall(provider="openai", model="chat-b", prompt="hello")
+        _ChatCall(provider="openai", model="chat-d", prompt="hello")
     ]
 
 
-def test_chat_advanced_falls_back_to_default_when_unset() -> None:
-    """Advanced chat should fall back to chat_default for unset fields."""
+def test_chat_quick_uses_quick_profile_when_set() -> None:
+    """Quick chat should use configured quick profile."""
     adapter = _FakeAdapter()
-    settings = _settings().model_copy(
-        update={
-            "chat_advanced": LanguageModelOptionalProfileSettings(provider="", model="")
-        }
-    )
-    service = DefaultLanguageModelService(settings=settings, adapter=adapter)
+    service = DefaultLanguageModelService(settings=_settings(), adapter=adapter)
 
-    result = service.chat(
-        meta=_meta(),
-        prompt="hello",
-        profile=ModelProfile.CHAT_ADVANCED,
-    )
+    result = service.chat(meta=_meta(), prompt="hello", profile=ReasoningLevel.QUICK)
 
     assert result.ok is True
     assert adapter.chat_calls == [
-        _ChatCall(provider="ollama", model="chat-a", prompt="hello")
+        _ChatCall(provider="openai", model="chat-q", prompt="hello")
     ]
 
 
@@ -258,33 +249,84 @@ def test_embed_rejects_non_embedding_profile() -> None:
     result = service.embed(
         meta=_meta(),
         text="hello",
-        profile=ModelProfile.CHAT_DEFAULT,
+        profile=ReasoningLevel.STANDARD,  # type: ignore[arg-type]
     )
 
     assert result.ok is False
     assert len(result.errors) == 1
-    assert result.errors[0].message == "profile: Value error, profile must be embedding"
+    assert result.errors[0].message == "profile: Input should be 'embedding'"
     assert adapter.embed_calls == []
 
 
 def test_chat_rejects_embedding_profile() -> None:
-    """Chat operation should enforce chat-capable profile selector."""
+    """Chat operation should reject embedding profile selector."""
     adapter = _FakeAdapter()
     service = DefaultLanguageModelService(settings=_settings(), adapter=adapter)
 
     result = service.chat(
         meta=_meta(),
         prompt="hello",
-        profile=ModelProfile.EMBEDDING,
+        profile=EmbeddingProfile.EMBEDDING,  # type: ignore[arg-type]
     )
 
     assert result.ok is False
     assert len(result.errors) == 1
     assert (
         result.errors[0].message
-        == "profile: Value error, profile must be chat_default or chat_advanced"
+        == "profile: Input should be 'quick', 'standard' or 'deep'"
     )
     assert adapter.chat_calls == []
+
+
+def test_resolve_settings_quick_falls_back_to_standard_when_unset() -> None:
+    """Config resolver should map empty quick profile fields to standard."""
+    settings = BrainSettings(
+        components={
+            "service_language_model": {
+                "embedding": {"provider": "ollama", "model": "embed-a"},
+                "standard": {"provider": "ollama", "model": "chat-a"},
+                "quick": {"provider": "", "model": ""},
+            }
+        }
+    )
+
+    resolved = resolve_language_model_service_settings(settings)
+
+    assert resolved.quick.provider == "ollama"
+    assert resolved.quick.model == "chat-a"
+
+
+def test_resolve_settings_deep_falls_back_to_standard_when_unset() -> None:
+    """Config resolver should map empty deep profile fields to standard."""
+    settings = BrainSettings(
+        components={
+            "service_language_model": {
+                "embedding": {"provider": "ollama", "model": "embed-a"},
+                "standard": {"provider": "ollama", "model": "chat-a"},
+                "deep": {"provider": "", "model": ""},
+            }
+        }
+    )
+
+    resolved = resolve_language_model_service_settings(settings)
+
+    assert resolved.deep.provider == "ollama"
+    assert resolved.deep.model == "chat-a"
+
+
+def test_resolve_settings_requires_standard_profile() -> None:
+    """Config resolver should fail when standard profile is missing."""
+    settings = BrainSettings(
+        components={
+            "service_language_model": {
+                "embedding": {"provider": "ollama", "model": "embed-a"},
+            }
+        }
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        resolve_language_model_service_settings(settings)
+    assert "standard" in str(exc_info.value)
 
 
 def test_chat_batch_rejects_empty_prompts() -> None:

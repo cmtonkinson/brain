@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from packages.brain_shared.config import BrainSettings, resolve_component_settings
 from services.action.language_model.component import SERVICE_COMPONENT_ID
@@ -27,7 +27,7 @@ class LanguageModelOptionalProfileSettings(BaseModel):
 
 
 class LanguageModelServiceSettings(BaseModel):
-    """Service settings defining chat and embedding model profiles."""
+    """Resolved service settings defining chat and embedding model profiles."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -35,21 +35,57 @@ class LanguageModelServiceSettings(BaseModel):
         provider="ollama",
         model="mxbai-embed-large",
     )
-    chat_default: LanguageModelProfileSettings = LanguageModelProfileSettings(
+    quick: LanguageModelProfileSettings
+    standard: LanguageModelProfileSettings
+    deep: LanguageModelProfileSettings
+
+
+class _LanguageModelServiceSettingsInput(BaseModel):
+    """Raw config shape supporting optional fallback-enabled reasoning levels."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
         provider="ollama",
-        model="gpt-oss",
+        model="mxbai-embed-large",
     )
-    chat_advanced: LanguageModelOptionalProfileSettings = (
-        LanguageModelOptionalProfileSettings()
-    )
+    quick: LanguageModelOptionalProfileSettings = LanguageModelOptionalProfileSettings()
+    standard: LanguageModelProfileSettings = Field(...)
+    deep: LanguageModelOptionalProfileSettings = LanguageModelOptionalProfileSettings()
 
 
 def resolve_language_model_service_settings(
     settings: BrainSettings,
 ) -> LanguageModelServiceSettings:
     """Resolve service settings from ``components.service_language_model``."""
-    return resolve_component_settings(
+    raw = resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),
-        model=LanguageModelServiceSettings,
+        model=_LanguageModelServiceSettingsInput,
+    )
+    return LanguageModelServiceSettings(
+        embedding=raw.embedding,
+        quick=_resolve_chat_fallback(
+            candidate=raw.quick,
+            fallback=raw.standard,
+        ),
+        standard=raw.standard,
+        deep=_resolve_chat_fallback(
+            candidate=raw.deep,
+            fallback=raw.standard,
+        ),
+    )
+
+
+def _resolve_chat_fallback(
+    *,
+    candidate: LanguageModelOptionalProfileSettings,
+    fallback: LanguageModelProfileSettings,
+) -> LanguageModelProfileSettings:
+    """Resolve one optional chat profile with per-field fallback to standard."""
+    provider = candidate.provider.strip()
+    model = candidate.model.strip()
+    return LanguageModelProfileSettings(
+        provider=provider if provider != "" else fallback.provider,
+        model=model if model != "" else fallback.model,
     )

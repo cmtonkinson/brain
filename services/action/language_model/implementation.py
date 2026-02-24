@@ -44,9 +44,10 @@ from services.action.language_model.service import LanguageModelService
 from services.action.language_model.validation import (
     ChatBatchRequest,
     ChatRequest,
+    EmbeddingProfile,
     EmbedBatchRequest,
     EmbedRequest,
-    ModelProfile,
+    ReasoningLevel,
 )
 
 _LOGGER = get_logger(__name__)
@@ -91,7 +92,7 @@ class DefaultLanguageModelService(LanguageModelService):
         *,
         meta: EnvelopeMeta,
         prompt: str,
-        profile: ModelProfile = ModelProfile.CHAT_DEFAULT,
+        profile: ReasoningLevel = ReasoningLevel.STANDARD,
     ) -> Envelope[ChatResponse]:
         """Generate one chat completion using resolved model profile."""
         request, errors = self._validate_request(
@@ -103,7 +104,7 @@ class DefaultLanguageModelService(LanguageModelService):
             return failure(meta=meta, errors=errors)
         assert request is not None
 
-        resolved = self._resolve_profile(profile=request.profile)
+        resolved = self._resolve_chat_profile(profile=request.profile)
         try:
             result = self._adapter.chat(
                 provider=resolved.provider,
@@ -151,7 +152,7 @@ class DefaultLanguageModelService(LanguageModelService):
         *,
         meta: EnvelopeMeta,
         prompts: Sequence[str],
-        profile: ModelProfile = ModelProfile.CHAT_DEFAULT,
+        profile: ReasoningLevel = ReasoningLevel.STANDARD,
     ) -> Envelope[list[ChatResponse]]:
         """Generate a batch of chat completions with one profile."""
         request, errors = self._validate_request(
@@ -163,7 +164,7 @@ class DefaultLanguageModelService(LanguageModelService):
             return failure(meta=meta, errors=errors)
         assert request is not None
 
-        resolved = self._resolve_profile(profile=request.profile)
+        resolved = self._resolve_chat_profile(profile=request.profile)
         try:
             results = self._adapter.chat_batch(
                 provider=resolved.provider,
@@ -214,7 +215,7 @@ class DefaultLanguageModelService(LanguageModelService):
         *,
         meta: EnvelopeMeta,
         text: str,
-        profile: ModelProfile = ModelProfile.EMBEDDING,
+        profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING,
     ) -> Envelope[EmbeddingVector]:
         """Generate one embedding vector using embedding profile."""
         request, errors = self._validate_request(
@@ -226,7 +227,7 @@ class DefaultLanguageModelService(LanguageModelService):
             return failure(meta=meta, errors=errors)
         assert request is not None
 
-        resolved = self._resolve_profile(profile=request.profile)
+        resolved = self._resolve_embed_profile(profile=request.profile)
         try:
             result = self._adapter.embed(
                 provider=resolved.provider,
@@ -274,7 +275,7 @@ class DefaultLanguageModelService(LanguageModelService):
         *,
         meta: EnvelopeMeta,
         texts: Sequence[str],
-        profile: ModelProfile = ModelProfile.EMBEDDING,
+        profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING,
     ) -> Envelope[list[EmbeddingVector]]:
         """Generate a batch of embedding vectors."""
         request, errors = self._validate_request(
@@ -286,7 +287,7 @@ class DefaultLanguageModelService(LanguageModelService):
             return failure(meta=meta, errors=errors)
         assert request is not None
 
-        resolved = self._resolve_profile(profile=request.profile)
+        resolved = self._resolve_embed_profile(profile=request.profile)
         try:
             results = self._adapter.embed_batch(
                 provider=resolved.provider,
@@ -352,20 +353,18 @@ class DefaultLanguageModelService(LanguageModelService):
             ),
         )
 
-    def _resolve_profile(self, *, profile: ModelProfile) -> _ResolvedProfile:
-        """Resolve profile settings with advanced-chat fallback to default."""
-        if profile is ModelProfile.EMBEDDING:
-            return _from_settings(self._settings.embedding)
-        if profile is ModelProfile.CHAT_DEFAULT:
-            return _from_settings(self._settings.chat_default)
+    def _resolve_chat_profile(self, *, profile: ReasoningLevel) -> _ResolvedProfile:
+        """Resolve one chat reasoning level to concrete provider/model settings."""
+        if profile is ReasoningLevel.QUICK:
+            return _from_settings(self._settings.quick)
+        if profile is ReasoningLevel.DEEP:
+            return _from_settings(self._settings.deep)
+        return _from_settings(self._settings.standard)
 
-        provider = self._settings.chat_advanced.provider.strip()
-        model = self._settings.chat_advanced.model.strip()
-        if provider == "":
-            provider = self._settings.chat_default.provider
-        if model == "":
-            model = self._settings.chat_default.model
-        return _ResolvedProfile(provider=provider, model=model)
+    def _resolve_embed_profile(self, *, profile: EmbeddingProfile) -> _ResolvedProfile:
+        """Resolve embedding profile to concrete provider/model settings."""
+        del profile
+        return _from_settings(self._settings.embedding)
 
     def _validate_request(
         self,

@@ -11,7 +11,7 @@ from services.action.language_model.domain import (
     EmbeddingVector,
     HealthStatus,
 )
-from services.action.language_model.validation import ModelProfile
+from services.action.language_model.validation import EmbeddingProfile, ReasoningLevel
 
 
 class LanguageModelService(ABC):
@@ -23,7 +23,7 @@ class LanguageModelService(ABC):
         *,
         meta: EnvelopeMeta,
         prompt: str,
-        profile: ModelProfile = ModelProfile.CHAT_DEFAULT,
+        profile: ReasoningLevel = ReasoningLevel.STANDARD,
     ) -> Envelope[ChatResponse]:
         """Generate one chat completion."""
 
@@ -33,7 +33,7 @@ class LanguageModelService(ABC):
         *,
         meta: EnvelopeMeta,
         prompts: Sequence[str],
-        profile: ModelProfile = ModelProfile.CHAT_DEFAULT,
+        profile: ReasoningLevel = ReasoningLevel.STANDARD,
     ) -> Envelope[list[ChatResponse]]:
         """Generate a batch of chat completions."""
 
@@ -43,7 +43,7 @@ class LanguageModelService(ABC):
         *,
         meta: EnvelopeMeta,
         text: str,
-        profile: ModelProfile = ModelProfile.EMBEDDING,
+        profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING,
     ) -> Envelope[EmbeddingVector]:
         """Generate one embedding vector."""
 
@@ -53,7 +53,7 @@ class LanguageModelService(ABC):
         *,
         meta: EnvelopeMeta,
         texts: Sequence[str],
-        profile: ModelProfile = ModelProfile.EMBEDDING,
+        profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING,
     ) -> Envelope[list[EmbeddingVector]]:
         """Generate a batch of embedding vectors."""
 

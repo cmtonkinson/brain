@@ -47,16 +47,19 @@ from packages.brain_shared.errors import (  # noqa: E402
 from services.action.language_model.api import (  # noqa: E402
     GrpcLanguageModelService,
     _abort_for_transport_errors,
-    _chat_profile_from_proto,
     _embed_profile_from_proto,
     _meta_to_proto,
+    _reasoning_level_from_proto,
 )
 from services.action.language_model.domain import (  # noqa: E402
     ChatResponse,
     EmbeddingVector,
     HealthStatus,
 )
-from services.action.language_model.validation import ModelProfile  # noqa: E402
+from services.action.language_model.validation import (  # noqa: E402
+    EmbeddingProfile,
+    ReasoningLevel,
+)
 from brain.action.v1 import language_model_pb2  # noqa: E402
 
 
@@ -65,7 +68,7 @@ class _Call:
     """One fake LMS call captured by method/profile."""
 
     method: str
-    profile: ModelProfile | None
+    profile: ReasoningLevel | EmbeddingProfile | None
 
 
 class _AbortCalled(RuntimeError):
@@ -128,7 +131,7 @@ class _FakeLanguageModelService:
         *,
         meta: EnvelopeMeta,
         prompt: str,
-        profile: ModelProfile = ModelProfile.CHAT_DEFAULT,
+        profile: ReasoningLevel = ReasoningLevel.STANDARD,
     ) -> Envelope[ChatResponse]:
         del meta, prompt
         self.calls.append(_Call(method="chat", profile=profile))
@@ -139,7 +142,7 @@ class _FakeLanguageModelService:
         *,
         meta: EnvelopeMeta,
         prompts: Sequence[str],
-        profile: ModelProfile = ModelProfile.CHAT_DEFAULT,
+        profile: ReasoningLevel = ReasoningLevel.STANDARD,
     ) -> Envelope[list[ChatResponse]]:
         del meta, prompts
         self.calls.append(_Call(method="chat_batch", profile=profile))
@@ -150,7 +153,7 @@ class _FakeLanguageModelService:
         *,
         meta: EnvelopeMeta,
         text: str,
-        profile: ModelProfile = ModelProfile.EMBEDDING,
+        profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING,
     ) -> Envelope[EmbeddingVector]:
         del meta, text
         self.calls.append(_Call(method="embed", profile=profile))
@@ -161,7 +164,7 @@ class _FakeLanguageModelService:
         *,
         meta: EnvelopeMeta,
         texts: Sequence[str],
-        profile: ModelProfile = ModelProfile.EMBEDDING,
+        profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING,
     ) -> Envelope[list[EmbeddingVector]]:
         del meta, texts
         self.calls.append(_Call(method="embed_batch", profile=profile))
@@ -228,26 +231,28 @@ def test_abort_ignores_domain_errors() -> None:
     assert context.details is None
 
 
-def test_chat_profile_mapping_rejects_embedding_profile() -> None:
-    """Chat mapping should reject embedding profile at gRPC ingress."""
-    mapped = _chat_profile_from_proto(language_model_pb2.MODEL_PROFILE_EMBEDDING)
+def test_reasoning_level_mapping_rejects_unknown_value() -> None:
+    """Chat mapping should reject unknown enum values at gRPC ingress."""
+    mapped = _reasoning_level_from_proto(99)
     assert mapped is None
 
 
 def test_embed_profile_mapping_rejects_chat_profile() -> None:
     """Embed mapping should reject chat profiles at gRPC ingress."""
-    mapped = _embed_profile_from_proto(language_model_pb2.MODEL_PROFILE_CHAT_DEFAULT)
+    mapped = _embed_profile_from_proto(language_model_pb2.REASONING_LEVEL_STANDARD)
     assert mapped is None
 
 
 def test_profile_mapping_defaults_unspecified() -> None:
     """Unspecified profile should default to method-appropriate profile."""
-    mapped_chat = _chat_profile_from_proto(language_model_pb2.MODEL_PROFILE_UNSPECIFIED)
-    mapped_embed = _embed_profile_from_proto(
-        language_model_pb2.MODEL_PROFILE_UNSPECIFIED
+    mapped_chat = _reasoning_level_from_proto(
+        language_model_pb2.REASONING_LEVEL_UNSPECIFIED
     )
-    assert mapped_chat == ModelProfile.CHAT_DEFAULT
-    assert mapped_embed == ModelProfile.EMBEDDING
+    mapped_embed = _embed_profile_from_proto(
+        language_model_pb2.EMBEDDING_PROFILE_UNSPECIFIED
+    )
+    assert mapped_chat == ReasoningLevel.STANDARD
+    assert mapped_embed == EmbeddingProfile.EMBEDDING
 
 
 def test_chat_routes_to_service_and_maps_payload() -> None:
@@ -261,13 +266,13 @@ def test_chat_routes_to_service_and_maps_payload() -> None:
             metadata=_meta_to_proto(_meta()),
             payload=language_model_pb2.ChatPayload(
                 prompt="hello",
-                profile=language_model_pb2.MODEL_PROFILE_CHAT_ADVANCED,
+                profile=language_model_pb2.REASONING_LEVEL_DEEP,
             ),
         ),
         context,
     )
 
-    assert service.calls[-1] == _Call(method="chat", profile=ModelProfile.CHAT_ADVANCED)
+    assert service.calls[-1] == _Call(method="chat", profile=ReasoningLevel.DEEP)
     assert response.payload.text == "chat-ok"
     assert response.payload.provider == "ollama"
     assert response.payload.model == "gpt-oss"
@@ -287,7 +292,7 @@ def test_chat_returns_validation_error_without_service_call_for_invalid_profile(
             metadata=_meta_to_proto(_meta()),
             payload=language_model_pb2.ChatPayload(
                 prompt="hello",
-                profile=language_model_pb2.MODEL_PROFILE_EMBEDDING,
+                profile=99,
             ),
         ),
         context,
@@ -296,7 +301,7 @@ def test_chat_returns_validation_error_without_service_call_for_invalid_profile(
     assert service.calls == []
     assert len(response.errors) == 1
     assert response.errors[0].code == codes.INVALID_ARGUMENT
-    assert response.errors[0].message == "profile must be chat_default or chat_advanced"
+    assert response.errors[0].message == "profile must be quick, standard, or deep"
 
 
 def test_embed_batch_routes_to_service_and_maps_payload() -> None:
@@ -310,14 +315,14 @@ def test_embed_batch_routes_to_service_and_maps_payload() -> None:
             metadata=_meta_to_proto(_meta()),
             payload=language_model_pb2.EmbedBatchPayload(
                 texts=["a", "b"],
-                profile=language_model_pb2.MODEL_PROFILE_EMBEDDING,
+                profile=language_model_pb2.EMBEDDING_PROFILE_EMBEDDING,
             ),
         ),
         context,
     )
 
     assert service.calls[-1] == _Call(
-        method="embed_batch", profile=ModelProfile.EMBEDDING
+        method="embed_batch", profile=EmbeddingProfile.EMBEDDING
     )
     assert len(response.payload) == 2
     assert list(response.payload[0].values) == pytest.approx([0.1, 0.2])
@@ -335,7 +340,7 @@ def test_embed_batch_returns_validation_error_for_invalid_profile() -> None:
             metadata=_meta_to_proto(_meta()),
             payload=language_model_pb2.EmbedBatchPayload(
                 texts=["a"],
-                profile=language_model_pb2.MODEL_PROFILE_CHAT_DEFAULT,
+                profile=language_model_pb2.REASONING_LEVEL_STANDARD,
             ),
         ),
         context,
@@ -420,7 +425,7 @@ def test_error_category_maps_to_proto_enum_for_validation() -> None:
             metadata=_meta_to_proto(_meta()),
             payload=language_model_pb2.EmbedPayload(
                 text="",
-                profile=language_model_pb2.MODEL_PROFILE_EMBEDDING,
+                profile=language_model_pb2.EMBEDDING_PROFILE_EMBEDDING,
             ),
         ),
         context,

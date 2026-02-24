@@ -20,7 +20,7 @@ from services.action.language_model.domain import (
     HealthStatus,
 )
 from services.action.language_model.service import LanguageModelService
-from services.action.language_model.validation import ModelProfile
+from services.action.language_model.validation import EmbeddingProfile, ReasoningLevel
 
 
 class GrpcLanguageModelService(language_model_pb2_grpc.LanguageModelServiceServicer):
@@ -32,7 +32,7 @@ class GrpcLanguageModelService(language_model_pb2_grpc.LanguageModelServiceServi
     def Chat(
         self, request: language_model_pb2.ChatRequest, context: grpc.ServicerContext
     ) -> language_model_pb2.ChatResponse:
-        profile = _chat_profile_from_proto(request.payload.profile)
+        profile = _reasoning_level_from_proto(request.payload.profile)
         if profile is None:
             meta = _meta_from_proto(request.metadata)
             return language_model_pb2.ChatResponse(
@@ -41,7 +41,7 @@ class GrpcLanguageModelService(language_model_pb2_grpc.LanguageModelServiceServi
                 errors=[
                     _error_to_proto(
                         validation_error(
-                            "profile must be chat_default or chat_advanced",
+                            "profile must be quick, standard, or deep",
                             code=codes.INVALID_ARGUMENT,
                         )
                     )
@@ -67,7 +67,7 @@ class GrpcLanguageModelService(language_model_pb2_grpc.LanguageModelServiceServi
         request: language_model_pb2.ChatBatchRequest,
         context: grpc.ServicerContext,
     ) -> language_model_pb2.ChatBatchResponse:
-        profile = _chat_profile_from_proto(request.payload.profile)
+        profile = _reasoning_level_from_proto(request.payload.profile)
         if profile is None:
             meta = _meta_from_proto(request.metadata)
             return language_model_pb2.ChatBatchResponse(
@@ -76,7 +76,7 @@ class GrpcLanguageModelService(language_model_pb2_grpc.LanguageModelServiceServi
                 errors=[
                     _error_to_proto(
                         validation_error(
-                            "profile must be chat_default or chat_advanced",
+                            "profile must be quick, standard, or deep",
                             code=codes.INVALID_ARGUMENT,
                         )
                     )
@@ -269,25 +269,27 @@ def _kind_to_proto(kind: EnvelopeKind) -> int:
     return envelope_pb2.ENVELOPE_KIND_UNSPECIFIED
 
 
-def _chat_profile_from_proto(profile: int) -> ModelProfile | None:
-    """Map protobuf profile enum into chat-capable profile selector."""
-    if profile == language_model_pb2.MODEL_PROFILE_CHAT_ADVANCED:
-        return ModelProfile.CHAT_ADVANCED
+def _reasoning_level_from_proto(profile: int) -> ReasoningLevel | None:
+    """Map protobuf enum into chat reasoning level selector."""
+    if profile == language_model_pb2.REASONING_LEVEL_QUICK:
+        return ReasoningLevel.QUICK
     if profile in (
-        language_model_pb2.MODEL_PROFILE_CHAT_DEFAULT,
-        language_model_pb2.MODEL_PROFILE_UNSPECIFIED,
+        language_model_pb2.REASONING_LEVEL_STANDARD,
+        language_model_pb2.REASONING_LEVEL_UNSPECIFIED,
     ):
-        return ModelProfile.CHAT_DEFAULT
+        return ReasoningLevel.STANDARD
+    if profile == language_model_pb2.REASONING_LEVEL_DEEP:
+        return ReasoningLevel.DEEP
     return None
 
 
-def _embed_profile_from_proto(profile: int) -> ModelProfile | None:
+def _embed_profile_from_proto(profile: int) -> EmbeddingProfile | None:
     """Map protobuf profile enum into embed-capable profile selector."""
     if profile in (
-        language_model_pb2.MODEL_PROFILE_EMBEDDING,
-        language_model_pb2.MODEL_PROFILE_UNSPECIFIED,
+        language_model_pb2.EMBEDDING_PROFILE_EMBEDDING,
+        language_model_pb2.EMBEDDING_PROFILE_UNSPECIFIED,
     ):
-        return ModelProfile.EMBEDDING
+        return EmbeddingProfile.EMBEDDING
     return None
 
 
