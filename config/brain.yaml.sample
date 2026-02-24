@@ -63,6 +63,13 @@ components:
     base_url: http://signal-api:8080
     timeout_seconds: 10.0
     max_retries: 2
+    poll_interval_seconds: 1.0
+    poll_receive_timeout_seconds: 5
+    poll_max_messages: 10
+    failure_backoff_initial_seconds: 1.0
+    failure_backoff_max_seconds: 30.0
+    failure_backoff_multiplier: 2.0
+    failure_backoff_jitter_ratio: 0.2
   service_embedding_authority:
     max_list_limit: 500
   service_cache_authority:

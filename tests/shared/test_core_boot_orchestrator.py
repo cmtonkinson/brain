@@ -8,13 +8,14 @@ from dataclasses import dataclass
 import pytest
 
 from packages.brain_core.boot.contracts import (
+    BootContext,
     BootDependencyError,
     BootHookContract,
     BootHookExecutionError,
     BootReadinessTimeoutError,
 )
 from packages.brain_core.boot.orchestrator import run_boot_hooks
-from packages.brain_shared.config import CoreBootSettings
+from packages.brain_shared.config import BrainSettings, CoreBootSettings
 
 
 @dataclass(slots=True)
@@ -36,16 +37,24 @@ def _hook(
     *,
     component_id: str,
     dependencies: tuple[str, ...] = tuple(),
-    is_ready: Callable[[], bool] | None = None,
-    boot: Callable[[], None] | None = None,
+    is_ready: Callable[[BootContext], bool] | None = None,
+    boot: Callable[[BootContext], None] | None = None,
 ) -> BootHookContract:
     """Build one test hook contract with defaults."""
     return BootHookContract(
         component_id=component_id,
         module_name=f"{component_id}.boot",
         dependencies=dependencies,
-        is_ready=is_ready or (lambda: True),
-        boot=boot or (lambda: None),
+        is_ready=is_ready or (lambda _ctx: True),
+        boot=boot or (lambda _ctx: None),
+    )
+
+
+def _context() -> BootContext:
+    """Build a boot context for orchestrator unit tests."""
+    return BootContext(
+        settings=BrainSettings(),
+        resolve_component=lambda _component_id: object(),
     )
 
 
@@ -53,15 +62,15 @@ def test_run_boot_hooks_executes_in_topological_order() -> None:
     """Hooks should execute after dependencies according to DAG order."""
     executed: list[str] = []
     hooks = (
-        _hook(component_id="service_a", boot=lambda: executed.append("service_a")),
+        _hook(component_id="service_a", boot=lambda _ctx: executed.append("service_a")),
         _hook(
             component_id="service_b",
             dependencies=("service_a",),
-            boot=lambda: executed.append("service_b"),
+            boot=lambda _ctx: executed.append("service_b"),
         ),
     )
 
-    result = run_boot_hooks(hooks, settings=CoreBootSettings())
+    result = run_boot_hooks(hooks, context=_context(), settings=CoreBootSettings())
 
     assert result.execution_order == ("service_a", "service_b")
     assert executed == ["service_a", "service_b"]
@@ -80,13 +89,14 @@ def test_run_boot_hooks_polls_readiness_until_ready() -> None:
     hooks = (
         _hook(
             component_id="service_a",
-            is_ready=is_ready,
-            boot=lambda: executed.append("booted"),
+            is_ready=lambda _ctx: is_ready(),
+            boot=lambda _ctx: executed.append("booted"),
         ),
     )
 
     run_boot_hooks(
         hooks,
+        context=_context(),
         settings=CoreBootSettings(readiness_poll_interval_seconds=1.0),
         sleeper=clock.sleep,
         monotonic=clock.monotonic,
@@ -101,7 +111,7 @@ def test_run_boot_hooks_retries_boot_until_success() -> None:
     """Hook execution should retry failures up to configured max attempts."""
     attempts = {"count": 0}
 
-    def flaky_boot() -> None:
+    def flaky_boot(_ctx: BootContext) -> None:
         attempts["count"] += 1
         if attempts["count"] < 3:
             raise RuntimeError("transient failure")
@@ -110,6 +120,7 @@ def test_run_boot_hooks_retries_boot_until_success() -> None:
 
     run_boot_hooks(
         (_hook(component_id="service_a", boot=flaky_boot),),
+        context=_context(),
         settings=CoreBootSettings(boot_retry_attempts=3, boot_retry_delay_seconds=2.0),
         sleeper=clock.sleep,
         monotonic=clock.monotonic,
@@ -123,7 +134,7 @@ def test_run_boot_hooks_fails_hard_on_boot_failure() -> None:
     """Permanent hook failure should abort orchestration immediately."""
     executed: list[str] = []
 
-    def boom() -> None:
+    def boom(_ctx: BootContext) -> None:
         raise RuntimeError("fatal")
 
     hooks = (
@@ -131,12 +142,16 @@ def test_run_boot_hooks_fails_hard_on_boot_failure() -> None:
         _hook(
             component_id="service_b",
             dependencies=("service_a",),
-            boot=lambda: executed.append("service_b"),
+            boot=lambda _ctx: executed.append("service_b"),
         ),
     )
 
     with pytest.raises(BootHookExecutionError):
-        run_boot_hooks(hooks, settings=CoreBootSettings(boot_retry_attempts=2))
+        run_boot_hooks(
+            hooks,
+            context=_context(),
+            settings=CoreBootSettings(boot_retry_attempts=2),
+        )
 
     assert executed == []
 
@@ -146,7 +161,7 @@ def test_run_boot_hooks_raises_on_missing_dependency() -> None:
     hooks = (_hook(component_id="service_a", dependencies=("service_missing",)),)
 
     with pytest.raises(BootDependencyError):
-        run_boot_hooks(hooks, settings=CoreBootSettings())
+        run_boot_hooks(hooks, context=_context(), settings=CoreBootSettings())
 
 
 def test_run_boot_hooks_raises_on_cycle() -> None:
@@ -157,17 +172,18 @@ def test_run_boot_hooks_raises_on_cycle() -> None:
     )
 
     with pytest.raises(BootDependencyError):
-        run_boot_hooks(hooks, settings=CoreBootSettings())
+        run_boot_hooks(hooks, context=_context(), settings=CoreBootSettings())
 
 
 def test_run_boot_hooks_raises_when_readiness_times_out() -> None:
     """Readiness probes should fail when timeout elapses before readiness."""
     clock = _FakeClock()
-    hooks = (_hook(component_id="service_a", is_ready=lambda: False),)
+    hooks = (_hook(component_id="service_a", is_ready=lambda _ctx: False),)
 
     with pytest.raises(BootReadinessTimeoutError):
         run_boot_hooks(
             hooks,
+            context=_context(),
             settings=CoreBootSettings(
                 readiness_poll_interval_seconds=1.0,
                 readiness_timeout_seconds=2.0,
@@ -181,12 +197,13 @@ def test_run_boot_hooks_raises_when_boot_duration_exceeds_timeout() -> None:
     """Hook execution should fail when boot runtime exceeds configured timeout."""
     clock = _FakeClock()
 
-    def slow_boot() -> None:
+    def slow_boot(_ctx: BootContext) -> None:
         clock.sleep(6.0)
 
     with pytest.raises(BootHookExecutionError):
         run_boot_hooks(
             (_hook(component_id="service_a", boot=slow_boot),),
+            context=_context(),
             settings=CoreBootSettings(boot_timeout_seconds=5.0),
             sleeper=clock.sleep,
             monotonic=clock.monotonic,

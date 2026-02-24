@@ -237,6 +237,7 @@ class DefaultSwitchboardService(SwitchboardService):
             result = self._adapter.register_webhook(
                 callback_url=str(request.callback_url),
                 shared_secret=secret,
+                operator_e164=self._operator_e164,
             )
         except SignalAdapterDependencyError as exc:
             return failure(

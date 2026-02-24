@@ -90,6 +90,31 @@ Declared via `ServiceManifest`. Required:
   [Configuration Reference](configuration.md).
 
 ------------------------------------------------------------------------
+## Optional Boot Hook Contract
+Any _Component_ may define an optional `boot.py` module for startup
+orchestration. This is for cross-_Component_ runtime coordination, not for
+primary configuration loading.
+
+### Ordering
+- Core startup resolves configuration first.
+- Boot hook orchestration runs after configuration is available.
+- If any configured _Component_ hook fails under configured retry/timeout
+  policy, Core startup fails hard and exits with error.
+
+### Required symbols (when `boot.py` exists)
+- `dependencies: tuple[str, ...]`
+- `is_ready(ctx: BootContext) -> bool`
+- `boot(ctx: BootContext) -> None`
+
+### Semantics
+- `dependencies` contains `ComponentId` values for required upstream
+  _Components_.
+- `is_ready(...)` must be non-blocking and return readiness truthfully.
+- `boot(...)` performs one-time startup work and must raise on failure.
+- Hooks receive runtime dependencies/settings via `BootContext`; _Components_
+  should not rely on mutable module globals for boot state.
+
+------------------------------------------------------------------------
 ## Practical Registration Pattern
 Each _Component_ package should self-register at import time with a single
 exported `MANIFEST` symbol:

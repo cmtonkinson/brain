@@ -1,6 +1,6 @@
-If ~/.config/agents/agents.md exists, read it and follow the instructions.
+If ~/.config/agents/agents.md exists, read it and follow its instructions now.
 
-Instructions for working in this project:
+Additional instructions for working in this specific project:
 - Read `README.md`.
 - Read `docs/*.md`.
 - The `deprecated/` directory is exclusively for human reference; do not search

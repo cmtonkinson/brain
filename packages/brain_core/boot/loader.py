@@ -12,7 +12,7 @@ from packages.brain_shared.component_loader import (
 )
 from packages.brain_shared.manifest import list_components
 
-from .contracts import BootHookContract, coerce_dependencies, require_zero_arg_callable
+from .contracts import BootHookContract, coerce_dependencies, require_context_callable
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,12 +55,12 @@ def load_boot_hooks() -> tuple[BootHookContract, ...]:
             getattr(module, "dependencies", None),
             module_name=boot_module.module_name,
         )
-        is_ready = require_zero_arg_callable(
+        is_ready = require_context_callable(
             getattr(module, "is_ready", None),
             module_name=boot_module.module_name,
             attribute_name="is_ready",
         )
-        boot = require_zero_arg_callable(
+        boot = require_context_callable(
             getattr(module, "boot", None),
             module_name=boot_module.module_name,
             attribute_name="boot",

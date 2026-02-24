@@ -45,8 +45,9 @@ class SignalAdapter(Protocol):
         *,
         callback_url: str,
         shared_secret: str,
+        operator_e164: str,
     ) -> SignalWebhookRegistrationResult:
-        """Register callback URL and shared secret with Signal backend."""
+        """Configure callback URL/secret and poll identity for inbound forwarding."""
 
     def health(self) -> SignalAdapterHealthResult:
         """Return adapter health state."""

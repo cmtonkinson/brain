@@ -10,6 +10,7 @@ from graphlib import CycleError, TopologicalSorter
 from packages.brain_shared.config import CoreBootSettings
 
 from .contracts import (
+    BootContext,
     BootDependencyError,
     BootHookContract,
     BootHookExecutionError,
@@ -27,6 +28,7 @@ class BootResult:
 def run_boot_hooks(
     hooks: tuple[BootHookContract, ...],
     *,
+    context: BootContext,
     settings: CoreBootSettings,
     sleeper: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
@@ -64,6 +66,7 @@ def run_boot_hooks(
         hook = by_component[component_id]
         _wait_for_readiness(
             hook=hook,
+            context=context,
             timeout_seconds=settings.readiness_timeout_seconds,
             poll_interval_seconds=settings.readiness_poll_interval_seconds,
             sleeper=sleeper,
@@ -71,6 +74,7 @@ def run_boot_hooks(
         )
         _execute_with_retries(
             hook=hook,
+            context=context,
             retry_attempts=settings.boot_retry_attempts,
             retry_delay_seconds=settings.boot_retry_delay_seconds,
             timeout_seconds=settings.boot_timeout_seconds,
@@ -85,6 +89,7 @@ def run_boot_hooks(
 def _wait_for_readiness(
     *,
     hook: BootHookContract,
+    context: BootContext,
     timeout_seconds: float,
     poll_interval_seconds: float,
     sleeper: Callable[[float], None],
@@ -93,7 +98,7 @@ def _wait_for_readiness(
     """Poll one hook readiness until true or timeout."""
     deadline = monotonic() + timeout_seconds
     while True:
-        if bool(hook.is_ready()):
+        if bool(hook.is_ready(context)):
             return
         if monotonic() >= deadline:
             raise BootReadinessTimeoutError(
@@ -105,6 +110,7 @@ def _wait_for_readiness(
 def _execute_with_retries(
     *,
     hook: BootHookContract,
+    context: BootContext,
     retry_attempts: int,
     retry_delay_seconds: float,
     timeout_seconds: float,
@@ -116,7 +122,7 @@ def _execute_with_retries(
     for attempt in range(1, retry_attempts + 1):
         started = monotonic()
         try:
-            hook.boot()
+            hook.boot(context)
         except Exception as exc:  # pragma: no cover - explicit fail-hard policy
             failure = exc
             if attempt < retry_attempts and retry_delay_seconds > 0:

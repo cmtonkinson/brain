@@ -20,7 +20,9 @@ itself, along with Celery Workers/Beats, and any CLI tooling, are by definition
 _Layer_ 2.
 
 The only means for L2/_Actors_ to interact with the system are with the _Brain
-Core SDK_, which exposes the _Layer_ 1 _Service_ APIs through gRPC.
+Core SDK_, which exposes published _Layer_ 1 _Service_ APIs through gRPC. This
+published surface is not required to be one-to-one with each _Service's_
+_Public API_; some _Public API_ methods may remain internal-only.
 
 L2 has no direct access to L0 _Resources_.
 

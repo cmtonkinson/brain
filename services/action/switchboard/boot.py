@@ -5,34 +5,40 @@ from __future__ import annotations
 from time import sleep
 from urllib.parse import urljoin
 
+from packages.brain_core.boot import BootContext
 from packages.brain_shared.envelope import Envelope, EnvelopeKind, new_meta
 from packages.brain_shared.errors import codes, dependency_error, internal_error
-from services.action.switchboard.config import SwitchboardServiceSettings
+from services.action.switchboard.component import SERVICE_COMPONENT_ID
+from services.action.switchboard.config import (
+    SwitchboardServiceSettings,
+    resolve_switchboard_service_settings,
+)
 from services.action.switchboard.domain import RegisterSignalWebhookResult
+from services.action.switchboard.http_ingress import SwitchboardWebhookHttpServer
 from services.action.switchboard.service import SwitchboardService
 
 dependencies: tuple[str, ...] = ("adapter_signal", "service_cache_authority")
-
-_BOOT_SERVICE: SwitchboardService | None = None
-_BOOT_SETTINGS: SwitchboardServiceSettings | None = None
+_WEBHOOK_SERVER: SwitchboardWebhookHttpServer | None = None
 
 
-def configure(
-    *,
-    service: SwitchboardService,
-    settings: SwitchboardServiceSettings,
-) -> None:
-    """Attach runtime context consumed by ``is_ready`` and ``boot``."""
-    global _BOOT_SERVICE, _BOOT_SETTINGS
-    _BOOT_SERVICE = service
-    _BOOT_SETTINGS = settings
+def _resolve_service_and_settings(
+    ctx: BootContext,
+) -> tuple[SwitchboardService, SwitchboardServiceSettings]:
+    """Resolve Switchboard runtime service + settings from one boot context."""
+    resolved = ctx.require_component(str(SERVICE_COMPONENT_ID))
+    if not isinstance(resolved, SwitchboardService):
+        raise RuntimeError(
+            "boot context component 'service_switchboard' does not implement "
+            "SwitchboardService"
+        )
+    settings = resolve_switchboard_service_settings(ctx.settings)
+    return resolved, settings
 
 
-def is_ready() -> bool:
+def is_ready(ctx: BootContext) -> bool:
     """Return true once Switchboard dependencies report ready."""
-    if _BOOT_SERVICE is None:
-        return False
-    health = _BOOT_SERVICE.health(
+    service, _settings = _resolve_service_and_settings(ctx)
+    health = service.health(
         meta=new_meta(
             kind=EnvelopeKind.COMMAND,
             source="switchboard_boot",
@@ -45,14 +51,27 @@ def is_ready() -> bool:
     return payload.service_ready and payload.adapter_ready and payload.cas_ready
 
 
-def boot() -> None:
+def boot(ctx: BootContext) -> None:
     """Execute callback registration during boot once readiness is satisfied."""
-    if _BOOT_SERVICE is None or _BOOT_SETTINGS is None:
-        raise RuntimeError("switchboard boot context is not configured")
+    service, settings = _resolve_service_and_settings(ctx)
+    _ensure_webhook_ingress_started(service=service, settings=settings)
     run_switchboard_boot_hook(
-        service=_BOOT_SERVICE,
-        settings=_BOOT_SETTINGS,
+        service=service,
+        settings=settings,
     )
+
+
+def _ensure_webhook_ingress_started(
+    *,
+    service: SwitchboardService,
+    settings: SwitchboardServiceSettings,
+) -> None:
+    """Start Switchboard webhook HTTP ingress server once per process."""
+    global _WEBHOOK_SERVER
+    if _WEBHOOK_SERVER is not None:
+        return
+    _WEBHOOK_SERVER = SwitchboardWebhookHttpServer(service=service, settings=settings)
+    _WEBHOOK_SERVER.start()
 
 
 def build_switchboard_callback_url(*, settings: SwitchboardServiceSettings) -> str:

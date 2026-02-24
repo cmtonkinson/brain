@@ -9,6 +9,9 @@ from types import ModuleType
 
 import pytest
 
+from packages.brain_core.boot import BootContext
+from packages.brain_shared.config import BrainSettings
+
 from packages.brain_core.boot.contracts import BootContractError
 from packages.brain_core.boot.loader import (
     BootModuleSpec,
@@ -64,8 +67,8 @@ def test_load_boot_hooks_rejects_invalid_contract(
 
     module = ModuleType("services.a.boot")
     module.dependencies = "service_b"
-    module.is_ready = lambda: True
-    module.boot = lambda: None
+    module.is_ready = lambda _ctx: True
+    module.boot = lambda _ctx: None
 
     monkeypatch.setattr(
         "packages.brain_core.boot.loader.discover_boot_modules",
@@ -88,8 +91,8 @@ def test_load_boot_hooks_loads_valid_contract(monkeypatch: pytest.MonkeyPatch) -
 
     module = ModuleType("services.a.boot")
     module.dependencies = ["service_b", "service_b", "service_c"]
-    module.is_ready = lambda: True
-    module.boot = lambda: None
+    module.is_ready = lambda _ctx: True
+    module.boot = lambda _ctx: None
 
     monkeypatch.setattr(
         "packages.brain_core.boot.loader.discover_boot_modules",
@@ -108,4 +111,8 @@ def test_load_boot_hooks_loads_valid_contract(monkeypatch: pytest.MonkeyPatch) -
     assert len(hooks) == 1
     assert hooks[0].component_id == "service_a"
     assert hooks[0].dependencies == ("service_b", "service_c")
-    assert hooks[0].is_ready() is True
+    context = BootContext(
+        settings=BrainSettings(),
+        resolve_component=lambda _component_id: object(),
+    )
+    assert hooks[0].is_ready(context) is True

@@ -31,6 +31,10 @@ Again - gRPC is not the canonical interface, the _Public APIs_ are. gRPC simply
 exists to create the _Brain Core SDK_ which allows _Actors_ access to the
 system from across network boundaries.
 
+The _Public API_ and gRPC surface are not required to be one-to-one. A _Service_
+may expose _Public API_ methods that are internal-only and therefore not
+published on the _Brain Core SDK_.
+
 Protos live in `protos/`, Python is regenerated on build, git-ignored, and lives
 in `generated/`, while `services/` holds implementations.
 

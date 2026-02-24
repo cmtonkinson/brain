@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+import inspect
+from typing import TypeVar
+
+from packages.brain_shared.config import BrainSettings
 
 
 class BootError(RuntimeError):
@@ -33,8 +37,8 @@ class BootHookContract:
     component_id: str
     module_name: str
     dependencies: tuple[str, ...]
-    is_ready: Callable[[], bool]
-    boot: Callable[[], None]
+    is_ready: Callable[[BootContext], bool]
+    boot: Callable[[BootContext], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +48,26 @@ class BootAttempt:
     component_id: str
     attempt: int
     max_attempts: int
+
+
+TResolved = TypeVar("TResolved")
+
+
+@dataclass(frozen=True, slots=True)
+class BootContext:
+    """Runtime context shared with all component boot hooks."""
+
+    settings: BrainSettings
+    resolve_component: Callable[[str], object]
+
+    def require_component(self, component_id: str) -> object:
+        """Resolve one component runtime object or raise with stable message."""
+        resolved = self.resolve_component(component_id)
+        if resolved is None:
+            raise BootDependencyError(
+                f"boot context missing runtime instance for component '{component_id}'"
+            )
+        return resolved
 
 
 def coerce_dependencies(value: object, *, module_name: str) -> tuple[str, ...]:
@@ -70,10 +94,16 @@ def coerce_dependencies(value: object, *, module_name: str) -> tuple[str, ...]:
     return tuple(normalized)
 
 
-def require_zero_arg_callable(
+def require_context_callable(
     value: object, *, module_name: str, attribute_name: str
-) -> Callable[[], object]:
-    """Ensure one required attribute is a callable matching ``Callable[[], T]``."""
+) -> Callable[[BootContext], object]:
+    """Ensure one required attribute is a callable matching ``Callable[[BootContext], T]``."""
     if not callable(value):
         raise BootContractError(f"{module_name}.{attribute_name} must be callable")
+    signature = inspect.signature(value)
+    parameters = tuple(signature.parameters.values())
+    if len(parameters) != 1:
+        raise BootContractError(
+            f"{module_name}.{attribute_name} must accept exactly one 'ctx' argument"
+        )
     return value

@@ -28,6 +28,7 @@ from services.state.cache_authority.service import CacheAuthorityService
 class _RegisterCall:
     callback_url: str
     shared_secret: str
+    operator_e164: str
 
 
 @dataclass(frozen=True)
@@ -64,9 +65,14 @@ class _FakeSignalAdapter(SignalAdapter):
         *,
         callback_url: str,
         shared_secret: str,
+        operator_e164: str,
     ) -> SignalWebhookRegistrationResult:
         self.register_calls.append(
-            _RegisterCall(callback_url=callback_url, shared_secret=shared_secret)
+            _RegisterCall(
+                callback_url=callback_url,
+                shared_secret=shared_secret,
+                operator_e164=operator_e164,
+            )
         )
         if self.raise_register is not None:
             raise self.raise_register
@@ -302,6 +308,7 @@ def test_register_signal_webhook_uses_configured_secret() -> None:
         == "https://example.com/switchboard/signal"
     )
     assert adapter.register_calls[0].shared_secret == "configured-secret"
+    assert adapter.register_calls[0].operator_e164 == "+12025550100"
 
 
 def test_register_signal_webhook_maps_dependency_failures() -> None:

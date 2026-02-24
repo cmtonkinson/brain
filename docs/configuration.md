@@ -166,9 +166,16 @@ Signal runtime adapter defaults.
 
 | Key | Default | Description |
 |---|---|---|
-| `base_url` | `http://signal-api:8080` | Base URL for Signal runtime webhook registration endpoints. |
+| `base_url` | `http://signal-api:8080` | Base URL for Signal runtime receive/health endpoints. |
 | `timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
+| `poll_interval_seconds` | `1.0` | Steady-state delay between successful polling cycles. Must be > 0. |
+| `poll_receive_timeout_seconds` | `5` | Timeout argument passed to `/v1/receive/{number}` long-poll calls. Must be >= 1. |
+| `poll_max_messages` | `10` | Maximum messages requested per receive poll call. Must be >= 1. |
+| `failure_backoff_initial_seconds` | `1.0` | Initial delay after poll/forward failure before retry. Must be > 0. |
+| `failure_backoff_max_seconds` | `30.0` | Maximum capped delay for failure backoff. Must be > 0. |
+| `failure_backoff_multiplier` | `2.0` | Exponential multiplier applied to each consecutive failure delay. Must be > 1.0. |
+| `failure_backoff_jitter_ratio` | `0.2` | Symmetric random jitter ratio applied to failure delays. Must be in `[0,1)`. |
 
 ### `components.service_embedding_authority`
 Embedding Authority Service runtime settings.

@@ -22,14 +22,21 @@ Boundary rules:
 ------------------------------------------------------------------------
 ## Adapter Contract
 This adapter exposes:
-- `register_webhook(callback_url, shared_secret) -> SignalWebhookRegistrationResult`
+- `register_webhook(callback_url, shared_secret, operator_e164) -> SignalWebhookRegistrationResult`
 - `health() -> SignalAdapterHealthResult`
 
 Current HTTP mappings:
-- `POST /v1/webhooks/register` for webhook registration
+- `GET /v1/receive/{operator_e164}` for inbound polling
 - `GET /health` for runtime health checks
+- `POST <callback_url>` to forward signed webhook payloads to Switchboard
 
-Webhook signature verification is owned by Switchboard, not this adapter.
+Inbound flow:
+1. Switchboard registers callback URL + secret + operator identity.
+2. Adapter polls Signal runtime `/v1/receive/{operator_e164}`.
+3. Adapter signs each forwarded body and POSTs to Switchboard callback.
+4. Switchboard verifies signature and applies ingress policy/normalization.
+
+Webhook signature verification remains owned by Switchboard.
 
 ------------------------------------------------------------------------
 ## Configuration Surface

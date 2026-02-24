@@ -3,6 +3,7 @@
 from packages.brain_shared.config import CoreBootSettings
 
 from .contracts import (
+    BootContext,
     BootContractError,
     BootDependencyError,
     BootError,
@@ -15,6 +16,7 @@ from .orchestrator import BootResult, run_boot_hooks
 
 __all__ = [
     "BootContractError",
+    "BootContext",
     "BootDependencyError",
     "BootError",
     "BootHookContract",
