@@ -113,6 +113,32 @@ _Persist and return the active spec used for defaulted spec operations._
 _List known specs._
 
 ------------------------------------------------------------------------
+## `MemoryAuthorityService`
+- Module: `services/state/memory_authority/service.py`
+- Summary: Public API for Memory Authority Service context and session operations.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return MAS and Postgres substrate readiness._
+
+`assemble_context(*, meta: EnvelopeMeta, session_id: str, message: str) -> Envelope[ContextBlock]`  
+_Append inbound message and return assembled Profile/Focus/Dialogue context._
+
+`update_focus(*, meta: EnvelopeMeta, session_id: str, content: str) -> Envelope[FocusRecord]`  
+_Persist explicit focus content with budget-aware compaction semantics._
+
+`record_response(*, meta: EnvelopeMeta, session_id: str, content: str, model: str, provider: str, token_count: int, reasoning_level: str) -> Envelope[bool]`  
+_Append one outbound dialogue turn with response metadata._
+
+`get_session(*, meta: EnvelopeMeta, session_id: str) -> Envelope[SessionRecord]`  
+_Read one MAS session by id._
+
+`clear_session(*, meta: EnvelopeMeta, session_id: str) -> Envelope[bool]`  
+_Advance dialogue pointer and clear focus without deleting historical data._
+
+`create_session(*, meta: EnvelopeMeta) -> Envelope[SessionRecord]`  
+_Create and return one new MAS session._
+
+------------------------------------------------------------------------
 ## `ObjectAuthorityService`
 - Module: `services/state/object_authority/service.py`
 - Summary: Public API for durable blob object operations.

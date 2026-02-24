@@ -14,10 +14,21 @@ from packages.brain_shared.manifest import ServiceManifest, get_registry
 from resources.substrates.postgres.config import resolve_postgres_settings
 from resources.substrates.postgres.engine import create_postgres_engine
 
-ULID_DOMAIN_DEFINITION_SQL = (
-    f"CREATE DOMAIN IF NOT EXISTS {{schema}}.{ULID_DOMAIN_NAME} "
-    "AS bytea CHECK (octet_length(VALUE) = 16)"
-)
+ULID_DOMAIN_DEFINITION_SQL = """
+DO $bootstrap$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE t.typname = '{domain_name}'
+          AND n.nspname = '{schema}'
+    ) THEN
+        EXECUTE 'CREATE DOMAIN {schema}.{domain_name} AS bytea CHECK (octet_length(VALUE) = 16)';
+    END IF;
+END
+$bootstrap$;
+"""
 
 
 @dataclass(frozen=True)
@@ -64,7 +75,14 @@ def _provision_service_schema(*, connection: Any, service: ServiceManifest) -> N
     """Create one service schema and bootstrap schema-local shared primitives."""
     schema = service.schema_name
     connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
-    connection.execute(text(ULID_DOMAIN_DEFINITION_SQL.format(schema=schema)))
+    connection.execute(
+        text(
+            ULID_DOMAIN_DEFINITION_SQL.format(
+                schema=schema,
+                domain_name=ULID_DOMAIN_NAME,
+            )
+        )
+    )
 
 
 def main() -> None:

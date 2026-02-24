@@ -36,6 +36,7 @@ BRAIN_COMPONENTS__SUBSTRATE_REDIS__URL=redis://redis:6379/0
 BRAIN_COMPONENTS__ADAPTER_FILESYSTEM__ROOT_DIR=/var/lib/brain/blobs
 BRAIN_COMPONENTS__SERVICE_EMBEDDING_AUTHORITY__MAX_LIST_LIMIT=1000
 BRAIN_COMPONENTS__SERVICE_CACHE_AUTHORITY__DEFAULT_TTL_SECONDS=600
+BRAIN_COMPONENTS__SERVICE_MEMORY_AUTHORITY__DIALOGUE_RECENT_TURNS=12
 BRAIN_COMPONENTS__SERVICE_OBJECT_AUTHORITY__MAX_BLOB_SIZE_BYTES=10485760
 BRAIN_COMPONENTS__ADAPTER_LITELLM__BASE_URL=http://litellm:4000
 BRAIN_COMPONENTS__SERVICE_LANGUAGE_MODEL__STANDARD__MODEL=gpt-oss
@@ -146,6 +147,18 @@ Cache Authority Service runtime settings.
 | `key_prefix` | `brain` | Non-empty prefix used for Redis key and queue namespacing. |
 | `default_ttl_seconds` | `300` | Default TTL applied when `set_value` is called without explicit TTL. Must be > 0. |
 | `allow_non_expiring_keys` | `true` | When `true`, `ttl_seconds=0` is allowed and maps to non-expiring keys. |
+
+### `components.service_memory_authority`
+Memory Authority Service runtime settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `dialogue_recent_turns` | `10` | Number of recent dialogue turns included verbatim in assembled context. Must be > 0. |
+| `dialogue_older_turns` | `20` | Maximum number of older turns considered for summarized dialogue context. Must be >= 0. |
+| `focus_token_budget` | `512` | Hard token ceiling for session focus content. Must be > 0. |
+| `profile.operator_name` | `Operator` | Operator display name injected into profile context. |
+| `profile.brain_name` | `Brain` | Brain display name injected into profile context. |
+| `profile.brain_verbosity` | `normal` | Profile verbosity selector. One of `terse`, `normal`, `verbose`. |
 
 ### `components.service_object_authority`
 Object Authority Service runtime settings.

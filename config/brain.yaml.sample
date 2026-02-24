@@ -53,6 +53,14 @@ components:
     key_prefix: brain
     default_ttl_seconds: 300
     allow_non_expiring_keys: true
+  service_memory_authority:
+    dialogue_recent_turns: 10
+    dialogue_older_turns: 20
+    focus_token_budget: 512
+    profile:
+      operator_name: Operator
+      brain_name: Brain
+      brain_verbosity: normal
   service_object_authority:
     digest_algorithm: sha256
     digest_version: b1

@@ -1,4 +1,6 @@
-Instructions for working in this repo:
+If ~/.config/agents/agents.md exists, read it and follow the instructions.
+
+Instructions for working in this project:
 - Read `README.md`.
 - Read `docs/*.md`.
 - The `deprecated/` directory is exclusively for human reference; do not search
