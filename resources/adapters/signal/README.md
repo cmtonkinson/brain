@@ -1,13 +1,14 @@
 # Signal Adapter
-Action _Adapter_ _Resource_ that integrates Signal messaging through `signal-cli-rest-api` for the Switchboard _Service_.
+Action _Adapter_ _Resource_ that integrates `signal-cli-rest-api` for Switchboard inbound message intake.
 
 ------------------------------------------------------------------------
 ## What This Component Is
-`resources/adapters/signal/` provides the concrete Layer 0 Signal integration:
+`resources/adapters/signal/` implements Layer 0 Signal integration:
 - `component.py`: `ResourceManifest` registration (`adapter_signal`)
-- `adapter.py`: adapter protocol, DTOs, and exception taxonomy
-- `signal_adapter.py`: HTTP transport implementation (`HttpSignalAdapter`)
-- `config.py`: settings model and resolver for adapter runtime settings
+- `adapter.py`: protocol, DTOs, and adapter error taxonomy
+- `signal_adapter.py`: concrete HTTP polling + callback forwarding implementation (`HttpSignalAdapter`)
+- `config.py`: adapter settings model and resolver
+- `boot.py`: readiness hook that probes Signal container `/health`
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
@@ -15,28 +16,46 @@ This _Resource_ is owned by `service_switchboard` via `owner_service_id` in
 `resources/adapters/signal/component.py`.
 
 Boundary rules:
-- Adapter owns Signal HTTP endpoint mapping and transport error classification.
-- Adapter does not own cross-channel event normalization.
-- Adapter does not perform dedupe.
+- Adapter owns Signal transport mapping and retry/backoff behavior.
+- Adapter does not apply Switchboard ingress policy decisions.
+- Adapter does not normalize event payloads into Switchboard domain models.
+- Adapter does not perform dedupe logic.
 
 ------------------------------------------------------------------------
-## Adapter Contract
-This adapter exposes:
-- `register_webhook(callback_url, shared_secret, operator_e164) -> SignalWebhookRegistrationResult`
-- `health() -> SignalAdapterHealthResult`
+## Interactions
+Primary interactions:
+- Receives registration input from Switchboard:
+  - callback URL
+  - shared secret
+  - operator E.164 identity
+- Polls Signal runtime:
+  - `GET /health`
+  - `GET /v1/receive/{operator_e164}`
+- Forwards each received message as signed JSON callback POST to Switchboard webhook endpoint.
 
-Current HTTP mappings:
-- `GET /v1/receive/{operator_e164}` for inbound polling
-- `GET /health` for runtime health checks
-- `POST <callback_url>` to forward signed webhook payloads to Switchboard
+------------------------------------------------------------------------
+## Operational Flow (High Level)
+1. Switchboard calls `register_webhook(callback_url, shared_secret, operator_e164)`.
+2. Adapter stores registration in memory and ensures polling worker is running.
+3. Worker polls Signal runtime receive endpoint for inbound messages.
+4. Adapter wraps each received item as `{"data": <message>}`.
+5. Adapter computes HMAC SHA-256 signature over `<timestamp>.<raw_body_json>`.
+6. Adapter POSTs signed payload to configured Switchboard callback with:
+   - `X-Brain-Timestamp`
+   - `X-Brain-Signature` (`sha256=<digest>`)
+7. On forwarding/poll dependency failure, adapter retains pending messages and retries using exponential backoff with jitter.
 
-Inbound flow:
-1. Switchboard registers callback URL + secret + operator identity.
-2. Adapter polls Signal runtime `/v1/receive/{operator_e164}`.
-3. Adapter signs each forwarded body and POSTs to Switchboard callback.
-4. Switchboard verifies signature and applies ingress policy/normalization.
+------------------------------------------------------------------------
+## Failure Modes and Error Semantics
+Adapter-level failure classes:
+- `SignalAdapterDependencyError`: upstream transport unavailable, non-2xx status, callback delivery failure.
+- `SignalAdapterInternalError`: contract mismatch or invalid adapter-side state.
 
-Webhook signature verification remains owned by Switchboard.
+Behavioral semantics:
+- Registration input validation failures raise internal adapter errors.
+- Polling receive failures trigger retry + capped backoff.
+- Callback delivery failures keep unsent payloads in pending in-memory queue for retry.
+- Health reports Signal runtime readiness and callback/worker status detail.
 
 ------------------------------------------------------------------------
 ## Configuration Surface
@@ -44,47 +63,43 @@ Adapter settings are sourced from `components.adapter_signal`:
 - `base_url`
 - `timeout_seconds`
 - `max_retries`
+- `poll_interval_seconds`
+- `poll_receive_timeout_seconds`
+- `poll_max_messages`
+- `failure_backoff_initial_seconds`
+- `failure_backoff_max_seconds`
+- `failure_backoff_multiplier`
+- `failure_backoff_jitter_ratio`
 
-## Deployment Wiring
-Signal runtime is wired through the repository root `docker-compose.yaml` with
-the `signal-api` service (`bbernhard/signal-cli-rest-api`) and defaults in
-`.env.sample`.
+Defaults and validation live in `resources/adapters/signal/config.py`.
 
-Compose/runtime defaults:
-- `SIGNAL_CLI_REST_API_IMAGE=bbernhard/signal-cli-rest-api:latest`
-- `SIGNAL_CLI_REST_API_MODE=native`
-- `SIGNAL_CLI_REST_API_PORT=8080`
-- `SIGNAL_CLI_CONFIG_DIR=./data/signal-cli`
-
-Persistent Signal account state is mounted at:
-- host: `./data/signal-cli`
-- container: `/home/.local/share/signal-cli`
-
-If you are bringing forward an existing signal-cli state dir, copy it into
-`./data/signal-cli` before starting Compose.
-
-Example:
-```bash
-mkdir -p ./data/signal-cli
-cp -R /path/to/existing/signal-cli/. ./data/signal-cli/
-```
-
-Do not move the original directory until webhook delivery and account state are
-verified in the new deployment.
-
-This deployment path does not use anything under `deprecated/`; that directory
-remains human reference only.
+Deployment wiring:
+- Signal container is `signal-api` in repository root `docker-compose.yaml`.
+- Persistent Signal state directory mount defaults to:
+  - host: `./data/signal-cli`
+  - container: `/home/.local/share/signal-cli`
 
 ------------------------------------------------------------------------
 ## Testing and Validation
-Switchboard behavior tests exercise Signal adapter integration boundaries:
-- `services/action/switchboard/tests/test_switchboard_service.py`
-- `services/action/switchboard/tests/test_switchboard_api.py`
+Primary tests:
+- `resources/adapters/signal/tests/test_signal_adapter.py`
 
-Project-wide validation command:
+Cross-component boundary tests:
+- `services/action/switchboard/tests/test_switchboard_service.py`
+- `services/action/switchboard/tests/test_switchboard_http_ingress.py`
+- `services/action/switchboard/tests/test_switchboard_boot.py`
+
+Project-wide validation:
 ```bash
 make test
 ```
+
+------------------------------------------------------------------------
+## Contributor Notes
+- Keep adapter contract transport-focused and implementation-agnostic.
+- Keep Switchboard policy/normalization logic out of adapter internals.
+- Preserve in-memory callback registration behavior unless requirements change.
+- Avoid adding gRPC surface for adapter-specific control methods; adapter is L0-owned by Switchboard.
 
 ------------------------------------------------------------------------
 _End of Signal Adapter README_
