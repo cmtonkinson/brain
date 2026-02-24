@@ -152,6 +152,7 @@ def _service(
     *,
     operator_signal_e164: str = "+12025550100",
     webhook_secret: str = "super-secret",
+    default_country_code: str = "US",
 ) -> tuple[DefaultSwitchboardService, _FakeSignalAdapter, _FakeCacheService]:
     """Build Switchboard with in-memory dependencies for tests."""
     adapter = _FakeSignalAdapter()
@@ -160,7 +161,7 @@ def _service(
         settings=SwitchboardServiceSettings(),
         identity=SwitchboardIdentitySettings(
             operator_signal_e164=operator_signal_e164,
-            default_country_code="US",
+            default_country_code=default_country_code,
             webhook_shared_secret=webhook_secret,
         ),
         adapter=adapter,
@@ -197,6 +198,36 @@ def test_ingest_accepts_operator_message_and_enqueues_in_cas() -> None:
     assert len(cache.queue_calls) == 1
     assert cache.queue_calls[0].component_id == "service_switchboard"
     assert cache.queue_calls[0].queue == "signal_inbound"
+
+
+def test_ingest_uses_us_plus_one_fallback_for_non_e164_inputs() -> None:
+    """Non-E.164 values normalize using US +1 fallback regardless of country code."""
+    service, _adapter, cache = _service(
+        operator_signal_e164="2025550100",
+        default_country_code="ZZ",
+    )
+    body = json.dumps(
+        {
+            "data": {
+                "source": "2025550100",
+                "message": "hello",
+                "timestamp": int(time() * 1000),
+            }
+        }
+    )
+    timestamp = int(time())
+
+    result = service.ingest_signal_webhook(
+        meta=_meta(),
+        raw_body_json=body,
+        header_timestamp=str(timestamp),
+        header_signature=_signature("super-secret", timestamp, body),
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value.accepted is True
+    assert len(cache.queue_calls) == 1
 
 
 def test_ingest_rejects_invalid_signature() -> None:

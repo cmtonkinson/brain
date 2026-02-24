@@ -57,7 +57,7 @@ class ObservabilitySettings(BaseModel):
 class OperatorProfileSettings(BaseModel):
     """Operator identity profile settings shared across action services."""
 
-    signal_e164: str = ""
+    signal_e164: str = "+10000000000"
 
 
 class ProfileSettings(BaseModel):
@@ -65,7 +65,7 @@ class ProfileSettings(BaseModel):
 
     operator: OperatorProfileSettings = Field(default_factory=OperatorProfileSettings)
     default_country_code: str = "US"
-    webhook_shared_secret: str = ""
+    webhook_shared_secret: str = "replace-me"
 
 
 class CoreBootSettings(BaseModel):

@@ -67,9 +67,9 @@ Root profile and operator identity settings.
 
 | Key | Default | Description |
 |---|---|---|
-| `operator.signal_e164` | `""` | Canonical operator Signal identity used by Switchboard ingress policy. |
-| `default_country_code` | `US` | Default country code for parsing non-E.164 operator/sender values. |
-| `webhook_shared_secret` | `""` | Shared secret used for inbound webhook signature verification. |
+| `operator.signal_e164` | `+10000000000` | Canonical operator Signal identity used by Switchboard ingress policy. Replace with the real operator E.164 number. |
+| `default_country_code` | `US` | Switchboard fallback for non-E.164 operator/sender values. Current normalization fallback is fixed to US `+1`. |
+| `webhook_shared_secret` | `replace-me` | Shared secret used for inbound webhook signature verification. Replace for any non-local environment. |
 
 ------------------------------------------------------------------------
 ## `components`

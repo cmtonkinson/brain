@@ -6,9 +6,9 @@ logging:
 
 profile:
   operator:
-    signal_e164: ""
+    signal_e164: "+10000000000"
   default_country_code: US
-  webhook_shared_secret: ""
+  webhook_shared_secret: "replace-me"
 
 components:
   core_boot:

@@ -60,7 +60,7 @@ Webhook ingress HTTP mapping (`http_ingress.py`):
 Switchboard settings are sourced from:
 - `components.service_switchboard` (service runtime)
 - `profile.operator.signal_e164` (operator identity)
-- `profile.default_country_code` (normalization fallback)
+- `profile.default_country_code` (normalization fallback, currently US `+1`)
 - `profile.webhook_shared_secret` (HMAC verification and registration secret)
 
 `components.service_switchboard` keys:

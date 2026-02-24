@@ -56,15 +56,7 @@ from services.state.cache_authority.service import CacheAuthorityService
 
 _LOGGER = get_logger(__name__)
 
-_COUNTRY_DIAL_CODES: dict[str, str] = {
-    "US": "1",
-    "CA": "1",
-    "GB": "44",
-    "AU": "61",
-    "DE": "49",
-    "FR": "33",
-    "JP": "81",
-}
+_DEFAULT_DIAL_CODE = "1"
 
 
 class DefaultSwitchboardService(SwitchboardService):
@@ -580,11 +572,8 @@ def _normalize_e164(*, raw: str, default_country_code: str) -> str:
         if normalized_digits.startswith("00"):
             normalized_digits = normalized_digits[2:]
         else:
-            dial_code = _COUNTRY_DIAL_CODES.get(default_country_code.upper())
-            if dial_code is None:
-                raise ValueError(
-                    f"unsupported profile.default_country_code: {default_country_code}"
-                )
+            del default_country_code
+            dial_code = _DEFAULT_DIAL_CODE
             if dial_code == "1" and len(normalized_digits) == 10:
                 normalized_digits = f"1{normalized_digits}"
             elif not normalized_digits.startswith(dial_code):
