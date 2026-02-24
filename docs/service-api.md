@@ -32,7 +32,7 @@ _Return Switchboard and dependency health state._
 `ingest_signal_webhook(*, meta: EnvelopeMeta, raw_body_json: str, header_timestamp: str, header_signature: str) -> Envelope[IngestResult]`  
 _Validate, normalize, and enqueue one Signal webhook payload._
 
-`register_signal_webhook(*, meta: EnvelopeMeta, callback_url: str, shared_secret_ref: str) -> Envelope[RegisterSignalWebhookResult]`  
+`register_signal_webhook(*, meta: EnvelopeMeta, callback_url: str) -> Envelope[RegisterSignalWebhookResult]`  
 _Register Signal webhook callback URI and shared secret._
 
 ------------------------------------------------------------------------

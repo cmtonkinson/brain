@@ -32,7 +32,6 @@ class SwitchboardService(ABC):
         *,
         meta: EnvelopeMeta,
         callback_url: str,
-        shared_secret_ref: str,
     ) -> Envelope[RegisterSignalWebhookResult]:
         """Register Signal webhook callback URI and shared secret."""
 

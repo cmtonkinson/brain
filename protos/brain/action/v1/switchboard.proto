@@ -18,8 +18,7 @@ message IngestSignalWebhookPayload {
 }
 
 message RegisterSignalWebhookPayload {
-  string callback_url       = 1;
-  string shared_secret_ref  = 2;
+  string callback_url = 1;
 }
 
 message NormalizedSignalMessage {
@@ -44,8 +43,7 @@ message IngestResult {
 message RegisterSignalWebhookResult {
   bool registered = 1;
   string callback_url = 2;
-  string shared_secret_ref = 3;
-  string detail = 4;
+  string detail = 3;
 }
 
 message SwitchboardHealthStatus {

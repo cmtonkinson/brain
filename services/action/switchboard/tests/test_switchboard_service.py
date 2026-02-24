@@ -293,7 +293,6 @@ def test_register_signal_webhook_uses_configured_secret() -> None:
     result = service.register_signal_webhook(
         meta=_meta(),
         callback_url="https://example.com/switchboard/signal",
-        shared_secret_ref="profile.webhook_shared_secret",
     )
 
     assert result.ok is True
@@ -313,7 +312,6 @@ def test_register_signal_webhook_maps_dependency_failures() -> None:
     result = service.register_signal_webhook(
         meta=_meta(),
         callback_url="https://example.com/switchboard/signal",
-        shared_secret_ref="profile.webhook_shared_secret",
     )
 
     assert result.ok is False

@@ -53,7 +53,6 @@ class GrpcSwitchboardService(switchboard_pb2_grpc.SwitchboardServiceServicer):
         result = self._service.register_signal_webhook(
             meta=_meta_from_proto(request.metadata),
             callback_url=request.payload.callback_url,
-            shared_secret_ref=request.payload.shared_secret_ref,
         )
         _abort_for_transport_errors(context=context, result=result)
         return switchboard_pb2.RegisterSignalWebhookResponse(
@@ -190,7 +189,6 @@ def _register_result_to_proto(
     return switchboard_pb2.RegisterSignalWebhookResult(
         registered=payload.registered,
         callback_url=payload.callback_url,
-        shared_secret_ref=payload.shared_secret_ref,
         detail=payload.detail,
     )
 

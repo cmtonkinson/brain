@@ -208,7 +208,6 @@ class DefaultSwitchboardService(SwitchboardService):
         *,
         meta: EnvelopeMeta,
         callback_url: str,
-        shared_secret_ref: str,
     ) -> Envelope[RegisterSignalWebhookResult]:
         """Register callback URI/secret with owned Signal adapter."""
         request, errors = self._validate_request(
@@ -216,7 +215,6 @@ class DefaultSwitchboardService(SwitchboardService):
             model=RegisterSignalWebhookRequest,
             payload={
                 "callback_url": callback_url,
-                "shared_secret_ref": shared_secret_ref,
             },
         )
         if errors:
@@ -267,7 +265,6 @@ class DefaultSwitchboardService(SwitchboardService):
             payload=RegisterSignalWebhookResult(
                 registered=result.registered,
                 callback_url=str(request.callback_url),
-                shared_secret_ref=request.shared_secret_ref,
                 detail=result.detail,
             ),
         )

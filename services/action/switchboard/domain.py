@@ -39,7 +39,6 @@ class RegisterSignalWebhookResult(BaseModel):
 
     registered: bool
     callback_url: str
-    shared_secret_ref: str
     detail: str
 
 

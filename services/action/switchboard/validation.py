@@ -36,10 +36,3 @@ class RegisterSignalWebhookRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     callback_url: AnyHttpUrl
-    shared_secret_ref: str = ""
-
-    @field_validator("shared_secret_ref", mode="before")
-    @classmethod
-    def _strip_ref(cls, value: object) -> object:
-        """Normalize surrounding whitespace for secret reference values."""
-        return _strip_text(value)

@@ -109,7 +109,6 @@ class _FakeSwitchboardService:
             payload=RegisterSignalWebhookResult(
                 registered=True,
                 callback_url="https://example.com",
-                shared_secret_ref="profile.webhook_shared_secret",
                 detail="registered",
             ),
         )
@@ -130,8 +129,8 @@ class _FakeSwitchboardService:
         self.calls.append(_Call(method="ingest_signal_webhook"))
         return self.ingest_result
 
-    def register_signal_webhook(self, *, meta, callback_url, shared_secret_ref):
-        del meta, callback_url, shared_secret_ref
+    def register_signal_webhook(self, *, meta, callback_url):
+        del meta, callback_url
         self.calls.append(_Call(method="register_signal_webhook"))
         return self.register_result
 
@@ -205,7 +204,6 @@ def test_register_routes_to_service_and_maps_payload() -> None:
             metadata=_meta_to_proto(_meta()),
             payload=switchboard_pb2.RegisterSignalWebhookPayload(
                 callback_url="https://example.com/switchboard/signal",
-                shared_secret_ref="profile.webhook_shared_secret",
             ),
         ),
         context,
@@ -213,7 +211,7 @@ def test_register_routes_to_service_and_maps_payload() -> None:
 
     assert service.calls[-1] == _Call(method="register_signal_webhook")
     assert response.payload.registered is True
-    assert response.payload.shared_secret_ref == "profile.webhook_shared_secret"
+    assert response.payload.callback_url == "https://example.com"
 
 
 def test_health_aborts_transport_on_internal_error() -> None:
