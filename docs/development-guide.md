@@ -20,24 +20,35 @@ This document covers how to set up, build, test, and contribute to Brain.
 
 2. Start infrastructure services:
    ```
+   cp .env.sample .env
    make up
    ```
-   This runs Docker Compose, which starts Postgres, Qdrant, and any other
-   containerized services defined in `docker-compose.yaml`.
+   This runs Docker Compose, which starts Postgres, Qdrant, `signal-api`, and
+   any other containerized services defined in `docker-compose.yaml`.
 
-   3. Copy and edit the configuration sample:
+3. If migrating existing signal-cli account state, copy it into `./data/signal-cli`:
+   ```
+   mkdir -p ./data/signal-cli
+   cp -R /path/to/existing/signal-cli/. ./data/signal-cli/
+   ```
+   Copy, do not move, until webhook ingress and account state are verified in
+   this deployment.
+
+4. Copy and edit the configuration sample:
    ```
    cp config/brain.yaml.sample ~/.config/brain/brain.yaml
    ```
-   The sample includes a default `components.substrate_postgres.url`; override
-   it (or export `BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL`) if your
-   environment differs. See the
+   The sample includes defaults for `components.substrate_postgres.url`,
+   `components.adapter_signal.base_url`, and Signal profile settings; override
+   them as needed for your environment. See the
    [Configuration Reference](configuration.md) for all available keys.
 
-4. Run database migrations:
+5. Run database migrations:
    ```
    make migrate
    ```
+
+`deprecated/` is not part of this runtime path and remains reference-only.
 
 ------------------------------------------------------------------------
 ## Make Targets

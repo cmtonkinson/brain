@@ -1,5 +1,6 @@
 # Secrets
 config/brain.yml
+.env
 
 # General files
 /data/
@@ -8,4 +9,3 @@ logs/
 
 # gRPC/protobuf
 generated/
-

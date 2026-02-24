@@ -1,4 +1,14 @@
 services:
+  signal-api:
+    image: ${SIGNAL_CLI_REST_API_IMAGE:-bbernhard/signal-cli-rest-api:latest}
+    environment:
+      MODE: ${SIGNAL_CLI_REST_API_MODE:-native}
+    ports:
+      - "${SIGNAL_CLI_REST_API_PORT:-8080}:8080"
+    volumes:
+      - ${SIGNAL_CLI_CONFIG_DIR:-./data/signal-cli}:/home/.local/share/signal-cli
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]

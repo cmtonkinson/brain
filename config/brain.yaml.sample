@@ -53,6 +53,10 @@ components:
     api_key: ""
     timeout_seconds: 10.0
     max_retries: 2
+  adapter_signal:
+    base_url: http://signal-api:8080
+    timeout_seconds: 10.0
+    max_retries: 2
   service_embedding_authority:
     max_list_limit: 500
   service_cache_authority:
