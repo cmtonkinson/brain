@@ -32,7 +32,8 @@ Properties:
 - _Services_ may call each other directly (but only via _Public APIs_)
 - No _Service_ may import another _Service's_ internal implementation
 - _Services_ are responsible for their own audit logs, per domain
-- _Services_ must enforce relevant policies
+- _Services_ must enforce relevant policies at _Service_->_Adapter_ boundaries
+  where external side effects occur
 
 "East-West" traffic is permitted within L1, but each _Service_ is only permitted
 to interact with the formal _Public APIs_ of others. See below for an
@@ -71,6 +72,12 @@ Within a given _System_, every _Service_ is responsible for:
   respect to the underlying _Resource_
 - Defining invariants and access controls
 - Owning audit logs for state access & mutation
+
+Policy boundary clarification:
+- _Service_->_Service_ calls are internal orchestration and are not policy
+  gates by default.
+- Policy checks are required at _Service_->_Adapter_ boundaries for external
+  side effects.
 
 ### State System
 The _State System_ is responsible for durable data within Brain. _Services_
