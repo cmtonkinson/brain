@@ -71,6 +71,7 @@ class ProfileSettings(BaseModel):
 class CoreBootSettings(BaseModel):
     """Core boot framework settings under ``components.core_boot``."""
 
+    run_migrations_on_startup: bool = True
     readiness_poll_interval_seconds: float = Field(default=0.25, gt=0)
     readiness_timeout_seconds: float = Field(default=30.0, gt=0)
     boot_retry_attempts: int = Field(default=3, gt=0)

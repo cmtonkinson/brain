@@ -12,6 +12,7 @@ profile:
 
 components:
   core_boot:
+    run_migrations_on_startup: true
     readiness_poll_interval_seconds: 0.25
     readiness_timeout_seconds: 30.0
     boot_retry_attempts: 3
