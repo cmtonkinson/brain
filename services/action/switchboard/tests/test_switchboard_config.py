@@ -13,7 +13,7 @@ def test_switchboard_settings_include_webhook_ingress_defaults() -> None:
 
     assert switchboard.webhook_bind_host == "0.0.0.0"
     assert switchboard.webhook_bind_port == 8091
-    assert switchboard.webhook_path == "/switchboard/signal"
+    assert switchboard.webhook_path == "/v1/inbound/signal/webhook"
     assert str(switchboard.webhook_public_base_url) == "http://127.0.0.1:8091"
 
 

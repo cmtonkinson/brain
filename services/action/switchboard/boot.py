@@ -11,6 +11,49 @@ from services.action.switchboard.config import SwitchboardServiceSettings
 from services.action.switchboard.domain import RegisterSignalWebhookResult
 from services.action.switchboard.service import SwitchboardService
 
+dependencies: tuple[str, ...] = ("adapter_signal", "service_cache_authority")
+
+_BOOT_SERVICE: SwitchboardService | None = None
+_BOOT_SETTINGS: SwitchboardServiceSettings | None = None
+
+
+def configure(
+    *,
+    service: SwitchboardService,
+    settings: SwitchboardServiceSettings,
+) -> None:
+    """Attach runtime context consumed by ``is_ready`` and ``boot``."""
+    global _BOOT_SERVICE, _BOOT_SETTINGS
+    _BOOT_SERVICE = service
+    _BOOT_SETTINGS = settings
+
+
+def is_ready() -> bool:
+    """Return true once Switchboard dependencies report ready."""
+    if _BOOT_SERVICE is None:
+        return False
+    health = _BOOT_SERVICE.health(
+        meta=new_meta(
+            kind=EnvelopeKind.COMMAND,
+            source="switchboard_boot",
+            principal="switchboard",
+        )
+    )
+    if not health.ok or health.payload is None:
+        return False
+    payload = health.payload.value
+    return payload.service_ready and payload.adapter_ready and payload.cas_ready
+
+
+def boot() -> None:
+    """Execute callback registration during boot once readiness is satisfied."""
+    if _BOOT_SERVICE is None or _BOOT_SETTINGS is None:
+        raise RuntimeError("switchboard boot context is not configured")
+    run_switchboard_boot_hook(
+        service=_BOOT_SERVICE,
+        settings=_BOOT_SETTINGS,
+    )
+
 
 def build_switchboard_callback_url(*, settings: SwitchboardServiceSettings) -> str:
     """Build canonical public callback URL from base URL + webhook path."""

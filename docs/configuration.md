@@ -238,7 +238,7 @@ Switchboard Service runtime settings.
 | `signature_tolerance_seconds` | `300` | Allowed absolute clock skew when validating webhook timestamps. Must be >= 0. |
 | `webhook_bind_host` | `0.0.0.0` | Bind host for the Switchboard inbound webhook HTTP server. |
 | `webhook_bind_port` | `8091` | Bind port for the Switchboard inbound webhook HTTP server. Must be in `1..65535`. |
-| `webhook_path` | `/switchboard/signal` | Absolute callback path served by Switchboard webhook ingress. |
+| `webhook_path` | `/v1/inbound/signal/webhook` | Absolute callback path served by Switchboard webhook ingress. |
 | `webhook_public_base_url` | `http://127.0.0.1:8091` | Publicly reachable base URL used to construct callback registration target. |
 | `webhook_register_max_retries` | `8` | Number of boot-time retry attempts after initial callback registration try when dependencies are not ready. Must be >= 0. |
 | `webhook_register_retry_delay_seconds` | `2.0` | Delay between callback registration retries during boot. Must be > 0. |

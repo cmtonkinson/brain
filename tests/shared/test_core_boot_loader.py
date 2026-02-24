@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+import sys
 from types import ModuleType
 
 import pytest
@@ -39,12 +41,13 @@ def test_discover_boot_modules_only_includes_present_specs(
             _FakeComponent(id="service_b", module_roots=frozenset({"services.b"})),
         ),
     )
-
-    def fake_find_spec(module_name: str) -> object | None:
-        return object() if module_name == "services.a.boot" else None
-
     monkeypatch.setattr(
-        "packages.brain_core.boot.loader.importlib.util.find_spec", fake_find_spec
+        "packages.brain_core.boot.loader.Path.cwd",
+        lambda: Path("/repo"),
+    )
+    monkeypatch.setattr(
+        "packages.brain_core.boot.loader.Path.exists",
+        lambda self: str(self).endswith("services/a/boot.py"),
     )
 
     discovered = discover_boot_modules()
@@ -71,9 +74,10 @@ def test_load_boot_hooks_rejects_invalid_contract(
         ),
     )
     monkeypatch.setattr(
-        "packages.brain_core.boot.loader.importlib.import_module",
-        lambda _: module,
+        "packages.brain_core.boot.loader.import_component_modules",
+        lambda _: tuple(),
     )
+    monkeypatch.setitem(sys.modules, "services.a.boot", module)
 
     with pytest.raises(BootContractError):
         load_boot_hooks()
@@ -94,9 +98,10 @@ def test_load_boot_hooks_loads_valid_contract(monkeypatch: pytest.MonkeyPatch) -
         ),
     )
     monkeypatch.setattr(
-        "packages.brain_core.boot.loader.importlib.import_module",
-        lambda _: module,
+        "packages.brain_core.boot.loader.import_component_modules",
+        lambda _: tuple(),
     )
+    monkeypatch.setitem(sys.modules, "services.a.boot", module)
 
     hooks = load_boot_hooks()
 

@@ -102,7 +102,7 @@ components:
     signature_tolerance_seconds: 300
     webhook_bind_host: 0.0.0.0
     webhook_bind_port: 8091
-    webhook_path: /switchboard/signal
+    webhook_path: /v1/inbound/signal/webhook
     webhook_public_base_url: http://127.0.0.1:8091
     webhook_register_max_retries: 8
     webhook_register_retry_delay_seconds: 2.0

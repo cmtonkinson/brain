@@ -49,9 +49,6 @@ from services.action.switchboard.api import (  # noqa: E402
 )
 from services.action.switchboard.domain import (  # noqa: E402
     HealthStatus,
-    IngestResult,
-    NormalizedSignalMessage,
-    RegisterSignalWebhookResult,
 )
 from brain.action.v1 import switchboard_pb2  # noqa: E402
 
@@ -85,33 +82,6 @@ class _FakeSwitchboardService:
 
     def __init__(self) -> None:
         self.calls: list[_Call] = []
-        self.ingest_result = success(
-            meta=_meta(),
-            payload=IngestResult(
-                accepted=True,
-                queued=True,
-                queue_name="signal_inbound",
-                reason="accepted",
-                message=NormalizedSignalMessage(
-                    sender_e164="+12025550100",
-                    message_text="hello",
-                    timestamp_ms=123,
-                    source_device="1",
-                    source="signal",
-                    group_id="group-1",
-                    quote_target_timestamp_ms=100,
-                    reaction_target_timestamp_ms=101,
-                ),
-            ),
-        )
-        self.register_result = success(
-            meta=_meta(),
-            payload=RegisterSignalWebhookResult(
-                registered=True,
-                callback_url="https://example.com",
-                detail="registered",
-            ),
-        )
         self.health_result = success(
             meta=_meta(),
             payload=HealthStatus(
@@ -121,18 +91,6 @@ class _FakeSwitchboardService:
                 detail="ok",
             ),
         )
-
-    def ingest_signal_webhook(
-        self, *, meta, raw_body_json, header_timestamp, header_signature
-    ):
-        del meta, raw_body_json, header_timestamp, header_signature
-        self.calls.append(_Call(method="ingest_signal_webhook"))
-        return self.ingest_result
-
-    def register_signal_webhook(self, *, meta, callback_url):
-        del meta, callback_url
-        self.calls.append(_Call(method="register_signal_webhook"))
-        return self.register_result
 
     def health(self, *, meta):
         del meta
@@ -165,53 +123,6 @@ def test_abort_maps_dependency_errors_to_unavailable() -> None:
         _abort_for_transport_errors(context=context, result=envelope)
 
     assert context.code == grpc.StatusCode.UNAVAILABLE
-
-
-def test_ingest_routes_to_service_and_maps_wrapper_fields() -> None:
-    """Ingest should route to service and map wrapper payload fields to proto."""
-    service = _FakeSwitchboardService()
-    grpc_service = GrpcSwitchboardService(service=service)
-    context = _FakeServicerContext()
-
-    response = grpc_service.IngestSignalWebhook(
-        switchboard_pb2.IngestSignalWebhookRequest(
-            metadata=_meta_to_proto(_meta()),
-            payload=switchboard_pb2.IngestSignalWebhookPayload(
-                raw_body_json="{}",
-                header_timestamp="1",
-                header_signature="sig",
-            ),
-        ),
-        context,
-    )
-
-    assert service.calls[-1] == _Call(method="ingest_signal_webhook")
-    assert response.payload.accepted is True
-    assert response.payload.message.sender_e164 == "+12025550100"
-    assert response.payload.message.group_id.value == "group-1"
-    assert response.payload.message.quote_target_timestamp_ms.value == 100
-    assert response.payload.message.reaction_target_timestamp_ms.value == 101
-
-
-def test_register_routes_to_service_and_maps_payload() -> None:
-    """Registration should route to service and return mapped payload fields."""
-    service = _FakeSwitchboardService()
-    grpc_service = GrpcSwitchboardService(service=service)
-    context = _FakeServicerContext()
-
-    response = grpc_service.RegisterSignalWebhook(
-        switchboard_pb2.RegisterSignalWebhookRequest(
-            metadata=_meta_to_proto(_meta()),
-            payload=switchboard_pb2.RegisterSignalWebhookPayload(
-                callback_url="https://example.com/switchboard/signal",
-            ),
-        ),
-        context,
-    )
-
-    assert service.calls[-1] == _Call(method="register_signal_webhook")
-    assert response.payload.registered is True
-    assert response.payload.callback_url == "https://example.com"
 
 
 def test_health_aborts_transport_on_internal_error() -> None:

@@ -7,15 +7,9 @@ from datetime import datetime, timezone
 import grpc
 from brain.action.v1 import switchboard_pb2, switchboard_pb2_grpc
 from brain.shared.v1 import envelope_pb2
-from google.protobuf import wrappers_pb2
 from packages.brain_shared.envelope import Envelope, EnvelopeKind, EnvelopeMeta
 from packages.brain_shared.errors import ErrorCategory, ErrorDetail
-from services.action.switchboard.domain import (
-    HealthStatus,
-    IngestResult,
-    NormalizedSignalMessage,
-    RegisterSignalWebhookResult,
-)
+from services.action.switchboard.domain import HealthStatus
 from services.action.switchboard.service import SwitchboardService
 
 
@@ -24,44 +18,6 @@ class GrpcSwitchboardService(switchboard_pb2_grpc.SwitchboardServiceServicer):
 
     def __init__(self, service: SwitchboardService) -> None:
         self._service = service
-
-    def IngestSignalWebhook(
-        self,
-        request: switchboard_pb2.IngestSignalWebhookRequest,
-        context: grpc.ServicerContext,
-    ) -> switchboard_pb2.IngestSignalWebhookResponse:
-        result = self._service.ingest_signal_webhook(
-            meta=_meta_from_proto(request.metadata),
-            raw_body_json=request.payload.raw_body_json,
-            header_timestamp=request.payload.header_timestamp,
-            header_signature=request.payload.header_signature,
-        )
-        _abort_for_transport_errors(context=context, result=result)
-        return switchboard_pb2.IngestSignalWebhookResponse(
-            metadata=_meta_to_proto(result.metadata),
-            payload=_ingest_result_to_proto(
-                None if result.payload is None else result.payload.value
-            ),
-            errors=[_error_to_proto(item) for item in result.errors],
-        )
-
-    def RegisterSignalWebhook(
-        self,
-        request: switchboard_pb2.RegisterSignalWebhookRequest,
-        context: grpc.ServicerContext,
-    ) -> switchboard_pb2.RegisterSignalWebhookResponse:
-        result = self._service.register_signal_webhook(
-            meta=_meta_from_proto(request.metadata),
-            callback_url=request.payload.callback_url,
-        )
-        _abort_for_transport_errors(context=context, result=result)
-        return switchboard_pb2.RegisterSignalWebhookResponse(
-            metadata=_meta_to_proto(result.metadata),
-            payload=_register_result_to_proto(
-                None if result.payload is None else result.payload.value
-            ),
-            errors=[_error_to_proto(item) for item in result.errors],
-        )
 
     def Health(
         self,
@@ -163,36 +119,6 @@ def _kind_to_proto(kind: EnvelopeKind) -> int:
     return envelope_pb2.ENVELOPE_KIND_UNSPECIFIED
 
 
-def _ingest_result_to_proto(
-    payload: IngestResult | None,
-) -> switchboard_pb2.IngestResult:
-    """Convert ingest domain payload into protobuf shape."""
-    if payload is None:
-        return switchboard_pb2.IngestResult()
-
-    message = _normalized_message_to_proto(payload.message)
-    return switchboard_pb2.IngestResult(
-        accepted=payload.accepted,
-        queued=payload.queued,
-        queue_name=payload.queue_name,
-        reason=payload.reason,
-        message=message,
-    )
-
-
-def _register_result_to_proto(
-    payload: RegisterSignalWebhookResult | None,
-) -> switchboard_pb2.RegisterSignalWebhookResult:
-    """Convert registration domain payload into protobuf shape."""
-    if payload is None:
-        return switchboard_pb2.RegisterSignalWebhookResult()
-    return switchboard_pb2.RegisterSignalWebhookResult(
-        registered=payload.registered,
-        callback_url=payload.callback_url,
-        detail=payload.detail,
-    )
-
-
 def _health_to_proto(
     payload: HealthStatus | None,
 ) -> switchboard_pb2.SwitchboardHealthStatus:
@@ -205,33 +131,6 @@ def _health_to_proto(
         cas_ready=payload.cas_ready,
         detail=payload.detail,
     )
-
-
-def _normalized_message_to_proto(
-    payload: NormalizedSignalMessage | None,
-) -> switchboard_pb2.NormalizedSignalMessage:
-    """Convert normalized message payload into protobuf shape."""
-    if payload is None:
-        return switchboard_pb2.NormalizedSignalMessage()
-
-    result = switchboard_pb2.NormalizedSignalMessage(
-        sender_e164=payload.sender_e164,
-        message_text=payload.message_text,
-        timestamp_ms=payload.timestamp_ms,
-        source_device=payload.source_device,
-        source=payload.source,
-    )
-    if payload.group_id is not None:
-        result.group_id.CopyFrom(wrappers_pb2.StringValue(value=payload.group_id))
-    if payload.quote_target_timestamp_ms is not None:
-        result.quote_target_timestamp_ms.CopyFrom(
-            wrappers_pb2.Int64Value(value=payload.quote_target_timestamp_ms)
-        )
-    if payload.reaction_target_timestamp_ms is not None:
-        result.reaction_target_timestamp_ms.CopyFrom(
-            wrappers_pb2.Int64Value(value=payload.reaction_target_timestamp_ms)
-        )
-    return result
 
 
 def _error_to_proto(error: ErrorDetail) -> envelope_pb2.ErrorDetail:

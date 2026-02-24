@@ -2,23 +2,32 @@
 
 from __future__ import annotations
 
-import json
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
+
+import uvicorn
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from packages.brain_shared.errors import ErrorCategory
+from packages.brain_shared.http import (
+    InvalidBodyError,
+    MissingHeaderError,
+    create_app,
+    get_header,
+    read_text_body,
+)
 from services.action.switchboard.config import SwitchboardServiceSettings
 from services.action.switchboard.domain import IngestResult
 from services.action.switchboard.service import SwitchboardService
 
-_HEADER_SIGNATURE = "X-Signature"
-_HEADER_SIGNATURE_TIMESTAMP = "X-Signature-Timestamp"
+_HEADER_SIGNATURE = "X-Brain-Signature"
+_HEADER_SIGNATURE_TIMESTAMP = "X-Brain-Timestamp"
 
 
 class SwitchboardWebhookHttpServer:
-    """Minimal HTTP server exposing one Switchboard webhook callback endpoint."""
+    """Uvicorn-backed server exposing one Switchboard webhook callback endpoint."""
 
     def __init__(
         self,
@@ -26,119 +35,102 @@ class SwitchboardWebhookHttpServer:
         service: SwitchboardService,
         settings: SwitchboardServiceSettings,
     ) -> None:
-        self._service = service
         self._settings = settings
-        self._server = ThreadingHTTPServer(
-            (settings.webhook_bind_host, settings.webhook_bind_port),
-            _build_handler(service=service, settings=settings),
+        self._app = create_switchboard_webhook_app(service=service, settings=settings)
+        self._server = uvicorn.Server(
+            uvicorn.Config(
+                app=self._app,
+                host=settings.webhook_bind_host,
+                port=settings.webhook_bind_port,
+                log_level="warning",
+            )
         )
         self._thread: Thread | None = None
 
     @property
     def address(self) -> tuple[str, int]:
-        """Return bound host/port tuple for this webhook server."""
-        host, port = self._server.server_address
-        return str(host), int(port)
+        """Return configured bind host/port tuple for this webhook server."""
+        return self._settings.webhook_bind_host, self._settings.webhook_bind_port
 
     def start(self) -> None:
         """Start serving webhook requests in a background daemon thread."""
         if self._thread is not None:
             return
-        self._thread = Thread(target=self._server.serve_forever, daemon=True)
+        self._thread = Thread(target=self._server.run, daemon=True)
         self._thread.start()
 
     def close(self) -> None:
         """Stop the server and release bound port resources."""
-        self._server.shutdown()
-        self._server.server_close()
+        self._server.should_exit = True
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
 
 
-def _build_handler(
+def create_switchboard_webhook_app(
     *,
     service: SwitchboardService,
     settings: SwitchboardServiceSettings,
-) -> type[BaseHTTPRequestHandler]:
-    """Build one request handler class bound to service and settings context."""
+):
+    """Create one FastAPI app with the configured Switchboard webhook callback."""
+    app = create_app(title="switchboard-webhook", version="1")
 
-    class _SwitchboardWebhookHandler(BaseHTTPRequestHandler):
-        """Request handler that forwards webhook payloads to Switchboard service."""
-
-        def do_POST(self) -> None:  # noqa: N802
-            if self.path != settings.webhook_path:
-                self._write_json(
-                    status=HTTPStatus.NOT_FOUND,
-                    payload={"ok": False, "error": "not found"},
-                )
-                return
-
-            try:
-                content_length = int(self.headers.get("Content-Length", "0"))
-            except ValueError:
-                content_length = 0
-            raw_body = self.rfile.read(content_length)
-            try:
-                raw_body_json = raw_body.decode("utf-8")
-            except UnicodeDecodeError:
-                self._write_json(
-                    status=HTTPStatus.BAD_REQUEST,
-                    payload={"ok": False, "error": "payload must be UTF-8 JSON text"},
-                )
-                return
-
-            result = service.ingest_signal_webhook(
-                meta=new_meta(
-                    kind=EnvelopeKind.EVENT,
-                    source="switchboard_http_ingress",
-                    principal="operator",
-                ),
-                raw_body_json=raw_body_json,
-                header_timestamp=self.headers.get(_HEADER_SIGNATURE_TIMESTAMP, ""),
-                header_signature=self.headers.get(_HEADER_SIGNATURE, ""),
+    @app.post(settings.webhook_path)
+    async def ingest_signal_webhook(request: Request) -> JSONResponse:
+        try:
+            raw_body_json = await read_text_body(request)
+            header_timestamp = get_header(request, _HEADER_SIGNATURE_TIMESTAMP)
+            header_signature = get_header(request, _HEADER_SIGNATURE)
+            assert header_timestamp is not None
+            assert header_signature is not None
+        except MissingHeaderError as exc:
+            return JSONResponse(
+                status_code=HTTPStatus.BAD_REQUEST,
+                content={"ok": False, "error": str(exc)},
             )
-            if result.ok and result.payload is not None:
-                payload = result.payload.value
-                status = HTTPStatus.ACCEPTED if payload.accepted else HTTPStatus.OK
-                self._write_json(
-                    status=status,
-                    payload=_ingest_result_payload(payload=payload),
-                )
-                return
-
-            status = _error_status(result.errors[0].category) if result.errors else 500
-            self._write_json(
-                status=HTTPStatus(status),
-                payload={
-                    "ok": False,
-                    "errors": [
-                        {
-                            "code": error.code,
-                            "category": error.category.value,
-                            "message": error.message,
-                        }
-                        for error in result.errors
-                    ],
-                },
+        except InvalidBodyError as exc:
+            return JSONResponse(
+                status_code=HTTPStatus.BAD_REQUEST,
+                content={"ok": False, "error": str(exc)},
             )
 
-        def log_message(self, format: str, *args: object) -> None:
-            """Disable stdlib per-request stderr logging."""
-            del format, args
+        result = service.ingest_signal_webhook(
+            meta=new_meta(
+                kind=EnvelopeKind.EVENT,
+                source="switchboard_http_ingress",
+                principal="operator",
+            ),
+            raw_body_json=raw_body_json,
+            header_timestamp=header_timestamp,
+            header_signature=header_signature,
+        )
+        if result.ok and result.payload is not None:
+            payload = result.payload.value
+            status = HTTPStatus.ACCEPTED if payload.accepted else HTTPStatus.OK
+            return JSONResponse(
+                status_code=status,
+                content=_ingest_result_payload(payload=payload),
+            )
 
-        def _write_json(
-            self, *, status: HTTPStatus, payload: dict[str, object]
-        ) -> None:
-            """Write one JSON response body with common headers."""
-            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+        status_code = (
+            _error_status(result.errors[0].category) if result.errors else HTTPStatus.OK
+        )
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "ok": False,
+                "errors": [
+                    {
+                        "code": error.code,
+                        "category": error.category.value,
+                        "message": error.message,
+                    }
+                    for error in result.errors
+                ],
+            },
+        )
 
-    return _SwitchboardWebhookHandler
+    return app
 
 
 def _ingest_result_payload(*, payload: IngestResult) -> dict[str, object]:

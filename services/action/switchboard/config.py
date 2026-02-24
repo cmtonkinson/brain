@@ -17,7 +17,7 @@ class SwitchboardServiceSettings(BaseModel):
     signature_tolerance_seconds: int = Field(default=300, ge=0)
     webhook_bind_host: str = "0.0.0.0"
     webhook_bind_port: int = Field(default=8091, ge=1, le=65535)
-    webhook_path: str = "/switchboard/signal"
+    webhook_path: str = "/v1/inbound/signal/webhook"
     webhook_public_base_url: AnyHttpUrl = "http://127.0.0.1:8091"
     webhook_register_max_retries: int = Field(default=8, ge=0)
     webhook_register_retry_delay_seconds: float = Field(default=2.0, gt=0)

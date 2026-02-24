@@ -3,47 +3,9 @@ syntax = "proto3";
 package brain.action.v1;
 
 import "brain/shared/v1/envelope.proto";
-import "google/protobuf/wrappers.proto";
 
 service SwitchboardService {
-  rpc IngestSignalWebhook(IngestSignalWebhookRequest) returns (IngestSignalWebhookResponse);
-  rpc RegisterSignalWebhook(RegisterSignalWebhookRequest) returns (RegisterSignalWebhookResponse);
   rpc Health(SwitchboardHealthRequest) returns (SwitchboardHealthResponse);
-}
-
-message IngestSignalWebhookPayload {
-  string raw_body_json   = 1;
-  string header_timestamp = 2;
-  string header_signature = 3;
-}
-
-message RegisterSignalWebhookPayload {
-  string callback_url = 1;
-}
-
-message NormalizedSignalMessage {
-  string sender_e164 = 1;
-  string message_text = 2;
-  int64 timestamp_ms = 3;
-  string source_device = 4;
-  string source = 5;
-  google.protobuf.StringValue group_id = 6;
-  google.protobuf.Int64Value quote_target_timestamp_ms = 7;
-  google.protobuf.Int64Value reaction_target_timestamp_ms = 8;
-}
-
-message IngestResult {
-  bool accepted = 1;
-  bool queued = 2;
-  string queue_name = 3;
-  string reason = 4;
-  NormalizedSignalMessage message = 5;
-}
-
-message RegisterSignalWebhookResult {
-  bool registered = 1;
-  string callback_url = 2;
-  string detail = 3;
 }
 
 message SwitchboardHealthStatus {
@@ -51,28 +13,6 @@ message SwitchboardHealthStatus {
   bool adapter_ready = 2;
   bool cas_ready = 3;
   string detail = 4;
-}
-
-message IngestSignalWebhookRequest {
-  brain.shared.v1.EnvelopeMeta metadata = 1;
-  IngestSignalWebhookPayload payload = 2;
-}
-
-message IngestSignalWebhookResponse {
-  brain.shared.v1.EnvelopeMeta metadata       = 1;
-  IngestResult payload                        = 2;
-  repeated brain.shared.v1.ErrorDetail errors = 3;
-}
-
-message RegisterSignalWebhookRequest {
-  brain.shared.v1.EnvelopeMeta metadata = 1;
-  RegisterSignalWebhookPayload payload = 2;
-}
-
-message RegisterSignalWebhookResponse {
-  brain.shared.v1.EnvelopeMeta metadata       = 1;
-  RegisterSignalWebhookResult payload         = 2;
-  repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
 message SwitchboardHealthPayload {}

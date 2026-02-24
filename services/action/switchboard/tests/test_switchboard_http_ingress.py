@@ -1,18 +1,16 @@
-"""Tests for Switchboard HTTP webhook ingress server behavior."""
+"""Tests for Switchboard HTTP webhook ingress app behavior."""
 
 from __future__ import annotations
 
-import json
-import socket
 from dataclasses import dataclass
-from urllib import error as urllib_error
-from urllib import request as urllib_request
+
+from fastapi.testclient import TestClient
 
 from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
 from packages.brain_shared.errors import dependency_error, policy_error
 from services.action.switchboard.config import SwitchboardServiceSettings
 from services.action.switchboard.domain import IngestResult, NormalizedSignalMessage
-from services.action.switchboard.http_ingress import SwitchboardWebhookHttpServer
+from services.action.switchboard.http_ingress import create_switchboard_webhook_app
 from services.action.switchboard.service import SwitchboardService
 
 
@@ -77,42 +75,28 @@ def _meta():
     return new_meta(kind=EnvelopeKind.EVENT, source="test", principal="operator")
 
 
-def _free_port() -> int:
-    """Reserve and return one available local TCP port."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
+def _client() -> tuple[TestClient, _FakeSwitchboardService]:
+    """Build one FastAPI test client and backing fake service."""
+    service = _FakeSwitchboardService()
+    settings = SwitchboardServiceSettings(webhook_path="/v1/inbound/signal/webhook")
+    app = create_switchboard_webhook_app(service=service, settings=settings)
+    return TestClient(app), service
 
 
 def test_http_ingress_forwards_body_and_signature_headers() -> None:
     """POST callback should forward raw JSON and signature headers to service."""
-    service = _FakeSwitchboardService()
-    port = _free_port()
-    settings = SwitchboardServiceSettings(
-        webhook_bind_host="127.0.0.1",
-        webhook_bind_port=port,
-        webhook_path="/switchboard/signal",
+    client, service = _client()
+    response = client.post(
+        "/v1/inbound/signal/webhook",
+        json={"data": {"message": "hello"}},
+        headers={
+            "X-Brain-Timestamp": "123",
+            "X-Brain-Signature": "abc",
+        },
     )
-    server = SwitchboardWebhookHttpServer(service=service, settings=settings)
-    server.start()
-    try:
-        request = urllib_request.Request(
-            url=f"http://127.0.0.1:{port}/switchboard/signal",
-            data=b'{"data":{"message":"hello"}}',
-            method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "X-Signature-Timestamp": "123",
-                "X-Signature": "abc",
-            },
-        )
-        with urllib_request.urlopen(request, timeout=2.0) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-            status = response.status
-    finally:
-        server.close()
 
-    assert status == 202
+    assert response.status_code == 202
+    payload = response.json()
     assert payload["ok"] is True
     assert len(service.ingest_calls) == 1
     call = service.ingest_calls[0]
@@ -121,70 +105,55 @@ def test_http_ingress_forwards_body_and_signature_headers() -> None:
     assert call.header_signature == "abc"
 
 
+def test_http_ingress_requires_signature_headers() -> None:
+    """Missing signature headers should fail with HTTP 400."""
+    client, _service = _client()
+    response = client.post(
+        "/v1/inbound/signal/webhook",
+        json={"data": {"message": "hello"}},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["ok"] is False
+
+
 def test_http_ingress_returns_forbidden_for_policy_error() -> None:
     """Policy failures should return HTTP 403 with structured error payload."""
-    service = _FakeSwitchboardService()
+    client, service = _client()
     service.ingest_result = failure(
         meta=_meta(),
         errors=[policy_error("signature mismatch")],
     )
-    port = _free_port()
-    settings = SwitchboardServiceSettings(
-        webhook_bind_host="127.0.0.1",
-        webhook_bind_port=port,
-        webhook_path="/switchboard/signal",
+    response = client.post(
+        "/v1/inbound/signal/webhook",
+        json={},
+        headers={
+            "X-Brain-Timestamp": "1",
+            "X-Brain-Signature": "sig",
+        },
     )
-    server = SwitchboardWebhookHttpServer(service=service, settings=settings)
-    server.start()
-    try:
-        request = urllib_request.Request(
-            url=f"http://127.0.0.1:{port}/switchboard/signal",
-            data=b"{}",
-            method="POST",
-        )
-        try:
-            urllib_request.urlopen(request, timeout=2.0)
-        except urllib_error.HTTPError as exc:
-            status = exc.code
-            payload = json.loads(exc.read().decode("utf-8"))
-        else:
-            raise AssertionError("expected HTTPError")
-    finally:
-        server.close()
 
-    assert status == 403
+    assert response.status_code == 403
+    payload = response.json()
     assert payload["ok"] is False
     assert payload["errors"][0]["category"] == "policy"
 
 
 def test_http_ingress_returns_service_unavailable_for_dependency_error() -> None:
     """Dependency failures should map to HTTP 503 from webhook endpoint."""
-    service = _FakeSwitchboardService()
+    client, service = _client()
     service.ingest_result = failure(
         meta=_meta(),
         errors=[dependency_error("redis unavailable")],
     )
-    port = _free_port()
-    settings = SwitchboardServiceSettings(
-        webhook_bind_host="127.0.0.1",
-        webhook_bind_port=port,
-        webhook_path="/switchboard/signal",
+    response = client.post(
+        "/v1/inbound/signal/webhook",
+        json={},
+        headers={
+            "X-Brain-Timestamp": "1",
+            "X-Brain-Signature": "sig",
+        },
     )
-    server = SwitchboardWebhookHttpServer(service=service, settings=settings)
-    server.start()
-    try:
-        request = urllib_request.Request(
-            url=f"http://127.0.0.1:{port}/switchboard/signal",
-            data=b"{}",
-            method="POST",
-        )
-        try:
-            urllib_request.urlopen(request, timeout=2.0)
-        except urllib_error.HTTPError as exc:
-            status = exc.code
-        else:
-            raise AssertionError("expected HTTPError")
-    finally:
-        server.close()
 
-    assert status == 503
+    assert response.status_code == 503
