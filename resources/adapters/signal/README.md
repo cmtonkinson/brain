@@ -6,9 +6,8 @@ Action _Adapter_ _Resource_ that integrates Signal messaging through `signal-cli
 `resources/adapters/signal/` provides the concrete Layer 0 Signal integration:
 - `component.py`: `ResourceManifest` registration (`adapter_signal`)
 - `adapter.py`: adapter protocol, DTOs, and exception taxonomy
-- `signal_adapter.py`: HTTP transport implementation (`SignalCliRestAdapter`)
-- `config.py`: settings model and resolver for adapter + profile identity
-- `validation.py`: webhook HMAC signing helpers
+- `signal_adapter.py`: HTTP transport implementation (`HttpSignalAdapter`)
+- `config.py`: settings model and resolver for adapter runtime settings
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
@@ -21,18 +20,16 @@ Boundary rules:
 - Adapter does not perform dedupe.
 
 ------------------------------------------------------------------------
-## Inbound Contract
-Inbound mode is webhook-only for v1 runtime behavior.
+## Adapter Contract
+This adapter exposes:
+- `register_webhook(callback_url, shared_secret) -> SignalWebhookRegistrationResult`
+- `health() -> SignalAdapterHealthResult`
 
-Switchboard registers callback settings through:
-- `configure_inbound_webhook(callback_url, shared_secret) -> bool`
+Current HTTP mappings:
+- `POST /v1/webhooks/register` for webhook registration
+- `GET /health` for runtime health checks
 
-Default callback endpoint exposed by Switchboard:
-- `POST /v1/inbound/signal/webhook`
-
-Webhook signatures use:
-- `X-Brain-Timestamp`
-- `X-Brain-Signature: sha256=<hex(hmac_sha256(secret, timestamp + "." + raw_body))>`
+Webhook signature verification is owned by Switchboard, not this adapter.
 
 ------------------------------------------------------------------------
 ## Configuration Surface
@@ -41,12 +38,6 @@ Adapter settings are sourced from `components.adapter_signal`:
 - `timeout_seconds`
 - `max_retries`
 
-Top-level profile settings are projected into adapter runtime settings:
-- `profile.operator.signal_e164`
-- `profile.default_country_code`
-- `profile.webhook_shared_secret`
-
-------------------------------------------------------------------------
 ## Deployment Wiring
 Signal runtime is wired through the repository root `docker-compose.yaml` with
 the `signal-api` service (`bbernhard/signal-cli-rest-api`) and defaults in
@@ -79,9 +70,9 @@ remains human reference only.
 
 ------------------------------------------------------------------------
 ## Testing and Validation
-Component tests:
-- `resources/adapters/signal/tests/test_signal_config.py`
-- `resources/adapters/signal/tests/test_signal_adapter.py`
+Switchboard behavior tests exercise Signal adapter integration boundaries:
+- `services/action/switchboard/tests/test_switchboard_service.py`
+- `services/action/switchboard/tests/test_switchboard_api.py`
 
 Project-wide validation command:
 ```bash
