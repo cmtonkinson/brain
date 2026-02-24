@@ -54,6 +54,20 @@ class ObservabilitySettings(BaseModel):
     )
 
 
+class OperatorProfileSettings(BaseModel):
+    """Operator identity profile settings shared across action services."""
+
+    signal_e164: str = ""
+
+
+class ProfileSettings(BaseModel):
+    """Root profile settings for operator identity and webhook verification."""
+
+    operator: OperatorProfileSettings = Field(default_factory=OperatorProfileSettings)
+    default_country_code: str = "US"
+    webhook_shared_secret: str = ""
+
+
 class BrainSettings(BaseSettings):
     """Root runtime settings resolved from init/env/yaml/defaults sources."""
 
@@ -66,6 +80,7 @@ class BrainSettings(BaseSettings):
 
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    profile: ProfileSettings = Field(default_factory=ProfileSettings)
     components: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     _config_path: ClassVar[Path] = DEFAULT_CONFIG_PATH
