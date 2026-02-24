@@ -229,7 +229,7 @@
     </mxGraphModel>
   </diagram>
   <diagram name="boundaries-and-responsibilities" id="YvuT0BCowB7iJ6q_Dn-D">
-    <mxGraphModel dx="2412" dy="2101" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="4196" dy="2381" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -286,7 +286,7 @@
         <mxCell id="9sP40jFmVC6lyYa5Idyd-18" edge="1" parent="1" source="unOKrO_ng0ZAvA2SlFJE-53" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.75;entryY=1;entryDx=0;entryDy=0;dashed=1;curved=0;exitX=0.75;exitY=1;exitDx=0;exitDy=0;" target="unOKrO_ng0ZAvA2SlFJE-54">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="unOKrO_ng0ZAvA2SlFJE-53" parent="1" style="rounded=0;whiteSpace=wrap;html=1;movable=1;resizable=1;rotatable=1;deletable=1;editable=1;locked=0;connectable=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="Policy&lt;br&gt;Engine" vertex="1">
+        <mxCell id="unOKrO_ng0ZAvA2SlFJE-53" parent="1" style="rounded=0;whiteSpace=wrap;html=1;movable=1;resizable=1;rotatable=1;deletable=1;editable=1;locked=0;connectable=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="Policy" vertex="1">
           <mxGeometry height="100" width="80" x="1210" y="230" as="geometry" />
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-54" parent="1" style="rounded=0;whiteSpace=wrap;html=1;movable=1;resizable=1;rotatable=1;deletable=1;editable=1;locked=0;connectable=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="Capability&lt;div&gt;Engine&lt;/div&gt;" vertex="1">
