@@ -71,7 +71,6 @@ All other services are run with Docker Compose:
 - Durable working state and application logs are kept in [Postgres]
 - Caching and queueing are handled by [Redis]
 - Vector search for semantic embeddings is powered by [Qdrant]
-- Memory (short- and long-term) is managed by [Letta]
 
 There is also an optional OpenTelemetry-based observability stack (a separate
 but related Docker Compose) which leverages [Prometheus], [Loki],
@@ -121,7 +120,6 @@ environment setup, and how to build/test.
 
 [Claude Cowork]: https://claude.com/product/cowork
 [Grafana]: https://grafana.com
-[Letta]: https://www.letta.com
 [LiteLLM]: https://docs.litellm.ai
 [Local REST API]: https://github.com/coddingtonbear/obsidian-local-rest-api
 [Loki]: https://grafana.com/oss/loki/

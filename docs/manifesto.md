@@ -96,8 +96,9 @@ The system should get better over time, not just bigger.
 Every piece of data in Brain must have a clear answer to: _"Is this
 authoritative, or can it be rebuilt?"_ There is no ambiguous middle ground.
 
-- **One-Way Promotion.** Data may move from operational to canonical (via Letta
-  promotion) or from derived to discarded. No automatic reverse flow.
+- **One-Way Promotion.** Data may move from operational to canonical via
+  explicit Memory Authority workflows, or from derived to discarded. No
+  automatic reverse flow.
 - **Canonical Memory.** If it matters long-term, it must exist in Obsidian, be
   readable by a human, and carry provenance. Operational commitments, schedules,
   and other structured system state are canonical in Postgres.
@@ -114,8 +115,8 @@ Anything entering the system follows a deterministic path.
 5. **Reflect** - optional summarization or synthesis
 
 ### Memory Promotion Is a Privileged Operation
-Any component may propose, reference, and query memory, but only the memory
-manager (Letta) may promote information into durable memory (meaning commit
+Any component may propose, reference, and query memory, but only the Memory
+Authority Service may promote information into durable memory (meaning commit
 memory into Obsidian). This ensures:
 - consistency
 - deduplication

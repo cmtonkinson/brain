@@ -4,7 +4,7 @@ Phased implementation plan and current development status.
 ------------------------------------------------------------------------
 ## Phase 1: (✅ done) ~~Text interaction + memory + MCP tools~~
 - ~~Obsidian Local REST API integration (read/write)~~
-- ~~Letta archival memory~~
+- ~~Archival memory workflows~~
 - ~~Code-Mode (UTCP) for MCP tool calls~~
 - ~~Signal messaging with allowlisted senders~~
 - ~~Vault indexer + Qdrant semantic search~~
