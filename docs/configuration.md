@@ -33,6 +33,7 @@ BRAIN_PROFILE__OPERATOR__SIGNAL_E164=+12025550100
 BRAIN_PROFILE__DEFAULT_COUNTRY_CODE=US
 BRAIN_PROFILE__WEBHOOK_SHARED_SECRET=replace-me
 BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
+BRAIN_COMPONENTS__CORE_BOOT__BOOT_RETRY_ATTEMPTS=5
 BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__POOL_SIZE=10
 BRAIN_COMPONENTS__SUBSTRATE_QDRANT__URL=http://localhost:6333
 BRAIN_COMPONENTS__SUBSTRATE_REDIS__URL=redis://redis:6379/0
@@ -72,6 +73,17 @@ Root profile and operator identity settings.
 ## `components`
 Component-local settings keyed by `ComponentId`. Each component owns its
 Pydantic model, defaults, and validation rules.
+
+### `components.core_boot`
+Core boot framework orchestration settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `readiness_poll_interval_seconds` | `0.25` | Interval between readiness probes while waiting for dependencies. Must be > 0. |
+| `readiness_timeout_seconds` | `30.0` | Maximum time to wait for one hook readiness probe to return true. Must be > 0. |
+| `boot_retry_attempts` | `3` | Maximum attempts to execute one hook's `boot()` function before fail-hard abort. Must be > 0. |
+| `boot_retry_delay_seconds` | `0.5` | Delay between `boot()` retry attempts after failures. Must be >= 0. |
+| `boot_timeout_seconds` | `30.0` | Maximum allowed runtime for one successful `boot()` invocation. Must be > 0. |
 
 ### `components.substrate_postgres`
 PostgreSQL substrate connection settings.

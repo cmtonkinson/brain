@@ -30,6 +30,7 @@ def test_load_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
         cli_params={"logging": {"level": "DEBUG"}},
         environ={
             "BRAIN_LOGGING__LEVEL": "ERROR",
+            "BRAIN_COMPONENTS__CORE_BOOT__BOOT_RETRY_ATTEMPTS": "4",
             "BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__POOL_SIZE": "9",
         },
         config_path=config_file,
@@ -47,6 +48,7 @@ def test_load_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
     )
 
     assert settings.logging.level == "DEBUG"
+    assert settings.components.core_boot.boot_retry_attempts == 4
     assert postgres.pool_size == 9
     assert embedding.max_list_limit == 500
 
@@ -63,3 +65,4 @@ def test_load_settings_uses_model_defaults_when_sources_missing() -> None:
     assert settings.logging.service == "brain"
     assert postgres.pool_size == 5
     assert settings.logging.level == "INFO"
+    assert settings.components.core_boot.boot_retry_attempts == 3

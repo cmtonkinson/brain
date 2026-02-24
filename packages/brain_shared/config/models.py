@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, ClassVar, Literal, TypeVar
+from typing import ClassVar, Literal, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -68,6 +68,24 @@ class ProfileSettings(BaseModel):
     webhook_shared_secret: str = ""
 
 
+class CoreBootSettings(BaseModel):
+    """Core boot framework settings under ``components.core_boot``."""
+
+    readiness_poll_interval_seconds: float = Field(default=0.25, gt=0)
+    readiness_timeout_seconds: float = Field(default=30.0, gt=0)
+    boot_retry_attempts: int = Field(default=3, gt=0)
+    boot_retry_delay_seconds: float = Field(default=0.5, ge=0)
+    boot_timeout_seconds: float = Field(default=30.0, gt=0)
+
+
+class ComponentsSettings(BaseModel):
+    """Typed ``components`` subtree with support for component-local extras."""
+
+    model_config = ConfigDict(extra="allow")
+
+    core_boot: CoreBootSettings = Field(default_factory=CoreBootSettings)
+
+
 class BrainSettings(BaseSettings):
     """Root runtime settings resolved from init/env/yaml/defaults sources."""
 
@@ -81,7 +99,7 @@ class BrainSettings(BaseSettings):
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     profile: ProfileSettings = Field(default_factory=ProfileSettings)
-    components: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    components: ComponentsSettings = Field(default_factory=ComponentsSettings)
 
     _config_path: ClassVar[Path] = DEFAULT_CONFIG_PATH
 
@@ -117,4 +135,8 @@ def resolve_component_settings(
     model: type[TComponentSettings],
 ) -> TComponentSettings:
     """Resolve one component settings object from ``components.<component_id>``."""
-    return model.model_validate(settings.components.get(component_id, {}))
+    raw_components = settings.components.model_dump(mode="python")
+    resolved = raw_components.get(component_id, {})
+    if not isinstance(resolved, dict):
+        raise TypeError(f"components.{component_id} must resolve to an object mapping")
+    return model.model_validate(resolved)

@@ -11,6 +11,12 @@ profile:
   webhook_shared_secret: ""
 
 components:
+  core_boot:
+    readiness_poll_interval_seconds: 0.25
+    readiness_timeout_seconds: 30.0
+    boot_retry_attempts: 3
+    boot_retry_delay_seconds: 0.5
+    boot_timeout_seconds: 30.0
   substrate_postgres:
     url: postgresql+psycopg://brain:brain@postgres:5432/brain
     pool_size: 5
