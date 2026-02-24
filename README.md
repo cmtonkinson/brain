@@ -66,7 +66,6 @@ need to run directly on your host system:
 All other services are run with Docker Compose:
 - Brain Agent, built with [PydanticAI]
 - Brain Core, which houses all runtime _State_, _Action_, and _Control_ services
-- LLM functionality proxied over [LiteLLM]
 - Secure messaging thanks to [Signal]
 - Durable working state and application logs are kept in [Postgres]
 - Caching and queueing are handled by [Redis]
