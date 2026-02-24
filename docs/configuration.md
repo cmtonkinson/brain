@@ -46,6 +46,8 @@ BRAIN_COMPONENTS__ADAPTER_LITELLM__BASE_URL=http://litellm:4000
 BRAIN_COMPONENTS__ADAPTER_SIGNAL__BASE_URL=http://signal-api:8080
 BRAIN_COMPONENTS__SERVICE_LANGUAGE_MODEL__STANDARD__MODEL=gpt-oss
 BRAIN_COMPONENTS__SERVICE_SWITCHBOARD__QUEUE_NAME=signal_inbound
+BRAIN_COMPONENTS__SERVICE_SWITCHBOARD__WEBHOOK_BIND_PORT=8091
+BRAIN_COMPONENTS__SERVICE_SWITCHBOARD__WEBHOOK_PUBLIC_BASE_URL=https://brain.example.com
 ```
 
 ------------------------------------------------------------------------
@@ -234,6 +236,12 @@ Switchboard Service runtime settings.
 |---|---|---|
 | `queue_name` | `signal_inbound` | CAS queue name used for accepted inbound Signal events. |
 | `signature_tolerance_seconds` | `300` | Allowed absolute clock skew when validating webhook timestamps. Must be >= 0. |
+| `webhook_bind_host` | `0.0.0.0` | Bind host for the Switchboard inbound webhook HTTP server. |
+| `webhook_bind_port` | `8091` | Bind port for the Switchboard inbound webhook HTTP server. Must be in `1..65535`. |
+| `webhook_path` | `/switchboard/signal` | Absolute callback path served by Switchboard webhook ingress. |
+| `webhook_public_base_url` | `http://127.0.0.1:8091` | Publicly reachable base URL used to construct callback registration target. |
+| `webhook_register_max_retries` | `8` | Number of boot-time retry attempts after initial callback registration try when dependencies are not ready. Must be >= 0. |
+| `webhook_register_retry_delay_seconds` | `2.0` | Delay between callback registration retries during boot. Must be > 0. |
 
 ------------------------------------------------------------------------
 ## `observability`
