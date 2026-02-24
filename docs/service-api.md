@@ -130,4 +130,42 @@ _Delete one blob by canonical object key with idempotent semantics._
 _Read metadata for one blob by canonical object key._
 
 ------------------------------------------------------------------------
+## `VaultAuthorityService`
+- Module: `services/state/vault_authority/service.py`
+- Summary: Public API for markdown vault file and directory operations.
+
+`list_directory(*, meta: EnvelopeMeta, directory_path: str) -> Envelope[list[VaultEntry]]`  
+_List file and directory entries under one vault-relative path._
+
+`delete_directory(*, meta: EnvelopeMeta, directory_path: str, recursive: bool = False, missing_ok: bool = False, use_trash: bool = True) -> Envelope[bool]`  
+_Delete one directory, optionally recursively and missing-ok._
+
+`create_directory(*, meta: EnvelopeMeta, directory_path: str, recursive: bool = False) -> Envelope[VaultEntry]`  
+_Create one directory._
+
+`get_file(*, meta: EnvelopeMeta, file_path: str) -> Envelope[VaultFileRecord]`  
+_Read one markdown file by path._
+
+`delete_file(*, meta: EnvelopeMeta, file_path: str, missing_ok: bool = False, use_trash: bool = True, if_revision: str = '', force: bool = False) -> Envelope[bool]`  
+_Delete one markdown file._
+
+`append_file(*, meta: EnvelopeMeta, file_path: str, content: str, if_revision: str = '', force: bool = False) -> Envelope[VaultFileRecord]`  
+_Append content to one markdown file._
+
+`create_file(*, meta: EnvelopeMeta, file_path: str, content: str) -> Envelope[VaultFileRecord]`  
+_Create one markdown file and fail when it already exists._
+
+`edit_file(*, meta: EnvelopeMeta, file_path: str, edits: Sequence[FileEdit], if_revision: str = '', force: bool = False) -> Envelope[VaultFileRecord]`  
+_Apply one or more line-range edits to a markdown file._
+
+`update_file(*, meta: EnvelopeMeta, file_path: str, content: str, if_revision: str = '', force: bool = False) -> Envelope[VaultFileRecord]`  
+_Replace markdown file content with optional optimistic precondition._
+
+`search_files(*, meta: EnvelopeMeta, query: str, directory_scope: str = '', limit: int = 20) -> Envelope[list[SearchFileMatch]]`  
+_Search markdown files lexically through Obsidian Local REST API._
+
+`move_path(*, meta: EnvelopeMeta, source_path: str, target_path: str, if_revision: str = '', force: bool = False) -> Envelope[VaultEntry]`  
+_Move one file or directory path._
+
+------------------------------------------------------------------------
 _End of Service API_
