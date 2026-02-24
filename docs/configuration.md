@@ -29,6 +29,9 @@ Any config key can be set via environment variable:
 Examples:
 ```
 BRAIN_LOGGING__LEVEL=DEBUG
+BRAIN_PROFILE__OPERATOR__SIGNAL_E164=+12025550100
+BRAIN_PROFILE__DEFAULT_COUNTRY_CODE=US
+BRAIN_PROFILE__WEBHOOK_SHARED_SECRET=replace-me
 BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
 BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__POOL_SIZE=10
 BRAIN_COMPONENTS__SUBSTRATE_QDRANT__URL=http://localhost:6333
@@ -39,7 +42,9 @@ BRAIN_COMPONENTS__SERVICE_CACHE_AUTHORITY__DEFAULT_TTL_SECONDS=600
 BRAIN_COMPONENTS__SERVICE_MEMORY_AUTHORITY__DIALOGUE_RECENT_TURNS=12
 BRAIN_COMPONENTS__SERVICE_OBJECT_AUTHORITY__MAX_BLOB_SIZE_BYTES=10485760
 BRAIN_COMPONENTS__ADAPTER_LITELLM__BASE_URL=http://litellm:4000
+BRAIN_COMPONENTS__ADAPTER_SIGNAL__BASE_URL=http://signal-api:8080
 BRAIN_COMPONENTS__SERVICE_LANGUAGE_MODEL__STANDARD__MODEL=gpt-oss
+BRAIN_COMPONENTS__SERVICE_SWITCHBOARD__QUEUE_NAME=signal_inbound
 ```
 
 ------------------------------------------------------------------------
@@ -52,6 +57,16 @@ Controls structured log output.
 | `json_output` | `true` | Emit logs as JSON. Set `false` for human-readable output during local development. |
 | `service` | `brain` | Service name tag attached to every log record. |
 | `environment` | `dev` | Environment tag (`dev`, `staging`, `prod`, etc.) attached to every log record. |
+
+------------------------------------------------------------------------
+## `profile`
+Root profile and operator identity settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `operator.signal_e164` | `""` | Canonical operator Signal identity used by Switchboard ingress policy. |
+| `default_country_code` | `US` | Default country code for parsing non-E.164 operator/sender values. |
+| `webhook_shared_secret` | `""` | Shared secret used for inbound webhook signature verification. |
 
 ------------------------------------------------------------------------
 ## `components`
@@ -132,6 +147,15 @@ Obsidian Local REST API adapter defaults.
 | `timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx/429). Must be >= 0. |
 
+### `components.adapter_signal`
+Signal runtime adapter defaults.
+
+| Key | Default | Description |
+|---|---|---|
+| `base_url` | `http://signal-api:8080` | Base URL for Signal runtime webhook registration endpoints. |
+| `timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds. Must be > 0. |
+| `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
+
 ### `components.service_embedding_authority`
 Embedding Authority Service runtime settings.
 
@@ -190,6 +214,14 @@ Language Model Service profile settings.
 | `standard.model` | _(required)_ | Required model identifier used for standard chat requests and fallback resolution. |
 | `deep.provider` | `""` | Optional deep provider override; falls back to `standard.provider` when unset/blank. |
 | `deep.model` | `""` | Optional deep model override; falls back to `standard.model` when unset/blank. |
+
+### `components.service_switchboard`
+Switchboard Service runtime settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `queue_name` | `signal_inbound` | CAS queue name used for accepted inbound Signal events. |
+| `signature_tolerance_seconds` | `300` | Allowed absolute clock skew when validating webhook timestamps. Must be >= 0. |
 
 ------------------------------------------------------------------------
 ## `observability`

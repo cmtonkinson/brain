@@ -6,6 +6,7 @@ from .models import (
     BrainSettings,
     LoggingSettings,
     ObservabilitySettings,
+    ProfileSettings,
     resolve_component_settings,
 )
 
@@ -14,6 +15,7 @@ __all__ = [
     "BrainSettings",
     "LoggingSettings",
     "ObservabilitySettings",
+    "ProfileSettings",
     "resolve_component_settings",
     "load_settings",
 ]

@@ -4,6 +4,12 @@ logging:
   service: brain
   environment: dev
 
+profile:
+  operator:
+    signal_e164: ""
+  default_country_code: US
+  webhook_shared_secret: ""
+
 components:
   substrate_postgres:
     url: postgresql+psycopg://brain:brain@postgres:5432/brain
@@ -81,6 +87,9 @@ components:
     deep:
       provider: ""
       model: ""
+  service_switchboard:
+    queue_name: signal_inbound
+    signature_tolerance_seconds: 300
 
 observability:
   public_api:
