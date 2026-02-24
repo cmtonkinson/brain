@@ -121,6 +121,16 @@ LiteLLM adapter connection defaults.
 | `timeout_seconds` | `30.0` | Per-request HTTP timeout. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
 
+### `components.adapter_obsidian`
+Obsidian Local REST API adapter defaults.
+
+| Key | Default | Description |
+|---|---|---|
+| `base_url` | `http://127.0.0.1:27124` | Base URL for the Obsidian Local REST API instance. |
+| `api_key` | `""` | Optional API token sent as `Authorization: Bearer <token>`. |
+| `timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds. Must be > 0. |
+| `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx/429). Must be >= 0. |
+
 ### `components.service_embedding_authority`
 Embedding Authority Service runtime settings.
 
@@ -145,6 +155,14 @@ Object Authority Service runtime settings.
 | `digest_algorithm` | `sha256` | Digest algorithm used for object key generation. Currently only `sha256` is supported. |
 | `digest_version` | `b1` | Object key version prefix used in canonical object keys. |
 | `max_blob_size_bytes` | `52428800` | Maximum accepted blob payload size in bytes for `put_object`. Must be > 0. |
+
+### `components.service_vault_authority`
+Vault Authority Service runtime settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `max_list_limit` | `500` | Maximum list operation limit accepted by VAS. Must be > 0. |
+| `max_search_limit` | `200` | Maximum lexical search result limit accepted by VAS. Must be > 0. |
 
 ### `components.service_language_model`
 Language Model Service profile settings.

@@ -5,136 +5,245 @@ package brain.state.v1;
 import "brain/shared/v1/envelope.proto";
 import "google/protobuf/timestamp.proto";
 
-// Authority service for vault notes and directory operations.
-//
-// Each RPC uses operation-specific envelope-like request/response messages.
 service VaultAuthorityService {
   rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
   rpc CreateDirectory(CreateDirectoryRequest) returns (CreateDirectoryResponse);
   rpc DeleteDirectory(DeleteDirectoryRequest) returns (DeleteDirectoryResponse);
-  rpc PutNote(PutNoteRequest) returns (PutNoteResponse);
-  rpc GetNote(GetNoteRequest) returns (GetNoteResponse);
-  rpc DeleteNote(DeleteNoteRequest) returns (DeleteNoteResponse);
-  rpc AppendNote(AppendNoteRequest) returns (AppendNoteResponse);
-  rpc SearchNotes(SearchNotesRequest) returns (SearchNotesResponse);
+
+  rpc CreateFile(CreateFileRequest) returns (CreateFileResponse);
+  rpc GetFile(GetFileRequest) returns (GetFileResponse);
+  rpc UpdateFile(UpdateFileRequest) returns (UpdateFileResponse);
+  rpc AppendFile(AppendFileRequest) returns (AppendFileResponse);
+  rpc EditFile(EditFileRequest) returns (EditFileResponse);
+  rpc MovePath(MovePathRequest) returns (MovePathResponse);
+  rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+
+  rpc SearchFiles(SearchFilesRequest) returns (SearchFilesResponse);
 }
 
-// Canonical note path reference in the vault namespace.
-message NoteRef {
-  string note_path = 1;
+enum VaultEntryType {
+  VAULT_ENTRY_TYPE_UNSPECIFIED = 0;
+  VAULT_ENTRY_TYPE_DIRECTORY   = 1;
+  VAULT_ENTRY_TYPE_FILE        = 2;
 }
 
-// Canonical directory path reference in the vault namespace.
-message DirectoryRef {
+message VaultEntry {
+  string path                           = 1;
+  string name                           = 2;
+  VaultEntryType entry_type             = 3;
+  uint64 size_bytes                     = 4;
+  google.protobuf.Timestamp created_at  = 5;
+  google.protobuf.Timestamp updated_at  = 6;
+  string revision                       = 7;
+}
+
+message VaultFileRecord {
+  string path                           = 1;
+  string content                        = 2;
+  uint64 size_bytes                     = 3;
+  google.protobuf.Timestamp created_at  = 4;
+  google.protobuf.Timestamp updated_at  = 5;
+  string revision                       = 6;
+}
+
+message SearchFileMatch {
+  string path                          = 1;
+  float score                          = 2;
+  repeated string snippets             = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  string revision                      = 5;
+}
+
+message FileEditOperation {
+  uint32 start_line = 1;
+  uint32 end_line   = 2;
+  string content    = 3;
+}
+
+message ListDirectoryPayload {
   string directory_path = 1;
 }
 
-// Materialized note metadata and content.
-message NoteRecord {
-  NoteRef ref                              = 1;
-  string content                           = 2;
-  google.protobuf.Timestamp created_at     = 3;
-  google.protobuf.Timestamp updated_at     = 4;
-}
-
-// Search match payload for note search operations.
-message NoteSearchMatch {
-  NoteRef ref          = 1;
-  repeated string hits = 2;
-}
-
 message ListDirectoryRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  DirectoryRef ref                    = 2;
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  ListDirectoryPayload payload           = 2;
 }
 
 message ListDirectoryResponse {
-  brain.shared.v1.EnvelopeMeta meta           = 1;
-  repeated DirectoryRef directory_paths         = 2;
+  brain.shared.v1.EnvelopeMeta metadata       = 1;
+  repeated VaultEntry payload                 = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message CreateDirectoryPayload {
+  string directory_path = 1;
+  bool recursive        = 2;
 }
 
 message CreateDirectoryRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  DirectoryRef ref                    = 2;
-  bool recursive                      = 3;
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  CreateDirectoryPayload payload        = 2;
 }
 
 message CreateDirectoryResponse {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  DirectoryRef ref                    = 2;
+  brain.shared.v1.EnvelopeMeta metadata       = 1;
+  VaultEntry payload                          = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message DeleteDirectoryPayload {
+  string directory_path = 1;
+  bool recursive        = 2;
+  bool missing_ok       = 3;
+  bool use_trash        = 4;
 }
 
 message DeleteDirectoryRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  DirectoryRef ref                    = 2;
-  bool recursive                      = 3;
-  bool missing_ok                     = 4;
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  DeleteDirectoryPayload payload        = 2;
 }
 
 message DeleteDirectoryResponse {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  bool deleted                        = 2;
+  brain.shared.v1.EnvelopeMeta metadata       = 1;
+  bool payload                                = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
-message PutNoteRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  NoteRef ref                         = 2;
-  string content                      = 3;
+message CreateFilePayload {
+  string file_path = 1;
+  string content   = 2;
 }
 
-message PutNoteResponse {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  NoteRecord note                     = 2;
+message CreateFileRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  CreateFilePayload payload             = 2;
+}
+
+message CreateFileResponse {
+  brain.shared.v1.EnvelopeMeta metadata       = 1;
+  VaultFileRecord payload                     = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
-message GetNoteRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  NoteRef ref                         = 2;
+message GetFilePayload {
+  string file_path = 1;
 }
 
-message GetNoteResponse {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  NoteRecord note                     = 2;
+message GetFileRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  GetFilePayload payload                = 2;
+}
+
+message GetFileResponse {
+  brain.shared.v1.EnvelopeMeta metadata       = 1;
+  VaultFileRecord payload                     = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
-message DeleteNoteRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  NoteRef ref                         = 2;
-  bool missing_ok                     = 3;
+message UpdateFilePayload {
+  string file_path   = 1;
+  string content     = 2;
+  string if_revision = 3;
+  bool force         = 4;
 }
 
-message DeleteNoteResponse {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  bool deleted                        = 2;
+message UpdateFileRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  UpdateFilePayload payload             = 2;
+}
+
+message UpdateFileResponse {
+  brain.shared.v1.EnvelopeMeta metadata       = 1;
+  VaultFileRecord payload                     = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
-message AppendNoteRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  NoteRef ref                         = 2;
-  string content                      = 3;
+message AppendFilePayload {
+  string file_path   = 1;
+  string content     = 2;
+  string if_revision = 3;
+  bool force         = 4;
 }
 
-message AppendNoteResponse {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  NoteRecord note                     = 2;
+message AppendFileRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  AppendFilePayload payload             = 2;
+}
+
+message AppendFileResponse {
+  brain.shared.v1.EnvelopeMeta metadata       = 1;
+  VaultFileRecord payload                     = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
 }
 
-message SearchNotesRequest {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  string query                        = 2;
-  DirectoryRef scope                  = 3;
-  int32 limit                         = 4;
+message EditFilePayload {
+  string file_path                   = 1;
+  repeated FileEditOperation edits   = 2;
+  string if_revision                 = 3;
+  bool force                         = 4;
 }
 
-message SearchNotesResponse {
-  brain.shared.v1.EnvelopeMeta meta = 1;
-  repeated NoteSearchMatch matches    = 2;
+message EditFileRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  EditFilePayload payload               = 2;
+}
+
+message EditFileResponse {
+  brain.shared.v1.EnvelopeMeta metadata       = 1;
+  VaultFileRecord payload                     = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message MovePathPayload {
+  string source_path = 1;
+  string target_path = 2;
+  string if_revision = 3;
+  bool force         = 4;
+}
+
+message MovePathRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  MovePathPayload payload               = 2;
+}
+
+message MovePathResponse {
+  brain.shared.v1.EnvelopeMeta metadata       = 1;
+  VaultEntry payload                          = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message DeleteFilePayload {
+  string file_path   = 1;
+  bool missing_ok    = 2;
+  bool use_trash     = 3;
+  string if_revision = 4;
+  bool force         = 5;
+}
+
+message DeleteFileRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  DeleteFilePayload payload             = 2;
+}
+
+message DeleteFileResponse {
+  brain.shared.v1.EnvelopeMeta metadata       = 1;
+  bool payload                                = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message SearchFilesPayload {
+  string query           = 1;
+  string directory_scope = 2;
+  int32 limit            = 3;
+}
+
+message SearchFilesRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  SearchFilesPayload payload            = 2;
+}
+
+message SearchFilesResponse {
+  brain.shared.v1.EnvelopeMeta metadata       = 1;
+  repeated SearchFileMatch payload            = 2;
   repeated brain.shared.v1.ErrorDetail errors = 3;
 }
