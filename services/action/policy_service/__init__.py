@@ -9,9 +9,13 @@ from services.action.policy_service.config import (
 )
 from services.action.policy_service.data.repository import (
     InMemoryPolicyPersistenceRepository,
+    PostgresPolicyPersistenceRepository,
 )
+from services.action.policy_service.data.runtime import PolicyServicePostgresRuntime
 from services.action.policy_service.domain import (
     APPROVAL_REQUIRED_OBLIGATION,
+    ApprovalCorrelationPayload,
+    ApprovalNotificationPayload,
     ApprovalProposal,
     CapabilityInvocationRequest,
     CapabilityPolicyInput,
@@ -29,6 +33,8 @@ from services.action.policy_service.service import PolicyExecuteCallback, Policy
 
 __all__ = [
     "APPROVAL_REQUIRED_OBLIGATION",
+    "ApprovalCorrelationPayload",
+    "ApprovalNotificationPayload",
     "ApprovalProposal",
     "CapabilityInvocationRequest",
     "CapabilityPolicyInput",
@@ -51,5 +57,7 @@ __all__ = [
     "PolicyService",
     "PolicyServiceSettings",
     "InMemoryPolicyPersistenceRepository",
+    "PolicyServicePostgresRuntime",
+    "PostgresPolicyPersistenceRepository",
     "resolve_policy_service_settings",
 ]

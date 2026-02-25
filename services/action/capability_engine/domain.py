@@ -118,6 +118,11 @@ class CapabilityInvocationAuditRow(BaseModel):
     envelope_id: str
     trace_id: str
     parent_id: str
+    invocation_id: str
+    parent_invocation_id: str
+    actor: str
+    source: str
+    channel: str
     capability_id: str
     capability_version: str
     policy_decision_id: str

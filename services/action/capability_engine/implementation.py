@@ -38,6 +38,10 @@ from services.action.capability_engine.domain import (
 )
 from services.action.capability_engine.data.repository import (
     InMemoryCapabilityInvocationAuditRepository,
+    PostgresCapabilityInvocationAuditRepository,
+)
+from services.action.capability_engine.data.runtime import (
+    CapabilityEnginePostgresRuntime,
 )
 from services.action.capability_engine.interfaces import (
     CapabilityInvocationAuditRepository,
@@ -59,6 +63,7 @@ from services.action.policy_service.domain import (
 from services.action.policy_service.service import PolicyService
 
 _LOGGER = get_logger(__name__)
+_REASON_AUTONOMY_EXCEEDS_ENGINE_LIMIT = "autonomy_exceeds_engine_limit"
 
 
 @dataclass(frozen=True)
@@ -141,8 +146,14 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         resolved = resolve_capability_engine_settings(settings)
         active_registry = registry or CapabilityRegistry()
         active_registry.discover(root=Path(resolved.discovery_root))
+        runtime = CapabilityEnginePostgresRuntime.from_settings(settings)
         return cls(
-            settings=resolved, policy_service=policy_service, registry=active_registry
+            settings=resolved,
+            policy_service=policy_service,
+            registry=active_registry,
+            audit_repository=PostgresCapabilityInvocationAuditRepository(
+                runtime.schema_sessions
+            ),
         )
 
     @public_api_instrumented(
@@ -208,6 +219,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
             capability_version=result.capability_version,
             summary=result.policy,
             proposal_token=result.proposal_token,
+            invocation=invocation,
         )
 
         if not result.allowed:
@@ -263,6 +275,23 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 capability_version=manifest.version,
                 errors=errors,
                 reason_codes=("capability_disabled",),
+            )
+        if manifest.autonomy > self._settings.default_max_autonomy:
+            errors = (
+                validation_error(
+                    "capability autonomy exceeds engine ceiling",
+                    code=codes.PERMISSION_DENIED,
+                    metadata={
+                        "capability_id": capability_id,
+                        "capability_autonomy": str(manifest.autonomy),
+                        "engine_max_autonomy": str(self._settings.default_max_autonomy),
+                    },
+                ),
+            )
+            return self._denied_internal(
+                capability_version=manifest.version,
+                errors=errors,
+                reason_codes=(_REASON_AUTONOMY_EXCEEDS_ENGINE_LIMIT,),
             )
 
         request = CapabilityInvocationRequest(
@@ -335,6 +364,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         capability_version: str,
         summary: CapabilityPolicySummary,
         proposal_token: str,
+        invocation: CapabilityInvocationMetadata,
     ) -> None:
         self._audit_repository.append(
             row=CapabilityInvocationAuditRow(
@@ -342,6 +372,11 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 envelope_id=meta.envelope_id,
                 trace_id=meta.trace_id,
                 parent_id=meta.parent_id,
+                invocation_id=invocation.invocation_id,
+                parent_invocation_id=invocation.parent_invocation_id,
+                actor=invocation.actor,
+                source=invocation.source,
+                channel=invocation.channel,
                 capability_id=capability_id,
                 capability_version=capability_version,
                 policy_decision_id=summary.decision_id,

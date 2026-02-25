@@ -24,7 +24,7 @@ class CapabilityEngineService(ABC):
         input_payload: dict[str, object],
         invocation: CapabilityInvocationMetadata,
     ) -> Envelope[CapabilityInvokeResult]:
-        """Invoke one capability package by ``capability_id``."""
+        """Invoke by package ``capability_id`` (no version arg) and return normalized policy fields."""
 
     @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[CapabilityEngineHealthStatus]:

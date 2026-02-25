@@ -6,7 +6,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from packages.brain_shared.config import BrainSettings, resolve_component_settings
 from services.action.policy_service.component import SERVICE_COMPONENT_ID
-from services.action.policy_service.domain import PolicyDocument, PolicyOverlay
+from services.action.policy_service.domain import (
+    PolicyDocument,
+    PolicyOverlay,
+    PolicyRule,
+)
 
 
 class PolicyServiceSettings(BaseModel):
@@ -22,7 +26,7 @@ class PolicyServiceSettings(BaseModel):
     clarify_threshold: float = Field(default=0.60, ge=0.0, le=1.0)
     base_policy: PolicyDocument = Field(
         default_factory=lambda: PolicyDocument(
-            policy_id="default", policy_version="1", rules={}
+            policy_id="default", policy_version="1", rules={"*": PolicyRule()}
         )
     )
     overlays: tuple[PolicyOverlay, ...] = ()

@@ -231,6 +231,29 @@ Nested capability calls must mint a new `envelope_id`, set `parent_id` to the
 parent envelope, and route through Capability Engine public invoke API so the
 same policy and audit contract is enforced recursively.
 
+### Approval Transport Contracts
+Policy Service -> Attention Router approval notifications must be token-only.
+
+Required outbound notification fields:
+- `proposal_token`
+- `capability_id`
+- `capability_version`
+- `summary`
+- `actor`
+- `channel`
+- `trace_id`
+- `invocation_id`
+- `expires_at`
+
+Attention Router -> Policy Service correlation payloads must include actor and
+channel plus one of the deterministic correlators:
+- `approval_token`
+- `reply_to_proposal_token`
+- `reaction_to_proposal_token`
+
+`message_text` may be included for immediate next-turn correlation and
+disambiguation fallback.
+
 ------------------------------------------------------------------------
 ## Process Assumptions
 - L2 _Actors_ are process-and-network isolated

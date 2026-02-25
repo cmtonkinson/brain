@@ -22,6 +22,10 @@ from services.action.capability_engine.implementation import (
 )
 from services.action.capability_engine.data.repository import (
     InMemoryCapabilityInvocationAuditRepository,
+    PostgresCapabilityInvocationAuditRepository,
+)
+from services.action.capability_engine.data.runtime import (
+    CapabilityEnginePostgresRuntime,
 )
 from services.action.capability_engine.registry import CapabilityRegistry
 from services.action.capability_engine.service import CapabilityEngineService
@@ -35,7 +39,9 @@ __all__ = [
     "CapabilityInvokeResult",
     "CapabilityRegistry",
     "DefaultCapabilityEngineService",
+    "CapabilityEnginePostgresRuntime",
     "InMemoryCapabilityInvocationAuditRepository",
+    "PostgresCapabilityInvocationAuditRepository",
     "Envelope",
     "EnvelopeKind",
     "EnvelopeMeta",

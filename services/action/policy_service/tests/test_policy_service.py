@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from services.action.policy_service.config import PolicyServiceSettings
 from services.action.policy_service.data.repository import (
     InMemoryPolicyPersistenceRepository,
 )
 from services.action.policy_service.domain import (
+    ApprovalCorrelationPayload,
+    ApprovalNotificationPayload,
     CapabilityInvocationRequest,
     CapabilityPolicyInput,
     InvocationPolicyInput,
@@ -502,3 +507,101 @@ def test_service_writes_decisions_and_proposals_to_injected_repository() -> None
     )
     assert repo.count_decisions() == 1
     assert repo.count_proposals() == 1
+
+
+def test_unknown_capability_is_denied_without_wildcard_rule() -> None:
+    service = DefaultPolicyService(
+        settings=PolicyServiceSettings(
+            base_policy=PolicyDocument(
+                policy_id="policy-core",
+                policy_version="1",
+                rules={"demo-known": PolicyRule()},
+            )
+        )
+    )
+    result = service.authorize_and_execute(
+        request=_request(capability_id="demo-unknown"),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert result.allowed is False
+    assert "unknown_call_target" in result.decision.reason_codes
+
+
+def test_request_schema_validation_rejects_extra_fields() -> None:
+    with pytest.raises(ValidationError):
+        CapabilityInvocationRequest.model_validate(
+            {
+                "metadata": new_meta(
+                    kind=EnvelopeKind.COMMAND,
+                    source="test",
+                    principal="operator",
+                ).model_dump(mode="python"),
+                "capability": {
+                    "capability_id": "demo-ping",
+                    "kind": "op",
+                    "version": "1.0.0",
+                    "autonomy": 0,
+                    "requires_approval": False,
+                },
+                "invocation": {
+                    "actor": "operator",
+                    "source": "agent",
+                    "channel": "signal",
+                    "invocation_id": "inv-1",
+                },
+                "input_payload": {"ping": "pong"},
+                "unexpected": True,
+            }
+        )
+
+
+def test_approval_notification_payload_is_token_only() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    pending = service.authorize_and_execute(
+        request=_request(requires_approval=True),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert pending.proposal is not None
+    notification = ApprovalNotificationPayload(
+        proposal_token=pending.proposal.proposal_token,
+        capability_id=pending.proposal.capability_id,
+        capability_version=pending.proposal.capability_version,
+        summary=pending.proposal.summary,
+        actor=pending.proposal.actor,
+        channel=pending.proposal.channel,
+        trace_id=pending.proposal.trace_id,
+        invocation_id=pending.proposal.invocation_id,
+        expires_at=pending.proposal.expires_at,
+    )
+    assert notification.proposal_token != ""
+    assert notification.summary != ""
+
+
+def test_approval_correlation_payload_maps_to_invocation_fields() -> None:
+    payload = ApprovalCorrelationPayload(
+        actor="operator",
+        channel="signal",
+        message_text="approve",
+        reply_to_proposal_token="token-1",
+    )
+    invocation = InvocationPolicyInput(
+        actor=payload.actor,
+        source="agent",
+        channel=payload.channel,
+        invocation_id="inv-2",
+        message_text=payload.message_text,
+        approval_token=payload.approval_token,
+        reply_to_proposal_token=payload.reply_to_proposal_token,
+        reaction_to_proposal_token=payload.reaction_to_proposal_token,
+    )
+    assert invocation.reply_to_proposal_token == "token-1"

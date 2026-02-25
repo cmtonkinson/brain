@@ -10,6 +10,11 @@ def test_invocation_audit_schema_contains_required_columns() -> None:
     assert "envelope_id" in columns
     assert "trace_id" in columns
     assert "parent_id" in columns
+    assert "invocation_id" in columns
+    assert "parent_invocation_id" in columns
+    assert "actor" in columns
+    assert "source" in columns
+    assert "channel" in columns
     assert "capability_id" in columns
     assert "policy_decision_id" in columns
     assert "policy_regime_id" in columns

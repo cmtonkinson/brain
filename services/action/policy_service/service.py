@@ -25,8 +25,8 @@ class PolicyService(ABC):
         request: CapabilityInvocationRequest,
         execute: PolicyExecuteCallback,
     ) -> PolicyExecutionResult:
-        """Evaluate one invocation, returning normalized decision/approval metadata."""
+        """Return PolicyExecutionResult with allow/deny output, PolicyDecision, and ApprovalProposal."""
 
     @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[PolicyHealthStatus]:
-        """Return Policy Service readiness and in-memory audit counters."""
+        """Return Policy Service readiness and persistence-backed audit counters."""

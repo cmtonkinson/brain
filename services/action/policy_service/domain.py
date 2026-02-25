@@ -163,6 +163,35 @@ class ApprovalProposal(BaseModel):
     clarification_attempts: int = 0
 
 
+class ApprovalNotificationPayload(BaseModel):
+    """Token-only PS->AR approval notification contract."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    proposal_token: str
+    capability_id: str
+    capability_version: str
+    summary: str
+    actor: str
+    channel: str
+    trace_id: str
+    invocation_id: str
+    expires_at: datetime
+
+
+class ApprovalCorrelationPayload(BaseModel):
+    """AR->PS correlation payload for deterministic approval matching."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    actor: str = Field(min_length=1)
+    channel: str = Field(min_length=1)
+    message_text: str = ""
+    approval_token: str = ""
+    reply_to_proposal_token: str = ""
+    reaction_to_proposal_token: str = ""
+
+
 class PolicyExecutionResult(BaseModel):
     """In-process result contract returned by policy wrapper execution."""
 

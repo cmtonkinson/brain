@@ -10,7 +10,7 @@ _This document is generated from `services/*/*/service.py`. Do not edit by hand.
 _Return CES readiness, registry counts, and invocation-audit counters._
 
 `invoke_capability(*, meta: EnvelopeMeta, capability_id: str, input_payload: dict[str, object], invocation: CapabilityInvocationMetadata) -> Envelope[CapabilityInvokeResult]`  
-_Invoke one capability package by ``capability_id``._
+_Invoke by package ``capability_id`` (no version arg) and return normalized policy fields._
 
 ------------------------------------------------------------------------
 ## `LanguageModelService`
@@ -38,10 +38,10 @@ _Generate a batch of embedding vectors._
 - Summary: Public API for policy evaluation and callback-gated authorization.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[PolicyHealthStatus]`  
-_Return Policy Service readiness and in-memory audit counters._
+_Return Policy Service readiness and persistence-backed audit counters._
 
 `authorize_and_execute(*, request: CapabilityInvocationRequest, execute: PolicyExecuteCallback) -> PolicyExecutionResult`  
-_Evaluate one invocation, returning normalized decision/approval metadata._
+_Return PolicyExecutionResult with allow/deny output, PolicyDecision, and ApprovalProposal._
 
 ------------------------------------------------------------------------
 ## `SwitchboardService`

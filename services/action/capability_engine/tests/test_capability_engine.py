@@ -303,6 +303,43 @@ def test_unknown_capability_id_returns_not_found() -> None:
     assert result.ok is False
 
 
+def test_engine_autonomy_ceiling_denies_before_policy() -> None:
+    registry = CapabilityRegistry()
+    spec = OpCapabilityManifest(
+        capability_id="demo-autonomy",
+        kind="op",
+        version="1.0.0",
+        summary="Autonomy gated by engine",
+        autonomy=2,
+        call_target="state.autonomy",
+    )
+    registry.register_manifest(manifest=spec)
+    registry.register_handler(
+        capability_id=spec.capability_id,
+        handler=lambda request, runtime: CapabilityExecutionResponse(
+            output={"ok": True}
+        ),
+    )
+
+    policy = _FakePolicyService()
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(default_max_autonomy=1),
+        policy_service=policy,
+        registry=registry,
+    )
+
+    result = service.invoke_capability(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator"),
+        capability_id="demo-autonomy",
+        input_payload={},
+        invocation=_invocation(),
+    )
+    assert result.ok is False
+    assert policy.calls == 0
+    assert result.errors[0].metadata is not None
+    assert result.errors[0].metadata["engine_max_autonomy"] == "1"
+
+
 def test_policy_denial_propagates_reason_codes() -> None:
     registry = CapabilityRegistry()
     spec = OpCapabilityManifest(
@@ -370,6 +407,12 @@ def test_invocation_audit_rows_capture_lineage_and_policy_fields() -> None:
     assert row.trace_id == meta.trace_id
     assert row.capability_id == "demo-audit"
     assert row.policy_regime_id == "regime-1"
+    assert row.policy_decision_id == "decision"
+    assert row.invocation_id == "inv-1"
+    assert row.parent_invocation_id == ""
+    assert row.actor == "operator"
+    assert row.source == "agent"
+    assert row.channel == "signal"
 
 
 def test_health_reflects_injected_audit_repository_count() -> None:

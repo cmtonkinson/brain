@@ -25,7 +25,9 @@ from services.action.policy_service.config import (
 )
 from services.action.policy_service.data.repository import (
     InMemoryPolicyPersistenceRepository,
+    PostgresPolicyPersistenceRepository,
 )
+from services.action.policy_service.data.runtime import PolicyServicePostgresRuntime
 from services.action.policy_service.domain import (
     APPROVAL_REQUIRED_OBLIGATION,
     ApprovalProposal,
@@ -81,7 +83,11 @@ class DefaultPolicyService(PolicyService):
     @classmethod
     def from_settings(cls, settings: BrainSettings) -> "DefaultPolicyService":
         """Build policy service from typed root runtime settings."""
-        return cls(settings=resolve_policy_service_settings(settings))
+        runtime = PolicyServicePostgresRuntime.from_settings(settings)
+        return cls(
+            settings=resolve_policy_service_settings(settings),
+            persistence=PostgresPolicyPersistenceRepository(runtime.schema_sessions),
+        )
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -89,7 +95,7 @@ class DefaultPolicyService(PolicyService):
         id_fields=("meta",),
     )
     def health(self, *, meta: EnvelopeMeta) -> Envelope[PolicyHealthStatus]:
-        """Return service readiness, regime pointer, and in-memory audit counters."""
+        """Return service readiness, regime pointer, and audit row counters."""
         try:
             validate_meta(meta)
         except ValueError as exc:
@@ -248,10 +254,12 @@ class DefaultPolicyService(PolicyService):
             reason_codes.append(dedupe_reason)
 
         rule = self._effective_policy.rules.get(request.capability.capability_id)
-        if rule is None:
-            rule = self._effective_policy.rules.get("*")
-        if rule is None:
-            rule = PolicyRule()
+        wildcard_rule = self._effective_policy.rules.get("*")
+        if rule is None and wildcard_rule is None:
+            reason_codes.append(_REASON_UNKNOWN_CALL_TARGET)
+            rule = PolicyRule(enabled=False)
+        elif rule is None:
+            rule = wildcard_rule
 
         if not rule.enabled:
             reason_codes.append(_REASON_CAPABILITY_DISABLED)
