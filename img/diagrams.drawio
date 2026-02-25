@@ -438,7 +438,7 @@
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-99" parent="-nI3kN9ZCotlMl1iEThV-37" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="MCP:&lt;div&gt;EventKit&lt;/div&gt;" vertex="1">
           <mxGeometry height="80" width="80" x="60.5" y="30" as="geometry" />
         </mxCell>
-        <mxCell id="-nI3kN9ZCotlMl1iEThV-33" parent="-nI3kN9ZCotlMl1iEThV-37" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="MCP:&lt;br&gt;Firecrawl" vertex="1">
+        <mxCell id="-nI3kN9ZCotlMl1iEThV-33" parent="-nI3kN9ZCotlMl1iEThV-37" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="MCP:&lt;br&gt;GitHub" vertex="1">
           <mxGeometry height="80" width="80" x="120.5" y="30" as="geometry" />
         </mxCell>
         <mxCell id="-nI3kN9ZCotlMl1iEThV-34" parent="-nI3kN9ZCotlMl1iEThV-37" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="..." vertex="1">
@@ -486,7 +486,7 @@
         <mxCell id="jiZwJ5fz94oUODu9VnEZ-2" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;" value="Redis" vertex="1">
           <mxGeometry height="80" width="75" x="543.5" y="540" as="geometry" />
         </mxCell>
-        <mxCell id="jiZwJ5fz94oUODu9VnEZ-18" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Any L1 Service&lt;br&gt;(separate schemas)" vertex="1">
+        <mxCell id="jiZwJ5fz94oUODu9VnEZ-18" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Any L1 Service&lt;br&gt;(isolated schemas)" vertex="1">
           <mxGeometry height="30" width="140" x="-48.5" y="265" as="geometry" />
         </mxCell>
         <mxCell id="jiZwJ5fz94oUODu9VnEZ-20" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontStyle=1" value="&lt;h2&gt;&lt;span style=&quot;font-size: 16px;&quot;&gt;SHARED INFRA&lt;/span&gt;&lt;/h2&gt;" vertex="1">

@@ -20,6 +20,6 @@ MANIFEST = register_component(
         public_api_roots=frozenset(
             {ModuleRoot("services.action.capability_engine.service")}
         ),
-        owns_resources=frozenset(),
+        owns_resources=frozenset({ComponentId("adapter_utcp_code_mode")}),
     )
 )
