@@ -1,1 +1,0 @@
-"""Mocks for skill tests."""

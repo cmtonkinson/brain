@@ -1,5 +1,0 @@
-User message:
-{message}
-
-Assistant reply:
-{response}
