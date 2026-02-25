@@ -7,16 +7,23 @@ from services.action.policy_service.config import (
     PolicyServiceSettings,
     resolve_policy_service_settings,
 )
+from services.action.policy_service.data.repository import (
+    InMemoryPolicyPersistenceRepository,
+)
 from services.action.policy_service.domain import (
     APPROVAL_REQUIRED_OBLIGATION,
     ApprovalProposal,
     CapabilityInvocationRequest,
-    CapabilityRef,
-    PolicyContext,
+    CapabilityPolicyInput,
+    InvocationPolicyInput,
     PolicyDecision,
+    PolicyDocument,
     PolicyExecutionResult,
     PolicyHealthStatus,
+    PolicyOverlay,
+    PolicyRule,
 )
+from services.action.policy_service.interfaces import PolicyPersistenceRepository
 from services.action.policy_service.implementation import DefaultPolicyService
 from services.action.policy_service.service import PolicyExecuteCallback, PolicyService
 
@@ -24,20 +31,25 @@ __all__ = [
     "APPROVAL_REQUIRED_OBLIGATION",
     "ApprovalProposal",
     "CapabilityInvocationRequest",
-    "CapabilityRef",
+    "CapabilityPolicyInput",
     "DefaultPolicyService",
     "Envelope",
     "EnvelopeKind",
     "EnvelopeMeta",
     "ErrorCategory",
     "ErrorDetail",
+    "InvocationPolicyInput",
     "MANIFEST",
-    "PolicyContext",
     "PolicyDecision",
+    "PolicyDocument",
     "PolicyExecuteCallback",
     "PolicyExecutionResult",
     "PolicyHealthStatus",
+    "PolicyPersistenceRepository",
+    "PolicyOverlay",
+    "PolicyRule",
     "PolicyService",
     "PolicyServiceSettings",
+    "InMemoryPolicyPersistenceRepository",
     "resolve_policy_service_settings",
 ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,12 @@ from packages.brain_shared.envelope import (
     success,
     validate_meta,
 )
-from packages.brain_shared.errors import codes, not_found_error, validation_error
+from packages.brain_shared.errors import (
+    ErrorDetail,
+    codes,
+    not_found_error,
+    validation_error,
+)
 from packages.brain_shared.ids import generate_ulid_str
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from services.action.capability_engine.component import SERVICE_COMPONENT_ID
@@ -25,9 +31,16 @@ from services.action.capability_engine.config import (
 from services.action.capability_engine.domain import (
     CapabilityEngineHealthStatus,
     CapabilityExecutionResponse,
-    CapabilityIdentity,
+    CapabilityInvocationAuditRow,
+    CapabilityInvocationMetadata,
     CapabilityInvokeResult,
-    CapabilityPolicyContext,
+    CapabilityPolicySummary,
+)
+from services.action.capability_engine.data.repository import (
+    InMemoryCapabilityInvocationAuditRepository,
+)
+from services.action.capability_engine.interfaces import (
+    CapabilityInvocationAuditRepository,
 )
 from services.action.capability_engine.registry import (
     CapabilityRegistry,
@@ -36,15 +49,28 @@ from services.action.capability_engine.registry import (
 from services.action.capability_engine.service import CapabilityEngineService
 from services.action.policy_service.domain import (
     CapabilityInvocationRequest,
-    CapabilityRef,
+    CapabilityPolicyInput,
+    InvocationPolicyInput,
     PolicyDecision,
-    PolicyContext,
     PolicyExecutionResult,
+    UNKNOWN_CALL_TARGET_REASON,
     utc_now,
 )
 from services.action.policy_service.service import PolicyService
 
 _LOGGER = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class _InvokeInternalResult:
+    """Internal invocation result used by both public and nested invoke paths."""
+
+    allowed: bool
+    output: dict[str, Any] | None
+    errors: tuple[ErrorDetail, ...]
+    policy: CapabilityPolicySummary
+    proposal_token: str
+    capability_version: str
 
 
 @dataclass(frozen=True)
@@ -57,42 +83,32 @@ class _NestedRuntime(CapabilityRuntime):
     def invoke_nested(
         self,
         *,
-        kind: str,
-        namespace: str,
-        name: str,
-        version: str,
+        capability_id: str,
         input_payload: dict[str, Any],
     ) -> CapabilityExecutionResponse:
-        child_capability = CapabilityIdentity(
-            kind=kind,
-            namespace=namespace,
-            name=name,
-            version=version,
-        )
-        child_context = self.engine._narrow_child_policy_context(  # noqa: SLF001
-            parent=self.parent_request.policy_context,
-            child_capability=child_capability,
-        )
         child_meta = self.parent_request.metadata.model_copy(
             update={
                 "parent_id": self.parent_request.metadata.envelope_id,
                 "envelope_id": generate_ulid_str(),
             }
         )
-        child_request = CapabilityInvocationRequest(
-            metadata=child_meta,
-            capability=CapabilityRef.model_validate(
-                child_capability.model_dump(mode="python")
-            ),
-            input_payload=input_payload,
-            policy_context=child_context,
-            declared_autonomy=self.parent_request.declared_autonomy,
-            requires_approval=False,
+        child_invocation = InvocationPolicyInput(
+            actor=self.parent_request.invocation.actor,
+            source=self.parent_request.invocation.source,
+            channel=self.parent_request.invocation.channel,
+            invocation_id=generate_ulid_str(),
+            parent_invocation_id=self.parent_request.invocation.invocation_id,
         )
-        nested_result = self.engine._invoke_with_policy(request=child_request)  # noqa: SLF001
-        if not nested_result.allowed:
+
+        nested = self.engine._invoke_internal(
+            meta=child_meta,
+            capability_id=capability_id,
+            input_payload=input_payload,
+            invocation=child_invocation,
+        )
+        if not nested.allowed:
             return CapabilityExecutionResponse(output=None)
-        return CapabilityExecutionResponse(output=nested_result.output)
+        return CapabilityExecutionResponse(output=nested.output)
 
 
 class DefaultCapabilityEngineService(CapabilityEngineService):
@@ -104,10 +120,14 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         settings: CapabilityEngineSettings,
         policy_service: PolicyService,
         registry: CapabilityRegistry,
+        audit_repository: CapabilityInvocationAuditRepository | None = None,
     ) -> None:
         self._settings = settings
         self._policy_service = policy_service
         self._registry = registry
+        self._audit_repository = (
+            audit_repository or InMemoryCapabilityInvocationAuditRepository()
+        )
 
     @classmethod
     def from_settings(
@@ -117,14 +137,12 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         policy_service: PolicyService,
         registry: CapabilityRegistry | None = None,
     ) -> "DefaultCapabilityEngineService":
-        """Build CES from typed settings and injected policy service dependency."""
+        """Build CES from typed settings and injected Policy Service dependency."""
         resolved = resolve_capability_engine_settings(settings)
         active_registry = registry or CapabilityRegistry()
         active_registry.discover(root=Path(resolved.discovery_root))
         return cls(
-            settings=resolved,
-            policy_service=policy_service,
-            registry=active_registry,
+            settings=resolved, policy_service=policy_service, registry=active_registry
         )
 
     @public_api_instrumented(
@@ -133,7 +151,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         id_fields=("meta",),
     )
     def health(self, *, meta: EnvelopeMeta) -> Envelope[CapabilityEngineHealthStatus]:
-        """Return service readiness and discovered capability counts."""
+        """Return service readiness, policy readiness, and registry/audit counters."""
         try:
             validate_meta(meta)
         except ValueError as exc:
@@ -149,6 +167,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 service_ready=True,
                 policy_ready=policy_health.ok,
                 discovered_capabilities=self._registry.count(),
+                invocation_audit_rows=self._audit_repository.count(),
                 detail="ok" if policy_health.ok else "policy service unhealthy",
             ),
         )
@@ -162,11 +181,11 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         self,
         *,
         meta: EnvelopeMeta,
-        capability: CapabilityIdentity,
+        capability_id: str,
         input_payload: dict[str, object],
-        policy_context: CapabilityPolicyContext,
+        invocation: CapabilityInvocationMetadata,
     ) -> Envelope[CapabilityInvokeResult]:
-        """Invoke one capability via policy wrapper with dedupe and approval handling."""
+        """Invoke one capability package by ``capability_id`` through Policy Service."""
         try:
             validate_meta(meta)
         except ValueError as exc:
@@ -175,35 +194,22 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 errors=[validation_error(str(exc), code=codes.INVALID_ARGUMENT)],
             )
 
-        capability_ref = CapabilityRef.model_validate(
-            capability.model_dump(mode="python")
-        )
-        capability_id = capability_ref.capability_id
-        spec = self._registry.resolve_spec(capability_id=capability_id)
-        if spec is None:
-            return failure(
-                meta=meta,
-                errors=[
-                    not_found_error(
-                        "capability not found",
-                        code=codes.RESOURCE_NOT_FOUND,
-                        metadata={"capability_id": capability_id},
-                    )
-                ],
-            )
-
-        request = CapabilityInvocationRequest(
-            metadata=meta,
-            capability=capability_ref,
+        result = self._invoke_internal(
+            meta=meta,
+            capability_id=capability_id,
             input_payload={key: value for key, value in input_payload.items()},
-            policy_context=PolicyContext.model_validate(
-                policy_context.model_dump(mode="python")
+            invocation=InvocationPolicyInput.model_validate(
+                invocation.model_dump(mode="python")
             ),
-            declared_autonomy=spec.autonomy,
-            requires_approval=spec.requires_approval,
+        )
+        self._append_audit_row(
+            meta=meta,
+            capability_id=capability_id,
+            capability_version=result.capability_version,
+            summary=result.policy,
+            proposal_token=result.proposal_token,
         )
 
-        result = self._invoke_with_policy(request=request)
         if not result.allowed:
             return failure(meta=meta, errors=result.errors)
 
@@ -211,14 +217,89 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
             meta=meta,
             payload=CapabilityInvokeResult(
                 capability_id=capability_id,
+                capability_version=result.capability_version,
                 output=result.output,
-                policy_decision_id=result.decision.decision_id,
-                policy_allowed=result.decision.allowed,
-                policy_reason_codes=result.decision.reason_codes,
-                proposal_id=(
-                    "" if result.proposal is None else result.proposal.proposal_id
-                ),
+                policy_decision_id=result.policy.decision_id,
+                policy_regime_id=result.policy.policy_regime_id,
+                policy_allowed=result.policy.allowed,
+                policy_reason_codes=result.policy.reason_codes,
+                policy_obligations=result.policy.obligations,
+                proposal_token=result.proposal_token,
             ),
+        )
+
+    def _invoke_internal(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        capability_id: str,
+        input_payload: dict[str, Any],
+        invocation: InvocationPolicyInput,
+    ) -> _InvokeInternalResult:
+        manifest = self._registry.resolve_manifest(capability_id=capability_id)
+        if manifest is None:
+            errors = (
+                not_found_error(
+                    "capability not found",
+                    code=codes.RESOURCE_NOT_FOUND,
+                    metadata={"capability_id": capability_id},
+                ),
+            )
+            return self._denied_internal(
+                capability_version="unknown",
+                errors=errors,
+                reason_codes=(codes.RESOURCE_NOT_FOUND,),
+            )
+
+        if not manifest.enabled:
+            errors = (
+                validation_error(
+                    "capability is disabled",
+                    code=codes.PERMISSION_DENIED,
+                    metadata={"capability_id": capability_id},
+                ),
+            )
+            return self._denied_internal(
+                capability_version=manifest.version,
+                errors=errors,
+                reason_codes=("capability_disabled",),
+            )
+
+        request = CapabilityInvocationRequest(
+            metadata=meta,
+            capability=CapabilityPolicyInput(
+                capability_id=manifest.capability_id,
+                kind=manifest.kind,
+                version=manifest.version,
+                autonomy=manifest.autonomy,
+                requires_approval=manifest.requires_approval,
+                side_effects=manifest.side_effects,
+                required_capabilities=manifest.required_capabilities,
+            ),
+            invocation=invocation,
+            input_payload=input_payload,
+        )
+        policy_result = self._invoke_with_policy(request=request)
+
+        proposal_token = ""
+        if policy_result.proposal is not None:
+            proposal_token = policy_result.proposal.proposal_token
+        summary = CapabilityPolicySummary(
+            decision_id=policy_result.decision.decision_id,
+            policy_regime_id=policy_result.decision.policy_regime_id,
+            allowed=policy_result.decision.allowed,
+            reason_codes=policy_result.decision.reason_codes,
+            obligations=policy_result.decision.obligations,
+            proposal_token=proposal_token,
+        )
+
+        return _InvokeInternalResult(
+            allowed=policy_result.allowed,
+            output=policy_result.output,
+            errors=policy_result.errors,
+            policy=summary,
+            proposal_token=proposal_token,
+            capability_version=manifest.version,
         )
 
     def _invoke_with_policy(
@@ -227,6 +308,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         handler = self._registry.resolve_handler(
             capability_id=request.capability.capability_id
         )
+        runtime = _NestedRuntime(engine=self, parent_request=request)
 
         if handler is None:
             return self._policy_service.authorize_and_execute(
@@ -234,42 +316,72 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 execute=lambda _: self._missing_handler_result(request=request),
             )
 
-        runtime = _NestedRuntime(engine=self, parent_request=request)
         return self._policy_service.authorize_and_execute(
             request=request,
             execute=lambda allowed_request: PolicyExecutionResult(
                 allowed=True,
                 output=handler(allowed_request, runtime).output,
                 errors=(),
-                decision=self._default_allow_decision(),
+                decision=self._placeholder_allow_decision(),
                 proposal=None,
             ),
         )
 
-    def _narrow_child_policy_context(
+    def _append_audit_row(
         self,
         *,
-        parent: PolicyContext,
-        child_capability: CapabilityIdentity,
-    ) -> PolicyContext:
-        child_id = (
-            f"{child_capability.kind}:{child_capability.namespace}:"
-            f"{child_capability.name}:{child_capability.version or 'latest'}"
+        meta: EnvelopeMeta,
+        capability_id: str,
+        capability_version: str,
+        summary: CapabilityPolicySummary,
+        proposal_token: str,
+    ) -> None:
+        self._audit_repository.append(
+            row=CapabilityInvocationAuditRow(
+                audit_id=generate_ulid_str(),
+                envelope_id=meta.envelope_id,
+                trace_id=meta.trace_id,
+                parent_id=meta.parent_id,
+                capability_id=capability_id,
+                capability_version=capability_version,
+                policy_decision_id=summary.decision_id,
+                policy_regime_id=summary.policy_regime_id,
+                allowed=summary.allowed,
+                reason_codes=summary.reason_codes,
+                proposal_token=proposal_token,
+                created_at=datetime.now(UTC),
+            ),
         )
-        allowed = tuple({*parent.allowed_capabilities, child_id})
-        return parent.model_copy(
-            update={
-                "allowed_capabilities": allowed,
-                "parent_invocation_id": parent.invocation_id,
-                "approval_token": "",
-            }
+
+    def _denied_internal(
+        self,
+        *,
+        capability_version: str,
+        errors: tuple[ErrorDetail, ...],
+        reason_codes: tuple[str, ...],
+    ) -> _InvokeInternalResult:
+        summary = CapabilityPolicySummary(
+            decision_id="prepolicy-deny",
+            policy_regime_id="prepolicy-deny",
+            allowed=False,
+            reason_codes=reason_codes,
+            obligations=(),
+        )
+        return _InvokeInternalResult(
+            allowed=False,
+            output=None,
+            errors=errors,
+            policy=summary,
+            proposal_token="",
+            capability_version=capability_version,
         )
 
     @staticmethod
-    def _default_allow_decision() -> PolicyDecision:
-        # Callback return decision is overwritten by policy wrapper.
+    def _placeholder_allow_decision() -> PolicyDecision:
         return PolicyDecision(
             decision_id="placeholder",
+            policy_regime_id="placeholder",
+            policy_regime_hash="placeholder",
             allowed=True,
             reason_codes=(),
             obligations=(),
@@ -292,6 +404,8 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                     metadata={"capability_id": request.capability.capability_id},
                 ),
             ),
-            decision=self._default_allow_decision(),
+            decision=self._placeholder_allow_decision().model_copy(
+                update={"allowed": False, "reason_codes": (UNKNOWN_CALL_TARGET_REASON,)}
+            ),
             proposal=None,
         )

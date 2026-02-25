@@ -7,9 +7,8 @@ from abc import ABC, abstractmethod
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from services.action.capability_engine.domain import (
     CapabilityEngineHealthStatus,
-    CapabilityIdentity,
+    CapabilityInvocationMetadata,
     CapabilityInvokeResult,
-    CapabilityPolicyContext,
 )
 
 
@@ -21,12 +20,12 @@ class CapabilityEngineService(ABC):
         self,
         *,
         meta: EnvelopeMeta,
-        capability: CapabilityIdentity,
+        capability_id: str,
         input_payload: dict[str, object],
-        policy_context: CapabilityPolicyContext,
+        invocation: CapabilityInvocationMetadata,
     ) -> Envelope[CapabilityInvokeResult]:
-        """Invoke one capability via Policy Service authorization wrapper."""
+        """Invoke one capability package by ``capability_id``."""
 
     @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[CapabilityEngineHealthStatus]:
-        """Return CES readiness and capability discovery counters."""
+        """Return CES readiness, registry counts, and invocation-audit counters."""

@@ -4,12 +4,19 @@ from __future__ import annotations
 
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from services.action.policy_service.config import PolicyServiceSettings
+from services.action.policy_service.data.repository import (
+    InMemoryPolicyPersistenceRepository,
+)
 from services.action.policy_service.domain import (
     CapabilityInvocationRequest,
-    CapabilityRef,
-    PolicyContext,
+    CapabilityPolicyInput,
+    InvocationPolicyInput,
     PolicyDecision,
+    PolicyDocument,
     PolicyExecutionResult,
+    PolicyOverlay,
+    PolicyRule,
+    PolicyRuleOverlay,
     utc_now,
 )
 from services.action.policy_service.implementation import DefaultPolicyService
@@ -18,6 +25,8 @@ from services.action.policy_service.implementation import DefaultPolicyService
 def _decision() -> PolicyDecision:
     return PolicyDecision(
         decision_id="tmp",
+        policy_regime_id="regime-1",
+        policy_regime_hash="hash-1",
         allowed=True,
         reason_codes=(),
         obligations=(),
@@ -29,7 +38,15 @@ def _decision() -> PolicyDecision:
 
 
 def _request(
-    *, envelope_id: str = "env-1", approval_token: str = ""
+    *,
+    envelope_id: str = "env-1",
+    approval_token: str = "",
+    actor: str = "operator",
+    channel: str = "signal",
+    capability_id: str = "demo-ping",
+    autonomy: int = 0,
+    requires_approval: bool = False,
+    message_text: str = "",
 ) -> CapabilityInvocationRequest:
     return CapabilityInvocationRequest(
         metadata=new_meta(
@@ -39,21 +56,32 @@ def _request(
             envelope_id=envelope_id,
             trace_id="trace-1",
         ),
-        capability=CapabilityRef(
+        capability=CapabilityPolicyInput(
+            capability_id=capability_id,
             kind="op",
-            namespace="core",
-            name="ping",
-            version="v1",
+            version="1.0.0",
+            autonomy=autonomy,
+            requires_approval=requires_approval,
         ),
-        input_payload={"ping": "pong"},
-        policy_context=PolicyContext(
-            actor="operator",
-            channel="signal",
+        invocation=InvocationPolicyInput(
+            actor=actor,
+            source="agent",
+            channel=channel,
             invocation_id="inv-1",
             approval_token=approval_token,
+            message_text=message_text,
         ),
-        declared_autonomy=0,
-        requires_approval=False,
+        input_payload={"ping": "pong"},
+    )
+
+
+def _settings_for_rule(rule: PolicyRule) -> PolicyServiceSettings:
+    return PolicyServiceSettings(
+        base_policy=PolicyDocument(
+            policy_id="policy-core",
+            policy_version="1",
+            rules={"demo-ping": rule},
+        )
     )
 
 
@@ -87,10 +115,69 @@ def test_dedupe_denies_duplicate_envelope_within_window() -> None:
     assert "dedupe_duplicate_request" in second.decision.reason_codes
 
 
+def test_disabled_capability_denied() -> None:
+    service = DefaultPolicyService(
+        settings=_settings_for_rule(PolicyRule(enabled=False))
+    )
+
+    result = service.authorize_and_execute(
+        request=_request(),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert result.allowed is False
+    assert "capability_disabled" in result.decision.reason_codes
+
+
+def test_actor_and_channel_denial() -> None:
+    service = DefaultPolicyService(
+        settings=_settings_for_rule(
+            PolicyRule(actors_deny=("operator",), channels_deny=("signal",))
+        )
+    )
+
+    result = service.authorize_and_execute(
+        request=_request(),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert result.allowed is False
+    assert "actor_denied" in result.decision.reason_codes
+    assert "channel_denied" in result.decision.reason_codes
+
+
+def test_autonomy_ceiling_denial() -> None:
+    service = DefaultPolicyService(
+        settings=_settings_for_rule(PolicyRule(autonomy_ceiling=1))
+    )
+
+    result = service.authorize_and_execute(
+        request=_request(autonomy=2),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert result.allowed is False
+    assert "autonomy_exceeds_limit" in result.decision.reason_codes
+
+
 def test_approval_required_emits_proposal_and_denies() -> None:
     service = DefaultPolicyService(settings=PolicyServiceSettings())
-    req = _request()
-    req = req.model_copy(update={"requires_approval": True})
+    req = _request(requires_approval=True)
 
     result = service.authorize_and_execute(
         request=req,
@@ -109,9 +196,9 @@ def test_approval_required_emits_proposal_and_denies() -> None:
 
 def test_valid_approval_token_allows_execution() -> None:
     service = DefaultPolicyService(settings=PolicyServiceSettings())
-    base = _request()
+    base = _request(requires_approval=True)
     pending = service.authorize_and_execute(
-        request=base.model_copy(update={"requires_approval": True}),
+        request=base,
         execute=lambda _: PolicyExecutionResult(
             allowed=True,
             output={"ok": True},
@@ -121,14 +208,17 @@ def test_valid_approval_token_allows_execution() -> None:
     )
     assert pending.proposal is not None
 
-    token = pending.proposal.proposal_id
-    approved_request = base.model_copy(
+    token = pending.proposal.proposal_token
+    approved_request = _request(
+        envelope_id="env-2",
+        approval_token=token,
+        requires_approval=True,
+    )
+    approved_request = approved_request.model_copy(
         update={
-            "requires_approval": True,
-            "policy_context": base.policy_context.model_copy(
-                update={"approval_token": token, "invocation_id": "inv-2"}
-            ),
-            "metadata": base.metadata.model_copy(update={"envelope_id": "env-2"}),
+            "invocation": approved_request.invocation.model_copy(
+                update={"invocation_id": "inv-2"}
+            )
         }
     )
 
@@ -144,3 +234,271 @@ def test_valid_approval_token_allows_execution() -> None:
 
     assert approved.allowed is True
     assert approved.output == {"ok": True}
+
+
+def test_reply_token_deterministic_correlation_allows_execution() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    pending = service.authorize_and_execute(
+        request=_request(requires_approval=True),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert pending.proposal is not None
+    linked = _request(envelope_id="env-linked", requires_approval=True).model_copy(
+        update={
+            "invocation": InvocationPolicyInput(
+                actor="operator",
+                source="agent",
+                channel="signal",
+                invocation_id="inv-linked",
+                reply_to_proposal_token=pending.proposal.proposal_token,
+            )
+        }
+    )
+    approved = service.authorize_and_execute(
+        request=linked,
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert approved.allowed is True
+
+
+def test_reaction_token_deterministic_correlation_allows_execution() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    pending = service.authorize_and_execute(
+        request=_request(requires_approval=True),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert pending.proposal is not None
+    linked = _request(envelope_id="env-react", requires_approval=True).model_copy(
+        update={
+            "invocation": InvocationPolicyInput(
+                actor="operator",
+                source="agent",
+                channel="signal",
+                invocation_id="inv-react",
+                reaction_to_proposal_token=pending.proposal.proposal_token,
+            )
+        }
+    )
+    approved = service.authorize_and_execute(
+        request=linked,
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert approved.allowed is True
+
+
+def test_ambiguous_multi_proposal_reply_denied() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+
+    for envelope_id in ("env-a", "env-b"):
+        service.authorize_and_execute(
+            request=_request(
+                envelope_id=envelope_id,
+                requires_approval=True,
+                capability_id=f"demo-ping-{envelope_id}",
+            ),
+            execute=lambda _: PolicyExecutionResult(
+                allowed=True,
+                output={"ok": True},
+                errors=(),
+                decision=_decision(),
+            ),
+        )
+
+    ambiguous = service.authorize_and_execute(
+        request=_request(
+            envelope_id="env-c",
+            requires_approval=True,
+            message_text="approve",
+            capability_id="demo-ping-env-a",
+        ),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert ambiguous.allowed is False
+    assert "approval_required" in ambiguous.decision.reason_codes
+
+
+def test_low_confidence_disambiguation_requests_clarification() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    pending = service.authorize_and_execute(
+        request=_request(requires_approval=True),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert pending.proposal is not None
+
+    second = service.authorize_and_execute(
+        request=_request(
+            envelope_id="env-clarify",
+            requires_approval=True,
+            capability_id="demo-ping",
+        ).model_copy(
+            update={
+                "input_payload": {
+                    "_policy_disambiguation": [
+                        {
+                            "proposal_token": pending.proposal.proposal_token,
+                            "confidence": 0.70,
+                        }
+                    ]
+                }
+            }
+        ),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert second.allowed is False
+    assert "approval_clarification_required" in second.decision.reason_codes
+
+
+def test_second_clarification_turn_becomes_ambiguous() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    pending = service.authorize_and_execute(
+        request=_request(requires_approval=True),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert pending.proposal is not None
+
+    def _clarify(envelope_id: str) -> PolicyExecutionResult:
+        return service.authorize_and_execute(
+            request=_request(
+                envelope_id=envelope_id,
+                requires_approval=True,
+            ).model_copy(
+                update={
+                    "input_payload": {
+                        "_policy_disambiguation": [
+                            {
+                                "proposal_token": pending.proposal.proposal_token,
+                                "confidence": 0.70,
+                            }
+                        ]
+                    }
+                }
+            ),
+            execute=lambda _: PolicyExecutionResult(
+                allowed=True,
+                output={"ok": True},
+                errors=(),
+                decision=_decision(),
+            ),
+        )
+
+    first = _clarify("env-clarify-1")
+    second = _clarify("env-clarify-2")
+    assert first.allowed is False
+    assert "approval_clarification_required" in first.decision.reason_codes
+    assert second.allowed is False
+    assert "approval_ambiguous" in second.decision.reason_codes
+
+
+def test_policy_overlay_last_wins_and_unset() -> None:
+    settings = PolicyServiceSettings(
+        base_policy=PolicyDocument(
+            policy_id="policy-core",
+            policy_version="1",
+            rules={"demo-ping": PolicyRule(enabled=False, channels_allow=("signal",))},
+        ),
+        overlays=(
+            PolicyOverlay(
+                name="001-enable",
+                rules={"demo-ping": PolicyRuleOverlay(enabled=True)},
+            ),
+            PolicyOverlay(
+                name="002-unset-channel", unset=("rules.demo-ping.channels_allow",)
+            ),
+        ),
+    )
+
+    service = DefaultPolicyService(settings=settings)
+    result = service.authorize_and_execute(
+        request=_request(),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert result.allowed is True
+
+
+def test_decision_contains_policy_regime_id() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    result = service.authorize_and_execute(
+        request=_request(),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert result.decision.policy_regime_id != ""
+
+
+def test_health_reports_regime_and_counter_state() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    meta = new_meta(kind=EnvelopeKind.RESULT, source="test", principal="operator")
+    health = service.health(meta=meta)
+    assert health.ok is True
+    assert health.payload is not None
+    assert health.payload.value.active_policy_regime_id != ""
+    assert health.payload.value.regime_rows >= 1
+
+
+def test_service_writes_decisions_and_proposals_to_injected_repository() -> None:
+    repo = InMemoryPolicyPersistenceRepository()
+    service = DefaultPolicyService(settings=PolicyServiceSettings(), persistence=repo)
+    service.authorize_and_execute(
+        request=_request(requires_approval=True),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert repo.count_decisions() == 1
+    assert repo.count_proposals() == 1

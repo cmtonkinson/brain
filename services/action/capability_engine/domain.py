@@ -1,38 +1,28 @@
-"""Domain contracts for Capability Engine Service invocation APIs."""
+"""Domain contracts for Capability Engine manifest and invocation APIs."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from services.action.policy_service.domain import PolicyDecision
 
-
-class CapabilityIdentity(BaseModel):
-    """Capability identity requested by CES callers."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    kind: Literal["skill", "op"]
-    namespace: str = Field(min_length=1)
-    name: str = Field(min_length=1)
-    version: str = ""
-
-
-class CapabilityPolicyContext(BaseModel):
-    """Policy context supplied with one capability invocation request."""
+class CapabilityInvocationMetadata(BaseModel):
+    """Invocation metadata supplied by CES callers for policy and auditing."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     actor: str = Field(min_length=1)
+    source: str = Field(min_length=1)
     channel: str = Field(min_length=1)
-    allowed_capabilities: tuple[str, ...] = ()
-    max_autonomy: int | None = None
-    confirmed: bool = False
-    approval_token: str = ""
     invocation_id: str = Field(min_length=1)
     parent_invocation_id: str = ""
+    confirmed: bool = False
+    approval_token: str = ""
+    reply_to_proposal_token: str = ""
+    reaction_to_proposal_token: str = ""
+    message_text: str = ""
 
 
 class CapabilityInvokeResult(BaseModel):
@@ -41,11 +31,14 @@ class CapabilityInvokeResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     capability_id: str
+    capability_version: str
     output: dict[str, Any] | None = None
     policy_decision_id: str
+    policy_regime_id: str
     policy_allowed: bool
     policy_reason_codes: tuple[str, ...]
-    proposal_id: str = ""
+    policy_obligations: tuple[str, ...]
+    proposal_token: str = ""
 
 
 class CapabilityEngineHealthStatus(BaseModel):
@@ -56,40 +49,80 @@ class CapabilityEngineHealthStatus(BaseModel):
     service_ready: bool
     policy_ready: bool
     discovered_capabilities: int
+    invocation_audit_rows: int
     detail: str
 
 
 class CapabilityExecutionResponse(BaseModel):
-    """Internal execution result type used by policy callback wrappers."""
+    """Internal execution result type used by runtime handlers."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     output: dict[str, Any] | None = None
 
 
-class CapabilitySpec(BaseModel):
-    """Loaded capability declaration with execution policy metadata."""
+class CapabilityManifestBase(BaseModel):
+    """Immutable capability manifest metadata shared by ops and skills."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    capability_id: str = Field(min_length=1, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
     kind: Literal["skill", "op"]
-    namespace: str
-    name: str
-    version: str
-    autonomy: int = 0
+    version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
+    summary: str = Field(min_length=1)
+    enabled: bool = True
+    autonomy: int = Field(default=0, ge=0)
     requires_approval: bool = False
+    side_effects: tuple[str, ...] = ()
+    required_capabilities: tuple[str, ...] = ()
 
-    @property
-    def capability_id(self) -> str:
-        """Return stable capability-id string used by policy checks."""
-        version = self.version or "latest"
-        return f"{self.kind}:{self.namespace}:{self.name}:{version}"
+
+class OpCapabilityManifest(CapabilityManifestBase):
+    """Manifest schema for an Op capability package."""
+
+    kind: Literal["op"]
+    call_target: str = Field(min_length=1)
+
+
+class SkillCapabilityManifest(CapabilityManifestBase):
+    """Manifest schema for a Skill capability package."""
+
+    kind: Literal["skill"]
+    skill_type: Literal["logic", "pipeline"]
+    pipeline: tuple[str, ...] = ()
+    entrypoint: str = "execute.py"
+
+
+CapabilityManifest = OpCapabilityManifest | SkillCapabilityManifest
 
 
 class CapabilityPolicySummary(BaseModel):
-    """Policy-decision summary included in CES successful responses."""
+    """Policy decision summary included in CES responses and audit entries."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    decision: PolicyDecision
-    proposal_id: str = ""
+    decision_id: str
+    policy_regime_id: str
+    allowed: bool
+    reason_codes: tuple[str, ...]
+    obligations: tuple[str, ...]
+    proposal_token: str = ""
+
+
+class CapabilityInvocationAuditRow(BaseModel):
+    """Append-only invocation audit record owned by Capability Engine Service."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    audit_id: str
+    envelope_id: str
+    trace_id: str
+    parent_id: str
+    capability_id: str
+    capability_version: str
+    policy_decision_id: str
+    policy_regime_id: str
+    allowed: bool
+    reason_codes: tuple[str, ...]
+    proposal_token: str
+    created_at: datetime

@@ -1,0 +1,12 @@
+{
+  "capability_id": "demo-echo",
+  "kind": "op",
+  "version": "1.0.0",
+  "summary": "Echo one payload value for capability-engine smoke testing.",
+  "enabled": true,
+  "autonomy": 0,
+  "requires_approval": false,
+  "side_effects": [],
+  "required_capabilities": [],
+  "call_target": "service_cache_authority.get_value"
+}

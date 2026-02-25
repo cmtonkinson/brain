@@ -1,4 +1,4 @@
-"""Domain contracts for Policy Service authorization workflows."""
+"""Domain contracts for Policy Service authorization and approval workflows."""
 
 from __future__ import annotations
 
@@ -11,38 +11,38 @@ from packages.brain_shared.envelope import EnvelopeMeta
 from packages.brain_shared.errors import ErrorDetail
 
 APPROVAL_REQUIRED_OBLIGATION = "approval_required"
+UNKNOWN_CALL_TARGET_REASON = "unknown_call_target"
 
 
-class CapabilityRef(BaseModel):
-    """Canonical identity for one capability invocation target."""
+class CapabilityPolicyInput(BaseModel):
+    """Capability metadata evaluated by Policy Service for one invocation."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    capability_id: str = Field(min_length=1)
     kind: Literal["skill", "op"]
-    namespace: str = Field(min_length=1)
-    name: str = Field(min_length=1)
-    version: str = Field(default="", min_length=0)
-
-    @property
-    def capability_id(self) -> str:
-        """Return stable capability-id string used in policy checks."""
-        version = self.version or "latest"
-        return f"{self.kind}:{self.namespace}:{self.name}:{version}"
+    version: str = Field(min_length=1)
+    autonomy: int = Field(default=0, ge=0)
+    requires_approval: bool = False
+    side_effects: tuple[str, ...] = ()
+    required_capabilities: tuple[str, ...] = ()
 
 
-class PolicyContext(BaseModel):
-    """Runtime policy context supplied by capability callers."""
+class InvocationPolicyInput(BaseModel):
+    """Invocation metadata for policy evaluation and approval correlation."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     actor: str = Field(min_length=1)
+    source: str = Field(min_length=1)
     channel: str = Field(min_length=1)
-    allowed_capabilities: tuple[str, ...] = ()
-    max_autonomy: int | None = None
-    confirmed: bool = False
-    approval_token: str = ""
     invocation_id: str = Field(min_length=1)
     parent_invocation_id: str = ""
+    confirmed: bool = False
+    approval_token: str = ""
+    reply_to_proposal_token: str = ""
+    reaction_to_proposal_token: str = ""
+    message_text: str = ""
 
 
 class CapabilityInvocationRequest(BaseModel):
@@ -51,11 +51,79 @@ class CapabilityInvocationRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     metadata: EnvelopeMeta
-    capability: CapabilityRef
+    capability: CapabilityPolicyInput
+    invocation: InvocationPolicyInput
     input_payload: dict[str, Any]
-    policy_context: PolicyContext
-    declared_autonomy: int = Field(default=0, ge=0)
-    requires_approval: bool = False
+
+
+class PolicyRule(BaseModel):
+    """One effective policy rule scoped to a specific capability identifier."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = True
+    autonomy_ceiling: int | None = Field(default=None, ge=0)
+    actors_allow: tuple[str, ...] = ()
+    actors_deny: tuple[str, ...] = ()
+    channels_allow: tuple[str, ...] = ()
+    channels_deny: tuple[str, ...] = ()
+    require_approval: bool | None = None
+
+
+class PolicyRuleOverlay(BaseModel):
+    """Overlay patch for mutable operational rule controls only."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool | None = None
+    autonomy_ceiling: int | None = Field(default=None, ge=0)
+    actors_allow: tuple[str, ...] | None = None
+    actors_deny: tuple[str, ...] | None = None
+    channels_allow: tuple[str, ...] | None = None
+    channels_deny: tuple[str, ...] | None = None
+    require_approval: bool | None = None
+
+
+class PolicyDocument(BaseModel):
+    """Base or effective policy document evaluated by Policy Service."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    policy_id: str = Field(min_length=1)
+    policy_version: str = Field(min_length=1)
+    rules: dict[str, PolicyRule] = Field(default_factory=dict)
+
+
+class PolicyOverlay(BaseModel):
+    """Named overlay used to mutate mutable operational policy fields."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    unset: tuple[str, ...] = ()
+    rules: dict[str, PolicyRuleOverlay] = Field(default_factory=dict)
+
+
+class PolicyRegimeSnapshot(BaseModel):
+    """Append-only persisted effective-policy snapshot keyed by deterministic hash."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    policy_regime_id: str
+    policy_hash: str
+    policy_json: str
+    policy_id: str
+    policy_version: str
+    created_at: datetime
+
+
+class ActivePolicyRegimePointer(BaseModel):
+    """Single-row pointer to the currently active effective policy regime."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pointer_id: str = "active"
+    policy_regime_id: str
 
 
 class PolicyDecision(BaseModel):
@@ -64,6 +132,8 @@ class PolicyDecision(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     decision_id: str
+    policy_regime_id: str
+    policy_regime_hash: str
     allowed: bool
     reason_codes: tuple[str, ...]
     obligations: tuple[str, ...]
@@ -78,20 +148,19 @@ class ApprovalProposal(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    proposal_id: str
+    proposal_token: str
     proposal_version: str = "v1"
-    action_kind: Literal["skill", "op"]
-    action_name: str
-    action_version: str
-    autonomy: int
-    required_capabilities: tuple[str, ...]
-    reason_for_review: str
+    capability_id: str
+    capability_version: str
+    summary: str
     actor: str
     channel: str
     trace_id: str
     invocation_id: str
+    policy_regime_id: str
     created_at: datetime
     expires_at: datetime
+    clarification_attempts: int = 0
 
 
 class PolicyExecutionResult(BaseModel):
@@ -107,11 +176,13 @@ class PolicyExecutionResult(BaseModel):
 
 
 class PolicyHealthStatus(BaseModel):
-    """Health and in-memory audit counters for Policy Service runtime."""
+    """Health payload and in-memory counters for Policy Service runtime state."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     service_ready: bool
+    active_policy_regime_id: str
+    regime_rows: int
     decision_log_rows: int
     proposal_rows: int
     dedupe_rows: int

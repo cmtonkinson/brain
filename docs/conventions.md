@@ -203,6 +203,34 @@ Capability Engine `invoke()`. _Skills_ must not directly call other _Skills_ or
 _Ops_ by importing implementations. Policy Service evaluation is mandatory and
 recursive.
 
+### Invocation Lineage and Audit Fields
+Capability Engine and Policy Service must persist structured lineage and policy
+audit metadata for every invocation (allowed or denied).
+
+Required lineage fields:
+- `envelope_id`
+- `trace_id`
+- `parent_id`
+- `invocation_id`
+- `parent_invocation_id`
+- `source`
+- `actor`
+- `channel`
+
+Required policy/audit fields:
+- `capability_id`
+- `capability_version`
+- `policy_decision_id`
+- `policy_regime_id`
+- `allowed` (bool)
+- `reason_codes[]`
+- `obligations[]`
+- `approval proposal token` when approval is required
+
+Nested capability calls must mint a new `envelope_id`, set `parent_id` to the
+parent envelope, and route through Capability Engine public invoke API so the
+same policy and audit contract is enforced recursively.
+
 ------------------------------------------------------------------------
 ## Process Assumptions
 - L2 _Actors_ are process-and-network isolated

@@ -115,6 +115,38 @@ primary configuration loading.
   should not rely on mutable module globals for boot state.
 
 ------------------------------------------------------------------------
+## Capability Package Design
+Capability packages are immutable runtime contracts owned by Capability Engine.
+
+### Package shape
+- Root location is `capabilities/`.
+- Each package directory is self-named in kebab-case and must exactly match
+  `capability_id`.
+- Required files in every package:
+  - `capability.json`
+  - `README.md`
+- `Op` package:
+  - manifest-only wrapper over primitive call target
+  - no required Python module
+- Logic `Skill` package:
+  - `execute.py` entrypoint module
+  - `test/` with at least one `test_*.py` file
+- Pipeline `Skill` package:
+  - declarative `pipeline` list of capability IDs
+  - no required Python module
+
+### Manifest invariants
+- Manifest schema is immutable at runtime.
+- `capability_id` identifies the package and is the runtime invoke target.
+- Manifest `version` is semver and is audit metadata, not a runtime selector.
+- Exactly one runtime manifest version is active per `capability_id`.
+- Registry validation is fail-closed at boot:
+  - invalid schema fails boot
+  - duplicate `capability_id` fails boot
+  - unknown dependency or pipeline member fails boot
+- Runtime overlays may not mutate capability manifests.
+
+------------------------------------------------------------------------
 ## Practical Registration Pattern
 Each _Component_ package should self-register at import time with a single
 exported `MANIFEST` symbol:

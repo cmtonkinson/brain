@@ -7,10 +7,10 @@ _This document is generated from `services/*/*/service.py`. Do not edit by hand.
 - Summary: Public API for capability invocation under policy governance.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[CapabilityEngineHealthStatus]`  
-_Return CES readiness and capability discovery counters._
+_Return CES readiness, registry counts, and invocation-audit counters._
 
-`invoke_capability(*, meta: EnvelopeMeta, capability: CapabilityIdentity, input_payload: dict[str, object], policy_context: CapabilityPolicyContext) -> Envelope[CapabilityInvokeResult]`  
-_Invoke one capability via Policy Service authorization wrapper._
+`invoke_capability(*, meta: EnvelopeMeta, capability_id: str, input_payload: dict[str, object], invocation: CapabilityInvocationMetadata) -> Envelope[CapabilityInvokeResult]`  
+_Invoke one capability package by ``capability_id``._
 
 ------------------------------------------------------------------------
 ## `LanguageModelService`
@@ -41,7 +41,7 @@ _Generate a batch of embedding vectors._
 _Return Policy Service readiness and in-memory audit counters._
 
 `authorize_and_execute(*, request: CapabilityInvocationRequest, execute: PolicyExecuteCallback) -> PolicyExecutionResult`  
-_Evaluate policy, then execute callback only for allowed requests._
+_Evaluate one invocation, returning normalized decision/approval metadata._
 
 ------------------------------------------------------------------------
 ## `SwitchboardService`

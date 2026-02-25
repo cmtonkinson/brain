@@ -25,7 +25,7 @@ class PolicyService(ABC):
         request: CapabilityInvocationRequest,
         execute: PolicyExecuteCallback,
     ) -> PolicyExecutionResult:
-        """Evaluate policy, then execute callback only for allowed requests."""
+        """Evaluate one invocation, returning normalized decision/approval metadata."""
 
     @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[PolicyHealthStatus]:

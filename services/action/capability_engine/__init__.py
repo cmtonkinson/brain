@@ -9,13 +9,19 @@ from services.action.capability_engine.config import (
 )
 from services.action.capability_engine.domain import (
     CapabilityEngineHealthStatus,
-    CapabilityIdentity,
+    CapabilityInvocationMetadata,
     CapabilityInvokeResult,
-    CapabilityPolicyContext,
-    CapabilitySpec,
+    OpCapabilityManifest,
+    SkillCapabilityManifest,
+)
+from services.action.capability_engine.interfaces import (
+    CapabilityInvocationAuditRepository,
 )
 from services.action.capability_engine.implementation import (
     DefaultCapabilityEngineService,
+)
+from services.action.capability_engine.data.repository import (
+    InMemoryCapabilityInvocationAuditRepository,
 )
 from services.action.capability_engine.registry import CapabilityRegistry
 from services.action.capability_engine.service import CapabilityEngineService
@@ -24,17 +30,19 @@ __all__ = [
     "CapabilityEngineHealthStatus",
     "CapabilityEngineService",
     "CapabilityEngineSettings",
-    "CapabilityIdentity",
+    "CapabilityInvocationAuditRepository",
+    "CapabilityInvocationMetadata",
     "CapabilityInvokeResult",
-    "CapabilityPolicyContext",
     "CapabilityRegistry",
-    "CapabilitySpec",
     "DefaultCapabilityEngineService",
+    "InMemoryCapabilityInvocationAuditRepository",
     "Envelope",
     "EnvelopeKind",
     "EnvelopeMeta",
     "ErrorCategory",
     "ErrorDetail",
     "MANIFEST",
+    "OpCapabilityManifest",
+    "SkillCapabilityManifest",
     "resolve_capability_engine_settings",
 ]
