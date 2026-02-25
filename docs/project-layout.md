@@ -40,7 +40,7 @@ services/
     attention_router/
     capability_engine/
     language_model/
-    policy_engine/
+    policy_service/
     switchboard/
   control/                      # Control System
     commitment/

@@ -106,10 +106,10 @@ writing state, and the invocation of such logic.
 
 #### Capability Engine
 - Owns _Capability_ registry (_Ops_ and _Skills_)
-- Executes _Capabilities_ pursuant to the Policy Engine
+- Executes _Capabilities_ pursuant to the Policy Service
 - Recursively enforces Policy checks for nested _Capability_ calls
 
-#### Policy Engine
+#### Policy Service
 - Owns Policy rules
 - Evaluates every _Capability_ invocation
 - Cannot be bypassed (by design - enforced with API limitations and automated

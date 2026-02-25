@@ -2,6 +2,17 @@
 _This document is generated from `services/*/*/service.py`. Do not edit by hand._
 
 ------------------------------------------------------------------------
+## `CapabilityEngineService`
+- Module: `services/action/capability_engine/service.py`
+- Summary: Public API for capability invocation under policy governance.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[CapabilityEngineHealthStatus]`  
+_Return CES readiness and capability discovery counters._
+
+`invoke_capability(*, meta: EnvelopeMeta, capability: CapabilityIdentity, input_payload: dict[str, object], policy_context: CapabilityPolicyContext) -> Envelope[CapabilityInvokeResult]`  
+_Invoke one capability via Policy Service authorization wrapper._
+
+------------------------------------------------------------------------
 ## `LanguageModelService`
 - Module: `services/action/language_model/service.py`
 - Summary: Public API for chat and embedding operations.
@@ -20,6 +31,17 @@ _Generate a batch of chat completions._
 
 `embed_batch(*, meta: EnvelopeMeta, texts: Sequence[str], profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING) -> Envelope[list[EmbeddingVector]]`  
 _Generate a batch of embedding vectors._
+
+------------------------------------------------------------------------
+## `PolicyService`
+- Module: `services/action/policy_service/service.py`
+- Summary: Public API for policy evaluation and callback-gated authorization.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[PolicyHealthStatus]`  
+_Return Policy Service readiness and in-memory audit counters._
+
+`authorize_and_execute(*, request: CapabilityInvocationRequest, execute: PolicyExecuteCallback) -> PolicyExecutionResult`  
+_Evaluate policy, then execute callback only for allowed requests._
 
 ------------------------------------------------------------------------
 ## `SwitchboardService`

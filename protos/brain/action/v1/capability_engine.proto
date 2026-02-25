@@ -2,4 +2,48 @@ syntax = "proto3";
 
 package brain.action.v1;
 
-// Placeholder for Capability Enginer Service API definitions.
+import "brain/shared/v1/envelope.proto";
+
+service CapabilityEngineService {
+  rpc InvokeCapability(InvokeCapabilityRequest) returns (InvokeCapabilityResponse);
+}
+
+message InvokeCapabilityRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  CapabilityRef capability = 2;
+  string input_json = 3;
+  PolicyContext policy_context = 4;
+}
+
+message InvokeCapabilityResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  string output_json = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+  PolicyDecisionSummary policy = 4;
+}
+
+message CapabilityRef {
+  string kind = 1;
+  string namespace = 2;
+  string name = 3;
+  string version = 4;
+}
+
+message PolicyContext {
+  string actor = 1;
+  string channel = 2;
+  repeated string allowed_capabilities = 3;
+  int32 max_autonomy = 4;
+  bool confirmed = 5;
+  string approval_token = 6;
+  string invocation_id = 7;
+  string parent_invocation_id = 8;
+}
+
+message PolicyDecisionSummary {
+  string decision_id = 1;
+  bool allowed = 2;
+  repeated string reason_codes = 3;
+  repeated string obligations = 4;
+  string proposal_id = 5;
+}

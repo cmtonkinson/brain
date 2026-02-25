@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package brain.action.v1;
+
+import "brain/shared/v1/envelope.proto";
+
+service PolicyService {
+  rpc Health(PolicyHealthRequest) returns (PolicyHealthResponse);
+}
+
+message PolicyHealthRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+}
+
+message PolicyHealthResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  bool service_ready = 2;
+  int64 decision_log_rows = 3;
+  int64 proposal_rows = 4;
+  int64 dedupe_rows = 5;
+  string detail = 6;
+  repeated brain.shared.v1.ErrorDetail errors = 7;
+}

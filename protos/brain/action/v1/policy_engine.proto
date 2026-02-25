@@ -1,5 +1,0 @@
-syntax = "proto3";
-
-package brain.action.v1;
-
-// Placeholder for Policy Engine Service API definitions.

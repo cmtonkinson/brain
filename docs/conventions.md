@@ -200,7 +200,7 @@ transport semantics for network/runtime outages.
 ## Policy Enforcement Rule
 All _Capability_ invocations (including within _Skills_) MUST pass through
 Capability Engine `invoke()`. _Skills_ must not directly call other _Skills_ or
-_Ops_ by importing implementations. Policy Engine evaluation is mandatory and
+_Ops_ by importing implementations. Policy Service evaluation is mandatory and
 recursive.
 
 ------------------------------------------------------------------------
