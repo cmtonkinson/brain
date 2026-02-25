@@ -12,7 +12,7 @@ Action _Adapter_ _Resource_ that integrates `signal-cli-rest-api` for Switchboar
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
-This _Resource_ is owned by `service_switchboard` via `owner_service_id` in
+This _Resource_ is shared infrastructure (`owner_service_id=None`) in
 `resources/adapters/signal/component.py`.
 
 Boundary rules:
@@ -32,6 +32,7 @@ Primary interactions:
   - `GET /health`
   - `GET /v1/receive/{operator_e164}`
 - Forwards each received message as signed JSON callback POST to Switchboard webhook endpoint.
+- Sends outbound messages for Attention Router over `POST /v2/send`.
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
@@ -99,7 +100,7 @@ make test
 - Keep adapter contract transport-focused and implementation-agnostic.
 - Keep Switchboard policy/normalization logic out of adapter internals.
 - Preserve in-memory callback registration behavior unless requirements change.
-- Avoid adding gRPC surface for adapter-specific control methods; adapter is L0-owned by Switchboard.
+- Avoid adding gRPC surface for adapter-specific control methods.
 
 ------------------------------------------------------------------------
 _End of Signal Adapter README_

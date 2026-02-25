@@ -17,6 +17,7 @@ from services.action.capability_engine.domain import (
 )
 from services.action.language_model.service import LanguageModelService
 from services.action.policy_service.service import PolicyService
+from services.action.attention_router.service import AttentionRouterService
 from services.action.switchboard.service import SwitchboardService
 from services.action.policy_service.domain import CapabilityInvocationRequest
 from services.state.cache_authority.service import CacheAuthorityService
@@ -208,6 +209,7 @@ class CapabilityRegistry:
             ("service_vault_authority", VaultAuthorityService),
             ("service_language_model", LanguageModelService),
             ("service_policy_service", PolicyService),
+            ("service_attention_router", AttentionRouterService),
             ("service_switchboard", SwitchboardService),
         )
         for component_id, service_cls in services:

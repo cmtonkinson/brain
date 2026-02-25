@@ -5,7 +5,15 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
+from packages.brain_shared.errors import dependency_error
+from services.action.attention_router.domain import (
+    ApprovalCorrelationPayload as RouterApprovalCorrelationPayload,
+    ApprovalNotificationPayload as RouterApprovalNotificationPayload,
+    HealthStatus as AttentionRouterHealthStatus,
+    RouteNotificationResult,
+)
+from services.action.attention_router.service import AttentionRouterService
 from services.action.policy_service.config import PolicyServiceSettings
 from services.action.policy_service.data.repository import (
     InMemoryPolicyPersistenceRepository,
@@ -40,6 +48,80 @@ def _decision() -> PolicyDecision:
         policy_name="tmp",
         policy_version="1",
     )
+
+
+class _FakeAttentionRouterService(AttentionRouterService):
+    """Test double for Policy Service approval-notification routing calls."""
+
+    def __init__(self) -> None:
+        self.approval_payloads: list[RouterApprovalNotificationPayload] = []
+        self.fail_approval_routing: bool = False
+
+    def route_notification(self, *, meta, **kwargs):
+        del meta, kwargs
+        return success(
+            meta=new_meta(kind=EnvelopeKind.EVENT, source="test", principal="operator"),
+            payload=RouteNotificationResult(
+                decision="sent",
+                delivered=True,
+                detail="ok",
+            ),
+        )
+
+    def route_approval_notification(self, *, meta, approval):
+        del meta
+        self.approval_payloads.append(approval)
+        if self.fail_approval_routing:
+            return failure(
+                meta=new_meta(
+                    kind=EnvelopeKind.EVENT, source="test", principal="operator"
+                ),
+                errors=[dependency_error("signal unavailable")],
+            )
+        return success(
+            meta=new_meta(kind=EnvelopeKind.EVENT, source="test", principal="operator"),
+            payload=RouteNotificationResult(
+                decision="sent",
+                delivered=True,
+                detail="ok",
+            ),
+        )
+
+    def flush_batch(self, *, meta, **kwargs):
+        del meta, kwargs
+        return success(
+            meta=new_meta(kind=EnvelopeKind.EVENT, source="test", principal="operator"),
+            payload=RouteNotificationResult(
+                decision="sent",
+                delivered=True,
+                detail="ok",
+            ),
+        )
+
+    def health(self, *, meta):
+        del meta
+        return success(
+            meta=new_meta(kind=EnvelopeKind.EVENT, source="test", principal="operator"),
+            payload=AttentionRouterHealthStatus(
+                service_ready=True,
+                adapter_ready=True,
+                detail="ok",
+            ),
+        )
+
+    def correlate_approval_response(self, *, meta, **kwargs):
+        del meta
+        return success(
+            meta=new_meta(kind=EnvelopeKind.EVENT, source="test", principal="operator"),
+            payload=RouterApprovalCorrelationPayload(
+                actor=kwargs.get("actor", "operator"),
+                channel=kwargs.get("channel", "signal"),
+                message_text=kwargs.get("message_text", ""),
+                approval_token=kwargs.get("approval_token", ""),
+                reply_to_proposal_token=kwargs.get("reply_to_proposal_token", ""),
+                reaction_to_proposal_token=kwargs.get("reaction_to_proposal_token", ""),
+            ),
+        )
 
 
 def _request(
@@ -197,6 +279,54 @@ def test_approval_required_emits_proposal_and_denies() -> None:
     assert result.allowed is False
     assert result.proposal is not None
     assert "approval_required" in result.decision.reason_codes
+
+
+def test_approval_required_routes_proposal_via_attention_router() -> None:
+    router = _FakeAttentionRouterService()
+    service = DefaultPolicyService(
+        settings=PolicyServiceSettings(),
+        attention_router_service=router,
+    )
+    req = _request(requires_approval=True)
+
+    result = service.authorize_and_execute(
+        request=req,
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert result.allowed is False
+    assert result.proposal is not None
+    assert len(router.approval_payloads) == 1
+    assert router.approval_payloads[0].proposal_token == result.proposal.proposal_token
+
+
+def test_approval_notification_failure_is_reflected_in_reason_codes() -> None:
+    router = _FakeAttentionRouterService()
+    router.fail_approval_routing = True
+    service = DefaultPolicyService(
+        settings=PolicyServiceSettings(),
+        attention_router_service=router,
+    )
+    req = _request(requires_approval=True)
+
+    result = service.authorize_and_execute(
+        request=req,
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert result.allowed is False
+    assert result.proposal is not None
+    assert "approval_notification_failed" in result.decision.reason_codes
 
 
 def test_valid_approval_token_allows_execution() -> None:

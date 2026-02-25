@@ -2,6 +2,26 @@
 _This document is generated from `services/*/*/service.py`. Do not edit by hand._
 
 ------------------------------------------------------------------------
+## `AttentionRouterService`
+- Module: `services/action/attention_router/service.py`
+- Summary: Public API for policy-aware outbound notification routing.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return Attention Router and adapter health state._
+
+`correlate_approval_response(*, meta: EnvelopeMeta, actor: str, channel: str, message_text: str = '', approval_token: str = '', reply_to_proposal_token: str = '', reaction_to_proposal_token: str = '') -> Envelope[ApprovalCorrelationPayload]`  
+_Normalize inbound approval-correlation fields for Policy Service._
+
+`route_approval_notification(*, meta: EnvelopeMeta, approval: ApprovalNotificationPayload) -> Envelope[RouteNotificationResult]`  
+_Route one token-only Policy->Attention approval notification._
+
+`flush_batch(*, meta: EnvelopeMeta, batch_key: str, actor: str = 'operator', channel: str = '', recipient_e164: str = '', sender_e164: str = '', title: str = '') -> Envelope[RouteNotificationResult]`  
+_Flush one pending batch by key and deliver consolidated summary._
+
+`route_notification(*, meta: EnvelopeMeta, actor: str = 'operator', channel: str = '', title: str = '', message: str, recipient_e164: str = '', sender_e164: str = '', dedupe_key: str = '', batch_key: str = '', force: bool = False) -> Envelope[RouteNotificationResult]`  
+_Route one outbound notification and decide suppress/send/batch._
+
+------------------------------------------------------------------------
 ## `CapabilityEngineService`
 - Module: `services/action/capability_engine/service.py`
 - Summary: Public API for capability invocation under policy governance.

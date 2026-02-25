@@ -13,6 +13,8 @@ class _FakeSignalClient:
     def __init__(self) -> None:
         self.receive_payload: object = []
         self.raise_receive: Exception | None = None
+        self.raise_send: Exception | None = None
+        self.posts: list[tuple[str, object]] = []
 
     def get(self, _url: str):
         return object()
@@ -21,6 +23,12 @@ class _FakeSignalClient:
         if self.raise_receive is not None:
             raise self.raise_receive
         return self.receive_payload
+
+    def post(self, url: str, **kwargs):
+        if self.raise_send is not None:
+            raise self.raise_send
+        self.posts.append((url, kwargs.get("json")))
+        return object()
 
 
 class _FakeCallbackClient:
@@ -134,3 +142,25 @@ def test_run_once_applies_exponential_backoff_on_receive_failure() -> None:
     assert adapter._run_once() == 4.0
     assert adapter._run_once() == 8.0
     assert adapter._run_once() == 8.0
+
+
+def test_send_message_posts_expected_payload() -> None:
+    adapter = _adapter()
+    signal = adapter._signal_client
+
+    result = adapter.send_message(
+        sender_e164="+12025550101",
+        recipient_e164="+12025550100",
+        message="hello",
+    )
+
+    assert result.delivered is True
+    assert len(signal.posts) == 1
+    url, payload = signal.posts[0]
+    assert url == "/v2/send"
+    assert payload == {
+        "message": "hello",
+        "text_mode": "styled",
+        "number": "+12025550101",
+        "recipients": ["+12025550100"],
+    }

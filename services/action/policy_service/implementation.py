@@ -10,6 +10,7 @@ from typing import Any
 from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.envelope import (
     Envelope,
+    EnvelopeKind,
     EnvelopeMeta,
     failure,
     success,
@@ -46,6 +47,13 @@ from services.action.policy_service.domain import (
 )
 from services.action.policy_service.interfaces import PolicyPersistenceRepository
 from services.action.policy_service.service import PolicyExecuteCallback, PolicyService
+from services.action.attention_router.domain import (
+    ApprovalNotificationPayload as RouterApprovalNotificationPayload,
+)
+from services.action.attention_router.service import (
+    AttentionRouterService,
+    build_attention_router_service,
+)
 
 _LOGGER = get_logger(__name__)
 
@@ -64,6 +72,7 @@ _REASON_POLICY_ERROR = "policy_error"
 _REASON_UNKNOWN_CALL_TARGET = "unknown_call_target"
 _REASON_ACTOR_DENIED = "actor_denied"
 _REASON_ACTOR_NOT_ALLOWED = "actor_not_allowed"
+_REASON_APPROVAL_NOTIFICATION_FAILED = "approval_notification_failed"
 
 
 class DefaultPolicyService(PolicyService):
@@ -74,19 +83,28 @@ class DefaultPolicyService(PolicyService):
         *,
         settings: PolicyServiceSettings,
         persistence: PolicyPersistenceRepository | None = None,
+        attention_router_service: AttentionRouterService | None = None,
     ) -> None:
         self._settings = settings
         self._persistence = persistence or InMemoryPolicyPersistenceRepository()
+        self._attention_router_service = attention_router_service
         self._seen_envelopes: dict[str, datetime] = {}
         self._effective_policy = self._initialize_effective_policy()
 
     @classmethod
-    def from_settings(cls, settings: BrainSettings) -> "DefaultPolicyService":
+    def from_settings(
+        cls,
+        settings: BrainSettings,
+        *,
+        attention_router_service: AttentionRouterService | None = None,
+    ) -> "DefaultPolicyService":
         """Build policy service from typed root runtime settings."""
         runtime = PolicyServicePostgresRuntime.from_settings(settings)
         return cls(
             settings=resolve_policy_service_settings(settings),
             persistence=PostgresPolicyPersistenceRepository(runtime.schema_sessions),
+            attention_router_service=attention_router_service
+            or build_attention_router_service(settings=settings),
         )
 
     @public_api_instrumented(
@@ -304,6 +322,10 @@ class DefaultPolicyService(PolicyService):
                     row=PolicyApprovalProposalRow(proposal=proposal, status="pending")
                 )
                 policy_metadata["proposal_token"] = proposal.proposal_token
+                if not self._notify_attention_router(
+                    request=request, proposal=proposal
+                ):
+                    reason_codes.append(_REASON_APPROVAL_NOTIFICATION_FAILED)
             elif approved_token:
                 self._mark_proposal_approved(token=approved_token)
 
@@ -574,6 +596,41 @@ class DefaultPolicyService(PolicyService):
 
     def _increment_clarification_attempts(self, *, token: str) -> None:
         self._persistence.increment_proposal_clarification_attempts(token=token)
+
+    def _notify_attention_router(
+        self,
+        *,
+        request: CapabilityInvocationRequest,
+        proposal: ApprovalProposal,
+    ) -> bool:
+        """Route one approval proposal via Attention Router when configured."""
+        if self._attention_router_service is None:
+            return True
+
+        routed_meta = request.metadata.model_copy(
+            update={
+                "envelope_id": generate_ulid_str(),
+                "parent_id": request.metadata.envelope_id,
+                "kind": EnvelopeKind.EVENT,
+                "source": str(SERVICE_COMPONENT_ID),
+                "timestamp": utc_now(),
+            }
+        )
+        routed = self._attention_router_service.route_approval_notification(
+            meta=routed_meta,
+            approval=RouterApprovalNotificationPayload(
+                proposal_token=proposal.proposal_token,
+                capability_id=proposal.capability_id,
+                capability_version=proposal.capability_version,
+                summary=proposal.summary,
+                actor=proposal.actor,
+                channel=proposal.channel,
+                trace_id=proposal.trace_id,
+                invocation_id=proposal.invocation_id,
+                expires_at=proposal.expires_at,
+            ),
+        )
+        return routed.ok
 
     def _require_active_regime(self) -> PolicyRegimeSnapshot:
         active_policy_regime_id = self._persistence.get_active_policy_regime_id()

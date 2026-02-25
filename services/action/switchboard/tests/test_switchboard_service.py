@@ -14,6 +14,7 @@ from resources.adapters.signal import (
     SignalAdapter,
     SignalAdapterDependencyError,
     SignalAdapterHealthResult,
+    SignalSendMessageResult,
     SignalWebhookRegistrationResult,
 )
 from services.action.switchboard.config import (
@@ -80,6 +81,21 @@ class _FakeSignalAdapter(SignalAdapter):
 
     def health(self) -> SignalAdapterHealthResult:
         return self.health_result
+
+    def send_message(
+        self,
+        *,
+        sender_e164: str,
+        recipient_e164: str,
+        message: str,
+    ) -> SignalSendMessageResult:
+        del sender_e164, recipient_e164, message
+        return SignalSendMessageResult(
+            delivered=True,
+            recipient_e164="+12025550100",
+            sender_e164="+12025550101",
+            detail="sent",
+        )
 
 
 class _FakeCacheService(CacheAuthorityService):

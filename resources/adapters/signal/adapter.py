@@ -37,6 +37,17 @@ class SignalAdapterHealthResult(BaseModel):
     detail: str
 
 
+class SignalSendMessageResult(BaseModel):
+    """Result payload for outbound Signal message delivery."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    delivered: bool
+    recipient_e164: str
+    sender_e164: str
+    detail: str
+
+
 class SignalAdapter(Protocol):
     """Protocol for Signal webhook registration and health checks."""
 
@@ -51,3 +62,12 @@ class SignalAdapter(Protocol):
 
     def health(self) -> SignalAdapterHealthResult:
         """Return adapter health state."""
+
+    def send_message(
+        self,
+        *,
+        sender_e164: str,
+        recipient_e164: str,
+        message: str,
+    ) -> SignalSendMessageResult:
+        """Send one outbound Signal message via configured runtime."""

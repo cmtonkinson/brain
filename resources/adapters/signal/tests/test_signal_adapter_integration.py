@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from packages.brain_shared.http import HttpStatusError
 from resources.adapters.signal.config import SignalAdapterSettings
+from resources.adapters.signal.signal_adapter import SignalAdapterDependencyError
 from resources.adapters.signal.signal_adapter import HttpSignalAdapter
 
 
@@ -68,3 +69,31 @@ def test_callback_status_failure_maps_to_dependency_error() -> None:
     delay = adapter._run_once()
 
     assert delay >= 0
+
+
+def test_send_message_maps_transport_status_errors_to_dependency() -> None:
+    """Outbound send should map HTTP status failures into dependency errors."""
+    adapter = HttpSignalAdapter(settings=SignalAdapterSettings())
+    fake = _CaptureClient()
+
+    def _raise_post(*_args, **_kwargs):
+        raise HttpStatusError(
+            message="err",
+            method="POST",
+            url="http://signal-api:8080/v2/send",
+            status_code=503,
+        )
+
+    fake.post = _raise_post  # type: ignore[method-assign]
+    adapter._signal_client = fake  # type: ignore[attr-defined]
+
+    try:
+        adapter.send_message(
+            sender_e164="+12025550101",
+            recipient_e164="+12025550100",
+            message="hello",
+        )
+    except SignalAdapterDependencyError as exc:
+        assert "status 503" in str(exc)
+    else:
+        raise AssertionError("expected SignalAdapterDependencyError")

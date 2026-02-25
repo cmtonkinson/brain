@@ -13,7 +13,9 @@ Action _Service_ that owns inbound external event intake and durable buffering f
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
-This _Service_ owns `adapter_signal` and gates all access to it.
+Switchboard owns inbound Signal intake policy and registration flow. The Signal
+adapter itself is shared infrastructure used by both Switchboard (inbound) and
+Attention Router (outbound).
 
 Boundary rules:
 - Inbound Signal payloads enter through Switchboard, not directly into other _Services_.
@@ -24,7 +26,7 @@ Boundary rules:
 ------------------------------------------------------------------------
 ## Interactions
 Primary interactions:
-- Owns and calls `resources/adapters/signal/` through `SignalAdapter` protocol.
+- Calls `resources/adapters/signal/` through `SignalAdapter` protocol for inbound registration.
 - Calls `services/state/cache_authority/service.py` _Public API_ to persist inbound queue entries.
 - Exposes health over gRPC (`api.py`) for L2 clients.
 - Exposes internal-only webhook registration and webhook ingest methods via `service.py` (not published on gRPC SDK).

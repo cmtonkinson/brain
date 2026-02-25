@@ -18,6 +18,6 @@ MANIFEST = register_component(
         system="action",
         kind="adapter",
         module_roots=frozenset({ModuleRoot("resources.adapters.signal")}),
-        owner_service_id=ComponentId("service_switchboard"),
+        owner_service_id=None,
     )
 )

@@ -6,6 +6,7 @@ from resources.adapters.signal.adapter import (
     SignalAdapterError,
     SignalAdapterHealthResult,
     SignalAdapterInternalError,
+    SignalSendMessageResult,
     SignalWebhookRegistrationResult,
 )
 from resources.adapters.signal.component import MANIFEST, RESOURCE_COMPONENT_ID
@@ -25,6 +26,7 @@ __all__ = [
     "SignalAdapterHealthResult",
     "SignalAdapterInternalError",
     "SignalAdapterSettings",
+    "SignalSendMessageResult",
     "SignalWebhookRegistrationResult",
     "resolve_signal_adapter_settings",
 ]

@@ -24,6 +24,7 @@ from resources.adapters.signal.adapter import (
     SignalAdapterDependencyError,
     SignalAdapterHealthResult,
     SignalAdapterInternalError,
+    SignalSendMessageResult,
     SignalWebhookRegistrationResult,
 )
 from resources.adapters.signal.component import RESOURCE_COMPONENT_ID
@@ -108,6 +109,49 @@ class HttpSignalAdapter(SignalAdapter):
         return SignalAdapterHealthResult(
             adapter_ready=True,
             detail=f"ok; callback={callback_state}; loop={loop_state}",
+        )
+
+    @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
+    def send_message(
+        self,
+        *,
+        sender_e164: str,
+        recipient_e164: str,
+        message: str,
+    ) -> SignalSendMessageResult:
+        """Send one outbound Signal message via signal-cli-rest-api."""
+        sender = sender_e164.strip()
+        recipient = recipient_e164.strip()
+        text = message.strip()
+        if sender == "":
+            raise SignalAdapterInternalError("sender_e164 must be non-empty")
+        if recipient == "":
+            raise SignalAdapterInternalError("recipient_e164 must be non-empty")
+        if text == "":
+            raise SignalAdapterInternalError("message must be non-empty")
+
+        payload = {
+            "message": text,
+            "text_mode": "styled",
+            "number": sender,
+            "recipients": [recipient],
+        }
+        try:
+            self._signal_client.post("/v2/send", json=payload)
+        except HttpStatusError as exc:
+            raise SignalAdapterDependencyError(
+                f"signal send failed with status {exc.status_code}"
+            ) from None
+        except HttpRequestError as exc:
+            raise SignalAdapterDependencyError(
+                str(exc) or "signal send unavailable"
+            ) from None
+
+        return SignalSendMessageResult(
+            delivered=True,
+            recipient_e164=recipient,
+            sender_e164=sender,
+            detail="delivered",
         )
 
     def _run_loop(self) -> None:

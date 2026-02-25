@@ -11,6 +11,7 @@ from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from resources.adapters.signal.adapter import (
     SignalAdapter,
     SignalAdapterHealthResult,
+    SignalSendMessageResult,
     SignalWebhookRegistrationResult,
 )
 from services.action.switchboard.config import (
@@ -49,6 +50,21 @@ class _FakeSignalAdapter(SignalAdapter):
 
     def health(self) -> SignalAdapterHealthResult:
         return SignalAdapterHealthResult(adapter_ready=True, detail="ok")
+
+    def send_message(
+        self,
+        *,
+        sender_e164: str,
+        recipient_e164: str,
+        message: str,
+    ) -> SignalSendMessageResult:
+        del sender_e164, recipient_e164, message
+        return SignalSendMessageResult(
+            delivered=True,
+            recipient_e164="+12025550100",
+            sender_e164="+12025550101",
+            detail="sent",
+        )
 
 
 class _FakeCacheService(CacheAuthorityService):
