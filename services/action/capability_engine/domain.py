@@ -75,6 +75,8 @@ class CapabilityManifestBase(BaseModel):
     requires_approval: bool = False
     side_effects: tuple[str, ...] = ()
     required_capabilities: tuple[str, ...] = ()
+    input_types: tuple[str, ...] = Field(default=("json",), min_length=1)
+    output_types: tuple[str, ...] = Field(default=("json",), min_length=1)
 
 
 class OpCapabilityManifest(CapabilityManifestBase):

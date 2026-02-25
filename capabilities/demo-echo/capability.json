@@ -8,5 +8,7 @@
   "requires_approval": false,
   "side_effects": [],
   "required_capabilities": [],
+  "input_types": ["str", "str"],
+  "output_types": ["CacheEntry | None"],
   "call_target": "service_cache_authority.get_value"
 }

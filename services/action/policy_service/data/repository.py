@@ -182,6 +182,7 @@ class PostgresPolicyPersistenceRepository(PolicyPersistenceRepository):
         regime_id_bytes = ulid_str_to_bytes(policy_regime_id)
         with self._sessions.session() as session:
             stmt = insert(active_policy_regime).values(
+                id=generate_ulid_bytes(),
                 pointer_id="active",
                 policy_regime_id=regime_id_bytes,
             )
@@ -191,7 +192,7 @@ class PostgresPolicyPersistenceRepository(PolicyPersistenceRepository):
                     set_={"policy_regime_id": regime_id_bytes},
                 )
             )
-        return ActivePolicyRegimePointer(policy_regime_id=policy_regime_id)
+            return ActivePolicyRegimePointer(policy_regime_id=policy_regime_id)
 
     def get_active_policy_regime_id(self) -> str:
         with self._sessions.session() as session:
@@ -218,7 +219,7 @@ class PostgresPolicyPersistenceRepository(PolicyPersistenceRepository):
             session.execute(
                 insert(policy_decisions).values(
                     id=ulid_str_to_bytes(row.decision.decision_id),
-                    policy_regime_id=row.decision.policy_regime_id,
+                    policy_regime_id=ulid_str_to_bytes(row.decision.policy_regime_id),
                     envelope_id=row.metadata.envelope_id,
                     trace_id=row.metadata.trace_id,
                     actor=row.actor,
@@ -239,7 +240,7 @@ class PostgresPolicyPersistenceRepository(PolicyPersistenceRepository):
             stmt = insert(approvals).values(
                 id=generate_ulid_bytes(),
                 proposal_token=row.proposal.proposal_token,
-                policy_regime_id=row.proposal.policy_regime_id,
+                policy_regime_id=ulid_str_to_bytes(row.proposal.policy_regime_id),
                 capability_id=row.proposal.capability_id,
                 capability_version=row.proposal.capability_version,
                 summary=row.proposal.summary,
@@ -445,7 +446,7 @@ def _to_proposal(row: dict[str, object]) -> ApprovalProposal:
         channel=str(row["channel"]),
         trace_id=str(row["trace_id"]),
         invocation_id=str(row["invocation_id"]),
-        policy_regime_id=str(row["policy_regime_id"]),
+        policy_regime_id=ulid_bytes_to_str(row["policy_regime_id"]),
         created_at=created_at,
         expires_at=row["expires_at"],
         clarification_attempts=int(row["clarification_attempts"]),

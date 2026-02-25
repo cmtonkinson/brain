@@ -348,6 +348,47 @@ def test_ambiguous_multi_proposal_reply_denied() -> None:
     assert "approval_required" in ambiguous.decision.reason_codes
 
 
+def test_single_pending_proposal_approve_text_allows_execution() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    pending = service.authorize_and_execute(
+        request=_request(requires_approval=True),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert pending.proposal is not None
+
+    approved = service.authorize_and_execute(
+        request=_request(
+            envelope_id="env-approve-text",
+            requires_approval=True,
+            message_text="approve",
+        ).model_copy(
+            update={
+                "invocation": InvocationPolicyInput(
+                    actor="operator",
+                    source="agent",
+                    channel="signal",
+                    invocation_id="inv-approve-text",
+                    message_text="approve",
+                )
+            }
+        ),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert approved.allowed is True
+    assert approved.output == {"ok": True}
+
+
 def test_low_confidence_disambiguation_requests_clarification() -> None:
     service = DefaultPolicyService(settings=PolicyServiceSettings())
     pending = service.authorize_and_execute(
@@ -388,6 +429,53 @@ def test_low_confidence_disambiguation_requests_clarification() -> None:
 
     assert second.allowed is False
     assert "approval_clarification_required" in second.decision.reason_codes
+
+
+def test_disambiguation_at_auto_bind_threshold_allows_execution() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    pending = service.authorize_and_execute(
+        request=_request(requires_approval=True),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert pending.proposal is not None
+
+    approved = service.authorize_and_execute(
+        request=_request(
+            envelope_id="env-bind-threshold",
+            requires_approval=True,
+        ).model_copy(
+            update={
+                "input_payload": {
+                    "_policy_disambiguation": [
+                        {
+                            "proposal_token": pending.proposal.proposal_token,
+                            "confidence": 0.90,
+                        }
+                    ]
+                },
+                "invocation": InvocationPolicyInput(
+                    actor="operator",
+                    source="agent",
+                    channel="signal",
+                    invocation_id="inv-bind-threshold",
+                ),
+            }
+        ),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert approved.allowed is True
+    assert approved.output == {"ok": True}
 
 
 def test_second_clarification_turn_becomes_ambiguous() -> None:

@@ -13,11 +13,24 @@ from sqlalchemy import (
     Table,
     func,
 )
+from sqlalchemy.dialects import postgresql
 
 from packages.brain_shared.ids import ulid_primary_key_column
+from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
 from services.action.policy_service.component import SERVICE_COMPONENT_ID
 
 metadata = MetaData()
+
+
+def _ulid_domain() -> postgresql.DOMAIN:
+    """Return schema-local ``ulid_bin`` domain reference."""
+    return postgresql.DOMAIN(
+        name=ULID_DOMAIN_NAME,
+        data_type=postgresql.BYTEA(),
+        schema=str(SERVICE_COMPONENT_ID),
+        create_type=False,
+    )
+
 
 policy_regimes = Table(
     "policy_regimes",
@@ -35,10 +48,11 @@ policy_regimes = Table(
 active_policy_regime = Table(
     "active_policy_regime",
     metadata,
-    Column("pointer_id", String(16), primary_key=True),
+    ulid_primary_key_column("id", schema_name=str(SERVICE_COMPONENT_ID)),
+    Column("pointer_id", String(16), nullable=False, unique=True),
     Column(
         "policy_regime_id",
-        String(26),
+        _ulid_domain(),
         ForeignKey(f"{SERVICE_COMPONENT_ID}.policy_regimes.id", ondelete="RESTRICT"),
         nullable=False,
     ),
@@ -51,7 +65,7 @@ policy_decisions = Table(
     "policy_decisions",
     metadata,
     ulid_primary_key_column("id", schema_name=str(SERVICE_COMPONENT_ID)),
-    Column("policy_regime_id", String(26), nullable=False),
+    Column("policy_regime_id", _ulid_domain(), nullable=False),
     Column("envelope_id", String(26), nullable=False),
     Column("trace_id", String(26), nullable=False),
     Column("actor", String(128), nullable=False),
@@ -71,7 +85,7 @@ approvals = Table(
     metadata,
     ulid_primary_key_column("id", schema_name=str(SERVICE_COMPONENT_ID)),
     Column("proposal_token", String(64), nullable=False, unique=True),
-    Column("policy_regime_id", String(26), nullable=False),
+    Column("policy_regime_id", _ulid_domain(), nullable=False),
     Column("capability_id", String(128), nullable=False),
     Column("capability_version", String(32), nullable=False),
     Column("summary", String(512), nullable=False),
