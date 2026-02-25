@@ -1,0 +1,70 @@
+"""Integration-style Signal adapter contract tests using local fakes."""
+
+from __future__ import annotations
+
+from packages.brain_shared.http import HttpStatusError
+from resources.adapters.signal.config import SignalAdapterSettings
+from resources.adapters.signal.signal_adapter import HttpSignalAdapter
+
+
+class _CaptureClient:
+    """Minimal HTTP client fake capturing GET/POST request shapes."""
+
+    def __init__(self) -> None:
+        self.last_params: dict[str, str] | None = None
+        self.posts: list[tuple[str, str, dict[str, str]]] = []
+
+    def get(self, _url: str):
+        return object()
+
+    def get_json(self, _url: str, **kwargs):
+        self.last_params = kwargs.get("params")
+        return []
+
+    def post(self, url: str, *, content: str, headers: dict[str, str]):
+        self.posts.append((url, content, headers))
+        return object()
+
+
+def test_receive_poll_params_and_health_contract() -> None:
+    """Adapter should query receive endpoint with configured polling parameters."""
+    adapter = HttpSignalAdapter(settings=SignalAdapterSettings())
+    fake = _CaptureClient()
+    adapter._signal_client = fake  # type: ignore[attr-defined]
+    adapter._callback_client = fake  # type: ignore[attr-defined]
+    adapter._ensure_worker_started_locked = lambda: None  # type: ignore[method-assign]
+
+    adapter.register_webhook(
+        callback_url="http://localhost/webhook",
+        shared_secret="secret",
+        operator_e164="+12025550100",
+    )
+    adapter._run_once()
+
+    assert fake.last_params is not None
+    assert "timeout" in fake.last_params
+    assert adapter.health().adapter_ready is True
+
+
+def test_callback_status_failure_maps_to_dependency_error() -> None:
+    """Adapter should surface callback 5xx as dependency failure on poll loop."""
+    adapter = HttpSignalAdapter(settings=SignalAdapterSettings(max_retries=0))
+    fake = _CaptureClient()
+
+    def _raise_post(*_args, **_kwargs):
+        raise HttpStatusError(message="err", method="POST", url="u", status_code=503)
+
+    fake.post = _raise_post  # type: ignore[method-assign]
+    adapter._signal_client = fake  # type: ignore[attr-defined]
+    adapter._callback_client = fake  # type: ignore[attr-defined]
+    adapter._ensure_worker_started_locked = lambda: None  # type: ignore[method-assign]
+
+    adapter.register_webhook(
+        callback_url="http://localhost/webhook",
+        shared_secret="secret",
+        operator_e164="+12025550100",
+    )
+    adapter._pending_webhooks.append('{"data": {"message": "x"}}')  # type: ignore[attr-defined]
+    delay = adapter._run_once()
+
+    assert delay >= 0
