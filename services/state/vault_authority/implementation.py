@@ -25,20 +25,20 @@ from packages.brain_shared.errors import (
     validation_error,
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
-from resources.adapters.obsidian import (
+from resources.substrates.obsidian import (
     FileEditOperation,
-    ObsidianAdapter,
-    ObsidianAdapterAlreadyExistsError,
-    ObsidianAdapterConflictError,
-    ObsidianAdapterDependencyError,
-    ObsidianAdapterInternalError,
-    ObsidianAdapterNotFoundError,
+    ObsidianSubstrate,
+    ObsidianSubstrateAlreadyExistsError,
+    ObsidianSubstrateConflictError,
+    ObsidianSubstrateDependencyError,
+    ObsidianSubstrateInternalError,
+    ObsidianSubstrateNotFoundError,
     ObsidianEntry,
     ObsidianEntryType,
     ObsidianFileRecord,
-    ObsidianLocalRestAdapter,
+    ObsidianLocalRestSubstrate,
     ObsidianSearchMatch,
-    resolve_obsidian_adapter_settings,
+    resolve_obsidian_substrate_settings,
 )
 from services.state.vault_authority.component import SERVICE_COMPONENT_ID
 from services.state.vault_authority.config import (
@@ -47,6 +47,7 @@ from services.state.vault_authority.config import (
 )
 from services.state.vault_authority.domain import (
     FileEdit,
+    HealthStatus,
     SearchFileMatch,
     VaultEntry,
     VaultEntryType,
@@ -71,25 +72,39 @@ _LOGGER = get_logger(__name__)
 
 
 class DefaultVaultAuthorityService(VaultAuthorityService):
-    """Default VAS implementation backed by Obsidian Local REST API adapter."""
+    """Default VAS implementation backed by Obsidian Local REST API substrate."""
 
     def __init__(
         self,
         *,
         settings: VaultAuthoritySettings,
-        adapter: ObsidianAdapter,
+        substrate: ObsidianSubstrate,
     ) -> None:
         self._settings = settings
-        self._adapter = adapter
+        self._substrate = substrate
 
     @classmethod
     def from_settings(cls, settings: BrainSettings) -> "DefaultVaultAuthorityService":
-        """Build VAS and owned Obsidian adapter from typed root settings."""
+        """Build VAS and owned Obsidian substrate from typed root settings."""
         service_settings = resolve_vault_authority_settings(settings)
-        adapter_settings = resolve_obsidian_adapter_settings(settings)
+        substrate_settings = resolve_obsidian_substrate_settings(settings)
         return cls(
             settings=service_settings,
-            adapter=ObsidianLocalRestAdapter(settings=adapter_settings),
+            substrate=ObsidianLocalRestSubstrate(settings=substrate_settings),
+        )
+
+    @public_api_instrumented(logger=_LOGGER, component_id=str(SERVICE_COMPONENT_ID))
+    def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
+        """Return VAS readiness based on owned Obsidian substrate health."""
+        validate_meta(meta)
+        probe = self._substrate.health()
+        return success(
+            meta=meta,
+            payload=HealthStatus(
+                service_ready=True,
+                substrate_ready=probe.ready,
+                detail=probe.detail,
+            ),
         )
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(SERVICE_COMPONENT_ID))
@@ -110,11 +125,13 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
         assert request is not None
 
         try:
-            entries = self._adapter.list_directory(
+            entries = self._substrate.list_directory(
                 directory_path=request.directory_path
             )
         except Exception as exc:  # noqa: BLE001
-            return self._adapter_failure(meta=meta, operation="list_directory", exc=exc)
+            return self._substrate_failure(
+                meta=meta, operation="list_directory", exc=exc
+            )
 
         return success(
             meta=meta,
@@ -142,12 +159,12 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
         assert request is not None
 
         try:
-            entry = self._adapter.create_directory(
+            entry = self._substrate.create_directory(
                 directory_path=request.directory_path,
                 recursive=request.recursive,
             )
         except Exception as exc:  # noqa: BLE001
-            return self._adapter_failure(
+            return self._substrate_failure(
                 meta=meta, operation="create_directory", exc=exc
             )
 
@@ -179,14 +196,14 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
         assert request is not None
 
         try:
-            deleted = self._adapter.delete_directory(
+            deleted = self._substrate.delete_directory(
                 directory_path=request.directory_path,
                 recursive=request.recursive,
                 missing_ok=request.missing_ok,
                 use_trash=request.use_trash,
             )
         except Exception as exc:  # noqa: BLE001
-            return self._adapter_failure(
+            return self._substrate_failure(
                 meta=meta, operation="delete_directory", exc=exc
             )
 
@@ -215,12 +232,12 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
         assert request is not None
 
         try:
-            record = self._adapter.create_file(
+            record = self._substrate.create_file(
                 file_path=request.file_path,
                 content=request.content,
             )
         except Exception as exc:  # noqa: BLE001
-            return self._adapter_failure(meta=meta, operation="create_file", exc=exc)
+            return self._substrate_failure(meta=meta, operation="create_file", exc=exc)
 
         return success(meta=meta, payload=_to_file(record))
 
@@ -246,9 +263,9 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
         assert request is not None
 
         try:
-            record = self._adapter.get_file(file_path=request.file_path)
+            record = self._substrate.get_file(file_path=request.file_path)
         except Exception as exc:  # noqa: BLE001
-            return self._adapter_failure(meta=meta, operation="get_file", exc=exc)
+            return self._substrate_failure(meta=meta, operation="get_file", exc=exc)
 
         return success(meta=meta, payload=_to_file(record))
 
@@ -292,14 +309,14 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
             return precondition_error
 
         try:
-            record = self._adapter.update_file(
+            record = self._substrate.update_file(
                 file_path=request.file_path,
                 content=request.content,
                 if_revision=request.if_revision,
                 force=request.force,
             )
         except Exception as exc:  # noqa: BLE001
-            return self._adapter_failure(meta=meta, operation="update_file", exc=exc)
+            return self._substrate_failure(meta=meta, operation="update_file", exc=exc)
 
         return success(meta=meta, payload=_to_file(record))
 
@@ -343,14 +360,14 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
             return precondition_error
 
         try:
-            record = self._adapter.append_file(
+            record = self._substrate.append_file(
                 file_path=request.file_path,
                 content=request.content,
                 if_revision=request.if_revision,
                 force=request.force,
             )
         except Exception as exc:  # noqa: BLE001
-            return self._adapter_failure(meta=meta, operation="append_file", exc=exc)
+            return self._substrate_failure(meta=meta, operation="append_file", exc=exc)
 
         return success(meta=meta, payload=_to_file(record))
 
@@ -383,7 +400,7 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
             return failure(meta=meta, errors=errors)
         assert request is not None
 
-        adapter_edits = [
+        substrate_edits = [
             FileEditOperation(
                 start_line=item.start_line,
                 end_line=item.end_line,
@@ -403,14 +420,14 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
             return precondition_error
 
         try:
-            record = self._adapter.edit_file(
+            record = self._substrate.edit_file(
                 file_path=request.file_path,
-                edits=adapter_edits,
+                edits=substrate_edits,
                 if_revision=request.if_revision,
                 force=request.force,
             )
         except Exception as exc:  # noqa: BLE001
-            return self._adapter_failure(meta=meta, operation="edit_file", exc=exc)
+            return self._substrate_failure(meta=meta, operation="edit_file", exc=exc)
 
         return success(meta=meta, payload=_to_file(record))
 
@@ -463,14 +480,14 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
                 return precondition_error
 
         try:
-            entry = self._adapter.move_path(
+            entry = self._substrate.move_path(
                 source_path=request.source_path,
                 target_path=request.target_path,
                 if_revision=request.if_revision,
                 force=request.force,
             )
         except Exception as exc:  # noqa: BLE001
-            return self._adapter_failure(meta=meta, operation="move_path", exc=exc)
+            return self._substrate_failure(meta=meta, operation="move_path", exc=exc)
 
         return success(meta=meta, payload=_to_entry(entry))
 
@@ -516,7 +533,7 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
             return precondition_error
 
         try:
-            deleted = self._adapter.delete_file(
+            deleted = self._substrate.delete_file(
                 file_path=request.file_path,
                 missing_ok=request.missing_ok,
                 use_trash=request.use_trash,
@@ -524,7 +541,7 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
                 force=request.force,
             )
         except Exception as exc:  # noqa: BLE001
-            return self._adapter_failure(meta=meta, operation="delete_file", exc=exc)
+            return self._substrate_failure(meta=meta, operation="delete_file", exc=exc)
 
         return success(meta=meta, payload=deleted)
 
@@ -553,13 +570,13 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
 
         resolved_limit = min(request.limit, self._settings.max_search_limit)
         try:
-            matches = self._adapter.search_files(
+            matches = self._substrate.search_files(
                 query=request.query,
                 directory_scope=request.directory_scope,
                 limit=resolved_limit,
             )
         except Exception as exc:  # noqa: BLE001
-            return self._adapter_failure(meta=meta, operation="search_files", exc=exc)
+            return self._substrate_failure(meta=meta, operation="search_files", exc=exc)
 
         return success(meta=meta, payload=[_to_search_match(item) for item in matches])
 
@@ -596,16 +613,16 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
 
         return request, []
 
-    def _adapter_failure(
+    def _substrate_failure(
         self,
         *,
         meta: EnvelopeMeta,
         operation: str,
         exc: Exception,
     ) -> Envelope[Any]:
-        """Map adapter exceptions into explicit service-level error contracts."""
+        """Map substrate exceptions into explicit service-level error contracts."""
         metadata = {"service": str(SERVICE_COMPONENT_ID), "operation": operation}
-        if isinstance(exc, ObsidianAdapterNotFoundError):
+        if isinstance(exc, ObsidianSubstrateNotFoundError):
             return failure(
                 meta=meta,
                 errors=[
@@ -616,7 +633,7 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
                     )
                 ],
             )
-        if isinstance(exc, ObsidianAdapterAlreadyExistsError):
+        if isinstance(exc, ObsidianSubstrateAlreadyExistsError):
             return failure(
                 meta=meta,
                 errors=[
@@ -627,7 +644,7 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
                     )
                 ],
             )
-        if isinstance(exc, ObsidianAdapterConflictError):
+        if isinstance(exc, ObsidianSubstrateConflictError):
             return failure(
                 meta=meta,
                 errors=[
@@ -638,23 +655,23 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
                     )
                 ],
             )
-        if isinstance(exc, ObsidianAdapterDependencyError):
+        if isinstance(exc, ObsidianSubstrateDependencyError):
             return failure(
                 meta=meta,
                 errors=[
                     dependency_error(
-                        str(exc) or "obsidian adapter dependency failure",
+                        str(exc) or "obsidian substrate dependency failure",
                         code=codes.DEPENDENCY_UNAVAILABLE,
                         metadata=metadata,
                     )
                 ],
             )
-        if isinstance(exc, ObsidianAdapterInternalError):
+        if isinstance(exc, ObsidianSubstrateInternalError):
             return failure(
                 meta=meta,
                 errors=[
                     internal_error(
-                        str(exc) or "obsidian adapter internal failure",
+                        str(exc) or "obsidian substrate internal failure",
                         code=codes.INTERNAL_ERROR,
                         metadata=metadata,
                     )
@@ -727,7 +744,7 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
 
 
 def _to_entry(item: ObsidianEntry) -> VaultEntry:
-    """Map adapter directory-entry DTO into service domain contract."""
+    """Map substrate directory-entry DTO into service domain contract."""
     entry_type = (
         VaultEntryType.DIRECTORY
         if item.entry_type == ObsidianEntryType.DIRECTORY
@@ -745,7 +762,7 @@ def _to_entry(item: ObsidianEntry) -> VaultEntry:
 
 
 def _to_file(item: ObsidianFileRecord) -> VaultFileRecord:
-    """Map adapter file DTO into service domain contract."""
+    """Map substrate file DTO into service domain contract."""
     return VaultFileRecord(
         path=item.path,
         content=item.content,
@@ -757,7 +774,7 @@ def _to_file(item: ObsidianFileRecord) -> VaultFileRecord:
 
 
 def _to_search_match(item: ObsidianSearchMatch) -> SearchFileMatch:
-    """Map adapter search DTO into service domain contract."""
+    """Map substrate search DTO into service domain contract."""
     return SearchFileMatch(
         path=item.path,
         score=item.score,

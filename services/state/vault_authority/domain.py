@@ -62,3 +62,13 @@ class SearchFileMatch(BaseModel):
     snippets: tuple[str, ...] = ()
     updated_at: datetime | None = None
     revision: str = ""
+
+
+class HealthStatus(BaseModel):
+    """VAS and substrate readiness status payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    service_ready: bool
+    substrate_ready: bool
+    detail: str

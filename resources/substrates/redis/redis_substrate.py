@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from resources.substrates.redis.client import create_redis_client
+from resources.substrates.redis.client import (
+    create_redis_client,
+    create_redis_client_with_timeouts,
+)
 from resources.substrates.redis.config import RedisSettings
-from resources.substrates.redis.substrate import RedisSubstrate
+from resources.substrates.redis.substrate import RedisHealthStatus, RedisSubstrate
 
 
 class RedisClientSubstrate(RedisSubstrate):
@@ -12,6 +15,11 @@ class RedisClientSubstrate(RedisSubstrate):
 
     def __init__(self, *, settings: RedisSettings) -> None:
         self._client = create_redis_client(settings)
+        self._health_client = create_redis_client_with_timeouts(
+            settings=settings,
+            connect_timeout_seconds=settings.health_timeout_seconds,
+            socket_timeout_seconds=settings.health_timeout_seconds,
+        )
 
     def set_value(self, *, key: str, value: str, ttl_seconds: int | None) -> None:
         """Set one value with optional TTL in seconds."""
@@ -51,4 +59,18 @@ class RedisClientSubstrate(RedisSubstrate):
 
     def ping(self) -> bool:
         """Return Redis ping status."""
-        return bool(self._client.ping())
+        return bool(self._health_client.ping())
+
+    def health(self) -> RedisHealthStatus:
+        """Return Redis substrate readiness and concise detail."""
+        try:
+            ready = self.ping()
+        except Exception as exc:  # noqa: BLE001
+            return RedisHealthStatus(
+                ready=False,
+                detail=f"redis ping failed: {type(exc).__name__}",
+            )
+        return RedisHealthStatus(
+            ready=ready,
+            detail="ok" if ready else "redis ping returned false",
+        )

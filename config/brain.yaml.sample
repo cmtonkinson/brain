@@ -18,8 +18,20 @@ components:
   core_grpc:
     bind_host: 0.0.0.0
     bind_port: 50051
+  core_health:
+    max_timeout_seconds: 1.0
 
   substrate:
+    filesystem:
+      root_dir: ./var/blobs
+      temp_prefix: blobtmp
+      fsync_writes: true
+      default_extension: blob
+    obsidian:
+      base_url: http://host.docker.internal:27123
+      api_key: ""
+      timeout_seconds: 10.0
+      max_retries: 2
     postgres:
       url: postgresql+psycopg://brain:brain@postgres:5432/brain
       pool_size: 5
@@ -27,6 +39,7 @@ components:
       pool_timeout_seconds: 30.0
       pool_pre_ping: true
       connect_timeout_seconds: 10.0
+      health_timeout_seconds: 1.0
       sslmode: prefer
     qdrant:
       url: http://qdrant:6333
@@ -43,14 +56,10 @@ components:
       ssl: false
       connect_timeout_seconds: 5.0
       socket_timeout_seconds: 5.0
+      health_timeout_seconds: 1.0
       max_connections: 20
 
   adapter:
-    filesystem:
-      root_dir: ./var/blobs
-      temp_prefix: blobtmp
-      fsync_writes: true
-      default_extension: blob
     litellm:
       timeout_seconds: 30.0
       max_retries: 2
@@ -59,13 +68,9 @@ components:
           api_base: http://localhost:11434
         openai:
           api_key_env: OPENAI_API_KEY
-    obsidian:
-      base_url: http://127.0.0.1:27124
-      api_key: ""
-      timeout_seconds: 10.0
-      max_retries: 2
     signal:
       base_url: http://signal-api:8080
+      health_timeout_seconds: 1.0
       timeout_seconds: 10.0
       max_retries: 2
       poll_interval_seconds: 1.0

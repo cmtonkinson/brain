@@ -6,8 +6,12 @@ from abc import ABC, abstractmethod
 
 from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
-from resources.adapters.filesystem.substrate import FilesystemBlobAdapter
-from services.state.object_authority.domain import ObjectGetResult, ObjectRecord
+from resources.substrates.filesystem.substrate import FilesystemBlobSubstrate
+from services.state.object_authority.domain import (
+    HealthStatus,
+    ObjectGetResult,
+    ObjectRecord,
+)
 
 
 class ObjectAuthorityService(ABC):
@@ -42,16 +46,20 @@ class ObjectAuthorityService(ABC):
     def delete_object(self, *, meta: EnvelopeMeta, object_key: str) -> Envelope[bool]:
         """Delete one blob by canonical object key with idempotent semantics."""
 
+    @abstractmethod
+    def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
+        """Return OAS and owned dependency readiness status."""
+
 
 def build_object_authority_service(
     *,
     settings: BrainSettings,
-    blob_store: FilesystemBlobAdapter | None = None,
+    blob_store: FilesystemBlobSubstrate | None = None,
 ) -> ObjectAuthorityService:
     """Build default Object Authority implementation from typed settings."""
-    from resources.adapters.filesystem import (
-        LocalFilesystemBlobAdapter,
-        resolve_filesystem_adapter_settings,
+    from resources.substrates.filesystem import (
+        LocalFilesystemBlobSubstrate,
+        resolve_filesystem_substrate_settings,
     )
     from services.state.object_authority.config import resolve_object_authority_settings
     from services.state.object_authority.data import (
@@ -62,11 +70,11 @@ def build_object_authority_service(
         DefaultObjectAuthorityService,
     )
 
-    fs_settings = resolve_filesystem_adapter_settings(settings)
+    fs_settings = resolve_filesystem_substrate_settings(settings)
     runtime = ObjectPostgresRuntime.from_settings(settings)
     return DefaultObjectAuthorityService(
         settings=resolve_object_authority_settings(settings),
         repository=PostgresObjectRepository(runtime.schema_sessions),
-        blob_store=blob_store or LocalFilesystemBlobAdapter(settings=fs_settings),
+        blob_store=blob_store or LocalFilesystemBlobSubstrate(settings=fs_settings),
         default_extension=fs_settings.default_extension,
     )

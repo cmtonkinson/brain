@@ -90,7 +90,10 @@ class HttpSignalAdapter(SignalAdapter):
     def health(self) -> SignalAdapterHealthResult:
         """Return adapter health by probing Signal runtime health endpoint."""
         try:
-            self._signal_client.get(SIGNAL_HEALTH_PATH)
+            self._signal_client.get(
+                SIGNAL_HEALTH_PATH,
+                timeout=self._settings.health_timeout_seconds,
+            )
         except (HttpRequestError, HttpStatusError, HttpJsonDecodeError) as exc:
             return SignalAdapterHealthResult(
                 adapter_ready=False,

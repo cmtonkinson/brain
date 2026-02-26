@@ -23,10 +23,10 @@ from packages.brain_shared.errors import (
     validation_error,
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
-from resources.adapters.filesystem import (
-    FilesystemBlobAdapter,
-    LocalFilesystemBlobAdapter,
-    resolve_filesystem_adapter_settings,
+from resources.substrates.filesystem import (
+    FilesystemBlobSubstrate,
+    LocalFilesystemBlobSubstrate,
+    resolve_filesystem_substrate_settings,
 )
 from resources.substrates.postgres.errors import normalize_postgres_error
 from services.state.object_authority.component import SERVICE_COMPONENT_ID
@@ -38,7 +38,11 @@ from services.state.object_authority.data import (
     ObjectPostgresRuntime,
     PostgresObjectRepository,
 )
-from services.state.object_authority.domain import ObjectGetResult, ObjectRecord
+from services.state.object_authority.domain import (
+    HealthStatus,
+    ObjectGetResult,
+    ObjectRecord,
+)
 from services.state.object_authority.interfaces import ObjectRepository
 from services.state.object_authority.service import ObjectAuthorityService
 from services.state.object_authority.validation import (
@@ -57,7 +61,7 @@ class DefaultObjectAuthorityService(ObjectAuthorityService):
         *,
         settings: ObjectAuthoritySettings,
         repository: ObjectRepository,
-        blob_store: FilesystemBlobAdapter,
+        blob_store: FilesystemBlobSubstrate,
         default_extension: str,
     ) -> None:
         self._settings = settings
@@ -69,13 +73,35 @@ class DefaultObjectAuthorityService(ObjectAuthorityService):
     def from_settings(cls, settings: BrainSettings) -> "DefaultObjectAuthorityService":
         """Build OAS from typed settings and owned resources."""
         service_settings = resolve_object_authority_settings(settings)
-        fs_settings = resolve_filesystem_adapter_settings(settings)
+        fs_settings = resolve_filesystem_substrate_settings(settings)
         runtime = ObjectPostgresRuntime.from_settings(settings)
         return cls(
             settings=service_settings,
             repository=PostgresObjectRepository(runtime.schema_sessions),
-            blob_store=LocalFilesystemBlobAdapter(settings=fs_settings),
+            blob_store=LocalFilesystemBlobSubstrate(settings=fs_settings),
             default_extension=fs_settings.default_extension,
+        )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
+    def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
+        """Return OAS readiness based on owned Postgres repository availability."""
+        validate_meta(meta)
+        try:
+            self._repository.get_object_by_key(object_key="__brain_health_check__")
+        except Exception as exc:  # noqa: BLE001
+            if _is_postgres_error(exc):
+                return failure(meta=meta, errors=[normalize_postgres_error(exc)])
+            return self._dependency_failure(meta=meta, operation="health", exc=exc)
+        return success(
+            meta=meta,
+            payload=HealthStatus(
+                service_ready=True,
+                substrate_ready=True,
+                detail="ok",
+            ),
         )
 
     @public_api_instrumented(

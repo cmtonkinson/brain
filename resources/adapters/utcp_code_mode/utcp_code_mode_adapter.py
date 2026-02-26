@@ -15,6 +15,7 @@ from resources.adapters.utcp_code_mode.adapter import (
     UtcpCodeModeConfigParseError,
     UtcpCodeModeConfigSchemaError,
     UtcpCodeModeConfigReadError,
+    UtcpCodeModeHealthStatus,
     UtcpCodeModeLoadResult,
     UtcpMcpManualCallTemplate,
     UtcpMcpTemplateSummary,
@@ -28,6 +29,21 @@ class LocalFileUtcpCodeModeAdapter(UtcpCodeModeAdapter):
 
     def __init__(self, *, settings: UtcpCodeModeAdapterSettings) -> None:
         self._settings = settings
+
+    def health(self) -> UtcpCodeModeHealthStatus:
+        """Return readiness from source YAML path accessibility."""
+        source_path = self._settings.yaml_config_path()
+        if not source_path.exists():
+            return UtcpCodeModeHealthStatus(
+                ready=False,
+                detail=f"source config not found: {source_path}",
+            )
+        if not source_path.is_file():
+            return UtcpCodeModeHealthStatus(
+                ready=False,
+                detail=f"source config is not a file: {source_path}",
+            )
+        return UtcpCodeModeHealthStatus(ready=True, detail="ok")
 
     def load(self) -> UtcpCodeModeLoadResult:
         """Load operator YAML, generate canonical config, and summarize MCP data."""

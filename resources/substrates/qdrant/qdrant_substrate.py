@@ -17,6 +17,7 @@ from resources.substrates.qdrant.client import create_qdrant_client
 from resources.substrates.qdrant.component import RESOURCE_COMPONENT_ID
 from resources.substrates.qdrant.config import QdrantConfig
 from resources.substrates.qdrant.substrate import (
+    QdrantHealthStatus,
     QdrantSubstrate,
     RetrievedPoint,
     SearchPoint,
@@ -38,6 +39,21 @@ class QdrantClientSubstrate(QdrantSubstrate):
         self._client = create_qdrant_client(config)
         self._collection = config.collection_name
         self._lock = Lock()
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(RESOURCE_COMPONENT_ID),
+    )
+    def health(self) -> QdrantHealthStatus:
+        """Return substrate readiness based on client collection existence probe."""
+        try:
+            self._client.collection_exists(self._collection)
+        except Exception as exc:  # noqa: BLE001
+            return QdrantHealthStatus(
+                ready=False,
+                detail=f"qdrant probe failed: {type(exc).__name__}",
+            )
+        return QdrantHealthStatus(ready=True, detail="ok")
 
     @public_api_instrumented(
         logger=_LOGGER,

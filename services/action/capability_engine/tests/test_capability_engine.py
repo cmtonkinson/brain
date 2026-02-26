@@ -453,7 +453,7 @@ def test_health_reflects_injected_audit_repository_count() -> None:
     assert health.payload.value.invocation_audit_rows == 1
 
 
-def test_ces_health_reflects_policy_health() -> None:
+def test_ces_health_does_not_depend_on_policy_service_health() -> None:
     class _FailingPolicyService(_FakePolicyService):
         def health(self, *, meta: Any):
             return failure(meta=meta, errors=[policy_error("unhealthy")])
@@ -470,4 +470,4 @@ def test_ces_health_reflects_policy_health() -> None:
     assert health.ok is True
     assert health.payload is not None
     payload: CapabilityEngineHealthStatus = health.payload.value
-    assert payload.policy_ready is False
+    assert payload.policy_ready is True

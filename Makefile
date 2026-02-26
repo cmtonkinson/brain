@@ -76,7 +76,10 @@ $(DIAGRAM_PNGS): $(DIAGRAM_SRC) $(DIAGRAM_GEN)
 	$(DIAGRAM_GEN) $(DIAGRAM_SRC)
 
 up:
-	PYTHON_VERSION=$(PYTHON_VERSION) docker compose up --detach --build
+	PYTHON_VERSION=$(PYTHON_VERSION) docker compose up --build --detach
 
 down:
 	docker compose down
+
+outline:
+	@tree -d -I tests -I __pycache__ -I data -I migrations packages resources services actors

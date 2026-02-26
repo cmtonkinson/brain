@@ -1,4 +1,4 @@
-"""Component declaration for filesystem blob adapter resource."""
+"""Component declaration for filesystem blob substrate resource."""
 
 from __future__ import annotations
 
@@ -12,15 +12,15 @@ from packages.brain_shared.manifest import (
     register_component,
 )
 
-RESOURCE_COMPONENT_ID = ComponentId("adapter_filesystem")
+RESOURCE_COMPONENT_ID = ComponentId("substrate_filesystem")
 
 MANIFEST = register_component(
     ResourceManifest(
         id=RESOURCE_COMPONENT_ID,
         layer=0,
         system="state",
-        kind="adapter",
-        module_roots=frozenset({ModuleRoot("resources.adapters.filesystem")}),
+        kind="substrate",
+        module_roots=frozenset({ModuleRoot("resources.substrates.filesystem")}),
         owner_service_id=ComponentId("service_object_authority"),
     )
 )
@@ -31,9 +31,13 @@ def build_component(
 ) -> object:
     """Build concrete runtime instance for this registered resource component."""
     del components
-    from resources.adapters.filesystem.adapter import LocalFilesystemBlobAdapter
-    from resources.adapters.filesystem.config import resolve_filesystem_adapter_settings
+    from resources.substrates.filesystem.filesystem_substrate import (
+        LocalFilesystemBlobSubstrate,
+    )
+    from resources.substrates.filesystem.config import (
+        resolve_filesystem_substrate_settings,
+    )
 
-    return LocalFilesystemBlobAdapter(
-        settings=resolve_filesystem_adapter_settings(settings),
+    return LocalFilesystemBlobSubstrate(
+        settings=resolve_filesystem_substrate_settings(settings),
     )

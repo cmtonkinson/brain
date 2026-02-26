@@ -32,6 +32,6 @@ def build_component(
     """Build concrete runtime instance for this registered resource component."""
     del components
     from resources.substrates.postgres.config import resolve_postgres_settings
-    from resources.substrates.postgres.engine import create_postgres_engine
+    from resources.substrates.postgres.substrate import SharedPostgresSubstrate
 
-    return create_postgres_engine(resolve_postgres_settings(settings))
+    return SharedPostgresSubstrate(settings=resolve_postgres_settings(settings))

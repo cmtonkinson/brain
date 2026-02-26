@@ -5,11 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
-from resources.adapters.obsidian import (
+from resources.substrates.obsidian import (
     FileEditOperation,
-    ObsidianAdapter,
-    ObsidianAdapterConflictError,
-    ObsidianAdapterNotFoundError,
+    ObsidianSubstrate,
+    ObsidianSubstrateConflictError,
+    ObsidianHealthStatus,
+    ObsidianSubstrateNotFoundError,
     ObsidianEntry,
     ObsidianEntryType,
     ObsidianFileRecord,
@@ -27,8 +28,8 @@ class _SearchCall:
     limit: int
 
 
-class _FakeAdapter(ObsidianAdapter):
-    """In-memory adapter fake for VAS behavior tests."""
+class _FakeSubstrate(ObsidianSubstrate):
+    """In-memory substrate fake for VAS behavior tests."""
 
     def __init__(self) -> None:
         self.entries: list[ObsidianEntry] = []
@@ -36,6 +37,10 @@ class _FakeAdapter(ObsidianAdapter):
         self.search_calls: list[_SearchCall] = []
         self.raise_on_update: Exception | None = None
         self.raise_on_get: Exception | None = None
+        self.health_status = ObsidianHealthStatus(ready=True, detail="ok")
+
+    def health(self) -> ObsidianHealthStatus:
+        return self.health_status
 
     def list_directory(self, *, directory_path: str) -> list[ObsidianEntry]:
         return list(self.entries)
@@ -70,7 +75,7 @@ class _FakeAdapter(ObsidianAdapter):
             raise self.raise_on_get
         record = self.files.get(file_path)
         if record is None:
-            raise ObsidianAdapterNotFoundError("missing")
+            raise ObsidianSubstrateNotFoundError("missing")
         return record
 
     def update_file(
@@ -159,14 +164,14 @@ class _FakeAdapter(ObsidianAdapter):
         ]
 
 
-def _service() -> tuple[DefaultVaultAuthorityService, _FakeAdapter]:
-    """Build deterministic VAS with in-memory adapter fake."""
-    adapter = _FakeAdapter()
+def _service() -> tuple[DefaultVaultAuthorityService, _FakeSubstrate]:
+    """Build deterministic VAS with in-memory substrate fake."""
+    substrate = _FakeSubstrate()
     service = DefaultVaultAuthorityService(
         settings=VaultAuthoritySettings(max_search_limit=10),
-        adapter=adapter,
+        substrate=substrate,
     )
-    return service, adapter
+    return service, substrate
 
 
 def _meta() -> object:
@@ -176,7 +181,7 @@ def _meta() -> object:
 
 def test_create_file_rejects_non_markdown_paths() -> None:
     """Create file should enforce markdown-only file extension policy."""
-    service, _adapter = _service()
+    service, _substrate = _service()
 
     result = service.create_file(meta=_meta(), file_path="notes.txt", content="x")
 
@@ -186,8 +191,8 @@ def test_create_file_rejects_non_markdown_paths() -> None:
 
 def test_list_directory_returns_file_and_directory_metadata() -> None:
     """Directory listing should include both directory and file entries."""
-    service, adapter = _service()
-    adapter.entries = [
+    service, substrate = _service()
+    substrate.entries = [
         ObsidianEntry(
             path="notes",
             name="notes",
@@ -214,12 +219,12 @@ def test_list_directory_returns_file_and_directory_metadata() -> None:
 
 def test_list_directory_limit_is_capped_by_service_settings() -> None:
     """Directory list should cap returned entry count by configured maximum."""
-    adapter = _FakeAdapter()
+    substrate = _FakeSubstrate()
     service = DefaultVaultAuthorityService(
         settings=VaultAuthoritySettings(max_list_limit=1, max_search_limit=10),
-        adapter=adapter,
+        substrate=substrate,
     )
-    adapter.entries = [
+    substrate.entries = [
         ObsidianEntry(
             path="notes",
             name="notes",
@@ -242,14 +247,14 @@ def test_list_directory_limit_is_capped_by_service_settings() -> None:
 
 
 def test_update_file_maps_conflict_to_conflict_error() -> None:
-    """Adapter conflict errors should surface as conflict-category envelope errors."""
-    service, adapter = _service()
-    adapter.files["notes/todo.md"] = ObsidianFileRecord(
+    """Substrate conflict errors should surface as conflict-category envelope errors."""
+    service, substrate = _service()
+    substrate.files["notes/todo.md"] = ObsidianFileRecord(
         path="notes/todo.md",
         content="current",
         revision="r1",
     )
-    adapter.raise_on_update = ObsidianAdapterConflictError("revision mismatch")
+    substrate.raise_on_update = ObsidianSubstrateConflictError("revision mismatch")
 
     result = service.update_file(
         meta=_meta(),
@@ -264,8 +269,8 @@ def test_update_file_maps_conflict_to_conflict_error() -> None:
 
 def test_update_file_enforces_if_revision_precondition() -> None:
     """Update should fail with conflict when provided revision does not match."""
-    service, adapter = _service()
-    adapter.files["notes/todo.md"] = ObsidianFileRecord(
+    service, substrate = _service()
+    substrate.files["notes/todo.md"] = ObsidianFileRecord(
         path="notes/todo.md",
         content="current",
         revision="r2",
@@ -287,7 +292,7 @@ def test_update_file_enforces_if_revision_precondition() -> None:
 
 def test_search_limit_is_capped_by_service_settings() -> None:
     """Search should cap requested limit to configured maximum."""
-    service, adapter = _service()
+    service, substrate = _service()
 
     result = service.search_files(
         meta=_meta(),
@@ -297,12 +302,12 @@ def test_search_limit_is_capped_by_service_settings() -> None:
     )
 
     assert result.ok is True
-    assert adapter.search_calls[-1].limit == 10
+    assert substrate.search_calls[-1].limit == 10
 
 
 def test_edit_file_maps_edit_operations_and_returns_payload() -> None:
-    """Edit should pass validated operations to adapter and map payload."""
-    service, _adapter = _service()
+    """Edit should pass validated operations to substrate and map payload."""
+    service, _substrate = _service()
 
     result = service.edit_file(
         meta=_meta(),
@@ -317,7 +322,7 @@ def test_edit_file_maps_edit_operations_and_returns_payload() -> None:
 
 def test_move_path_allows_directory_names_with_dots() -> None:
     """Directory moves should allow dotted segment names."""
-    service, _adapter = _service()
+    service, _substrate = _service()
 
     result = service.move_path(
         meta=_meta(),
@@ -332,7 +337,7 @@ def test_move_path_allows_directory_names_with_dots() -> None:
 
 def test_move_path_rejects_file_directory_type_mismatch() -> None:
     """Move should reject source/target type mismatches between file and directory."""
-    service, _adapter = _service()
+    service, _substrate = _service()
 
     result = service.move_path(
         meta=_meta(),
@@ -346,10 +351,26 @@ def test_move_path_rejects_file_directory_type_mismatch() -> None:
 
 def test_edit_file_validation_error_uses_field_scoped_message() -> None:
     """Validation errors should include stable field-scoped message format."""
-    service, _adapter = _service()
+    service, _substrate = _service()
 
     result = service.edit_file(meta=_meta(), file_path="notes/todo.md", edits=[])
 
     assert result.ok is False
     assert result.errors[0].category.value == "validation"
     assert result.errors[0].message.startswith("edits:")
+
+
+def test_health_maps_owned_substrate_probe() -> None:
+    """VAS health should map owned Obsidian substrate health payload."""
+    service, substrate = _service()
+    substrate.health_status = ObsidianHealthStatus(
+        ready=False, detail="dependency unavailable"
+    )
+
+    result = service.health(meta=_meta())
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value.service_ready is True
+    assert result.payload.value.substrate_ready is False
+    assert result.payload.value.detail == "dependency unavailable"

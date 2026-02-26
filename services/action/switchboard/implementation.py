@@ -264,7 +264,7 @@ class DefaultSwitchboardService(SwitchboardService):
         component_id=str(SERVICE_COMPONENT_ID),
     )
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
-        """Return Switchboard + adapter/CAS readiness state."""
+        """Return Switchboard and owned adapter readiness state."""
         try:
             adapter_health = self._adapter.health()
         except SignalAdapterDependencyError as exc:
@@ -276,22 +276,7 @@ class DefaultSwitchboardService(SwitchboardService):
         else:
             adapter_detail = adapter_health.detail
 
-        cas_health = self._cache_service.health(meta=meta)
-        cas_ready = cas_health.ok
-        cas_detail = ""
-        if cas_health.payload is not None:
-            payload = cas_health.payload.value
-            cas_ready = bool(getattr(payload, "service_ready", False)) and bool(
-                getattr(payload, "substrate_ready", False)
-            )
-            cas_detail = str(getattr(payload, "detail", ""))
-        if len(cas_health.errors) > 0:
-            cas_detail = "; ".join(error.message for error in cas_health.errors)
-
-        detail_parts = [
-            f"adapter={adapter_detail}",
-            f"cas={cas_detail or 'ok'}",
-        ]
+        detail_parts = [f"adapter={adapter_detail}", "cas=not_assessed"]
         return success(
             meta=meta,
             payload=HealthStatus(
@@ -299,7 +284,7 @@ class DefaultSwitchboardService(SwitchboardService):
                 adapter_ready=False
                 if adapter_health is None
                 else adapter_health.adapter_ready,
-                cas_ready=cas_ready,
+                cas_ready=True,
                 detail="; ".join(detail_parts),
             ),
         )

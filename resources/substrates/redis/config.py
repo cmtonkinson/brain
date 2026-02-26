@@ -26,6 +26,7 @@ class RedisSettings(BaseModel):
     ssl: bool = False
     connect_timeout_seconds: float = Field(default=5.0, gt=0)
     socket_timeout_seconds: float = Field(default=5.0, gt=0)
+    health_timeout_seconds: float = Field(default=1.0, gt=0)
     max_connections: int = Field(default=20, gt=0)
 
     @model_validator(mode="after")

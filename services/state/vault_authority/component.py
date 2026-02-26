@@ -23,7 +23,7 @@ MANIFEST = register_component(
         public_api_roots=frozenset(
             {ModuleRoot("services.state.vault_authority.service")}
         ),
-        owns_resources=frozenset({ComponentId("adapter_obsidian")}),
+        owns_resources=frozenset({ComponentId("substrate_obsidian")}),
     )
 )
 
@@ -36,5 +36,5 @@ def build_component(
 
     return build_vault_authority_service(
         settings=settings,
-        adapter=components.get("adapter_obsidian"),
+        substrate=components.get("substrate_obsidian"),
     )

@@ -136,6 +136,13 @@ def _start_grpc_runtime(
     server_factory: Callable[..., grpc.Server] = grpc.server,
 ) -> grpc.Server:
     """Start Core gRPC runtime and register all service transport adapters."""
+    generated_root = Path.cwd() / "generated"
+    if generated_root.exists():
+        sys.path.insert(0, str(generated_root))
+    from packages.brain_core.health_api import (
+        register_grpc as register_core_health_grpc,
+    )
+
     server = server_factory(ThreadPoolExecutor(max_workers=32))
     registry = get_registry()
     registered_services: list[str] = []
@@ -148,6 +155,14 @@ def _start_grpc_runtime(
             continue
         registrar(server=server, service=service_instance)
         registered_services.append(str(manifest.id))
+
+    if hasattr(server, "add_generic_rpc_handlers"):
+        register_core_health_grpc(
+            server=server,
+            settings=settings,
+            components=components,
+        )
+        registered_services.append("core_health")
 
     if len(registered_services) == 0:
         raise RuntimeError("no service gRPC adapters registered")

@@ -23,7 +23,7 @@ MANIFEST = register_component(
         public_api_roots=frozenset(
             {ModuleRoot("services.state.object_authority.service")}
         ),
-        owns_resources=frozenset({ComponentId("adapter_filesystem")}),
+        owns_resources=frozenset({ComponentId("substrate_filesystem")}),
     )
 )
 
@@ -36,5 +36,5 @@ def build_component(
 
     return build_object_authority_service(
         settings=settings,
-        blob_store=components.get("adapter_filesystem"),
+        blob_store=components.get("substrate_filesystem"),
     )

@@ -1,4 +1,4 @@
-"""Validation helpers for filesystem adapter inputs."""
+"""Validation helpers for filesystem substrate inputs."""
 
 from __future__ import annotations
 

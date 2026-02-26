@@ -117,8 +117,20 @@ class UtcpCodeModeLoadResult(BaseModel):
     generated_json_path: str
 
 
+class UtcpCodeModeHealthStatus(BaseModel):
+    """UTCP code-mode substrate readiness payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ready: bool
+    detail: str
+
+
 class UtcpCodeModeAdapter(Protocol):
     """Protocol for loading UTCP code-mode config and MCP template metadata."""
+
+    def health(self) -> UtcpCodeModeHealthStatus:
+        """Probe UTCP code-mode substrate readiness."""
 
     def load(self) -> UtcpCodeModeLoadResult:
         """Load and validate UTCP config from local disk."""

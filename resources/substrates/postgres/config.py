@@ -19,6 +19,7 @@ class PostgresSettings(BaseModel):
     pool_timeout_seconds: float = Field(default=30.0, gt=0)
     pool_pre_ping: bool = True
     connect_timeout_seconds: float = Field(default=10.0, gt=0)
+    health_timeout_seconds: float = Field(default=1.0, gt=0)
     sslmode: Literal[
         "disable",
         "allow",

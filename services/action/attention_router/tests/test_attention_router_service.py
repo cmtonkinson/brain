@@ -217,21 +217,16 @@ def test_route_approval_notification_formats_policy_payload() -> None:
     assert "Token: tok-123" in adapter.send_calls[0].message
 
 
-def test_health_reports_adapter_readiness() -> None:
-    """Health should include adapter readiness details."""
+def test_health_reports_self_readiness_without_adapter_probe() -> None:
+    """Health should report self-readiness without external adapter probing."""
     service, adapter = _service()
-    adapter.health_result = SignalAdapterHealthResult(
-        adapter_ready=False,
-        detail="degraded",
-    )
-
     result = service.health(meta=_meta())
 
     assert result.ok is True
     assert result.payload is not None
     assert result.payload.value.service_ready is True
-    assert result.payload.value.adapter_ready is False
-    assert result.payload.value.detail == "degraded"
+    assert result.payload.value.adapter_ready is True
+    assert result.payload.value.detail == "ok"
 
 
 def test_correlate_approval_response_returns_normalized_payload() -> None:

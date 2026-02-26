@@ -1,4 +1,4 @@
-"""Transport-agnostic Obsidian adapter contracts and DTOs."""
+"""Transport-agnostic Obsidian substrate contracts and DTOs."""
 
 from __future__ import annotations
 
@@ -8,27 +8,27 @@ from typing import Protocol, Sequence
 from pydantic import BaseModel, ConfigDict
 
 
-class ObsidianAdapterError(Exception):
-    """Base exception for adapter-level failures."""
+class ObsidianSubstrateError(Exception):
+    """Base exception for substrate-level failures."""
 
 
-class ObsidianAdapterDependencyError(ObsidianAdapterError):
+class ObsidianSubstrateDependencyError(ObsidianSubstrateError):
     """Dependency-level failure (network/upstream unavailable)."""
 
 
-class ObsidianAdapterInternalError(ObsidianAdapterError):
-    """Internal adapter failure (schema/mapping/contract mismatch)."""
+class ObsidianSubstrateInternalError(ObsidianSubstrateError):
+    """Internal substrate failure (schema/mapping/contract mismatch)."""
 
 
-class ObsidianAdapterNotFoundError(ObsidianAdapterError):
+class ObsidianSubstrateNotFoundError(ObsidianSubstrateError):
     """Target file or directory does not exist."""
 
 
-class ObsidianAdapterAlreadyExistsError(ObsidianAdapterError):
+class ObsidianSubstrateAlreadyExistsError(ObsidianSubstrateError):
     """Target creation failed because the resource already exists."""
 
 
-class ObsidianAdapterConflictError(ObsidianAdapterError):
+class ObsidianSubstrateConflictError(ObsidianSubstrateError):
     """Operation conflicted with current resource state."""
 
 
@@ -88,8 +88,20 @@ class FileEditOperation(BaseModel):
     content: str
 
 
-class ObsidianAdapter(Protocol):
+class ObsidianHealthStatus(BaseModel):
+    """Obsidian substrate readiness payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ready: bool
+    detail: str
+
+
+class ObsidianSubstrate(Protocol):
     """Protocol for Obsidian Local REST API-backed vault operations."""
+
+    def health(self) -> ObsidianHealthStatus:
+        """Probe Obsidian substrate readiness."""
 
     def list_directory(self, *, directory_path: str) -> list[ObsidianEntry]:
         """List file and directory entries directly under one path."""

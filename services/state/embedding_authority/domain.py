@@ -116,3 +116,13 @@ class UpsertEmbeddingVectorInput(BaseModel):
     chunk_id: str
     spec_id: str
     vector: Sequence[float]
+
+
+class HealthStatus(BaseModel):
+    """EAS and owned dependency readiness status payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    service_ready: bool
+    substrate_ready: bool
+    detail: str

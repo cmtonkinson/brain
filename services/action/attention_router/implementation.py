@@ -281,7 +281,7 @@ class DefaultAttentionRouterService(AttentionRouterService):
         component_id=str(SERVICE_COMPONENT_ID),
     )
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
-        """Return Attention Router and Signal adapter readiness state."""
+        """Return Attention Router self-readiness state."""
         try:
             validate_meta(meta)
         except ValueError as exc:
@@ -290,33 +290,12 @@ class DefaultAttentionRouterService(AttentionRouterService):
                 errors=[validation_error(str(exc), code=codes.INVALID_ARGUMENT)],
             )
 
-        try:
-            adapter_health = self._signal_adapter.health()
-        except SignalAdapterDependencyError as exc:
-            return success(
-                meta=meta,
-                payload=HealthStatus(
-                    service_ready=True,
-                    adapter_ready=False,
-                    detail=str(exc) or "signal adapter unavailable",
-                ),
-            )
-        except SignalAdapterInternalError as exc:
-            return success(
-                meta=meta,
-                payload=HealthStatus(
-                    service_ready=True,
-                    adapter_ready=False,
-                    detail=str(exc) or "signal adapter internal failure",
-                ),
-            )
-
         return success(
             meta=meta,
             payload=HealthStatus(
                 service_ready=True,
-                adapter_ready=adapter_health.adapter_ready,
-                detail=adapter_health.detail,
+                adapter_ready=True,
+                detail="ok",
             ),
         )
 

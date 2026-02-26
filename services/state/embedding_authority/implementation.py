@@ -40,6 +40,7 @@ from services.state.embedding_authority.domain import (
     EmbeddingRecord,
     EmbeddingSpec,
     EmbeddingStatus,
+    HealthStatus,
     SearchEmbeddingMatch,
     SourceRecord,
     UpsertChunkInput,
@@ -120,6 +121,37 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
             settings=embedding_settings,
             repository=repository,
             index_backend=index_backend,
+        )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
+    def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
+        """Return EAS readiness based on owned Postgres repository availability."""
+        validate_meta(meta)
+        try:
+            self._repository.list_specs(limit=1)
+        except Exception as exc:  # noqa: BLE001
+            if self._is_postgres_error(exc):
+                return self._postgres_failure(meta=meta, exc=exc)
+            return failure(
+                meta=meta,
+                errors=[
+                    dependency_error(
+                        "health probe failed",
+                        code=codes.DEPENDENCY_FAILURE,
+                        metadata={"exception_type": type(exc).__name__},
+                    )
+                ],
+            )
+        return success(
+            meta=meta,
+            payload=HealthStatus(
+                service_ready=True,
+                substrate_ready=True,
+                detail="ok",
+            ),
         )
 
     @public_api_instrumented(

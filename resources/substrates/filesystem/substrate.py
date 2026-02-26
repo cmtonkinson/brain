@@ -1,14 +1,27 @@
-"""Transport-agnostic protocol for filesystem blob adapter operations."""
+"""Transport-agnostic protocol for filesystem blob substrate operations."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
 from typing import Protocol
+from pydantic import BaseModel, ConfigDict
 
 
-class FilesystemBlobAdapter(Protocol):
+class FilesystemHealthStatus(BaseModel):
+    """Filesystem blob substrate readiness payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ready: bool
+    detail: str
+
+
+class FilesystemBlobSubstrate(Protocol):
     """Protocol for digest-keyed filesystem blob persistence operations."""
+
+    def health(self) -> FilesystemHealthStatus:
+        """Probe local filesystem substrate readiness."""
 
     def resolve_path(self, *, digest_hex: str, extension: str) -> Path:
         """Resolve one deterministic file path for digest and extension."""

@@ -1,4 +1,4 @@
-"""In-process Obsidian adapter implementation over Local REST API."""
+"""In-process Obsidian substrate implementation over Local REST API."""
 
 from __future__ import annotations
 
@@ -17,21 +17,22 @@ from packages.brain_shared.vault_paths import (
     normalize_vault_file_path,
     normalize_vault_relative_path,
 )
-from resources.adapters.obsidian.adapter import (
+from resources.substrates.obsidian.substrate import (
     FileEditOperation,
-    ObsidianAdapter,
-    ObsidianAdapterAlreadyExistsError,
-    ObsidianAdapterConflictError,
-    ObsidianAdapterDependencyError,
-    ObsidianAdapterInternalError,
-    ObsidianAdapterNotFoundError,
+    ObsidianSubstrate,
+    ObsidianSubstrateAlreadyExistsError,
+    ObsidianSubstrateConflictError,
+    ObsidianSubstrateDependencyError,
+    ObsidianSubstrateInternalError,
+    ObsidianSubstrateNotFoundError,
     ObsidianEntry,
     ObsidianEntryType,
     ObsidianFileRecord,
+    ObsidianHealthStatus,
     ObsidianSearchMatch,
 )
-from resources.adapters.obsidian.component import RESOURCE_COMPONENT_ID
-from resources.adapters.obsidian.config import ObsidianAdapterSettings
+from resources.substrates.obsidian.component import RESOURCE_COMPONENT_ID
+from resources.substrates.obsidian.config import ObsidianSubstrateSettings
 
 _LOGGER = get_logger(__name__)
 
@@ -44,14 +45,26 @@ class _HttpResult:
     payload: Any
 
 
-class ObsidianLocalRestAdapter(ObsidianAdapter):
-    """Obsidian adapter backed by HTTP calls to Local REST API."""
+class ObsidianLocalRestSubstrate(ObsidianSubstrate):
+    """Obsidian substrate backed by HTTP calls to Local REST API."""
 
     _ACCEPT_NOTE_JSON = "application/vnd.olrapi.note+json"
 
-    def __init__(self, *, settings: ObsidianAdapterSettings) -> None:
+    def __init__(self, *, settings: ObsidianSubstrateSettings) -> None:
         self._settings = settings
         self._base_url = settings.base_url.rstrip("/")
+
+    @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
+    def health(self) -> ObsidianHealthStatus:
+        """Probe substrate readiness with a shallow vault directory listing."""
+        try:
+            self.list_directory(directory_path="")
+        except Exception as exc:  # noqa: BLE001
+            return ObsidianHealthStatus(
+                ready=False,
+                detail=str(exc) or type(exc).__name__,
+            )
+        return ObsidianHealthStatus(ready=True, detail="ok")
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
     def list_directory(self, *, directory_path: str) -> list[ObsidianEntry]:
@@ -61,19 +74,19 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
         result = self._request_json(method="GET", endpoint=endpoint)
 
         if not isinstance(result.payload, Mapping):
-            raise ObsidianAdapterInternalError(
+            raise ObsidianSubstrateInternalError(
                 "obsidian list response must be an object"
             )
         files = result.payload.get("files")
         if not isinstance(files, list):
-            raise ObsidianAdapterInternalError(
+            raise ObsidianSubstrateInternalError(
                 "obsidian list response missing files array"
             )
 
         entries: list[ObsidianEntry] = []
         for item in files:
             if not isinstance(item, str):
-                raise ObsidianAdapterInternalError(
+                raise ObsidianSubstrateInternalError(
                     "obsidian list response contains non-string path"
                 )
             is_directory = item.endswith("/")
@@ -99,21 +112,21 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
         """Create one directory and return resulting metadata."""
         normalized = _normalize_directory_path(directory_path)
         if normalized == "":
-            raise ObsidianAdapterConflictError("cannot create vault root directory")
+            raise ObsidianSubstrateConflictError("cannot create vault root directory")
 
         try:
             self.list_directory(directory_path=normalized)
-        except ObsidianAdapterNotFoundError:
+        except ObsidianSubstrateNotFoundError:
             pass
         else:
-            raise ObsidianAdapterAlreadyExistsError("directory already exists")
+            raise ObsidianSubstrateAlreadyExistsError("directory already exists")
 
         if not recursive and "/" in normalized:
             parent = normalized.rsplit("/", maxsplit=1)[0]
             try:
                 self.list_directory(directory_path=parent)
-            except ObsidianAdapterNotFoundError:
-                raise ObsidianAdapterConflictError(
+            except ObsidianSubstrateNotFoundError:
+                raise ObsidianSubstrateConflictError(
                     "parent directory does not exist"
                 ) from None
 
@@ -148,13 +161,13 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
 
         try:
             entries = self.list_directory(directory_path=normalized)
-        except ObsidianAdapterNotFoundError:
+        except ObsidianSubstrateNotFoundError:
             if missing_ok:
                 return False
             raise
 
         if not recursive and len(entries) > 0:
-            raise ObsidianAdapterConflictError(
+            raise ObsidianSubstrateConflictError(
                 "directory delete requires recursive=true for non-empty directories"
             )
 
@@ -167,7 +180,7 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
                 endpoint=_vault_directory_endpoint(normalized),
                 accept="application/json",
             )
-        except ObsidianAdapterNotFoundError:
+        except ObsidianSubstrateNotFoundError:
             if missing_ok:
                 return False
             raise
@@ -179,10 +192,10 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
         normalized = _normalize_file_path(file_path)
         try:
             self.get_file(file_path=normalized)
-        except ObsidianAdapterNotFoundError:
+        except ObsidianSubstrateNotFoundError:
             pass
         else:
-            raise ObsidianAdapterAlreadyExistsError("file already exists")
+            raise ObsidianSubstrateAlreadyExistsError("file already exists")
 
         self._request_raw(
             method="PUT",
@@ -207,7 +220,7 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
             accept=self._ACCEPT_NOTE_JSON,
         )
         if not isinstance(result.payload, Mapping):
-            raise ObsidianAdapterInternalError(
+            raise ObsidianSubstrateInternalError(
                 "obsidian note response must be an object"
             )
 
@@ -315,13 +328,13 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
         source = _normalize_relative_path(source_path)
         target = _normalize_relative_path(target_path)
         if source == target:
-            raise ObsidianAdapterConflictError(
+            raise ObsidianSubstrateConflictError(
                 "source_path and target_path must differ"
             )
 
         try:
             file = self.get_file(file_path=source)
-        except ObsidianAdapterNotFoundError:
+        except ObsidianSubstrateNotFoundError:
             file = None
 
         if file is not None:
@@ -342,13 +355,13 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
 
         files = list(self._iter_files_under_directory(source))
         if len(files) == 0:
-            raise ObsidianAdapterNotFoundError("source path does not exist")
+            raise ObsidianSubstrateNotFoundError("source path does not exist")
         try:
             self.list_directory(directory_path=target)
-        except ObsidianAdapterNotFoundError:
+        except ObsidianSubstrateNotFoundError:
             pass
         else:
-            raise ObsidianAdapterAlreadyExistsError("target directory already exists")
+            raise ObsidianSubstrateAlreadyExistsError("target directory already exists")
 
         source_prefix = f"{source}/"
         for file_path in files:
@@ -446,7 +459,7 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
                 endpoint=_vault_file_endpoint(normalized),
                 accept="application/json",
             )
-        except ObsidianAdapterNotFoundError:
+        except ObsidianSubstrateNotFoundError:
             if missing_ok:
                 return False
             raise
@@ -456,9 +469,9 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
         """Raise already-exists error when a file path currently resolves."""
         try:
             self.get_file(file_path=file_path)
-        except ObsidianAdapterNotFoundError:
+        except ObsidianSubstrateNotFoundError:
             return
-        raise ObsidianAdapterAlreadyExistsError("target file already exists")
+        raise ObsidianSubstrateAlreadyExistsError("target file already exists")
 
     def _request_json(
         self,
@@ -489,8 +502,8 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
             try:
                 payload = json.loads(raw.decode("utf-8"))
             except ValueError:
-                raise ObsidianAdapterInternalError(
-                    "obsidian adapter returned non-JSON response"
+                raise ObsidianSubstrateInternalError(
+                    "obsidian substrate returned non-JSON response"
                 ) from None
             return _HttpResult(status_code=result.status_code, payload=payload)
 
@@ -520,7 +533,7 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
                     content_type=content_type,
                     accept=accept,
                 )
-            except ObsidianAdapterDependencyError as exc:
+            except ObsidianSubstrateDependencyError as exc:
                 last_error = exc
                 continue
         assert last_error is not None
@@ -571,33 +584,33 @@ class ObsidianLocalRestAdapter(ObsidianAdapter):
         except urllib_error.HTTPError as exc:
             self._raise_http_error(exc)
         except urllib_error.URLError as exc:
-            raise ObsidianAdapterDependencyError(
-                f"obsidian adapter request failed: {exc.reason}"
+            raise ObsidianSubstrateDependencyError(
+                f"obsidian substrate request failed: {exc.reason}"
             ) from None
         except TimeoutError as exc:
-            raise ObsidianAdapterDependencyError(
+            raise ObsidianSubstrateDependencyError(
                 str(exc) or "obsidian request timed out"
             ) from None
 
-        raise ObsidianAdapterInternalError(
-            "obsidian adapter request failed unexpectedly"
+        raise ObsidianSubstrateInternalError(
+            "obsidian substrate request failed unexpectedly"
         )
 
     def _raise_http_error(self, exc: urllib_error.HTTPError) -> None:
-        """Map HTTP status codes into adapter-specific exceptions."""
+        """Map HTTP status codes into substrate-specific exceptions."""
         status = int(exc.code)
         message = _http_error_message(exc)
         if status in {500, 502, 503, 504, 429, 408}:
-            raise ObsidianAdapterDependencyError(message) from None
+            raise ObsidianSubstrateDependencyError(message) from None
         if status == 404:
-            raise ObsidianAdapterNotFoundError(message) from None
+            raise ObsidianSubstrateNotFoundError(message) from None
         if status == 409:
-            raise ObsidianAdapterAlreadyExistsError(message) from None
+            raise ObsidianSubstrateAlreadyExistsError(message) from None
         if status == 412:
-            raise ObsidianAdapterConflictError(message) from None
+            raise ObsidianSubstrateConflictError(message) from None
         if status in {400, 405}:
-            raise ObsidianAdapterInternalError(message) from None
-        raise ObsidianAdapterInternalError(message) from None
+            raise ObsidianSubstrateInternalError(message) from None
+        raise ObsidianSubstrateInternalError(message) from None
 
 
 def _normalize_relative_path(value: str) -> str:
@@ -605,7 +618,7 @@ def _normalize_relative_path(value: str) -> str:
     try:
         return normalize_vault_relative_path(value, allow_root=False)
     except ValueError as exc:
-        raise ObsidianAdapterInternalError(str(exc)) from None
+        raise ObsidianSubstrateInternalError(str(exc)) from None
 
 
 def _normalize_directory_path(value: str) -> str:
@@ -613,7 +626,7 @@ def _normalize_directory_path(value: str) -> str:
     try:
         return normalize_vault_directory_path(value, allow_root=True)
     except ValueError as exc:
-        raise ObsidianAdapterInternalError(str(exc)) from None
+        raise ObsidianSubstrateInternalError(str(exc)) from None
 
 
 def _normalize_file_path(value: str) -> str:
@@ -621,7 +634,7 @@ def _normalize_file_path(value: str) -> str:
     try:
         return normalize_vault_file_path(value, suffix=".md")
     except ValueError as exc:
-        raise ObsidianAdapterInternalError(str(exc)) from None
+        raise ObsidianSubstrateInternalError(str(exc)) from None
 
 
 def _vault_file_endpoint(file_path: str) -> str:
@@ -663,11 +676,13 @@ def _ensure_list_of_mappings(
 ) -> list[Mapping[str, object]]:
     """Validate payload is a list of object mappings."""
     if not isinstance(payload, list):
-        raise ObsidianAdapterInternalError(f"obsidian response {field} must be a list")
+        raise ObsidianSubstrateInternalError(
+            f"obsidian response {field} must be a list"
+        )
     items: list[Mapping[str, object]] = []
     for item in payload:
         if not isinstance(item, Mapping):
-            raise ObsidianAdapterInternalError(
+            raise ObsidianSubstrateInternalError(
                 f"obsidian response {field} contains invalid item"
             )
         items.append(item)
@@ -709,7 +724,7 @@ def _apply_line_edits(content: str, edits: Sequence[FileEditOperation]) -> str:
         start_idx = int(edit.start_line) - 1
         end_idx = int(edit.end_line)
         if start_idx < 0 or end_idx < start_idx or start_idx > len(lines):
-            raise ObsidianAdapterInternalError("edit operation line range is invalid")
+            raise ObsidianSubstrateInternalError("edit operation line range is invalid")
         replacement = str(edit.content).split("\n")
         lines[start_idx:end_idx] = replacement
     return "\n".join(lines)

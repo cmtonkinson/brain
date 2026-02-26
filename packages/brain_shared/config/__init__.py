@@ -4,6 +4,7 @@ from .loader import load_settings
 from .models import (
     ComponentsSettings,
     CoreBootSettings,
+    CoreHealthSettings,
     DEFAULT_CONFIG_PATH,
     BrainSettings,
     LoggingSettings,
@@ -17,6 +18,7 @@ __all__ = [
     "BrainSettings",
     "ComponentsSettings",
     "CoreBootSettings",
+    "CoreHealthSettings",
     "LoggingSettings",
     "ObservabilitySettings",
     "ProfileSettings",

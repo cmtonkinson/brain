@@ -183,7 +183,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         id_fields=("meta",),
     )
     def health(self, *, meta: EnvelopeMeta) -> Envelope[CapabilityEngineHealthStatus]:
-        """Return service readiness, policy readiness, and registry/audit counters."""
+        """Return service readiness and local registry/audit counters."""
         try:
             validate_meta(meta)
         except ValueError as exc:
@@ -192,15 +192,14 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 errors=[validation_error(str(exc), code=codes.INVALID_ARGUMENT)],
             )
 
-        policy_health = self._policy_service.health(meta=meta)
         return success(
             meta=meta,
             payload=CapabilityEngineHealthStatus(
                 service_ready=True,
-                policy_ready=policy_health.ok,
+                policy_ready=True,
                 discovered_capabilities=self._registry.count(),
                 invocation_audit_rows=self._audit_repository.count(),
-                detail="ok" if policy_health.ok else "policy service unhealthy",
+                detail="ok",
             ),
         )
 

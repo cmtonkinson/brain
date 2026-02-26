@@ -1,4 +1,4 @@
-"""Pydantic settings for the filesystem adapter component."""
+"""Pydantic settings for the filesystem substrate component."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from packages.brain_shared.config import BrainSettings, resolve_component_settings
-from resources.adapters.filesystem.component import RESOURCE_COMPONENT_ID
-from resources.adapters.filesystem.validation import normalize_extension
+from resources.substrates.filesystem.component import RESOURCE_COMPONENT_ID
+from resources.substrates.filesystem.validation import normalize_extension
 
 
-class FilesystemAdapterSettings(BaseModel):
-    """Filesystem adapter runtime settings for blob persistence."""
+class FilesystemSubstrateSettings(BaseModel):
+    """Filesystem substrate runtime settings for blob persistence."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -46,16 +46,16 @@ class FilesystemAdapterSettings(BaseModel):
         return normalize_extension(value=value, field_name="default_extension")
 
     def root_path(self) -> Path:
-        """Return the expanded root path for adapter operations."""
+        """Return the expanded root path for substrate operations."""
         return Path(self.root_dir).expanduser().resolve()
 
 
-def resolve_filesystem_adapter_settings(
+def resolve_filesystem_substrate_settings(
     settings: BrainSettings,
-) -> FilesystemAdapterSettings:
-    """Resolve filesystem adapter settings from ``components.adapter.filesystem``."""
+) -> FilesystemSubstrateSettings:
+    """Resolve filesystem substrate settings from ``components.substrate.filesystem``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),
-        model=FilesystemAdapterSettings,
+        model=FilesystemSubstrateSettings,
     )

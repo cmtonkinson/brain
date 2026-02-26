@@ -12,9 +12,17 @@ self-register by calling `register_component()` from
 ### Required semantics
 - Every _Component_ has a globally unique `ComponentId`.
 - Every _Component_ declares `layer`, `system`, and one or more `module_roots`.
+- Every L0 _Resource_ and L1 _Service_ exports a `health()` contract.
 - `ComponentId` is schema-safe (`^[a-z][a-z0-9_]{1,62}$`).
 - Registration is global and process-local via `register_component(...)`.
 - Registry is the source of truth for identity and ownership validation.
+
+### Health contract rule
+- _Services_ and _Resources_ must expose `health()`.
+- Each _Component_ may apply its own internal timeout semantics.
+- Core aggregate health enforces a global max timeout from
+  `components.core_health.max_timeout_seconds`; any `health()` call exceeding
+  that limit is unhealthy by definition.
 
 ### Registry behavior
 - One global registry contains all _Component_ types.

@@ -108,6 +108,9 @@ _Set one component-scoped cache value._
 - Module: `services/state/embedding_authority/service.py`
 - Summary: Public API for the Embedding Authority Service.
 
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return EAS and owned dependency readiness status._
+
 `upsert_chunk(*, meta: EnvelopeMeta, source_id: str, chunk_ordinal: int, reference_range: str, content_hash: str, text: str, metadata: Mapping[str, str]) -> Envelope[ChunkRecord]`  
 _Create or update one chunk._
 
@@ -199,6 +202,9 @@ _Create and return one new MAS session._
 - Module: `services/state/object_authority/service.py`
 - Summary: Public API for durable blob object operations.
 
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return OAS and owned dependency readiness status._
+
 `put_object(*, meta: EnvelopeMeta, content: bytes, extension: str, content_type: str, original_filename: str, source_uri: str) -> Envelope[ObjectRecord]`  
 _Persist one blob and return authoritative object record._
 
@@ -215,6 +221,9 @@ _Read metadata for one blob by canonical object key._
 ## `VaultAuthorityService`
 - Module: `services/state/vault_authority/service.py`
 - Summary: Public API for markdown vault file and directory operations.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return VAS and owned dependency readiness status._
 
 `list_directory(*, meta: EnvelopeMeta, directory_path: str) -> Envelope[list[VaultEntry]]`  
 _List file and directory entries under one vault-relative path._

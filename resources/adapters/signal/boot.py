@@ -20,7 +20,7 @@ def is_ready(ctx: BootContext) -> bool:
     settings = resolve_signal_adapter_settings(ctx.settings)
     client = HttpClient(
         base_url=settings.base_url.rstrip("/"),
-        timeout_seconds=settings.timeout_seconds,
+        timeout_seconds=settings.health_timeout_seconds,
     )
     try:
         client.get(SIGNAL_HEALTH_PATH)

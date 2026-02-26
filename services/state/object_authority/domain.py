@@ -48,3 +48,13 @@ class ObjectGetResult(BaseModel):
 
     object: ObjectRecord
     content: bytes
+
+
+class HealthStatus(BaseModel):
+    """OAS and owned dependency readiness status payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    service_ready: bool
+    substrate_ready: bool
+    detail: str

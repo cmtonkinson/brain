@@ -63,6 +63,11 @@ def test_redis_substrate_wraps_key_value_operations(
         "create_redis_client",
         lambda settings: fake_client,
     )
+    monkeypatch.setattr(
+        redis_substrate_module,
+        "create_redis_client_with_timeouts",
+        lambda **kwargs: fake_client,
+    )
     substrate = RedisClientSubstrate(settings=RedisSettings())
 
     substrate.set_value(key="a", value="one", ttl_seconds=30)
@@ -81,6 +86,11 @@ def test_redis_substrate_implements_fifo_queue_semantics(
         redis_substrate_module,
         "create_redis_client",
         lambda settings: fake_client,
+    )
+    monkeypatch.setattr(
+        redis_substrate_module,
+        "create_redis_client_with_timeouts",
+        lambda **kwargs: fake_client,
     )
     substrate = RedisClientSubstrate(settings=RedisSettings())
 
@@ -103,6 +113,11 @@ def test_redis_substrate_reports_ping(
         redis_substrate_module,
         "create_redis_client",
         lambda settings: fake_client,
+    )
+    monkeypatch.setattr(
+        redis_substrate_module,
+        "create_redis_client_with_timeouts",
+        lambda **kwargs: fake_client,
     )
     substrate = RedisClientSubstrate(settings=RedisSettings())
 

@@ -3,6 +3,16 @@
 from __future__ import annotations
 
 from typing import Protocol
+from pydantic import BaseModel, ConfigDict
+
+
+class RedisHealthStatus(BaseModel):
+    """Redis substrate readiness payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ready: bool
+    detail: str
 
 
 class RedisSubstrate(Protocol):
@@ -28,3 +38,6 @@ class RedisSubstrate(Protocol):
 
     def ping(self) -> bool:
         """Return substrate liveness from Redis ``PING``."""
+
+    def health(self) -> RedisHealthStatus:
+        """Probe Redis substrate readiness and detail."""

@@ -25,8 +25,20 @@ class SearchPoint(BaseModel):
     payload: Mapping[str, object]
 
 
+class QdrantHealthStatus(BaseModel):
+    """Qdrant substrate readiness payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ready: bool
+    detail: str
+
+
 class QdrantSubstrate(Protocol):
     """Protocol for direct Qdrant substrate operations."""
+
+    def health(self) -> QdrantHealthStatus:
+        """Probe Qdrant substrate readiness."""
 
     def get_collection_vector_size(self) -> int | None:
         """Return configured collection vector size if collection exists."""

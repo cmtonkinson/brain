@@ -12,6 +12,7 @@ from services.state.embedding_authority.domain import (
     ChunkRecord,
     EmbeddingRecord,
     EmbeddingSpec,
+    HealthStatus,
     EmbeddingStatus,
     SearchEmbeddingMatch,
     SourceRecord,
@@ -198,6 +199,10 @@ class EmbeddingAuthorityService(ABC):
     @abstractmethod
     def get_spec(self, *, meta: EnvelopeMeta, spec_id: str) -> Envelope[EmbeddingSpec]:
         """Read one spec by id."""
+
+    @abstractmethod
+    def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
+        """Return EAS and owned dependency readiness status."""
 
 
 def build_embedding_authority_service(

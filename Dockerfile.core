@@ -30,4 +30,7 @@ RUN addgroup --system brain && adduser --system --ingroup brain brain && \
 
 USER brain
 
+HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=3 \
+  CMD python -c "import sys,grpc;from brain.shared.v1 import core_health_pb2,core_health_pb2_grpc;channel=grpc.insecure_channel('127.0.0.1:50051');stub=core_health_pb2_grpc.CoreHealthServiceStub(channel);response=stub.Health(core_health_pb2.CoreHealthRequest(),timeout=2);sys.exit(0 if response.payload.ready else 1)"
+
 ENTRYPOINT ["python", "-m", "packages.brain_core.main"]

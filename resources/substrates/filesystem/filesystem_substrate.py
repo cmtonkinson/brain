@@ -1,4 +1,4 @@
-"""Filesystem-backed blob adapter with atomic safe-write semantics."""
+"""Filesystem-backed blob substrate with atomic safe-write semantics."""
 
 from __future__ import annotations
 
@@ -6,19 +6,38 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from resources.adapters.filesystem.config import FilesystemAdapterSettings
-from resources.adapters.filesystem.substrate import FilesystemBlobAdapter
-from resources.adapters.filesystem.validation import normalize_extension
+from resources.substrates.filesystem.config import FilesystemSubstrateSettings
+from resources.substrates.filesystem.substrate import (
+    FilesystemBlobSubstrate,
+    FilesystemHealthStatus,
+)
+from resources.substrates.filesystem.validation import normalize_extension
 
 _HEX = frozenset("0123456789abcdef")
 
 
-class LocalFilesystemBlobAdapter(FilesystemBlobAdapter):
+class LocalFilesystemBlobSubstrate(FilesystemBlobSubstrate):
     """Persist/retrieve blobs on local disk using digest-derived paths."""
 
-    def __init__(self, *, settings: FilesystemAdapterSettings) -> None:
+    def __init__(self, *, settings: FilesystemSubstrateSettings) -> None:
         self._settings = settings
         self._root = settings.root_path()
+
+    def health(self) -> FilesystemHealthStatus:
+        """Return filesystem substrate readiness for root dir access."""
+        try:
+            self._root.mkdir(parents=True, exist_ok=True)
+            if not self._root.is_dir():
+                return FilesystemHealthStatus(
+                    ready=False,
+                    detail=f"root path is not a directory: {self._root}",
+                )
+        except Exception as exc:  # noqa: BLE001
+            return FilesystemHealthStatus(
+                ready=False,
+                detail=f"filesystem probe failed: {type(exc).__name__}",
+            )
+        return FilesystemHealthStatus(ready=True, detail="ok")
 
     def resolve_path(self, *, digest_hex: str, extension: str) -> Path:
         """Resolve the deterministic filesystem path for digest and extension."""
@@ -33,7 +52,7 @@ class LocalFilesystemBlobAdapter(FilesystemBlobAdapter):
         if not self._root.exists():
             self._root.mkdir(parents=True, exist_ok=True)
         if not self._root.is_dir():
-            raise OSError(f"filesystem adapter root is not a directory: {self._root}")
+            raise OSError(f"filesystem substrate root is not a directory: {self._root}")
         path.parent.mkdir(parents=True, exist_ok=True)
 
         if path.exists():

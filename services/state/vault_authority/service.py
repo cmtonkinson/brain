@@ -7,9 +7,10 @@ from typing import Sequence
 
 from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
-from resources.adapters.obsidian.adapter import ObsidianAdapter
+from resources.substrates.obsidian.substrate import ObsidianSubstrate
 from services.state.vault_authority.domain import (
     FileEdit,
+    HealthStatus,
     SearchFileMatch,
     VaultEntry,
     VaultFileRecord,
@@ -18,6 +19,10 @@ from services.state.vault_authority.domain import (
 
 class VaultAuthorityService(ABC):
     """Public API for markdown vault file and directory operations."""
+
+    @abstractmethod
+    def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
+        """Return VAS and owned dependency readiness status."""
 
     @abstractmethod
     def list_directory(
@@ -145,12 +150,12 @@ class VaultAuthorityService(ABC):
 def build_vault_authority_service(
     *,
     settings: BrainSettings,
-    adapter: ObsidianAdapter | None = None,
+    substrate: ObsidianSubstrate | None = None,
 ) -> VaultAuthorityService:
     """Build default Vault Authority implementation from typed settings."""
-    from resources.adapters.obsidian import (
-        ObsidianLocalRestAdapter,
-        resolve_obsidian_adapter_settings,
+    from resources.substrates.obsidian import (
+        ObsidianLocalRestSubstrate,
+        resolve_obsidian_substrate_settings,
     )
     from services.state.vault_authority.config import resolve_vault_authority_settings
     from services.state.vault_authority.implementation import (
@@ -159,8 +164,8 @@ def build_vault_authority_service(
 
     return DefaultVaultAuthorityService(
         settings=resolve_vault_authority_settings(settings),
-        adapter=adapter
-        or ObsidianLocalRestAdapter(
-            settings=resolve_obsidian_adapter_settings(settings)
+        substrate=substrate
+        or ObsidianLocalRestSubstrate(
+            settings=resolve_obsidian_substrate_settings(settings)
         ),
     )

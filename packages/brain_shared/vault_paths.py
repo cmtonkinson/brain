@@ -1,4 +1,4 @@
-"""Shared vault path normalization helpers for VAS and Obsidian adapter."""
+"""Shared vault path normalization helpers for VAS and Obsidian substrate."""
 
 from __future__ import annotations
 

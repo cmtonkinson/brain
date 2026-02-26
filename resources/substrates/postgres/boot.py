@@ -15,7 +15,7 @@ def is_ready(ctx: BootContext) -> bool:
     settings = resolve_postgres_settings(ctx.settings)
     engine = create_postgres_engine(settings)
     try:
-        return ping(engine)
+        return ping(engine, timeout_seconds=settings.health_timeout_seconds)
     finally:
         engine.dispose()
 

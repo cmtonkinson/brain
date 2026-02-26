@@ -15,6 +15,7 @@ class SignalAdapterSettings(BaseModel):
 
     base_url: str = "http://signal-api:8080"
     receive_e164: str = "+13333333333"
+    health_timeout_seconds: float = Field(default=1.0, gt=0)
     timeout_seconds: float = Field(default=10.0, gt=0)
     max_retries: int = Field(default=2, ge=0)
     poll_interval_seconds: float = Field(default=1.0, gt=0)

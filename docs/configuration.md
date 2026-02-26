@@ -41,6 +41,7 @@ BRAIN_PROFILE__WEBHOOK_SHARED_SECRET=replace-me
 BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
 BRAIN_COMPONENTS__CORE_BOOT__BOOT_RETRY_ATTEMPTS=5
 BRAIN_COMPONENTS__CORE_GRPC__BIND_PORT=50051
+BRAIN_COMPONENTS__CORE_HEALTH__MAX_TIMEOUT_SECONDS=1.0
 BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__POOL_SIZE=10
 BRAIN_COMPONENTS__SUBSTRATE__QDRANT__URL=http://localhost:6333
 BRAIN_COMPONENTS__SUBSTRATE__REDIS__URL=redis://redis:6379/0
@@ -103,6 +104,13 @@ Core gRPC runtime bind settings.
 | `bind_host` | `0.0.0.0` | Bind host for the Brain Core gRPC server. |
 | `bind_port` | `50051` | Bind port for the Brain Core gRPC server. Must be in `1..65535`. |
 
+### `components.core_health`
+Core aggregate health policy settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `max_timeout_seconds` | `1.0` | Global maximum duration for any service/resource `health()` call. If exceeded, that component is unhealthy by definition. Must be > 0. |
+
 ### `components.substrate.postgres`
 PostgreSQL substrate connection settings.
 
@@ -114,6 +122,7 @@ PostgreSQL substrate connection settings.
 | `pool_timeout_seconds` | `30.0` | Seconds to wait for a connection from the pool before raising. |
 | `pool_pre_ping` | `true` | Test connections with a lightweight query before use (detects stale connections). |
 | `connect_timeout_seconds` | `10.0` | Seconds to wait when establishing a new connection. |
+| `health_timeout_seconds` | `1.0` | Timeout budget in seconds for Postgres health probes. Must be > 0. |
 | `sslmode` | `prefer` | PostgreSQL SSL mode (`disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`). |
 | `host` | `postgres` | Hostname used when `url` is unset. |
 | `port` | `5432` | Port used when `url` is unset. |
@@ -145,10 +154,11 @@ Redis substrate connection defaults.
 | `ssl` | `false` | Use TLS (`rediss://`) in split-field URL mode. |
 | `connect_timeout_seconds` | `5.0` | Socket connect timeout in seconds. Must be > 0. |
 | `socket_timeout_seconds` | `5.0` | Socket operation timeout in seconds. Must be > 0. |
+| `health_timeout_seconds` | `1.0` | Timeout budget in seconds for Redis health probes. Must be > 0. |
 | `max_connections` | `20` | Maximum client pool connections. Must be > 0. |
 
-### `components.adapter.filesystem`
-Filesystem adapter defaults for OAS blob persistence.
+### `components.substrate.filesystem`
+Filesystem substrate defaults for OAS blob persistence.
 
 | Key | Default | Description |
 |---|---|---|
@@ -167,12 +177,12 @@ LiteLLM adapter connection defaults.
 | `timeout_seconds` | `30.0` | Per-request HTTP timeout. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
 
-### `components.adapter.obsidian`
-Obsidian Local REST API adapter defaults.
+### `components.substrate.obsidian`
+Obsidian Local REST API substrate defaults.
 
 | Key | Default | Description |
 |---|---|---|
-| `base_url` | `http://127.0.0.1:27124` | Base URL for the Obsidian Local REST API instance. |
+| `base_url` | `http://host.docker.internal:27123` | Base URL for the Obsidian Local REST API instance. |
 | `api_key` | `""` | Optional API token sent as `Authorization: Bearer <token>`. |
 | `timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx/429). Must be >= 0. |
@@ -184,6 +194,7 @@ Signal runtime adapter defaults.
 |---|---|---|
 | `base_url` | `http://signal-api:8080` | Base URL for Signal runtime receive/health endpoints. |
 | `receive_e164` | `+10000000000` | E.164 identity polled for inbound messages via `/v1/receive/{number}`. |
+| `health_timeout_seconds` | `1.0` | Per-request timeout in seconds for Signal health probes. Must be > 0. |
 | `timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
 | `poll_interval_seconds` | `1.0` | Steady-state delay between successful polling cycles. Must be > 0. |

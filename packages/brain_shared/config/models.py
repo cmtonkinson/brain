@@ -87,6 +87,12 @@ class CoreGrpcSettings(BaseModel):
     bind_port: int = Field(default=50051, ge=1, le=65535)
 
 
+class CoreHealthSettings(BaseModel):
+    """Core aggregate health policy under ``components.core_health``."""
+
+    max_timeout_seconds: float = Field(default=1.0, gt=0)
+
+
 class ComponentNamespaceSettings(BaseModel):
     """Namespace map for grouped component settings under ``components.<kind>``."""
 
@@ -100,6 +106,7 @@ class ComponentsSettings(BaseModel):
 
     core_boot: CoreBootSettings = Field(default_factory=CoreBootSettings)
     core_grpc: CoreGrpcSettings = Field(default_factory=CoreGrpcSettings)
+    core_health: CoreHealthSettings = Field(default_factory=CoreHealthSettings)
     service: ComponentNamespaceSettings = Field(
         default_factory=ComponentNamespaceSettings
     )

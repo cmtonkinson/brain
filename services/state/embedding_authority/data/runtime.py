@@ -30,6 +30,7 @@ class EmbeddingPostgresRuntime:
     engine: Engine
     session_factory: sessionmaker[Session]
     schema_sessions: ServiceSchemaSessionProvider
+    health_timeout_seconds: float
 
     @classmethod
     def from_settings(cls, settings: BrainSettings) -> "EmbeddingPostgresRuntime":
@@ -45,11 +46,12 @@ class EmbeddingPostgresRuntime:
                 session_factory=session_factory,
                 schema=schema,
             ),
+            health_timeout_seconds=postgres_config.health_timeout_seconds,
         )
 
     def is_healthy(self) -> bool:
         """Return ``True`` when the backing Postgres connection is reachable."""
-        return ping(self.engine)
+        return ping(self.engine, timeout_seconds=self.health_timeout_seconds)
 
 
 def embedding_postgres_schema() -> str:

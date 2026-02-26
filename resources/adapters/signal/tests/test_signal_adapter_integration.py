@@ -16,7 +16,7 @@ class _CaptureClient:
         self.last_params: dict[str, str] | None = None
         self.posts: list[tuple[str, str, dict[str, str]]] = []
 
-    def get(self, _url: str):
+    def get(self, _url: str, **_kwargs):
         return object()
 
     def get_json(self, url: str, **kwargs):

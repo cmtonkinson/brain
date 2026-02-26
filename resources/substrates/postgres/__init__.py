@@ -6,6 +6,11 @@ from resources.substrates.postgres.engine import create_postgres_engine
 from resources.substrates.postgres.errors import normalize_postgres_error
 from resources.substrates.postgres.health import ping
 from resources.substrates.postgres.bootstrap import bootstrap_service_schemas
+from resources.substrates.postgres.substrate import (
+    PostgresHealthStatus,
+    PostgresSubstrate,
+    SharedPostgresSubstrate,
+)
 from resources.substrates.postgres.schema_session import ServiceSchemaSessionProvider
 from resources.substrates.postgres.session import (
     create_session_factory,
@@ -23,4 +28,7 @@ __all__ = [
     "ServiceSchemaSessionProvider",
     "normalize_postgres_error",
     "ping",
+    "PostgresHealthStatus",
+    "PostgresSubstrate",
+    "SharedPostgresSubstrate",
 ]

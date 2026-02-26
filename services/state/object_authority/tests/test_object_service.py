@@ -26,7 +26,7 @@ class _BlobWriteCall:
 
 
 class _FakeBlobStore:
-    """In-memory filesystem adapter fake for OAS behavior tests."""
+    """In-memory filesystem substrate fake for OAS behavior tests."""
 
     def __init__(self) -> None:
         self.rows: dict[tuple[str, str], bytes] = {}
