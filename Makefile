@@ -38,20 +38,20 @@ deps-upgrade:
 	$(PY) -m piptools sync requirements.txt
 
 clean:
-	rm --recursive --force $(GENERATED_DIR)
+	rm -rf $(GENERATED_DIR)
 	find . -type f -name '*.pyc' -delete
-	find . -type d -name '__pycache__' -prune -exec rm --recursive --force {} +
+	find . -type d -name '__pycache__' -prune -exec rm -rf {} +
 
 build: $(PROTO_STAMP)
 
 $(PROTO_STAMP): $(PROTO_FILES)
-	mkdir --parents $(GENERATED_DIR)
+	mkdir -p $(GENERATED_DIR)
 	$(PY) -m grpc_tools.protoc \
 		--proto_path=$(PROTO_DIR) \
 		--python_out=$(GENERATED_DIR) \
 		--grpc_python_out=$(GENERATED_DIR) \
 		$(PROTO_FILES)
-	$(PY) -m compileall --quiet $(GENERATED_DIR)
+	$(PY) -m compileall -q $(GENERATED_DIR)
 	touch $(PROTO_STAMP)
 
 check:
