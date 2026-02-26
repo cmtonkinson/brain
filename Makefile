@@ -1,6 +1,7 @@
 SHELL           := /bin/bash
 VENV 						:= .venv
-PY 							:= $(VENV)/bin/python
+VENV_PY         := $(VENV)/bin/python
+PY 							:= $(if $(wildcard $(VENV_PY)),$(VENV_PY),python3)
 PYTHON_VERSION  := $(shell cut -d. -f1,2 .python-version)
 PROTO_DIR       := protos
 GENERATED_DIR   := generated
