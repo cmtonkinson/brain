@@ -85,6 +85,7 @@ class CoreGrpcSettings(BaseModel):
 
     bind_host: str = "0.0.0.0"
     bind_port: int = Field(default=50051, ge=1, le=65535)
+    enable_reflection: bool = False
 
 
 class CoreHealthSettings(BaseModel):

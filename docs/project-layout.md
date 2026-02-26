@@ -100,8 +100,9 @@ provides the gRPC layer that backs the _Brain Core SDK_.
 ------------------------------------------------------------------------
 ## Configuration
 Runtime configuration is loaded from `~/.config/brain/brain.yaml`. A sample is
-provided at `config/brain.yaml.sample`. See [Configuration Reference](configuration.md)
-for keys and [Conventions](conventions.md) for Pydantic contract rules.
+provided at `config/brain.yaml.sample`. See [Configuration
+Reference](configuration.md) for keys and [Conventions](conventions.md) for
+Pydantic contract rules.
 
 ------------------------------------------------------------------------
 ## Tests
@@ -109,7 +110,8 @@ for keys and [Conventions](conventions.md) for Pydantic contract rules.
 - _Component_-level tests live alongside their _Service_ in
   `services/<system>/<service>/tests/`.
 - _Resource_-level tests live alongside their _Resource_.
-- Run all tests with `make test` (see [Development Guide](development-guide.md)).
+- Run all tests with `make test` (see [Development
+  Guide](development-guide.md)).
 
 ------------------------------------------------------------------------
 _End of Project Layout_

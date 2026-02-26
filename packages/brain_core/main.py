@@ -24,6 +24,19 @@ from packages.brain_shared.manifest import ComponentManifest, get_registry
 
 _LOGGER = get_logger(__name__)
 _RUNNING = True
+_REFLECTION_SERVICE_NAMES: tuple[str, ...] = (
+    "brain.action.v1.AttentionRouterService",
+    "brain.action.v1.CapabilityEngineService",
+    "brain.action.v1.LanguageModelService",
+    "brain.action.v1.PolicyService",
+    "brain.action.v1.SwitchboardService",
+    "brain.state.v1.CacheAuthorityService",
+    "brain.state.v1.EmbeddingAuthorityService",
+    "brain.state.v1.MemoryAuthorityService",
+    "brain.state.v1.ObjectAuthorityService",
+    "brain.state.v1.VaultAuthorityService",
+    "brain.shared.v1.CoreHealthService",
+)
 
 
 def _handle_shutdown(_signum: int, _frame: object) -> None:
@@ -164,6 +177,9 @@ def _start_grpc_runtime(
         )
         registered_services.append("core_health")
 
+    if settings.components.core_grpc.enable_reflection:
+        _enable_grpc_reflection(server=server, generated_root=generated_root)
+
     if len(registered_services) == 0:
         raise RuntimeError("no service gRPC adapters registered")
 
@@ -183,6 +199,29 @@ def _start_grpc_runtime(
         },
     )
     return server
+
+
+def _enable_grpc_reflection(*, server: grpc.Server, generated_root: Path) -> None:
+    """Enable gRPC Server Reflection for runtime introspection clients."""
+    del generated_root
+    try:
+        from grpc_reflection.v1alpha import reflection
+    except ImportError as exc:
+        raise RuntimeError(
+            "gRPC reflection enabled but grpcio-reflection is not installed"
+        ) from exc
+
+    service_names = list(_REFLECTION_SERVICE_NAMES)
+    if len(service_names) == 0:
+        _LOGGER.warning("gRPC reflection enabled but no protobuf services discovered")
+    reflection.enable_server_reflection(
+        tuple([*service_names, reflection.SERVICE_NAME]),
+        server,
+    )
+    _LOGGER.info(
+        "gRPC reflection enabled",
+        extra={"reflected_service_count": len(service_names)},
+    )
 
 
 def main() -> None:

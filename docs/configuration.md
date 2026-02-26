@@ -41,6 +41,7 @@ BRAIN_PROFILE__WEBHOOK_SHARED_SECRET=replace-me
 BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
 BRAIN_COMPONENTS__CORE_BOOT__BOOT_RETRY_ATTEMPTS=5
 BRAIN_COMPONENTS__CORE_GRPC__BIND_PORT=50051
+BRAIN_COMPONENTS__CORE_GRPC__ENABLE_REFLECTION=true
 BRAIN_COMPONENTS__CORE_HEALTH__MAX_TIMEOUT_SECONDS=1.0
 BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__POOL_SIZE=10
 BRAIN_COMPONENTS__SUBSTRATE__QDRANT__URL=http://localhost:6333
@@ -103,6 +104,7 @@ Core gRPC runtime bind settings.
 |---|---|---|
 | `bind_host` | `0.0.0.0` | Bind host for the Brain Core gRPC server. |
 | `bind_port` | `50051` | Bind port for the Brain Core gRPC server. Must be in `1..65535`. |
+| `enable_reflection` | `false` | Enable gRPC Server Reflection for runtime method/service introspection tools (for example `grpcurl`, Postman gRPC browser). |
 
 ### `components.core_health`
 Core aggregate health policy settings.

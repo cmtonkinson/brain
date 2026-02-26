@@ -18,6 +18,7 @@ components:
   core_grpc:
     bind_host: 0.0.0.0
     bind_port: 50051
+    enable_reflection: false
   core_health:
     max_timeout_seconds: 1.0
 

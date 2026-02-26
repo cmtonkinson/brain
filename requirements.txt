@@ -56,8 +56,11 @@ fsspec==2026.2.0
     # via huggingface-hub
 grpcio==1.78.0
     # via
+    #   grpcio-reflection
     #   grpcio-tools
     #   qdrant-client
+grpcio-reflection==1.78.0
+    # via -r requirements.in
 grpcio-tools==1.78.0
     # via -r requirements.in
 h11==0.16.0
@@ -140,6 +143,7 @@ propcache==0.4.1
 protobuf==6.33.5
     # via
     #   -r requirements.in
+    #   grpcio-reflection
     #   grpcio-tools
     #   qdrant-client
 psycopg[binary]==3.3.3

@@ -116,3 +116,42 @@ def test_start_grpc_runtime_fails_when_bind_fails(
             components=components,
             server_factory=lambda *_args, **_kwargs: fake_server,
         )
+
+
+def test_start_grpc_runtime_enables_reflection_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Core runtime should enable gRPC reflection when explicitly configured."""
+    settings = BrainSettings(
+        components={
+            "core_grpc": {
+                "bind_host": "127.0.0.1",
+                "bind_port": 50055,
+                "enable_reflection": True,
+            }
+        }
+    )
+    fake_server = _FakeServer(bound_port=50055)
+    registry = _Registry(services=(_Manifest(id="service_a"),))
+    components = {"service_a": object()}
+    calls: list[object] = []
+
+    monkeypatch.setattr("packages.brain_core.main.get_registry", lambda: registry)
+    monkeypatch.setattr(
+        "packages.brain_core.main._resolve_service_grpc_registrar",
+        lambda _manifest: (
+            lambda *, server, service: server.registered.append("service_a")
+        ),
+    )
+    monkeypatch.setattr(
+        "packages.brain_core.main._enable_grpc_reflection",
+        lambda *, server, generated_root: calls.append((server, generated_root)),
+    )
+
+    _start_grpc_runtime(
+        settings=settings,
+        components=components,
+        server_factory=lambda *_args, **_kwargs: fake_server,
+    )
+
+    assert len(calls) == 1
