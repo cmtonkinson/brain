@@ -10,6 +10,7 @@ from packages.brain_shared.http import (
     HttpStatusError,
 )
 from resources.adapters.signal.config import resolve_signal_adapter_settings
+from resources.adapters.signal.constants import SIGNAL_HEALTH_PATH
 
 dependencies: tuple[str, ...] = tuple()
 
@@ -22,7 +23,7 @@ def is_ready(ctx: BootContext) -> bool:
         timeout_seconds=settings.timeout_seconds,
     )
     try:
-        client.get("/health")
+        client.get(SIGNAL_HEALTH_PATH)
         return True
     except (HttpRequestError, HttpStatusError, HttpJsonDecodeError):
         return False

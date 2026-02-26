@@ -29,6 +29,7 @@ from resources.adapters.signal.adapter import (
 )
 from resources.adapters.signal.component import RESOURCE_COMPONENT_ID
 from resources.adapters.signal.config import SignalAdapterSettings
+from resources.adapters.signal.constants import SIGNAL_HEALTH_PATH
 
 _LOGGER = get_logger(__name__)
 _HEADER_SIGNATURE = "X-Brain-Signature"
@@ -89,7 +90,7 @@ class HttpSignalAdapter(SignalAdapter):
     def health(self) -> SignalAdapterHealthResult:
         """Return adapter health by probing Signal runtime health endpoint."""
         try:
-            self._signal_client.get("/health")
+            self._signal_client.get(SIGNAL_HEALTH_PATH)
         except (HttpRequestError, HttpStatusError, HttpJsonDecodeError) as exc:
             return SignalAdapterHealthResult(
                 adapter_ready=False,

@@ -8,7 +8,7 @@ Action _Adapter_ _Resource_ that integrates `signal-cli-rest-api` for Switchboar
 - `adapter.py`: protocol, DTOs, and adapter error taxonomy
 - `signal_adapter.py`: concrete HTTP polling + callback forwarding implementation (`HttpSignalAdapter`)
 - `config.py`: adapter settings model and resolver
-- `boot.py`: readiness hook that probes Signal container `/health`
+- `boot.py`: readiness hook that probes Signal container `/v1/health`
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
@@ -29,7 +29,7 @@ Primary interactions:
   - shared secret
   - receive identity (from adapter config)
 - Polls Signal runtime:
-  - `GET /health`
+  - `GET /v1/health`
   - `GET /v1/receive/{receive_e164}`
 - Forwards each received message as signed JSON callback POST to Switchboard webhook endpoint.
 - Sends outbound messages for Attention Router over `POST /v2/send`.
