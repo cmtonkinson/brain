@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.manifest import (
     ComponentId,
     ModuleRoot,
@@ -26,3 +29,15 @@ MANIFEST = register_component(
         owns_resources=frozenset(),
     )
 )
+
+
+def build_component(
+    *, settings: BrainSettings, components: Mapping[str, object]
+) -> object:
+    """Build concrete runtime instance for this registered service component."""
+    from services.action.attention_router.service import build_attention_router_service
+
+    return build_attention_router_service(
+        settings=settings,
+        signal_adapter=components.get("adapter_signal"),
+    )

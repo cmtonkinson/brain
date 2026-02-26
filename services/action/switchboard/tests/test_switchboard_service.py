@@ -29,7 +29,6 @@ from services.state.cache_authority.service import CacheAuthorityService
 class _RegisterCall:
     callback_url: str
     shared_secret: str
-    operator_e164: str
 
 
 @dataclass(frozen=True)
@@ -66,13 +65,11 @@ class _FakeSignalAdapter(SignalAdapter):
         *,
         callback_url: str,
         shared_secret: str,
-        operator_e164: str,
     ) -> SignalWebhookRegistrationResult:
         self.register_calls.append(
             _RegisterCall(
                 callback_url=callback_url,
                 shared_secret=shared_secret,
-                operator_e164=operator_e164,
             )
         )
         if self.raise_register is not None:
@@ -166,9 +163,9 @@ def _signature(secret: str, timestamp: int, body: str) -> str:
 
 def _service(
     *,
-    operator_signal_e164: str = "+12025550100",
+    operator_signal_contact_e164: str = "+12025550100",
     webhook_secret: str = "super-secret",
-    default_country_code: str = "US",
+    default_dial_code: str = "+1",
 ) -> tuple[DefaultSwitchboardService, _FakeSignalAdapter, _FakeCacheService]:
     """Build Switchboard with in-memory dependencies for tests."""
     adapter = _FakeSignalAdapter()
@@ -176,8 +173,8 @@ def _service(
     service = DefaultSwitchboardService(
         settings=SwitchboardServiceSettings(),
         identity=SwitchboardIdentitySettings(
-            operator_signal_e164=operator_signal_e164,
-            default_country_code=default_country_code,
+            operator_signal_contact_e164=operator_signal_contact_e164,
+            default_dial_code=default_dial_code,
             webhook_shared_secret=webhook_secret,
         ),
         adapter=adapter,
@@ -216,16 +213,16 @@ def test_ingest_accepts_operator_message_and_enqueues_in_cas() -> None:
     assert cache.queue_calls[0].queue == "signal_inbound"
 
 
-def test_ingest_uses_us_plus_one_fallback_for_non_e164_inputs() -> None:
-    """Non-E.164 values normalize using US +1 fallback regardless of country code."""
+def test_ingest_uses_configured_dial_code_for_non_e164_inputs() -> None:
+    """Non-E.164 values normalize using configured default_dial_code."""
     service, _adapter, cache = _service(
-        operator_signal_e164="2025550100",
-        default_country_code="ZZ",
+        operator_signal_contact_e164="2071234567",
+        default_dial_code="+44",
     )
     body = json.dumps(
         {
             "data": {
-                "source": "2025550100",
+                "source": "2071234567",
                 "message": "hello",
                 "timestamp": int(time() * 1000),
             }
@@ -355,7 +352,6 @@ def test_register_signal_webhook_uses_configured_secret() -> None:
         == "https://example.com/switchboard/signal"
     )
     assert adapter.register_calls[0].shared_secret == "configured-secret"
-    assert adapter.register_calls[0].operator_e164 == "+12025550100"
 
 
 def test_register_signal_webhook_maps_dependency_failures() -> None:

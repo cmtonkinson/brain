@@ -114,6 +114,29 @@ primary configuration loading.
 - Hooks receive runtime dependencies/settings via `BootContext`; _Components_
   should not rely on mutable module globals for boot state.
 
+## Optional After-Boot Hook Contract
+Any _Component_ may define an optional `after_boot(...)` function in its
+`component.py` module for post-boot initialization that must run after all boot
+hooks succeed.
+
+### Ordering
+- `after_boot(...)` runs after global boot orchestration completes.
+- `after_boot(...)` runs before gRPC runtime starts serving.
+- If any `after_boot(...)` hook raises, Core startup fails hard and exits with
+  error.
+
+### Contract
+- Signature: `after_boot(*, settings: BrainSettings, components: Mapping[str, object]) -> None`
+- `settings` is fully resolved typed runtime configuration.
+- `components` is the instantiated component map keyed by `ComponentId`.
+
+### Semantics
+- Use this hook for post-boot initialization that requires a fully booted
+  runtime graph.
+- This hook is not a readiness gate and does not participate in boot
+  retry/timeout policy.
+- Hooks must be deterministic and raise on failure.
+
 ------------------------------------------------------------------------
 ## Capability Package Design
 Capability packages are immutable runtime contracts owned by Capability Engine.

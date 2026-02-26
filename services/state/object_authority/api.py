@@ -96,6 +96,14 @@ class GrpcObjectAuthorityService(object_pb2_grpc.ObjectAuthorityServiceServicer)
         )
 
 
+def register_grpc(*, server: grpc.Server, service: ObjectAuthorityService) -> None:
+    """Register Object Authority gRPC service implementation on one server."""
+    object_pb2_grpc.add_ObjectAuthorityServiceServicer_to_server(
+        GrpcObjectAuthorityService(service=service),
+        server,
+    )
+
+
 def _abort_for_transport_errors(
     *,
     context: grpc.ServicerContext,

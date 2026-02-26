@@ -74,7 +74,6 @@ def test_run_once_polls_and_forwards_signed_webhook() -> None:
     adapter.register_webhook(
         callback_url="http://switchboard:8091/v1/inbound/signal/webhook",
         shared_secret="secret",
-        operator_e164="+12025550100",
     )
 
     delay = adapter._run_once()
@@ -100,7 +99,6 @@ def test_run_once_retries_pending_webhook_after_callback_failure() -> None:
     adapter.register_webhook(
         callback_url="http://switchboard:8091/v1/inbound/signal/webhook",
         shared_secret="secret",
-        operator_e164="+12025550100",
     )
 
     callback.raise_post = HttpRequestError(
@@ -134,7 +132,6 @@ def test_run_once_applies_exponential_backoff_on_receive_failure() -> None:
     adapter.register_webhook(
         callback_url="http://switchboard:8091/v1/inbound/signal/webhook",
         shared_secret="secret",
-        operator_e164="+12025550100",
     )
 
     assert adapter._run_once() == 1.0

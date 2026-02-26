@@ -32,6 +32,7 @@ def test_load_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
         environ={
             "BRAIN_LOGGING__LEVEL": "ERROR",
             "BRAIN_COMPONENTS__CORE_BOOT__BOOT_RETRY_ATTEMPTS": "4",
+            "BRAIN_COMPONENTS__CORE_GRPC__BIND_PORT": "50052",
             "BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__POOL_SIZE": "9",
         },
         config_path=config_file,
@@ -50,13 +51,14 @@ def test_load_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
 
     assert settings.logging.level == "DEBUG"
     assert settings.components.core_boot.boot_retry_attempts == 4
+    assert settings.components.core_grpc.bind_port == 50052
     assert postgres.pool_size == 9
     assert embedding.max_list_limit == 500
 
 
-def test_load_settings_uses_model_defaults_when_sources_missing() -> None:
+def test_load_settings_uses_model_defaults_when_sources_missing(tmp_path: Path) -> None:
     """Settings should fall back to model defaults when env and YAML are absent."""
-    settings = load_settings(environ={})
+    settings = load_settings(config_path=tmp_path / "brain.yaml", environ={})
     postgres = resolve_component_settings(
         settings=settings,
         component_id="substrate_postgres",
@@ -67,3 +69,54 @@ def test_load_settings_uses_model_defaults_when_sources_missing() -> None:
     assert postgres.pool_size == 5
     assert settings.logging.level == "INFO"
     assert settings.components.core_boot.boot_retry_attempts == 3
+    assert settings.components.core_grpc.bind_host == "0.0.0.0"
+    assert settings.components.core_grpc.bind_port == 50051
+
+
+def test_load_settings_applies_secrets_yaml_over_brain_yaml(tmp_path: Path) -> None:
+    """Optional secrets.yaml should override matching keys from brain.yaml only."""
+    config_file = tmp_path / "brain.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "profile:",
+                "  webhook_shared_secret: public-secret",
+                "logging:",
+                "  level: WARNING",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    secrets_file = tmp_path / "secrets.yaml"
+    secrets_file.write_text(
+        "\n".join(
+            [
+                "profile:",
+                "  webhook_shared_secret: private-secret",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path=config_file, environ={})
+
+    assert settings.profile.webhook_shared_secret == "private-secret"
+    assert settings.logging.level == "WARNING"
+
+
+def test_load_settings_ignores_secrets_yaml_when_missing(tmp_path: Path) -> None:
+    """brain.yaml values should be used unchanged when secrets.yaml does not exist."""
+    config_file = tmp_path / "brain.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "profile:",
+                "  webhook_shared_secret: public-secret",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path=config_file, environ={})
+
+    assert settings.profile.webhook_shared_secret == "public-secret"

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.manifest import (
     ComponentId,
     ModuleRoot,
@@ -21,3 +24,14 @@ MANIFEST = register_component(
         owner_service_id=None,
     )
 )
+
+
+def build_component(
+    *, settings: BrainSettings, components: Mapping[str, object]
+) -> object:
+    """Build concrete runtime instance for this registered resource component."""
+    del components
+    from resources.substrates.postgres.config import resolve_postgres_settings
+    from resources.substrates.postgres.engine import create_postgres_engine
+
+    return create_postgres_engine(resolve_postgres_settings(settings))

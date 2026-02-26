@@ -1,0 +1,32 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app:/app/generated \
+    BRAIN_CONFIG_FILE=/app/config/brain.yaml
+
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --requirement /app/requirements.txt
+
+# Generate protobuf stubs at image build time so runtime does not require make/grpc tools.
+COPY protos /app/protos
+RUN mkdir -p /app/generated && \
+    python -m grpc_tools.protoc \
+        -I /app/protos \
+        --python_out=/app/generated \
+        --grpc_python_out=/app/generated \
+        $(find /app/protos -type f -name '*.proto' | sort) && \
+    python -m compileall -q /app/generated
+
+COPY . /app
+
+RUN addgroup --system brain && adduser --system --ingroup brain brain && \
+    chown -R brain:brain /app
+
+USER brain
+
+ENTRYPOINT ["python", "-m", "packages.brain_core.main"]

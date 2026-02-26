@@ -5,7 +5,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Sequence
 
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
+from resources.adapters.obsidian.adapter import ObsidianAdapter
 from services.state.vault_authority.domain import (
     FileEdit,
     SearchFileMatch,
@@ -138,3 +140,27 @@ class VaultAuthorityService(ABC):
         limit: int = 20,
     ) -> Envelope[list[SearchFileMatch]]:
         """Search markdown files lexically through Obsidian Local REST API."""
+
+
+def build_vault_authority_service(
+    *,
+    settings: BrainSettings,
+    adapter: ObsidianAdapter | None = None,
+) -> VaultAuthorityService:
+    """Build default Vault Authority implementation from typed settings."""
+    from resources.adapters.obsidian import (
+        ObsidianLocalRestAdapter,
+        resolve_obsidian_adapter_settings,
+    )
+    from services.state.vault_authority.config import resolve_vault_authority_settings
+    from services.state.vault_authority.implementation import (
+        DefaultVaultAuthorityService,
+    )
+
+    return DefaultVaultAuthorityService(
+        settings=resolve_vault_authority_settings(settings),
+        adapter=adapter
+        or ObsidianLocalRestAdapter(
+            settings=resolve_obsidian_adapter_settings(settings)
+        ),
+    )

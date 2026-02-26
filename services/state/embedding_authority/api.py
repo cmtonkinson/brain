@@ -444,10 +444,8 @@ class GrpcEmbeddingAuthorityService(
         )
 
 
-def register_embedding_authority_service(
-    server: grpc.Server, service: EmbeddingAuthorityService
-) -> None:
-    """Attach the EAS gRPC servicer to a server."""
+def register_grpc(*, server: grpc.Server, service: EmbeddingAuthorityService) -> None:
+    """Register Embedding Authority gRPC service implementation on one server."""
     embedding_pb2_grpc.add_EmbeddingAuthorityServiceServicer_to_server(
         GrpcEmbeddingAuthorityService(service=service),
         server,

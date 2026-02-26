@@ -107,6 +107,47 @@ def test_run_boot_hooks_polls_readiness_until_ready() -> None:
     assert clock.now == 2.0
 
 
+def test_run_boot_hooks_waits_for_all_readiness_before_any_boot() -> None:
+    """No boot should execute until every hook reports ready."""
+    calls: list[str] = []
+    ready = {"a": 0, "b": 0}
+
+    def is_ready_a(_ctx: BootContext) -> bool:
+        ready["a"] += 1
+        calls.append("ready_a")
+        return ready["a"] >= 1
+
+    def is_ready_b(_ctx: BootContext) -> bool:
+        ready["b"] += 1
+        calls.append("ready_b")
+        return ready["b"] >= 3
+
+    hooks = (
+        _hook(
+            component_id="service_a",
+            is_ready=is_ready_a,
+            boot=lambda _ctx: calls.append("boot_a"),
+        ),
+        _hook(
+            component_id="service_b",
+            is_ready=is_ready_b,
+            boot=lambda _ctx: calls.append("boot_b"),
+        ),
+    )
+    clock = _FakeClock()
+
+    run_boot_hooks(
+        hooks,
+        context=_context(),
+        settings=CoreBootSettings(readiness_poll_interval_seconds=1.0),
+        sleeper=clock.sleep,
+        monotonic=clock.monotonic,
+    )
+
+    assert calls[:4] == ["ready_a", "ready_b", "ready_b", "ready_b"]
+    assert calls[4:] == ["boot_a", "boot_b"]
+
+
 def test_run_boot_hooks_retries_boot_until_success() -> None:
     """Hook execution should retry failures up to configured max attempts."""
     attempts = {"count": 0}

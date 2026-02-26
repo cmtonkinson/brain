@@ -41,8 +41,8 @@ class SwitchboardIdentitySettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operator_signal_e164: str
-    default_country_code: str
+    operator_signal_contact_e164: str
+    default_dial_code: str
     webhook_shared_secret: str
 
 
@@ -62,7 +62,7 @@ def resolve_switchboard_identity_settings(
 ) -> SwitchboardIdentitySettings:
     """Resolve operator identity + webhook secret settings from root profile."""
     return SwitchboardIdentitySettings(
-        operator_signal_e164=settings.profile.operator.signal_e164,
-        default_country_code=settings.profile.default_country_code,
+        operator_signal_contact_e164=settings.profile.operator.signal_contact_e164,
+        default_dial_code=settings.profile.default_dial_code,
         webhook_shared_secret=settings.profile.webhook_shared_secret,
     )

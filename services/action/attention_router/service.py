@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 
 from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
+from resources.adapters.signal.adapter import SignalAdapter
 from services.action.attention_router.domain import (
     ApprovalCorrelationPayload,
     ApprovalNotificationPayload,
@@ -77,11 +78,24 @@ class AttentionRouterService(ABC):
 
 
 def build_attention_router_service(
-    *, settings: BrainSettings
+    *,
+    settings: BrainSettings,
+    signal_adapter: SignalAdapter | None = None,
 ) -> AttentionRouterService:
     """Build default Attention Router implementation from typed settings."""
+    from resources.adapters.signal import (
+        HttpSignalAdapter,
+        resolve_signal_adapter_settings,
+    )
+    from services.action.attention_router.config import (
+        resolve_attention_router_service_settings,
+    )
     from services.action.attention_router.implementation import (
         DefaultAttentionRouterService,
     )
 
-    return DefaultAttentionRouterService.from_settings(settings=settings)
+    return DefaultAttentionRouterService(
+        settings=resolve_attention_router_service_settings(settings),
+        signal_adapter=signal_adapter
+        or HttpSignalAdapter(settings=resolve_signal_adapter_settings(settings)),
+    )

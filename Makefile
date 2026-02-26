@@ -1,4 +1,6 @@
 SHELL           := /bin/bash
+VENV 						:= .venv
+PY 							:= $(VENV)/bin/python
 PROTO_DIR       := protos
 GENERATED_DIR   := generated
 PROTO_FILES     := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
@@ -17,93 +19,62 @@ DIAGRAM_PNGS    := \
 	img/c4-component.png \
 	img/boundaries-and-responsibilities.png
 
-.PHONY: all deps clean build check format test docs migrate up down
+.PHONY: all deps deps-upgrade clean build check format test docs up down
 
 all: deps clean build test docs
 
 deps:
-	@pip install --requirement requirements.txt
+	$(PY) -m pip install --upgrade pip pip-tools
+	$(PY) -m piptools sync requirements.txt
+
+deps-upgrade:
+	if [ -n "$${PACKAGE:-}" ]; then \
+		$(PY) -m piptools compile --upgrade-package "$$PACKAGE" --output-file requirements.txt requirements.in; \
+	else \
+		$(PY) -m piptools compile --upgrade --output-file requirements.txt requirements.in; \
+	fi
+	$(PY) -m piptools sync requirements.txt
 
 clean:
-	@rm -rf $(GENERATED_DIR)
-	@find . -type f -name '*.pyc' -delete
-	@find . -type d -name '__pycache__' -prune -exec rm -rf {} +
+	rm --recursive --force $(GENERATED_DIR)
+	find . -type f -name '*.pyc' -delete
+	find . -type d -name '__pycache__' -prune -exec rm --recursive --force {} +
 
 build: $(PROTO_STAMP)
 
 $(PROTO_STAMP): $(PROTO_FILES)
-	@mkdir -p $(GENERATED_DIR)
-	@python -c "import grpc_tools.protoc" >/dev/null 2>&1 || \
-		( echo "Missing grpcio-tools in current Python environment."; \
-		  echo "Install with: pip install grpcio-tools"; \
-		  exit 1 )
-	@python -m grpc_tools.protoc \
-		-I $(PROTO_DIR) \
+	mkdir --parents $(GENERATED_DIR)
+	$(PY) -m grpc_tools.protoc \
+		--proto_path=$(PROTO_DIR) \
 		--python_out=$(GENERATED_DIR) \
 		--grpc_python_out=$(GENERATED_DIR) \
 		$(PROTO_FILES)
-	@python -m compileall -q $(GENERATED_DIR)
-	@touch $(PROTO_STAMP)
+	$(PY) -m compileall --quiet $(GENERATED_DIR)
+	touch $(PROTO_STAMP)
 
 check:
-	@python -c "import ruff" >/dev/null 2>&1 || \
-		( echo "Missing ruff in current Python environment."; \
-		  echo "Install with: make deps"; \
-		  exit 1 )
-	@ruff check .
-	@ruff format --check .
+	$(PY) -m ruff check .
+	$(PY) -m ruff format --check .
 
 format:
-	@python -c "import ruff" >/dev/null 2>&1 || \
-		( echo "Missing ruff in current Python environment."; \
-		  echo "Install with: make deps"; \
-		  exit 1 )
-	@ruff format .
+	$(PY) -m ruff format .
 
 test: build check
-	@if command -v pytest >/dev/null 2>&1; then \
-		pytest -q tests services resources; \
-	else \
-		echo "No test runner found."; \
-		exit 1; \
-	fi
+	$(PY) -m pytest --quiet tests resources services
 
 docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(DIAGRAM_PNGS)
 
 $(GLOSSARY_DOC): $(GLOSSARY_SRC) $(GLOSSARY_GEN)
-	@python $(GLOSSARY_GEN)
+	$(PY) $(GLOSSARY_GEN)
 
 $(SERVICE_API_DOC): $(SERVICE_API_SRC) $(SERVICE_API_GEN)
-	@python $(SERVICE_API_GEN)
+	$(PY) $(SERVICE_API_GEN)
 
 $(DIAGRAM_PNGS): $(DIAGRAM_SRC) $(DIAGRAM_GEN)
-	@$(DIAGRAM_GEN) $(DIAGRAM_SRC)
-
-migrate:
-	@python -c "import alembic, psycopg" >/dev/null 2>&1 || \
-		( echo "Missing migration dependencies in current Python environment."; \
-		  echo "Install with: make deps"; \
-		  exit 1 )
-	@bash -lc '\
-		set -euo pipefail; \
-		if [ -z "$${BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL:-}" ]; then \
-			export BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL="$$(python -c '\''from packages.brain_shared.config import load_settings; from resources.substrates.postgres.config import resolve_postgres_settings; print((resolve_postgres_settings(load_settings()).url or "").strip())'\'')"; \
-		fi; \
-		if [ -z "$$BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL" ]; then \
-			echo "BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL resolved to empty value; set components.substrate_postgres.url in config or export BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL."; \
-			exit 1; \
-		fi; \
-		shopt -s nullglob; \
-		python -m resources.substrates.postgres.bootstrap; \
-		for layer in state action control; do \
-			for ini in services/$$layer/*/migrations/alembic.ini; do \
-				echo "Running migrations: $$ini"; \
-				python -m alembic -c "$$ini" upgrade head; \
-			done; \
-		done'
+	$(DIAGRAM_GEN) $(DIAGRAM_SRC)
 
 up:
-	@docker compose up --detach --build
+	docker compose up --detach --build
 
 down:
-	@docker compose down
+	docker compose down

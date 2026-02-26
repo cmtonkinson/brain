@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
+from resources.substrates.redis import RedisSubstrate
 from services.state.cache_authority.domain import (
     CacheEntry,
     HealthStatus,
@@ -83,3 +85,25 @@ class CacheAuthorityService(ABC):
     @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
         """Return CAS and Redis substrate readiness."""
+
+
+def build_cache_authority_service(
+    *,
+    settings: BrainSettings,
+    backend: RedisSubstrate | None = None,
+) -> CacheAuthorityService:
+    """Build default Cache Authority implementation from typed settings."""
+    from resources.substrates.redis import (
+        RedisClientSubstrate,
+        resolve_redis_settings,
+    )
+    from services.state.cache_authority.config import resolve_cache_authority_settings
+    from services.state.cache_authority.implementation import (
+        DefaultCacheAuthorityService,
+    )
+
+    return DefaultCacheAuthorityService(
+        settings=resolve_cache_authority_settings(settings),
+        backend=backend
+        or RedisClientSubstrate(settings=resolve_redis_settings(settings)),
+    )

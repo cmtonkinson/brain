@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.manifest import (
     ComponentId,
     ModuleRoot,
@@ -21,3 +24,14 @@ MANIFEST = register_component(
         owner_service_id=None,
     )
 )
+
+
+def build_component(
+    *, settings: BrainSettings, components: Mapping[str, object]
+) -> object:
+    """Build concrete runtime instance for this registered resource component."""
+    del components
+    from resources.adapters.signal.config import resolve_signal_adapter_settings
+    from resources.adapters.signal.signal_adapter import HttpSignalAdapter
+
+    return HttpSignalAdapter(settings=resolve_signal_adapter_settings(settings))

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.manifest import (
     ComponentId,
     ModuleRoot,
@@ -23,3 +26,15 @@ MANIFEST = register_component(
         owns_resources=frozenset({ComponentId("adapter_filesystem")}),
     )
 )
+
+
+def build_component(
+    *, settings: BrainSettings, components: Mapping[str, object]
+) -> object:
+    """Build concrete runtime instance for this registered service component."""
+    from services.state.object_authority.service import build_object_authority_service
+
+    return build_object_authority_service(
+        settings=settings,
+        blob_store=components.get("adapter_filesystem"),
+    )

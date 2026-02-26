@@ -35,6 +35,14 @@ class GrpcSwitchboardService(switchboard_pb2_grpc.SwitchboardServiceServicer):
         )
 
 
+def register_grpc(*, server: grpc.Server, service: SwitchboardService) -> None:
+    """Register Switchboard gRPC service implementation on one server."""
+    switchboard_pb2_grpc.add_SwitchboardServiceServicer_to_server(
+        GrpcSwitchboardService(service=service),
+        server,
+    )
+
+
 def _abort_for_transport_errors(
     *,
     context: grpc.ServicerContext,

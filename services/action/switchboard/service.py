@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
+from resources.adapters.signal.adapter import SignalAdapter
+from services.state.cache_authority.service import CacheAuthorityService
 from services.action.switchboard.domain import (
     HealthStatus,
     IngestResult,
@@ -38,3 +41,41 @@ class SwitchboardService(ABC):
     @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
         """Return Switchboard and dependency health state."""
+
+
+def build_switchboard_service(
+    *,
+    settings: BrainSettings,
+    cache_service: CacheAuthorityService,
+    signal_adapter: SignalAdapter | None = None,
+) -> SwitchboardService:
+    """Build default Switchboard implementation from typed settings."""
+    from resources.adapters.signal import (
+        HttpSignalAdapter,
+        resolve_signal_adapter_settings,
+    )
+    from services.action.switchboard.config import (
+        resolve_switchboard_identity_settings,
+        resolve_switchboard_service_settings,
+    )
+    from services.action.switchboard.implementation import DefaultSwitchboardService
+
+    return DefaultSwitchboardService(
+        settings=resolve_switchboard_service_settings(settings),
+        identity=resolve_switchboard_identity_settings(settings),
+        adapter=signal_adapter
+        or HttpSignalAdapter(settings=resolve_signal_adapter_settings(settings)),
+        cache_service=cache_service,
+    )
+
+
+def build_switchboard_service_from_settings(
+    *,
+    settings: BrainSettings,
+    cache_service: CacheAuthorityService,
+) -> SwitchboardService:
+    """Backward-compatible helper retaining previous from-settings behavior."""
+    return build_switchboard_service(
+        settings=settings,
+        cache_service=cache_service,
+    )

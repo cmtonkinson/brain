@@ -39,7 +39,6 @@ _HEADER_TIMESTAMP = "X-Brain-Timestamp"
 class _WebhookRegistration:
     callback_url: str
     shared_secret: str
-    operator_e164: str
 
 
 class HttpSignalAdapter(SignalAdapter):
@@ -66,20 +65,16 @@ class HttpSignalAdapter(SignalAdapter):
         *,
         callback_url: str,
         shared_secret: str,
-        operator_e164: str,
     ) -> SignalWebhookRegistrationResult:
         """Configure callback target and start polling loop when needed."""
         registration = _WebhookRegistration(
             callback_url=callback_url.strip(),
             shared_secret=shared_secret.strip(),
-            operator_e164=operator_e164.strip(),
         )
         if registration.callback_url == "":
             raise SignalAdapterInternalError("callback_url must be non-empty")
         if registration.shared_secret == "":
             raise SignalAdapterInternalError("shared_secret must be non-empty")
-        if registration.operator_e164 == "":
-            raise SignalAdapterInternalError("operator_e164 must be non-empty")
 
         with self._lock:
             self._registration = registration
@@ -178,7 +173,7 @@ class HttpSignalAdapter(SignalAdapter):
         try:
             if len(self._pending_webhooks) == 0:
                 messages = self._receive_messages(
-                    operator_e164=registration.operator_e164
+                    receive_e164=self._settings.receive_e164
                 )
                 for message in messages:
                     self._pending_webhooks.append(json.dumps({"data": message}))
@@ -199,9 +194,9 @@ class HttpSignalAdapter(SignalAdapter):
             )
             return self._next_backoff_delay()
 
-    def _receive_messages(self, *, operator_e164: str) -> list[dict[str, object]]:
-        """Receive one batch of Signal messages for the configured operator."""
-        path = f"/v1/receive/{quote(operator_e164, safe='')}"
+    def _receive_messages(self, *, receive_e164: str) -> list[dict[str, object]]:
+        """Receive one batch of Signal messages for the configured receiver."""
+        path = f"/v1/receive/{quote(receive_e164, safe='')}"
         params = {
             "timeout": str(self._settings.poll_receive_timeout_seconds),
             "max_messages": str(self._settings.poll_max_messages),

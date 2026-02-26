@@ -39,8 +39,8 @@ def test_webhook_ingest_enqueues_message_in_cache_authority() -> None:
     service = DefaultSwitchboardService(
         settings=SwitchboardServiceSettings(signature_tolerance_seconds=300),
         identity=SwitchboardIdentitySettings(
-            operator_signal_e164="+12025550100",
-            default_country_code="US",
+            operator_signal_contact_e164="+12025550100",
+            default_dial_code="+1",
             webhook_shared_secret="secret",
         ),
         adapter=_FakeSignalAdapter(),

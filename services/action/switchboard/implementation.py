@@ -56,8 +56,6 @@ from services.state.cache_authority.service import CacheAuthorityService
 
 _LOGGER = get_logger(__name__)
 
-_DEFAULT_DIAL_CODE = "1"
-
 
 class DefaultSwitchboardService(SwitchboardService):
     """Switchboard implementation that normalizes Signal events and queues them."""
@@ -75,8 +73,8 @@ class DefaultSwitchboardService(SwitchboardService):
         self._adapter = adapter
         self._cache_service = cache_service
         self._operator_e164 = _normalize_e164(
-            raw=identity.operator_signal_e164,
-            default_country_code=identity.default_country_code,
+            raw=identity.operator_signal_contact_e164,
+            default_dial_code=identity.default_dial_code,
         )
 
     @classmethod
@@ -229,7 +227,6 @@ class DefaultSwitchboardService(SwitchboardService):
             result = self._adapter.register_webhook(
                 callback_url=str(request.callback_url),
                 shared_secret=secret,
-                operator_e164=self._operator_e164,
             )
         except SignalAdapterDependencyError as exc:
             return failure(
@@ -415,7 +412,7 @@ class DefaultSwitchboardService(SwitchboardService):
         try:
             sender_e164 = _normalize_e164(
                 raw=sender_raw,
-                default_country_code=self._identity.default_country_code,
+                default_dial_code=self._identity.default_dial_code,
             )
         except ValueError as exc:
             return None, validation_error(
@@ -558,11 +555,15 @@ def _parse_signatures(header_signature: str) -> tuple[str, ...]:
     return tuple(candidates)
 
 
-def _normalize_e164(*, raw: str, default_country_code: str) -> str:
+def _normalize_e164(*, raw: str, default_dial_code: str) -> str:
     """Normalize phone number input to canonical E.164 format."""
     candidate = raw.strip()
     if candidate == "":
         raise ValueError("phone number must be non-empty")
+
+    dial_code = "".join(char for char in default_dial_code if char.isdigit())
+    if dial_code == "":
+        raise ValueError("default_dial_code must contain digits")
 
     digits = "".join(char for char in candidate if char.isdigit() or char == "+")
     if digits.startswith("+"):
@@ -572,8 +573,6 @@ def _normalize_e164(*, raw: str, default_country_code: str) -> str:
         if normalized_digits.startswith("00"):
             normalized_digits = normalized_digits[2:]
         else:
-            del default_country_code
-            dial_code = _DEFAULT_DIAL_CODE
             if dial_code == "1" and len(normalized_digits) == 10:
                 normalized_digits = f"1{normalized_digits}"
             elif not normalized_digits.startswith(dial_code):

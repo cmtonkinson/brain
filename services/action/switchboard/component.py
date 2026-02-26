@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.manifest import (
     ComponentId,
     ModuleRoot,
@@ -21,3 +24,26 @@ MANIFEST = register_component(
         owns_resources=frozenset({ComponentId("adapter_signal")}),
     )
 )
+
+
+def build_component(
+    *, settings: BrainSettings, components: Mapping[str, object]
+) -> object:
+    """Build concrete runtime instance for this registered service component."""
+    from resources.adapters.signal.adapter import SignalAdapter
+    from services.action.switchboard.service import build_switchboard_service
+    from services.state.cache_authority.service import CacheAuthorityService
+
+    cache_service = components.get("service_cache_authority")
+    if not isinstance(cache_service, CacheAuthorityService):
+        raise KeyError("service_cache_authority")
+
+    signal_adapter = components.get("adapter_signal")
+    if signal_adapter is not None and not isinstance(signal_adapter, SignalAdapter):
+        raise TypeError("adapter_signal")
+
+    return build_switchboard_service(
+        settings=settings,
+        cache_service=cache_service,
+        signal_adapter=signal_adapter,
+    )

@@ -61,8 +61,8 @@ Webhook ingress HTTP mapping (`http_ingress.py`):
 ## Configuration Surface
 Switchboard settings are sourced from:
 - `components.service.switchboard` (service runtime)
-- `profile.operator.signal_e164` (operator identity)
-- `profile.default_country_code` (normalization fallback, currently US `+1`)
+- `profile.operator.signal_contact_e164` (operator identity)
+- `profile.default_dial_code` (normalization fallback dial code, for example `+1`)
 - `profile.webhook_shared_secret` (HMAC verification and registration secret)
 
 `components.service.switchboard` keys:

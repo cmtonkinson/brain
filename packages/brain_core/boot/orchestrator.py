@@ -61,7 +61,6 @@ def run_boot_hooks(
     except CycleError as exc:
         raise BootDependencyError(f"boot dependency cycle detected: {exc}") from exc
 
-    execution_order: list[str] = []
     for component_id in ordered_components:
         hook = by_component[component_id]
         _wait_for_readiness(
@@ -72,6 +71,10 @@ def run_boot_hooks(
             sleeper=sleeper,
             monotonic=monotonic,
         )
+
+    execution_order: list[str] = []
+    for component_id in ordered_components:
+        hook = by_component[component_id]
         _execute_with_retries(
             hook=hook,
             context=context,

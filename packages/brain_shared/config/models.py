@@ -14,6 +14,7 @@ from pydantic_settings import (
 )
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "brain" / "brain.yaml"
+SECRETS_CONFIG_FILENAME = "secrets.yaml"
 
 
 class LoggingSettings(BaseModel):
@@ -57,14 +58,14 @@ class ObservabilitySettings(BaseModel):
 class OperatorProfileSettings(BaseModel):
     """Operator identity profile settings shared across action services."""
 
-    signal_e164: str = "+10000000000"
+    signal_contact_e164: str = "+12222222222"
 
 
 class ProfileSettings(BaseModel):
     """Root profile settings for operator identity and webhook verification."""
 
     operator: OperatorProfileSettings = Field(default_factory=OperatorProfileSettings)
-    default_country_code: str = "US"
+    default_dial_code: str = "+1"
     webhook_shared_secret: str = "replace-me"
 
 
@@ -79,6 +80,13 @@ class CoreBootSettings(BaseModel):
     boot_timeout_seconds: float = Field(default=30.0, gt=0)
 
 
+class CoreGrpcSettings(BaseModel):
+    """Core gRPC runtime bind settings under ``components.core_grpc``."""
+
+    bind_host: str = "0.0.0.0"
+    bind_port: int = Field(default=50051, ge=1, le=65535)
+
+
 class ComponentNamespaceSettings(BaseModel):
     """Namespace map for grouped component settings under ``components.<kind>``."""
 
@@ -91,6 +99,7 @@ class ComponentsSettings(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     core_boot: CoreBootSettings = Field(default_factory=CoreBootSettings)
+    core_grpc: CoreGrpcSettings = Field(default_factory=CoreGrpcSettings)
     service: ComponentNamespaceSettings = Field(
         default_factory=ComponentNamespaceSettings
     )
@@ -149,16 +158,29 @@ class BrainSettings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Apply Brain precedence: init > env > yaml > optional defaults."""
+        """Apply Brain precedence: init > env > secrets.yaml > brain.yaml > defaults."""
+        config_path = cls._config_path
+        secrets_path = config_path.parent / SECRETS_CONFIG_FILENAME
+
         sources: list[PydanticBaseSettingsSource] = [
             init_settings,
             env_settings,
+        ]
+        if secrets_path.exists():
+            sources.append(
+                YamlConfigSettingsSource(
+                    settings_cls,
+                    yaml_file=secrets_path,
+                    yaml_file_encoding="utf-8",
+                )
+            )
+        sources.append(
             YamlConfigSettingsSource(
                 settings_cls,
-                yaml_file=cls._config_path,
+                yaml_file=config_path,
                 yaml_file_encoding="utf-8",
-            ),
-        ]
+            )
+        )
         return tuple(sources)
 
 

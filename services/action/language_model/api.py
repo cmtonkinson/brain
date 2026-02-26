@@ -185,6 +185,14 @@ class GrpcLanguageModelService(language_model_pb2_grpc.LanguageModelServiceServi
         )
 
 
+def register_grpc(*, server: grpc.Server, service: LanguageModelService) -> None:
+    """Register Language Model gRPC service implementation on one server."""
+    language_model_pb2_grpc.add_LanguageModelServiceServicer_to_server(
+        GrpcLanguageModelService(service=service),
+        server,
+    )
+
+
 def _abort_for_transport_errors(
     *,
     context: grpc.ServicerContext,

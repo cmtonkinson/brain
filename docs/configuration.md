@@ -2,7 +2,8 @@
 This document describes Brain's configuration system: how settings are loaded,
 where they live, and what every key does.
 
-The config file for a running Brain is `~/.config/brain/brain.yaml`. A sample
+Primary config is `~/.config/brain/brain.yaml`. An optional secondary config
+file, `~/.config/brain/secrets.yaml`, can hold sensitive overrides. A sample
 with all defaults is at `config/brain.yaml.sample` in the repository.
 
 ------------------------------------------------------------------------
@@ -11,10 +12,15 @@ Settings are resolved in this order (highest wins):
 
 1. **CLI parameters** — passed programmatically at process startup
 2. **Environment variables** — prefixed with `BRAIN_`, `__`-separated for nesting
-3. **Config file** — `~/.config/brain/brain.yaml`
-4. **Model defaults** — defined in each settings model (`packages/brain_shared/config/models.py`
+3. **Secrets config file** — `~/.config/brain/secrets.yaml` (if present)
+4. **Config file** — `~/.config/brain/brain.yaml`
+5. **Model defaults** — defined in each settings model (`packages/brain_shared/config/models.py`
    for global settings; component-local `config.py` modules for component
    settings)
+
+`secrets.yaml` is loaded after `brain.yaml`, so only keys present in
+`secrets.yaml` override `brain.yaml`; all other values still come from
+`brain.yaml` (then defaults).
 
 Configuration models follow the canonical Pydantic contract rules in
 [Conventions](conventions.md).
@@ -29,11 +35,12 @@ Any config key can be set via environment variable:
 Examples:
 ```
 BRAIN_LOGGING__LEVEL=DEBUG
-BRAIN_PROFILE__OPERATOR__SIGNAL_E164=+12025550100
-BRAIN_PROFILE__DEFAULT_COUNTRY_CODE=US
+BRAIN_PROFILE__OPERATOR__SIGNAL_CONTACT_E164=+12025550100
+BRAIN_PROFILE__DEFAULT_DIAL_CODE=+1
 BRAIN_PROFILE__WEBHOOK_SHARED_SECRET=replace-me
 BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
 BRAIN_COMPONENTS__CORE_BOOT__BOOT_RETRY_ATTEMPTS=5
+BRAIN_COMPONENTS__CORE_GRPC__BIND_PORT=50051
 BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__POOL_SIZE=10
 BRAIN_COMPONENTS__SUBSTRATE__QDRANT__URL=http://localhost:6333
 BRAIN_COMPONENTS__SUBSTRATE__REDIS__URL=redis://redis:6379/0
@@ -67,8 +74,8 @@ Root profile and operator identity settings.
 
 | Key | Default | Description |
 |---|---|---|
-| `operator.signal_e164` | `+10000000000` | Canonical operator Signal identity used by Switchboard ingress policy. Replace with the real operator E.164 number. |
-| `default_country_code` | `US` | Switchboard fallback for non-E.164 operator/sender values. Current normalization fallback is fixed to US `+1`. |
+| `operator.signal_contact_e164` | `+10000000000` | Canonical operator Signal identity used by Switchboard ingress policy. Replace with the real operator E.164 number. |
+| `default_dial_code` | `+1` | Switchboard fallback dial code for non-E.164 operator/sender values (for example `+1`, `+44`). |
 | `webhook_shared_secret` | `replace-me` | Shared secret used for inbound webhook signature verification. Replace for any non-local environment. |
 
 ------------------------------------------------------------------------
@@ -87,6 +94,14 @@ Core boot framework orchestration settings.
 | `boot_retry_attempts` | `3` | Maximum attempts to execute one hook's `boot()` function before fail-hard abort. Must be > 0. |
 | `boot_retry_delay_seconds` | `0.5` | Delay between `boot()` retry attempts after failures. Must be >= 0. |
 | `boot_timeout_seconds` | `30.0` | Maximum allowed runtime for one successful `boot()` invocation. Must be > 0. |
+
+### `components.core_grpc`
+Core gRPC runtime bind settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `bind_host` | `0.0.0.0` | Bind host for the Brain Core gRPC server. |
+| `bind_port` | `50051` | Bind port for the Brain Core gRPC server. Must be in `1..65535`. |
 
 ### `components.substrate.postgres`
 PostgreSQL substrate connection settings.
@@ -168,6 +183,7 @@ Signal runtime adapter defaults.
 | Key | Default | Description |
 |---|---|---|
 | `base_url` | `http://signal-api:8080` | Base URL for Signal runtime receive/health endpoints. |
+| `receive_e164` | `+10000000000` | E.164 identity polled for inbound messages via `/v1/receive/{number}`. |
 | `timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
 | `poll_interval_seconds` | `1.0` | Steady-state delay between successful polling cycles. Must be > 0. |

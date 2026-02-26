@@ -144,6 +144,10 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
             audit_repository or InMemoryCapabilityInvocationAuditRepository()
         )
 
+    def _load_capabilities(self) -> None:
+        """Discover capability manifests from configured discovery root."""
+        self._registry.discover(root=Path(self._settings.discovery_root))
+
     @classmethod
     def from_settings(
         cls,

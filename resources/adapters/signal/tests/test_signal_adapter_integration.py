@@ -12,13 +12,15 @@ class _CaptureClient:
     """Minimal HTTP client fake capturing GET/POST request shapes."""
 
     def __init__(self) -> None:
+        self.last_url: str | None = None
         self.last_params: dict[str, str] | None = None
         self.posts: list[tuple[str, str, dict[str, str]]] = []
 
     def get(self, _url: str):
         return object()
 
-    def get_json(self, _url: str, **kwargs):
+    def get_json(self, url: str, **kwargs):
+        self.last_url = url
         self.last_params = kwargs.get("params")
         return []
 
@@ -29,7 +31,9 @@ class _CaptureClient:
 
 def test_receive_poll_params_and_health_contract() -> None:
     """Adapter should query receive endpoint with configured polling parameters."""
-    adapter = HttpSignalAdapter(settings=SignalAdapterSettings())
+    adapter = HttpSignalAdapter(
+        settings=SignalAdapterSettings(receive_e164="+15551234567")
+    )
     fake = _CaptureClient()
     adapter._signal_client = fake  # type: ignore[attr-defined]
     adapter._callback_client = fake  # type: ignore[attr-defined]
@@ -38,10 +42,10 @@ def test_receive_poll_params_and_health_contract() -> None:
     adapter.register_webhook(
         callback_url="http://localhost/webhook",
         shared_secret="secret",
-        operator_e164="+12025550100",
     )
     adapter._run_once()
 
+    assert fake.last_url == "/v1/receive/%2B15551234567"
     assert fake.last_params is not None
     assert "timeout" in fake.last_params
     assert adapter.health().adapter_ready is True
@@ -63,7 +67,6 @@ def test_callback_status_failure_maps_to_dependency_error() -> None:
     adapter.register_webhook(
         callback_url="http://localhost/webhook",
         shared_secret="secret",
-        operator_e164="+12025550100",
     )
     adapter._pending_webhooks.append('{"data": {"message": "x"}}')  # type: ignore[attr-defined]
     delay = adapter._run_once()

@@ -5,6 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Mapping, Sequence
 
+from packages.brain_shared.config import BrainSettings
+from resources.substrates.qdrant.substrate import QdrantSubstrate
 from packages.brain_shared.envelope import EnvelopeMeta, Envelope
 from services.state.embedding_authority.domain import (
     ChunkRecord,
@@ -196,3 +198,47 @@ class EmbeddingAuthorityService(ABC):
     @abstractmethod
     def get_spec(self, *, meta: EnvelopeMeta, spec_id: str) -> Envelope[EmbeddingSpec]:
         """Read one spec by id."""
+
+
+def build_embedding_authority_service(
+    *,
+    settings: BrainSettings,
+    qdrant_substrate: QdrantSubstrate | None = None,
+) -> EmbeddingAuthorityService:
+    """Build default Embedding Authority implementation from typed settings."""
+    from packages.brain_shared.config import resolve_component_settings
+    from resources.substrates.qdrant.component import (
+        RESOURCE_COMPONENT_ID as QDRANT_COMPONENT_ID,
+    )
+    from resources.substrates.qdrant.config import QdrantSettings
+    from services.state.embedding_authority.implementation import (
+        DefaultEmbeddingAuthorityService,
+    )
+    from services.state.embedding_authority.data import (
+        EmbeddingPostgresRuntime,
+        PostgresEmbeddingRepository,
+    )
+    from services.state.embedding_authority.qdrant_backend import QdrantEmbeddingBackend
+    from services.state.embedding_authority.config import EmbeddingServiceSettings
+
+    runtime = EmbeddingPostgresRuntime.from_settings(settings)
+    backend = QdrantEmbeddingBackend(
+        settings=resolve_component_settings(
+            settings=settings,
+            component_id=str(QDRANT_COMPONENT_ID),
+            model=QdrantSettings,
+        )
+    )
+    if qdrant_substrate is not None:
+        # Explicit resource instantiation remains observable even though EAS uses
+        # per-spec substrates through its backend abstraction today.
+        del qdrant_substrate
+    return DefaultEmbeddingAuthorityService(
+        settings=resolve_component_settings(
+            settings=settings,
+            component_id="service_embedding_authority",
+            model=EmbeddingServiceSettings,
+        ),
+        repository=PostgresEmbeddingRepository(runtime.schema_sessions),
+        index_backend=backend,
+    )

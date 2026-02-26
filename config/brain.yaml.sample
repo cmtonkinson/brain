@@ -5,10 +5,7 @@ logging:
   environment: dev
 
 profile:
-  operator:
-    signal_e164: "+10000000000"
-  default_country_code: US
-  webhook_shared_secret: "replace-me"
+  default_dial_code: "+1"
 
 components:
   core_boot:
@@ -18,6 +15,9 @@ components:
     boot_retry_attempts: 3
     boot_retry_delay_seconds: 0.5
     boot_timeout_seconds: 30.0
+  core_grpc:
+    bind_host: 0.0.0.0
+    bind_port: 50051
 
   substrate:
     postgres:

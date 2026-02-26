@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.manifest import (
     ComponentId,
     ModuleRoot,
@@ -27,3 +30,17 @@ MANIFEST = register_component(
         owns_resources=frozenset({ComponentId("substrate_qdrant")}),
     )
 )
+
+
+def build_component(
+    *, settings: BrainSettings, components: Mapping[str, object]
+) -> object:
+    """Build concrete runtime instance for this registered service component."""
+    from services.state.embedding_authority.service import (
+        build_embedding_authority_service,
+    )
+
+    return build_embedding_authority_service(
+        settings=settings,
+        qdrant_substrate=components.get("substrate_qdrant"),
+    )

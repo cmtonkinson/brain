@@ -241,11 +241,7 @@ class GrpcVaultAuthorityService(vault_pb2_grpc.VaultAuthorityServiceServicer):
         )
 
 
-def add_vault_authority_to_server(
-    *,
-    server: grpc.Server,
-    service: VaultAuthorityService,
-) -> None:
+def register_grpc(*, server: grpc.Server, service: VaultAuthorityService) -> None:
     """Register Vault Authority gRPC service implementation on one server."""
     vault_pb2_grpc.add_VaultAuthorityServiceServicer_to_server(
         GrpcVaultAuthorityService(service),

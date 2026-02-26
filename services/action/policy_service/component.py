@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.manifest import (
     ComponentId,
     ModuleRoot,
@@ -26,3 +29,22 @@ MANIFEST = register_component(
         owns_resources=frozenset(),
     )
 )
+
+
+def build_component(
+    *, settings: BrainSettings, components: Mapping[str, object]
+) -> object:
+    """Build concrete runtime instance for this registered service component."""
+    from services.action.attention_router.service import AttentionRouterService
+    from services.action.policy_service.service import build_policy_service
+
+    attention_router = components.get("service_attention_router")
+    if attention_router is not None and not isinstance(
+        attention_router, AttentionRouterService
+    ):
+        raise TypeError("service_attention_router")
+
+    return build_policy_service(
+        settings=settings,
+        attention_router_service=attention_router,
+    )

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
+from services.action.language_model.service import LanguageModelService
 from services.state.memory_authority.domain import (
     ContextBlock,
     FocusRecord,
@@ -75,3 +77,19 @@ class MemoryAuthorityService(ABC):
     @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
         """Return MAS and Postgres substrate readiness."""
+
+
+def build_memory_authority_service(
+    *,
+    settings: BrainSettings,
+    language_model: LanguageModelService,
+) -> MemoryAuthorityService:
+    """Build default Memory Authority implementation from typed settings."""
+    from services.state.memory_authority.implementation import (
+        DefaultMemoryAuthorityService,
+    )
+
+    return DefaultMemoryAuthorityService.from_settings(
+        settings=settings,
+        language_model=language_model,
+    )

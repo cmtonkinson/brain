@@ -27,16 +27,16 @@ Primary interactions:
 - Receives registration input from Switchboard:
   - callback URL
   - shared secret
-  - operator E.164 identity
+  - receive identity (from adapter config)
 - Polls Signal runtime:
   - `GET /health`
-  - `GET /v1/receive/{operator_e164}`
+  - `GET /v1/receive/{receive_e164}`
 - Forwards each received message as signed JSON callback POST to Switchboard webhook endpoint.
 - Sends outbound messages for Attention Router over `POST /v2/send`.
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
-1. Switchboard calls `register_webhook(callback_url, shared_secret, operator_e164)`.
+1. Switchboard calls `register_webhook(callback_url, shared_secret)`.
 2. Adapter stores registration in memory and ensures polling worker is running.
 3. Worker polls Signal runtime receive endpoint for inbound messages.
 4. Adapter wraps each received item as `{"data": <message>}`.
@@ -62,6 +62,7 @@ Behavioral semantics:
 ## Configuration Surface
 Adapter settings are sourced from `components.adapter.signal`:
 - `base_url`
+- `receive_e164`
 - `timeout_seconds`
 - `max_retries`
 - `poll_interval_seconds`

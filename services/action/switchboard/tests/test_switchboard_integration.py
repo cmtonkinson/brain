@@ -42,9 +42,8 @@ class _FakeSignalAdapter(SignalAdapter):
         *,
         callback_url: str,
         shared_secret: str,
-        operator_e164: str,
     ) -> SignalWebhookRegistrationResult:
-        del shared_secret, operator_e164
+        del shared_secret
         self.registered_callback_url = callback_url
         return SignalWebhookRegistrationResult(registered=True, detail="ok")
 
@@ -130,8 +129,8 @@ def test_ingest_signal_webhook_enqueues_operator_message() -> None:
     service = DefaultSwitchboardService(
         settings=SwitchboardServiceSettings(signature_tolerance_seconds=300),
         identity=SwitchboardIdentitySettings(
-            operator_signal_e164="+12025550100",
-            default_country_code="US",
+            operator_signal_contact_e164="+12025550100",
+            default_dial_code="+1",
             webhook_shared_secret="secret",
         ),
         adapter=adapter,
@@ -166,8 +165,8 @@ def test_register_signal_webhook_delegates_to_adapter() -> None:
     service = DefaultSwitchboardService(
         settings=SwitchboardServiceSettings(),
         identity=SwitchboardIdentitySettings(
-            operator_signal_e164="+12025550100",
-            default_country_code="US",
+            operator_signal_contact_e164="+12025550100",
+            default_dial_code="+1",
             webhook_shared_secret="secret",
         ),
         adapter=adapter,

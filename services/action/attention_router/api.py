@@ -157,6 +157,14 @@ class GrpcAttentionRouterService(
         )
 
 
+def register_grpc(*, server: grpc.Server, service: AttentionRouterService) -> None:
+    """Register Attention Router gRPC service implementation on one server."""
+    attention_router_pb2_grpc.add_AttentionRouterServiceServicer_to_server(
+        GrpcAttentionRouterService(service=service),
+        server,
+    )
+
+
 def _abort_for_transport_errors(
     *,
     context: grpc.ServicerContext,

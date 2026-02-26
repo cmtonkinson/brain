@@ -2,35 +2,41 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.config import BrainSettings
+from pathlib import Path
+
+from packages.brain_shared.config import load_settings
 from resources.adapters.obsidian.config import (
     ObsidianAdapterSettings,
     resolve_obsidian_adapter_settings,
 )
 
 
-def test_resolve_obsidian_adapter_settings_defaults() -> None:
+def test_resolve_obsidian_adapter_settings_defaults(tmp_path: Path) -> None:
     """Resolver should return defaults when component config is absent."""
-    settings = BrainSettings(components={})
+    settings = load_settings(config_path=tmp_path / "brain.yaml", environ={})
 
     resolved = resolve_obsidian_adapter_settings(settings)
 
     assert resolved == ObsidianAdapterSettings()
 
 
-def test_resolve_obsidian_adapter_settings_component_override() -> None:
+def test_resolve_obsidian_adapter_settings_component_override(tmp_path: Path) -> None:
     """Resolver should hydrate explicit component overrides."""
-    settings = BrainSettings(
-        components={
-            "adapter": {
-                "obsidian": {
-                    "base_url": "http://localhost:9999",
-                    "api_key": "token",
-                    "timeout_seconds": 3.0,
-                    "max_retries": 1,
+    settings = load_settings(
+        cli_params={
+            "components": {
+                "adapter": {
+                    "obsidian": {
+                        "base_url": "http://localhost:9999",
+                        "api_key": "token",
+                        "timeout_seconds": 3.0,
+                        "max_retries": 1,
+                    }
                 }
             }
-        }
+        },
+        config_path=tmp_path / "brain.yaml",
+        environ={},
     )
 
     resolved = resolve_obsidian_adapter_settings(settings)
