@@ -18,6 +18,7 @@ components:
     boot_retry_attempts: 3
     boot_retry_delay_seconds: 0.5
     boot_timeout_seconds: 30.0
+
   substrate:
     postgres:
       url: postgresql+psycopg://brain:brain@postgres:5432/brain
@@ -43,6 +44,7 @@ components:
       connect_timeout_seconds: 5.0
       socket_timeout_seconds: 5.0
       max_connections: 20
+
   adapter:
     filesystem:
       root_dir: ./var/blobs
@@ -73,6 +75,7 @@ components:
       failure_backoff_max_seconds: 30.0
       failure_backoff_multiplier: 2.0
       failure_backoff_jitter_ratio: 0.2
+
   service:
     embedding_authority:
       max_list_limit: 500
