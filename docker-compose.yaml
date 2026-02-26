@@ -4,6 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.core
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.13}
     restart: unless-stopped
     ports:
       - "8091:8091"

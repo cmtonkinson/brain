@@ -1,6 +1,7 @@
 SHELL           := /bin/bash
 VENV 						:= .venv
 PY 							:= $(VENV)/bin/python
+PYTHON_VERSION  := $(shell cut -d. -f1,2 .python-version)
 PROTO_DIR       := protos
 GENERATED_DIR   := generated
 PROTO_FILES     := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
@@ -74,7 +75,7 @@ $(DIAGRAM_PNGS): $(DIAGRAM_SRC) $(DIAGRAM_GEN)
 	$(DIAGRAM_GEN) $(DIAGRAM_SRC)
 
 up:
-	docker compose up --detach --build
+	PYTHON_VERSION=$(PYTHON_VERSION) docker compose up --detach --build
 
 down:
 	docker compose down
