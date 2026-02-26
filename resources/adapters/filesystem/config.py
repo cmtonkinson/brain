@@ -53,7 +53,7 @@ class FilesystemAdapterSettings(BaseModel):
 def resolve_filesystem_adapter_settings(
     settings: BrainSettings,
 ) -> FilesystemAdapterSettings:
-    """Resolve filesystem adapter settings from ``components.adapter_filesystem``."""
+    """Resolve filesystem adapter settings from ``components.adapter.filesystem``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

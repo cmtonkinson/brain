@@ -35,7 +35,7 @@ Primary interactions with the rest of Brain:
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
-1. Runtime settings are loaded from `components.substrate_redis`.
+1. Runtime settings are loaded from `components.substrate.redis`.
 2. `RedisSettings` resolves explicit URL mode or split-field URL construction.
 3. `create_redis_client(...)` builds a redis-py client from resolved settings.
 4. `RedisClientSubstrate` performs direct Redis key/value and list operations.
@@ -53,7 +53,7 @@ Primary interactions with the rest of Brain:
 
 ------------------------------------------------------------------------
 ## Configuration Surface
-Settings are sourced from `components.substrate_redis`:
+Settings are sourced from `components.substrate.redis`:
 - `url`
 - `host`
 - `port`

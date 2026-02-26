@@ -53,15 +53,15 @@ def _build_postgres_url_from_parts(postgres: PostgresSettings) -> str:
 
     if host == "":
         raise ValueError(
-            "components.substrate_postgres.host is required when url is unset"
+            "components.substrate.postgres.host is required when url is unset"
         )
     if database == "":
         raise ValueError(
-            "components.substrate_postgres.database is required when url is unset"
+            "components.substrate.postgres.database is required when url is unset"
         )
     if user == "":
         raise ValueError(
-            "components.substrate_postgres.user is required when url is unset"
+            "components.substrate.postgres.user is required when url is unset"
         )
 
     return (
@@ -71,7 +71,7 @@ def _build_postgres_url_from_parts(postgres: PostgresSettings) -> str:
 
 
 def resolve_postgres_settings(settings: BrainSettings) -> PostgresSettings:
-    """Resolve Postgres substrate settings from ``components.substrate_postgres``."""
+    """Resolve Postgres substrate settings from ``components.substrate.postgres``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

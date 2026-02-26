@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -79,12 +79,48 @@ class CoreBootSettings(BaseModel):
     boot_timeout_seconds: float = Field(default=30.0, gt=0)
 
 
+class ComponentNamespaceSettings(BaseModel):
+    """Namespace map for grouped component settings under ``components.<kind>``."""
+
+    model_config = ConfigDict(extra="allow")
+
+
 class ComponentsSettings(BaseModel):
     """Typed ``components`` subtree with support for component-local extras."""
 
     model_config = ConfigDict(extra="allow")
 
     core_boot: CoreBootSettings = Field(default_factory=CoreBootSettings)
+    service: ComponentNamespaceSettings = Field(
+        default_factory=ComponentNamespaceSettings
+    )
+    adapter: ComponentNamespaceSettings = Field(
+        default_factory=ComponentNamespaceSettings
+    )
+    substrate: ComponentNamespaceSettings = Field(
+        default_factory=ComponentNamespaceSettings
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_flat_component_keys(cls, value: object) -> object:
+        """Reject legacy flat component keys in favor of grouped namespaces."""
+        if not isinstance(value, dict):
+            return value
+        flat_prefixed_keys = tuple(
+            key
+            for key in value
+            if isinstance(key, str)
+            and key.startswith(("actor_", "service_", "adapter_", "substrate_"))
+        )
+        if not flat_prefixed_keys:
+            return value
+
+        bad_key = flat_prefixed_keys[0]
+        kind, _, name = bad_key.partition("_")
+        raise ValueError(
+            f"components.{bad_key} is invalid; use components.{kind}.{name} instead"
+        )
 
 
 class BrainSettings(BaseSettings):
@@ -135,9 +171,21 @@ def resolve_component_settings(
     component_id: str,
     model: type[TComponentSettings],
 ) -> TComponentSettings:
-    """Resolve one component settings object from ``components.<component_id>``."""
+    """Resolve one component settings object from grouped ``components`` keys."""
     raw_components = settings.components.model_dump(mode="python")
-    resolved = raw_components.get(component_id, {})
+    kind, separator, name = component_id.partition("_")
+    if separator and kind in {"actor", "service", "adapter", "substrate"}:
+        namespace = raw_components.get(kind, {})
+        namespace_path = f"components.{kind}"
+        if not isinstance(namespace, dict):
+            raise TypeError(f"{namespace_path} must resolve to an object mapping")
+        resolved = namespace.get(name, {})
+        source_path = f"{namespace_path}.{name}"
+    else:
+        # Non-prefixed component settings (for example core_boot) remain flat.
+        resolved = raw_components.get(component_id, {})
+        source_path = f"components.{component_id}"
+
     if not isinstance(resolved, dict):
-        raise TypeError(f"components.{component_id} must resolve to an object mapping")
+        raise TypeError(f"{source_path} must resolve to an object mapping")
     return model.model_validate(resolved)

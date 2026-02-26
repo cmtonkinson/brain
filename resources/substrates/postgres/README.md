@@ -67,7 +67,7 @@ Mappings are implemented in `resources/substrates/postgres/errors.py` and return
 
 ------------------------------------------------------------------------
 ## Configuration Surface
-This component consumes settings from `components.substrate_postgres`:
+This component consumes settings from `components.substrate.postgres`:
 - `url`
 - `pool_size`
 - `max_overflow`

@@ -282,10 +282,12 @@ def test_resolve_settings_quick_falls_back_to_standard_when_unset() -> None:
     """Config resolver should map empty quick profile fields to standard."""
     settings = BrainSettings(
         components={
-            "service_language_model": {
-                "embedding": {"provider": "ollama", "model": "embed-a"},
-                "standard": {"provider": "ollama", "model": "chat-a"},
-                "quick": {"provider": "", "model": ""},
+            "service": {
+                "language_model": {
+                    "embedding": {"provider": "ollama", "model": "embed-a"},
+                    "standard": {"provider": "ollama", "model": "chat-a"},
+                    "quick": {"provider": "", "model": ""},
+                }
             }
         }
     )
@@ -300,10 +302,12 @@ def test_resolve_settings_deep_falls_back_to_standard_when_unset() -> None:
     """Config resolver should map empty deep profile fields to standard."""
     settings = BrainSettings(
         components={
-            "service_language_model": {
-                "embedding": {"provider": "ollama", "model": "embed-a"},
-                "standard": {"provider": "ollama", "model": "chat-a"},
-                "deep": {"provider": "", "model": ""},
+            "service": {
+                "language_model": {
+                    "embedding": {"provider": "ollama", "model": "embed-a"},
+                    "standard": {"provider": "ollama", "model": "chat-a"},
+                    "deep": {"provider": "", "model": ""},
+                }
             }
         }
     )
@@ -318,8 +322,10 @@ def test_resolve_settings_requires_standard_profile() -> None:
     """Config resolver should fail when standard profile is missing."""
     settings = BrainSettings(
         components={
-            "service_language_model": {
-                "embedding": {"provider": "ollama", "model": "embed-a"},
+            "service": {
+                "language_model": {
+                    "embedding": {"provider": "ollama", "model": "embed-a"},
+                }
             }
         }
     )

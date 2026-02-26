@@ -57,7 +57,7 @@ class _LanguageModelServiceSettingsInput(BaseModel):
 def resolve_language_model_service_settings(
     settings: BrainSettings,
 ) -> LanguageModelServiceSettings:
-    """Resolve service settings from ``components.service_language_model``."""
+    """Resolve service settings from ``components.service.language_model``."""
     raw = resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

@@ -40,7 +40,7 @@ Primary system interactions:
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
 1. EAS resolves Qdrant substrate settings (`url`, `request_timeout_seconds`,
-   `distance_metric`) from `components.substrate_qdrant`.
+   `distance_metric`) from `components.substrate.qdrant`.
 2. EAS creates `QdrantConfig` for a spec collection and instantiates
    `QdrantClientSubstrate`.
 3. `QdrantClientSubstrate` creates a `QdrantClient` with URL and timeout.
@@ -71,9 +71,9 @@ Substrate-level runtime fields (from `QdrantConfig`):
 - `distance_metric`
 
 Substrate component settings (`QdrantSettings`) are sourced from:
-- `components.substrate_qdrant.url`
-- `components.substrate_qdrant.request_timeout_seconds`
-- `components.substrate_qdrant.distance_metric`
+- `components.substrate.qdrant.url`
+- `components.substrate.qdrant.request_timeout_seconds`
+- `components.substrate.qdrant.distance_metric`
 
 See `docs/configuration.md` for canonical key definitions and overrides.
 

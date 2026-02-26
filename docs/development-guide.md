@@ -38,8 +38,8 @@ This document covers how to set up, build, test, and contribute to Brain.
    ```
    cp config/brain.yaml.sample ~/.config/brain/brain.yaml
    ```
-   The sample includes defaults for `components.substrate_postgres.url`,
-   `components.adapter_signal.base_url`, and Signal profile settings; override
+   The sample includes defaults for `components.substrate.postgres.url`,
+   `components.adapter.signal.base_url`, and Signal profile settings; override
    them as needed for your environment. See the
    [Configuration Reference](configuration.md) for all available keys.
 

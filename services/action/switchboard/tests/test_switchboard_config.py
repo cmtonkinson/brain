@@ -20,7 +20,7 @@ def test_switchboard_settings_include_webhook_ingress_defaults() -> None:
 def test_switchboard_settings_normalize_webhook_path_without_leading_slash() -> None:
     """Webhook path should be canonicalized to a leading-slash absolute path."""
     settings = load_settings(
-        environ={"BRAIN_COMPONENTS__SERVICE_SWITCHBOARD__WEBHOOK_PATH": "hooks/signal"}
+        environ={"BRAIN_COMPONENTS__SERVICE__SWITCHBOARD__WEBHOOK_PATH": "hooks/signal"}
     )
     switchboard = resolve_switchboard_service_settings(settings)
 

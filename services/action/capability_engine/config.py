@@ -20,7 +20,7 @@ class CapabilityEngineSettings(BaseModel):
 def resolve_capability_engine_settings(
     settings: BrainSettings,
 ) -> CapabilityEngineSettings:
-    """Resolve CES settings from ``components.service_capability_engine``."""
+    """Resolve CES settings from ``components.service.capability_engine``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

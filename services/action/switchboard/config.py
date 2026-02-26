@@ -49,7 +49,7 @@ class SwitchboardIdentitySettings(BaseModel):
 def resolve_switchboard_service_settings(
     settings: BrainSettings,
 ) -> SwitchboardServiceSettings:
-    """Resolve service settings from ``components.service_switchboard``."""
+    """Resolve service settings from ``components.service.switchboard``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

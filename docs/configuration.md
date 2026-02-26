@@ -32,22 +32,22 @@ BRAIN_LOGGING__LEVEL=DEBUG
 BRAIN_PROFILE__OPERATOR__SIGNAL_E164=+12025550100
 BRAIN_PROFILE__DEFAULT_COUNTRY_CODE=US
 BRAIN_PROFILE__WEBHOOK_SHARED_SECRET=replace-me
-BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
+BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
 BRAIN_COMPONENTS__CORE_BOOT__BOOT_RETRY_ATTEMPTS=5
-BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__POOL_SIZE=10
-BRAIN_COMPONENTS__SUBSTRATE_QDRANT__URL=http://localhost:6333
-BRAIN_COMPONENTS__SUBSTRATE_REDIS__URL=redis://redis:6379/0
-BRAIN_COMPONENTS__ADAPTER_FILESYSTEM__ROOT_DIR=/var/lib/brain/blobs
-BRAIN_COMPONENTS__SERVICE_EMBEDDING_AUTHORITY__MAX_LIST_LIMIT=1000
-BRAIN_COMPONENTS__SERVICE_CACHE_AUTHORITY__DEFAULT_TTL_SECONDS=600
-BRAIN_COMPONENTS__SERVICE_MEMORY_AUTHORITY__DIALOGUE_RECENT_TURNS=12
-BRAIN_COMPONENTS__SERVICE_OBJECT_AUTHORITY__MAX_BLOB_SIZE_BYTES=10485760
-BRAIN_COMPONENTS__ADAPTER_LITELLM__BASE_URL=http://litellm:4000
-BRAIN_COMPONENTS__ADAPTER_SIGNAL__BASE_URL=http://signal-api:8080
-BRAIN_COMPONENTS__SERVICE_LANGUAGE_MODEL__STANDARD__MODEL=gpt-oss
-BRAIN_COMPONENTS__SERVICE_SWITCHBOARD__QUEUE_NAME=signal_inbound
-BRAIN_COMPONENTS__SERVICE_SWITCHBOARD__WEBHOOK_BIND_PORT=8091
-BRAIN_COMPONENTS__SERVICE_SWITCHBOARD__WEBHOOK_PUBLIC_BASE_URL=https://brain.example.com
+BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__POOL_SIZE=10
+BRAIN_COMPONENTS__SUBSTRATE__QDRANT__URL=http://localhost:6333
+BRAIN_COMPONENTS__SUBSTRATE__REDIS__URL=redis://redis:6379/0
+BRAIN_COMPONENTS__ADAPTER__FILESYSTEM__ROOT_DIR=/var/lib/brain/blobs
+BRAIN_COMPONENTS__SERVICE__EMBEDDING_AUTHORITY__MAX_LIST_LIMIT=1000
+BRAIN_COMPONENTS__SERVICE__CACHE_AUTHORITY__DEFAULT_TTL_SECONDS=600
+BRAIN_COMPONENTS__SERVICE__MEMORY_AUTHORITY__DIALOGUE_RECENT_TURNS=12
+BRAIN_COMPONENTS__SERVICE__OBJECT_AUTHORITY__MAX_BLOB_SIZE_BYTES=10485760
+BRAIN_COMPONENTS__ADAPTER__LITELLM__BASE_URL=http://litellm:4000
+BRAIN_COMPONENTS__ADAPTER__SIGNAL__BASE_URL=http://signal-api:8080
+BRAIN_COMPONENTS__SERVICE__LANGUAGE_MODEL__STANDARD__MODEL=gpt-oss
+BRAIN_COMPONENTS__SERVICE__SWITCHBOARD__QUEUE_NAME=signal_inbound
+BRAIN_COMPONENTS__SERVICE__SWITCHBOARD__WEBHOOK_BIND_PORT=8091
+BRAIN_COMPONENTS__SERVICE__SWITCHBOARD__WEBHOOK_PUBLIC_BASE_URL=https://brain.example.com
 ```
 
 ------------------------------------------------------------------------
@@ -73,7 +73,8 @@ Root profile and operator identity settings.
 
 ------------------------------------------------------------------------
 ## `components`
-Component-local settings keyed by `ComponentId`. Each component owns its
+Component-local settings grouped under `components.service`,
+`components.adapter`, and `components.substrate`. Each component owns its
 Pydantic model, defaults, and validation rules.
 
 ### `components.core_boot`
@@ -87,12 +88,12 @@ Core boot framework orchestration settings.
 | `boot_retry_delay_seconds` | `0.5` | Delay between `boot()` retry attempts after failures. Must be >= 0. |
 | `boot_timeout_seconds` | `30.0` | Maximum allowed runtime for one successful `boot()` invocation. Must be > 0. |
 
-### `components.substrate_postgres`
+### `components.substrate.postgres`
 PostgreSQL substrate connection settings.
 
 | Key | Default | Description |
 |---|---|---|
-| `url` | `postgresql+psycopg://brain:brain@postgres:5432/brain` | SQLAlchemy-style connection URL. Override with `BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__URL`. |
+| `url` | `postgresql+psycopg://brain:brain@postgres:5432/brain` | SQLAlchemy-style connection URL. Override with `BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__URL`. |
 | `pool_size` | `5` | Number of persistent connections in the pool. |
 | `max_overflow` | `10` | Extra connections allowed above `pool_size` under load. |
 | `pool_timeout_seconds` | `30.0` | Seconds to wait for a connection from the pool before raising. |
@@ -105,7 +106,7 @@ PostgreSQL substrate connection settings.
 | `user` | `brain` | Username used when `url` is unset. |
 | `password` | `brain` | Password used when `url` is unset. |
 
-### `components.substrate_qdrant`
+### `components.substrate.qdrant`
 Qdrant substrate defaults.
 
 | Key | Default | Description |
@@ -114,7 +115,7 @@ Qdrant substrate defaults.
 | `distance_metric` | `cosine` | Vector distance metric. One of `cosine`, `dot`, `euclid`. |
 | `request_timeout_seconds` | `10.0` | Per-request timeout for Qdrant operations. Must be > 0. |
 
-### `components.substrate_redis`
+### `components.substrate.redis`
 Redis substrate connection defaults.
 
 | Key | Default | Description |
@@ -131,7 +132,7 @@ Redis substrate connection defaults.
 | `socket_timeout_seconds` | `5.0` | Socket operation timeout in seconds. Must be > 0. |
 | `max_connections` | `20` | Maximum client pool connections. Must be > 0. |
 
-### `components.adapter_filesystem`
+### `components.adapter.filesystem`
 Filesystem adapter defaults for OAS blob persistence.
 
 | Key | Default | Description |
@@ -141,7 +142,7 @@ Filesystem adapter defaults for OAS blob persistence.
 | `fsync_writes` | `true` | When `true`, fsync temp files before atomic replace. |
 | `default_extension` | `blob` | Default extension used when OAS put requests omit extension. |
 
-### `components.adapter_litellm`
+### `components.adapter.litellm`
 LiteLLM adapter connection defaults.
 
 | Key | Default | Description |
@@ -151,7 +152,7 @@ LiteLLM adapter connection defaults.
 | `timeout_seconds` | `30.0` | Per-request HTTP timeout. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
 
-### `components.adapter_obsidian`
+### `components.adapter.obsidian`
 Obsidian Local REST API adapter defaults.
 
 | Key | Default | Description |
@@ -161,7 +162,7 @@ Obsidian Local REST API adapter defaults.
 | `timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx/429). Must be >= 0. |
 
-### `components.adapter_signal`
+### `components.adapter.signal`
 Signal runtime adapter defaults.
 
 | Key | Default | Description |
@@ -177,14 +178,14 @@ Signal runtime adapter defaults.
 | `failure_backoff_multiplier` | `2.0` | Exponential multiplier applied to each consecutive failure delay. Must be > 1.0. |
 | `failure_backoff_jitter_ratio` | `0.2` | Symmetric random jitter ratio applied to failure delays. Must be in `[0,1)`. |
 
-### `components.service_embedding_authority`
+### `components.service.embedding_authority`
 Embedding Authority Service runtime settings.
 
 | Key | Default | Description |
 |---|---|---|
 | `max_list_limit` | `500` | Maximum number of results returned by list operations. Must be > 0. |
 
-### `components.service_cache_authority`
+### `components.service.cache_authority`
 Cache Authority Service runtime settings.
 
 | Key | Default | Description |
@@ -193,7 +194,7 @@ Cache Authority Service runtime settings.
 | `default_ttl_seconds` | `300` | Default TTL applied when `set_value` is called without explicit TTL. Must be > 0. |
 | `allow_non_expiring_keys` | `true` | When `true`, `ttl_seconds=0` is allowed and maps to non-expiring keys. |
 
-### `components.service_memory_authority`
+### `components.service.memory_authority`
 Memory Authority Service runtime settings.
 
 | Key | Default | Description |
@@ -205,7 +206,7 @@ Memory Authority Service runtime settings.
 | `profile.brain_name` | `Brain` | Brain display name injected into profile context. |
 | `profile.brain_verbosity` | `normal` | Profile verbosity selector. One of `terse`, `normal`, `verbose`. |
 
-### `components.service_object_authority`
+### `components.service.object_authority`
 Object Authority Service runtime settings.
 
 | Key | Default | Description |
@@ -214,7 +215,7 @@ Object Authority Service runtime settings.
 | `digest_version` | `b1` | Object key version prefix used in canonical object keys. |
 | `max_blob_size_bytes` | `52428800` | Maximum accepted blob payload size in bytes for `put_object`. Must be > 0. |
 
-### `components.service_vault_authority`
+### `components.service.vault_authority`
 Vault Authority Service runtime settings.
 
 | Key | Default | Description |
@@ -222,7 +223,7 @@ Vault Authority Service runtime settings.
 | `max_list_limit` | `500` | Maximum list operation limit accepted by VAS. Must be > 0. |
 | `max_search_limit` | `200` | Maximum lexical search result limit accepted by VAS. Must be > 0. |
 
-### `components.service_language_model`
+### `components.service.language_model`
 Language Model Service profile settings.
 
 | Key | Default | Description |
@@ -236,7 +237,7 @@ Language Model Service profile settings.
 | `deep.provider` | `""` | Optional deep provider override; falls back to `standard.provider` when unset/blank. |
 | `deep.model` | `""` | Optional deep model override; falls back to `standard.model` when unset/blank. |
 
-### `components.service_switchboard`
+### `components.service.switchboard`
 Switchboard Service runtime settings.
 
 | Key | Default | Description |

@@ -26,7 +26,7 @@ class AttentionRouterServiceSettings(BaseModel):
 def resolve_attention_router_service_settings(
     settings: BrainSettings,
 ) -> AttentionRouterServiceSettings:
-    """Resolve service settings from ``components.service_attention_router``."""
+    """Resolve service settings from ``components.service.attention_router``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

@@ -32,8 +32,8 @@ Primary system interactions:
 - In-process callers use `LanguageModelService` (`service.py`).
 - Layer 2 callers use gRPC via `GrpcLanguageModelService` (`api.py`).
 - `DefaultLanguageModelService.from_settings(...)` resolves:
-  - `components.service_language_model`
-  - `components.adapter_litellm`
+  - `components.service.language_model`
+  - `components.adapter.litellm`
 - LMS invokes owned adapter methods for:
   - `chat` / `chat_batch`
   - `embed` / `embed_batch`
@@ -60,7 +60,7 @@ Primary system interactions:
 
 ------------------------------------------------------------------------
 ## Configuration Surface
-Service settings are sourced from `components.service_language_model`:
+Service settings are sourced from `components.service.language_model`:
 - `embedding.provider`
 - `embedding.model`
 - `quick.provider`
@@ -70,7 +70,7 @@ Service settings are sourced from `components.service_language_model`:
 - `deep.provider`
 - `deep.model`
 
-Adapter settings are sourced from `components.adapter_litellm`.
+Adapter settings are sourced from `components.adapter.litellm`.
 
 See `docs/configuration.md` for canonical key definitions and override rules.
 

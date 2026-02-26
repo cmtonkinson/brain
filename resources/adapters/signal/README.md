@@ -60,7 +60,7 @@ Behavioral semantics:
 
 ------------------------------------------------------------------------
 ## Configuration Surface
-Adapter settings are sourced from `components.adapter_signal`:
+Adapter settings are sourced from `components.adapter.signal`:
 - `base_url`
 - `timeout_seconds`
 - `max_retries`

@@ -88,10 +88,14 @@ def test_from_settings_fails_when_utcp_missing(
     )
     settings = BrainSettings(
         components={
-            "service_capability_engine": {"discovery_root": str(tmp_path / "caps")},
-            "adapter_utcp_code_mode": {
-                "utcp_yaml_config_path": str(tmp_path / "missing.yaml"),
-                "generated_utcp_json_path": str(tmp_path / "generated.json"),
+            "service": {
+                "capability_engine": {"discovery_root": str(tmp_path / "caps")}
+            },
+            "adapter": {
+                "utcp_code_mode": {
+                    "utcp_yaml_config_path": str(tmp_path / "missing.yaml"),
+                    "generated_utcp_json_path": str(tmp_path / "generated.json"),
+                }
             },
         }
     )

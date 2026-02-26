@@ -42,12 +42,12 @@ Primary interactions:
 - Postgres and filesystem runtime failures map to dependency-category errors (transport abort handled by gRPC adapter).
 ------------------------------------------------------------------------
 ## Configuration Surface
-OAS service settings are sourced from `components.service_object_authority`:
+OAS service settings are sourced from `components.service.object_authority`:
 - `digest_algorithm`
 - `digest_version`
 - `max_blob_size_bytes`
 
-OAS consumes filesystem adapter settings from `components.adapter_filesystem`.
+OAS consumes filesystem adapter settings from `components.adapter.filesystem`.
 ------------------------------------------------------------------------
 ## Testing and Validation
 Component tests:

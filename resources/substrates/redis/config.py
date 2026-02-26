@@ -49,7 +49,7 @@ def _resolve_password(*, password: str, password_env: str) -> str:
     env_name = password_env.strip()
     if inline != "" and env_name != "":
         raise ValueError(
-            "components.substrate_redis.password and password_env are mutually exclusive"
+            "components.substrate.redis.password and password_env are mutually exclusive"
         )
     if inline != "":
         return inline
@@ -59,7 +59,7 @@ def _resolve_password(*, password: str, password_env: str) -> str:
     resolved = os.environ.get(env_name, "").strip()
     if resolved == "":
         raise ValueError(
-            f"components.substrate_redis.password_env references missing env var '{env_name}'"
+            f"components.substrate.redis.password_env references missing env var '{env_name}'"
         )
     return resolved
 
@@ -69,7 +69,7 @@ def _build_redis_url_from_parts(redis: RedisSettings) -> str:
     host = redis.host.strip()
     if host == "":
         raise ValueError(
-            "components.substrate_redis.host is required when url is unset"
+            "components.substrate.redis.host is required when url is unset"
         )
 
     auth = ""
@@ -88,7 +88,7 @@ def _build_redis_url_from_parts(redis: RedisSettings) -> str:
 
 
 def resolve_redis_settings(settings: BrainSettings) -> RedisSettings:
-    """Resolve Redis substrate settings from ``components.substrate_redis``."""
+    """Resolve Redis substrate settings from ``components.substrate.redis``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

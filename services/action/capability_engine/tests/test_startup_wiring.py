@@ -51,12 +51,16 @@ class _FakeRuntime:
 def _base_components(tmp_path: Path) -> dict[str, object]:
     """Return minimum component config used by CES ``from_settings`` tests."""
     return {
-        "service_capability_engine": {
-            "discovery_root": str(tmp_path / "capabilities"),
+        "service": {
+            "capability_engine": {
+                "discovery_root": str(tmp_path / "capabilities"),
+            }
         },
-        "adapter_utcp_code_mode": {
-            "utcp_yaml_config_path": str(tmp_path / "utcp.yaml"),
-            "generated_utcp_json_path": str(tmp_path / "generated-utcp.json"),
+        "adapter": {
+            "utcp_code_mode": {
+                "utcp_yaml_config_path": str(tmp_path / "utcp.yaml"),
+                "generated_utcp_json_path": str(tmp_path / "generated-utcp.json"),
+            }
         },
     }
 

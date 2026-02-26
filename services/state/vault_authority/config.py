@@ -18,7 +18,7 @@ class VaultAuthoritySettings(BaseModel):
 
 
 def resolve_vault_authority_settings(settings: BrainSettings) -> VaultAuthoritySettings:
-    """Resolve VAS settings from ``components.service_vault_authority``."""
+    """Resolve VAS settings from ``components.service.vault_authority``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

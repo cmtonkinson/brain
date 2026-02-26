@@ -26,7 +26,7 @@ class SignalAdapterSettings(BaseModel):
 
 
 def resolve_signal_adapter_settings(settings: BrainSettings) -> SignalAdapterSettings:
-    """Resolve adapter settings from ``components.adapter_signal``."""
+    """Resolve adapter settings from ``components.adapter.signal``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

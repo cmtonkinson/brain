@@ -46,7 +46,7 @@ Primary interactions:
 - LMS failures during summary/compaction surface as dependency-category failures (compaction is explicit failure; summary generation degrades to verbatim turns).
 ------------------------------------------------------------------------
 ## Configuration Surface
-MAS settings are sourced from `components.service_memory_authority`:
+MAS settings are sourced from `components.service.memory_authority`:
 - `dialogue_recent_turns`
 - `dialogue_older_turns`
 - `focus_token_budget`

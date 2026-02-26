@@ -19,8 +19,9 @@ def test_load_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
                 "logging:",
                 "  level: WARNING",
                 "components:",
-                "  substrate_postgres:",
-                "    pool_size: 7",
+                "  substrate:",
+                "    postgres:",
+                "      pool_size: 7",
             ]
         ),
         encoding="utf-8",
@@ -31,7 +32,7 @@ def test_load_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
         environ={
             "BRAIN_LOGGING__LEVEL": "ERROR",
             "BRAIN_COMPONENTS__CORE_BOOT__BOOT_RETRY_ATTEMPTS": "4",
-            "BRAIN_COMPONENTS__SUBSTRATE_POSTGRES__POOL_SIZE": "9",
+            "BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__POOL_SIZE": "9",
         },
         config_path=config_file,
     )

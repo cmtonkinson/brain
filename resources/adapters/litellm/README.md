@@ -49,7 +49,7 @@ Primary interactions:
 
 ------------------------------------------------------------------------
 ## Configuration Surface
-Adapter settings are sourced from `components.adapter_litellm`:
+Adapter settings are sourced from `components.adapter.litellm`:
 - `base_url`
 - `api_key`
 - `timeout_seconds`

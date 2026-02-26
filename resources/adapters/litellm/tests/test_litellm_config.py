@@ -23,15 +23,17 @@ def test_resolve_litellm_adapter_settings_component_override() -> None:
     """Resolver should hydrate adapter settings from component subtree."""
     settings = BrainSettings(
         components={
-            "adapter_litellm": {
-                "timeout_seconds": 5.5,
-                "max_retries": 1,
-                "providers": {
-                    "openai": {
-                        "api_key_env": "OPENAI_API_KEY",
-                        "timeout_seconds": 7.5,
-                        "max_retries": 4,
-                    }
+            "adapter": {
+                "litellm": {
+                    "timeout_seconds": 5.5,
+                    "max_retries": 1,
+                    "providers": {
+                        "openai": {
+                            "api_key_env": "OPENAI_API_KEY",
+                            "timeout_seconds": 7.5,
+                            "max_retries": 4,
+                        }
+                    },
                 },
             }
         }

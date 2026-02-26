@@ -25,7 +25,7 @@ settings = load_settings()
 postgres_settings = resolve_postgres_settings(settings)
 sqlalchemy_url = postgres_settings.url
 if not sqlalchemy_url:
-    raise ValueError("components.substrate_postgres.url is required for CES migrations")
+    raise ValueError("components.substrate.postgres.url is required for CES migrations")
 
 schema_name = capability_engine_postgres_schema()
 config.set_main_option("sqlalchemy.url", str(sqlalchemy_url))

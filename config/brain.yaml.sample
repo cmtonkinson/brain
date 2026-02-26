@@ -18,102 +18,105 @@ components:
     boot_retry_attempts: 3
     boot_retry_delay_seconds: 0.5
     boot_timeout_seconds: 30.0
-  substrate_postgres:
-    url: postgresql+psycopg://brain:brain@postgres:5432/brain
-    pool_size: 5
-    max_overflow: 10
-    pool_timeout_seconds: 30.0
-    pool_pre_ping: true
-    connect_timeout_seconds: 10.0
-    sslmode: prefer
-  substrate_qdrant:
-    url: http://qdrant:6333
-    request_timeout_seconds: 10.0
-    distance_metric: cosine
-  substrate_redis:
-    url: redis://redis:6379/0
-    host: redis
-    port: 6379
-    db: 0
-    username: ""
-    password: ""
-    password_env: ""
-    ssl: false
-    connect_timeout_seconds: 5.0
-    socket_timeout_seconds: 5.0
-    max_connections: 20
-  adapter_filesystem:
-    root_dir: ./var/blobs
-    temp_prefix: blobtmp
-    fsync_writes: true
-    default_extension: blob
-  adapter_litellm:
-    timeout_seconds: 30.0
-    max_retries: 2
-    providers:
-      ollama:
-        api_base: http://localhost:11434
-      openai:
-        api_key_env: OPENAI_API_KEY
-  adapter_obsidian:
-    base_url: http://127.0.0.1:27124
-    api_key: ""
-    timeout_seconds: 10.0
-    max_retries: 2
-  adapter_signal:
-    base_url: http://signal-api:8080
-    timeout_seconds: 10.0
-    max_retries: 2
-    poll_interval_seconds: 1.0
-    poll_receive_timeout_seconds: 5
-    poll_max_messages: 10
-    failure_backoff_initial_seconds: 1.0
-    failure_backoff_max_seconds: 30.0
-    failure_backoff_multiplier: 2.0
-    failure_backoff_jitter_ratio: 0.2
-  service_embedding_authority:
-    max_list_limit: 500
-  service_cache_authority:
-    key_prefix: brain
-    default_ttl_seconds: 300
-    allow_non_expiring_keys: true
-  service_memory_authority:
-    dialogue_recent_turns: 10
-    dialogue_older_turns: 20
-    focus_token_budget: 512
-    profile:
-      operator_name: Operator
-      brain_name: Brain
-      brain_verbosity: normal
-  service_object_authority:
-    digest_algorithm: sha256
-    digest_version: b1
-    max_blob_size_bytes: 52428800
-  service_vault_authority:
-    max_list_limit: 500
-    max_search_limit: 200
-  service_language_model:
-    embedding:
-      provider: ollama
-      model: mxbai-embed-large
-    quick:
-      provider: ""
-      model: ""
-    standard:
-      provider: ollama
-      model: gpt-oss
-    deep:
-      provider: ""
-      model: ""
-  service_switchboard:
-    queue_name: signal_inbound
-    signature_tolerance_seconds: 300
-    webhook_bind_host: 0.0.0.0
-    webhook_bind_port: 8091
-    webhook_path: /v1/inbound/signal/webhook
-    webhook_public_base_url: http://127.0.0.1:8091
-    webhook_register_max_retries: 8
-    webhook_register_retry_delay_seconds: 2.0
+  substrate:
+    postgres:
+      url: postgresql+psycopg://brain:brain@postgres:5432/brain
+      pool_size: 5
+      max_overflow: 10
+      pool_timeout_seconds: 30.0
+      pool_pre_ping: true
+      connect_timeout_seconds: 10.0
+      sslmode: prefer
+    qdrant:
+      url: http://qdrant:6333
+      request_timeout_seconds: 10.0
+      distance_metric: cosine
+    redis:
+      url: redis://redis:6379/0
+      host: redis
+      port: 6379
+      db: 0
+      username: ""
+      password: ""
+      password_env: ""
+      ssl: false
+      connect_timeout_seconds: 5.0
+      socket_timeout_seconds: 5.0
+      max_connections: 20
+  adapter:
+    filesystem:
+      root_dir: ./var/blobs
+      temp_prefix: blobtmp
+      fsync_writes: true
+      default_extension: blob
+    litellm:
+      timeout_seconds: 30.0
+      max_retries: 2
+      providers:
+        ollama:
+          api_base: http://localhost:11434
+        openai:
+          api_key_env: OPENAI_API_KEY
+    obsidian:
+      base_url: http://127.0.0.1:27124
+      api_key: ""
+      timeout_seconds: 10.0
+      max_retries: 2
+    signal:
+      base_url: http://signal-api:8080
+      timeout_seconds: 10.0
+      max_retries: 2
+      poll_interval_seconds: 1.0
+      poll_receive_timeout_seconds: 5
+      poll_max_messages: 10
+      failure_backoff_initial_seconds: 1.0
+      failure_backoff_max_seconds: 30.0
+      failure_backoff_multiplier: 2.0
+      failure_backoff_jitter_ratio: 0.2
+  service:
+    embedding_authority:
+      max_list_limit: 500
+    cache_authority:
+      key_prefix: brain
+      default_ttl_seconds: 300
+      allow_non_expiring_keys: true
+    memory_authority:
+      dialogue_recent_turns: 10
+      dialogue_older_turns: 20
+      focus_token_budget: 512
+      profile:
+        operator_name: Operator
+        brain_name: Brain
+        brain_verbosity: normal
+    object_authority:
+      digest_algorithm: sha256
+      digest_version: b1
+      max_blob_size_bytes: 52428800
+    vault_authority:
+      max_list_limit: 500
+      max_search_limit: 200
+    language_model:
+      embedding:
+        provider: ollama
+        model: mxbai-embed-large
+      quick:
+        provider: ""
+        model: ""
+      standard:
+        provider: ollama
+        model: gpt-oss
+      deep:
+        provider: ""
+        model: ""
+    switchboard:
+      queue_name: signal_inbound
+      signature_tolerance_seconds: 300
+      webhook_bind_host: 0.0.0.0
+      webhook_bind_port: 8091
+      webhook_path: /v1/inbound/signal/webhook
+      webhook_public_base_url: http://127.0.0.1:8091
+      webhook_register_max_retries: 8
+      webhook_register_retry_delay_seconds: 2.0
 
 observability:
   public_api:

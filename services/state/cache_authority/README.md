@@ -59,12 +59,12 @@ Primary interactions with the rest of Brain:
 
 ------------------------------------------------------------------------
 ## Configuration Surface
-CAS service settings are sourced from `components.service_cache_authority`:
+CAS service settings are sourced from `components.service.cache_authority`:
 - `key_prefix`
 - `default_ttl_seconds`
 - `allow_non_expiring_keys`
 
-CAS consumes Redis substrate settings from `components.substrate_redis` via
+CAS consumes Redis substrate settings from `components.substrate.redis` via
 `resolve_redis_settings(...)`.
 
 See `docs/configuration.md` for canonical key definitions and environment

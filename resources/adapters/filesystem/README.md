@@ -26,7 +26,7 @@ Primary interactions:
 - Existing target blobs short-circuit writes and are treated as idempotent success.
 ------------------------------------------------------------------------
 ## Configuration Surface
-Settings are sourced from `components.adapter_filesystem`:
+Settings are sourced from `components.adapter.filesystem`:
 - `root_dir`
 - `temp_prefix`
 - `fsync_writes`

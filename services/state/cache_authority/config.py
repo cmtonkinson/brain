@@ -30,7 +30,7 @@ class CacheAuthoritySettings(BaseModel):
 
 
 def resolve_cache_authority_settings(settings: BrainSettings) -> CacheAuthoritySettings:
-    """Resolve CAS settings from ``components.service_cache_authority``."""
+    """Resolve CAS settings from ``components.service.cache_authority``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

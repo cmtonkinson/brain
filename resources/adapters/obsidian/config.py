@@ -22,7 +22,7 @@ class ObsidianAdapterSettings(BaseModel):
 def resolve_obsidian_adapter_settings(
     settings: BrainSettings,
 ) -> ObsidianAdapterSettings:
-    """Resolve adapter settings from ``components.adapter_obsidian``."""
+    """Resolve adapter settings from ``components.adapter.obsidian``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

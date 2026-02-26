@@ -33,7 +33,7 @@ class PolicyServiceSettings(BaseModel):
 
 
 def resolve_policy_service_settings(settings: BrainSettings) -> PolicyServiceSettings:
-    """Resolve policy settings from ``components.service_policy_service``."""
+    """Resolve policy settings from ``components.service.policy_service``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

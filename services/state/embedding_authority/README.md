@@ -79,15 +79,15 @@ Key behavior patterns:
 ------------------------------------------------------------------------
 ## Configuration Surface
 EAS service-local settings are sourced from
-`components.service_embedding_authority`:
+`components.service.embedding_authority`:
 - `max_list_limit`
 
-Qdrant substrate settings are sourced from `components.substrate_qdrant`:
+Qdrant substrate settings are sourced from `components.substrate.qdrant`:
 - `url`
 - `request_timeout_seconds`
 - `distance_metric`
 
-Postgres substrate settings are sourced from `components.substrate_postgres` by
+Postgres substrate settings are sourced from `components.substrate.postgres` by
 `EmbeddingPostgresRuntime`.
 
 See `docs/configuration.md` for canonical key definitions and override rules.

@@ -33,7 +33,7 @@ class MemoryAuthoritySettings(BaseModel):
 def resolve_memory_authority_settings(
     settings: BrainSettings,
 ) -> MemoryAuthoritySettings:
-    """Resolve MAS settings from ``components.service_memory_authority``."""
+    """Resolve MAS settings from ``components.service.memory_authority``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

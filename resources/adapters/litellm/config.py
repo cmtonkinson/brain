@@ -53,7 +53,7 @@ class LiteLlmAdapterSettings(BaseModel):
 
 
 def resolve_litellm_adapter_settings(settings: BrainSettings) -> LiteLlmAdapterSettings:
-    """Resolve LiteLLM adapter settings from ``components.adapter_litellm``."""
+    """Resolve LiteLLM adapter settings from ``components.adapter.litellm``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

@@ -39,7 +39,7 @@ class ObjectAuthoritySettings(BaseModel):
 def resolve_object_authority_settings(
     settings: BrainSettings,
 ) -> ObjectAuthoritySettings:
-    """Resolve OAS settings from ``components.service_object_authority``."""
+    """Resolve OAS settings from ``components.service.object_authority``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

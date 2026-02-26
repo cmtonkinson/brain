@@ -48,7 +48,7 @@ class UtcpCodeModeAdapterSettings(BaseModel):
 def resolve_utcp_code_mode_adapter_settings(
     settings: BrainSettings,
 ) -> UtcpCodeModeAdapterSettings:
-    """Resolve adapter settings from ``components.adapter_utcp_code_mode``."""
+    """Resolve adapter settings from ``components.adapter.utcp_code_mode``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

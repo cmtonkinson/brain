@@ -22,11 +22,13 @@ def test_resolve_obsidian_adapter_settings_component_override() -> None:
     """Resolver should hydrate explicit component overrides."""
     settings = BrainSettings(
         components={
-            "adapter_obsidian": {
-                "base_url": "http://localhost:9999",
-                "api_key": "token",
-                "timeout_seconds": 3.0,
-                "max_retries": 1,
+            "adapter": {
+                "obsidian": {
+                    "base_url": "http://localhost:9999",
+                    "api_key": "token",
+                    "timeout_seconds": 3.0,
+                    "max_retries": 1,
+                }
             }
         }
     )
