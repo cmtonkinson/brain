@@ -9,9 +9,11 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import pytest
 import yaml
+from sqlalchemy import create_engine
 
 from packages.brain_core.migrations import run_startup_migrations
 from packages.brain_shared.config import BrainSettings
@@ -103,11 +105,21 @@ def _wait_for_tcp(host: str, port: int, *, timeout_seconds: float = 30.0) -> Non
 
 
 def _wait_for_postgres_ready(
-    container_id: str, *, timeout_seconds: float = 30.0
+    *,
+    container_id: str,
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    database: str,
+    timeout_seconds: float = 60.0,
 ) -> None:
-    """Wait until Postgres reports readiness via ``pg_isready``."""
+    """Wait until Postgres accepts stable SQL connections."""
     deadline = time.monotonic() + timeout_seconds
+    quoted_password = quote_plus(password)
+    dsn = f"postgresql+psycopg://{username}:{quoted_password}@{host}:{port}/{database}"
     while time.monotonic() < deadline:
+        # First gate on in-container readiness probe.
         result = subprocess.run(
             (
                 "docker",
@@ -115,16 +127,30 @@ def _wait_for_postgres_ready(
                 container_id,
                 "pg_isready",
                 "-U",
-                "brain",
+                username,
                 "-d",
-                "brain",
+                database,
             ),
             check=False,
             capture_output=True,
             text=True,
         )
-        if result.returncode == 0:
+        if result.returncode != 0:
+            time.sleep(0.2)
+            continue
+
+        # Then verify host-side SQL connectivity to avoid startup races.
+        try:
+            engine = create_engine(dsn, pool_pre_ping=True)
+            try:
+                with engine.connect() as conn:
+                    conn.exec_driver_sql("SELECT 1")
+            finally:
+                engine.dispose()
             return
+        except Exception:  # noqa: BLE001
+            time.sleep(0.2)
+            continue
         time.sleep(0.2)
     raise TimeoutError("timed out waiting for Postgres readiness")
 
@@ -182,7 +208,14 @@ def postgres_dsn() -> Iterator[str]:
             "POSTGRES_DB": "brain",
         },
     )
-    _wait_for_postgres_ready(container.container_id)
+    _wait_for_postgres_ready(
+        container_id=container.container_id,
+        host=container.host,
+        port=container.port,
+        username="brain",
+        password="brain",
+        database="brain",
+    )
     try:
         yield f"postgresql+psycopg://brain:brain@{container.host}:{container.port}/brain"
     finally:
