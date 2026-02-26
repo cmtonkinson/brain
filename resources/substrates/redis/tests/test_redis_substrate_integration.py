@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from packages.brain_shared.config import load_settings
-from resources.substrates.redis.config import resolve_redis_settings
+from resources.substrates.redis.config import RedisSettings
 from resources.substrates.redis.redis_substrate import RedisClientSubstrate
 from tests.integration.helpers import real_provider_tests_enabled
+
+pytest_plugins = ("tests.integration.fixtures",)
 
 
 pytestmark = pytest.mark.skipif(
@@ -16,9 +17,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_key_value_and_fifo_queue_roundtrip() -> None:
+def test_key_value_and_fifo_queue_roundtrip(redis_url: str) -> None:
     """Redis substrate should roundtrip key/value and queue operations."""
-    substrate = RedisClientSubstrate(settings=resolve_redis_settings(load_settings()))
+    substrate = RedisClientSubstrate(settings=RedisSettings(url=redis_url))
     key = "int:redis:key"
     queue = "int:redis:queue"
 

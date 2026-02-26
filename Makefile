@@ -20,8 +20,17 @@ DIAGRAM_PNGS    := \
 	img/c4-container.png \
 	img/c4-component.png \
 	img/boundaries-and-responsibilities.png
+INTEGRATION     ?= 0
 
-.PHONY: all deps deps-upgrade clean build check format test docs up down
+ifneq (,$(filter integration,$(MAKECMDGOALS)))
+INTEGRATION := 1
+endif
+
+ifeq ($(INTEGRATION),1)
+PYTEST_INTEGRATION_ENV := BRAIN_RUN_INTEGRATION_REAL=1
+endif
+
+.PHONY: all deps deps-upgrade clean build check format test docs up down integration
 
 all: deps clean build test docs
 
@@ -62,7 +71,10 @@ format:
 	$(PY) -m ruff format .
 
 test: build check
-	$(PY) -m pytest --quiet tests resources services
+	$(PYTEST_INTEGRATION_ENV) $(PY) -m pytest --quiet tests resources services
+
+integration:
+	:
 
 docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(DIAGRAM_PNGS)
 

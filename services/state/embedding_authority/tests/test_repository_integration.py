@@ -6,13 +6,14 @@ import hashlib
 
 import pytest
 
-from packages.brain_shared.config import load_settings
 from services.state.embedding_authority.data.repository import (
     PostgresEmbeddingRepository,
 )
 from services.state.embedding_authority.data.runtime import EmbeddingPostgresRuntime
 from services.state.embedding_authority.domain import EmbeddingStatus
 from tests.integration.helpers import real_provider_tests_enabled
+
+pytest_plugins = ("tests.integration.fixtures",)
 
 
 pytestmark = pytest.mark.skipif(
@@ -21,9 +22,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_spec_source_chunk_embedding_roundtrip() -> None:
+def test_spec_source_chunk_embedding_roundtrip(migrated_integration_settings) -> None:
     """Repository should persist spec/source/chunk/embedding state transitions."""
-    runtime = EmbeddingPostgresRuntime.from_settings(load_settings())
+    runtime = EmbeddingPostgresRuntime.from_settings(migrated_integration_settings)
     repo = PostgresEmbeddingRepository(runtime.schema_sessions)
 
     canonical = "ollama:mxbai-embed-large:1:2"

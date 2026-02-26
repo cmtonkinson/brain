@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from packages.brain_shared.config import load_settings
 from services.state.object_authority.data.repository import PostgresObjectRepository
 from services.state.object_authority.data.runtime import ObjectPostgresRuntime
 from tests.integration.helpers import real_provider_tests_enabled
+
+pytest_plugins = ("tests.integration.fixtures",)
 
 
 pytestmark = pytest.mark.skipif(
@@ -16,9 +17,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_upsert_get_delete_roundtrip() -> None:
+def test_upsert_get_delete_roundtrip(migrated_integration_settings) -> None:
     """Repository should upsert one object metadata row and delete by key."""
-    runtime = ObjectPostgresRuntime.from_settings(load_settings())
+    runtime = ObjectPostgresRuntime.from_settings(migrated_integration_settings)
     repo = PostgresObjectRepository(runtime.schema_sessions)
 
     key = "b1:sha256:1111111111111111111111111111111111111111111111111111111111111111"

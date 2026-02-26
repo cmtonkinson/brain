@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from packages.brain_shared.config import load_settings
 from services.state.memory_authority.data.repository import PostgresMemoryRepository
 from services.state.memory_authority.data.runtime import MemoryPostgresRuntime
 from services.state.memory_authority.domain import TurnDirection
 from tests.integration.helpers import real_provider_tests_enabled
+
+pytest_plugins = ("tests.integration.fixtures",)
 
 
 pytestmark = pytest.mark.skipif(
@@ -17,9 +18,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_session_turn_and_summary_roundtrip() -> None:
+def test_session_turn_and_summary_roundtrip(migrated_integration_settings) -> None:
     """Repository should persist sessions and turns with stable ordering."""
-    runtime = MemoryPostgresRuntime.from_settings(load_settings())
+    runtime = MemoryPostgresRuntime.from_settings(migrated_integration_settings)
     repo = PostgresMemoryRepository(runtime.schema_sessions)
 
     session = repo.create_session()

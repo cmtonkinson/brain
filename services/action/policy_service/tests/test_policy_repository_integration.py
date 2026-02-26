@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from packages.brain_shared.config import load_settings
 from packages.brain_shared.ids import generate_ulid_str
 from services.action.policy_service.data.repository import (
     PostgresPolicyPersistenceRepository,
@@ -13,6 +12,8 @@ from services.action.policy_service.data.runtime import PolicyServicePostgresRun
 from services.action.policy_service.domain import PolicyRegimeSnapshot, utc_now
 from tests.integration.helpers import real_provider_tests_enabled
 
+pytest_plugins = ("tests.integration.fixtures",)
+
 
 pytestmark = pytest.mark.skipif(
     not real_provider_tests_enabled(),
@@ -20,9 +21,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_policy_regime_and_active_pointer_roundtrip() -> None:
+def test_policy_regime_and_active_pointer_roundtrip(
+    migrated_integration_settings,
+) -> None:
     """Repository should upsert one regime and persist active pointer."""
-    runtime = PolicyServicePostgresRuntime.from_settings(load_settings())
+    runtime = PolicyServicePostgresRuntime.from_settings(migrated_integration_settings)
     repo = PostgresPolicyPersistenceRepository(runtime.schema_sessions)
 
     snapshot = PolicyRegimeSnapshot(

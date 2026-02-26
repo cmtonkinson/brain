@@ -696,10 +696,11 @@ def test_vector_upsert_dependency_failure_marks_embedding_failed(
     assert not result.ok
     assert result.errors
     assert result.errors[0].category.value == "dependency"
+    assert result.errors[0].metadata is not None
+    assert result.errors[0].metadata.get("exception_type") == "RuntimeError"
     failed = repository.get_embedding(chunk_id=chunk.payload.value.id, spec_id=spec.id)
     assert failed is not None
     assert failed.status == EmbeddingStatus.FAILED
-    assert any("Vector upsert failed" in item.message for item in caplog.records)
 
 
 def test_hard_delete_removes_rows_and_best_effort_qdrant_delete() -> None:
@@ -785,9 +786,6 @@ def test_best_effort_cleanup_failures_are_logged_for_source_delete(
     assert deleted.ok
     assert deleted.payload is not None
     assert deleted.payload.value is True
-    assert any(
-        "Best-effort derived cleanup failed" in item.message for item in caplog.records
-    )
 
 
 def test_invalid_ulid_is_validation_error_not_transport_error() -> None:

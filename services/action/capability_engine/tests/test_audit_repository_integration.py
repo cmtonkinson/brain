@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from packages.brain_shared.config import load_settings
 from services.action.capability_engine.data.repository import (
     PostgresCapabilityInvocationAuditRepository,
 )
@@ -16,6 +15,8 @@ from services.action.capability_engine.data.runtime import (
 from services.action.capability_engine.domain import CapabilityInvocationAuditRow
 from tests.integration.helpers import real_provider_tests_enabled
 
+pytest_plugins = ("tests.integration.fixtures",)
+
 
 pytestmark = pytest.mark.skipif(
     not real_provider_tests_enabled(),
@@ -23,9 +24,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_append_and_count_roundtrip() -> None:
+def test_append_and_count_roundtrip(migrated_integration_settings) -> None:
     """Repository should append audit rows and increment count."""
-    runtime = CapabilityEnginePostgresRuntime.from_settings(load_settings())
+    runtime = CapabilityEnginePostgresRuntime.from_settings(
+        migrated_integration_settings
+    )
     repo = PostgresCapabilityInvocationAuditRepository(runtime.schema_sessions)
 
     before = repo.count()

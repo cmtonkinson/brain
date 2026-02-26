@@ -170,14 +170,26 @@ class QdrantClientSubstrate(QdrantSubstrate):
             if value
         ]
 
-        results = self._client.search(
-            collection_name=self._collection,
-            query_vector=list(query_vector),
-            query_filter=models.Filter(must=must_conditions),
-            limit=limit,
-            with_payload=True,
-            with_vectors=False,
-        )
+        query_filter = models.Filter(must=must_conditions)
+        if hasattr(self._client, "search"):
+            results = self._client.search(
+                collection_name=self._collection,
+                query_vector=list(query_vector),
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+        else:
+            query_response = self._client.query_points(
+                collection_name=self._collection,
+                query=list(query_vector),
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+            results = getattr(query_response, "points", [])
 
         points: list[SearchPoint] = []
         for point in results:
