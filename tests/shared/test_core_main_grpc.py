@@ -41,6 +41,7 @@ class _FakeServer:
         self.bound_address = ""
         self.started = False
         self.registered: list[str] = []
+        self.generic_handlers: list[object] = []
 
     def add_insecure_port(self, address: str) -> int:
         """Record requested bind address and return configured port."""
@@ -50,6 +51,16 @@ class _FakeServer:
     def start(self) -> None:
         """Mark server as started."""
         self.started = True
+
+    def add_generic_rpc_handlers(self, handlers: tuple[object, ...]) -> None:
+        """Capture generic handlers registered by core/runtime reflection paths."""
+        self.generic_handlers.extend(list(handlers))
+
+    def add_registered_method_handlers(
+        self, _service_name: str, _method_handlers: object
+    ) -> None:
+        """No-op compatibility hook used by newer generated gRPC registrars."""
+        return None
 
 
 def test_start_grpc_runtime_registers_services_and_binds() -> None:
