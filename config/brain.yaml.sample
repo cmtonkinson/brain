@@ -75,6 +75,9 @@ components:
       failure_backoff_max_seconds: 30.0
       failure_backoff_multiplier: 2.0
       failure_backoff_jitter_ratio: 0.2
+    utcp_code_mode:
+      utcp_yaml_config_path: /app/config/utcp.yaml
+      generated_utcp_json_path: /app/config/generated/utcp.generated.json
 
   service:
     embedding_authority:
@@ -107,7 +110,7 @@ components:
         model: ""
       standard:
         provider: ollama
-        model: gpt-oss
+        model: gpt-oss:20b
       deep:
         provider: ""
         model: ""

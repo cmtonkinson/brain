@@ -15,8 +15,8 @@ class UtcpCodeModeAdapterSettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    utcp_yaml_config_path: str = "~/.config/brain/utcp.yaml"
-    generated_utcp_json_path: str = "~/.cache/brain/utcp.generated.json"
+    utcp_yaml_config_path: str = "/app/config/utcp.yaml"
+    generated_utcp_json_path: str = "/app/config/generated/utcp.generated.json"
 
     @field_validator("utcp_yaml_config_path")
     @classmethod

@@ -12,6 +12,7 @@ services:
       - "${BRAIN_CORE_GRPC_PORT:-50051}:50051"
     volumes:
       - ${HOME}/.config/brain:/app/config:ro
+      - ${HOME}/.config/brain/generated:/app/config/generated:rw
     depends_on:
       - postgres
       - redis

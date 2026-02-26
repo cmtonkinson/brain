@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-import pytest
 from packages.brain_shared.config import BrainSettings
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from resources.adapters.litellm import (
@@ -318,8 +317,8 @@ def test_resolve_settings_deep_falls_back_to_standard_when_unset() -> None:
     assert resolved.deep.model == "chat-a"
 
 
-def test_resolve_settings_requires_standard_profile() -> None:
-    """Config resolver should fail when standard profile is missing."""
+def test_resolve_settings_defaults_standard_profile_when_missing() -> None:
+    """Config resolver should default standard profile when it is omitted."""
     settings = BrainSettings(
         components={
             "service": {
@@ -330,9 +329,10 @@ def test_resolve_settings_requires_standard_profile() -> None:
         }
     )
 
-    with pytest.raises(Exception) as exc_info:
-        resolve_language_model_service_settings(settings)
-    assert "standard" in str(exc_info.value)
+    resolved = resolve_language_model_service_settings(settings)
+
+    assert resolved.standard.provider == "ollama"
+    assert resolved.standard.model == "gpt-oss:20b"
 
 
 def test_chat_batch_rejects_empty_prompts() -> None:

@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from packages.brain_shared.config import BrainSettings, resolve_component_settings
 from services.action.language_model.component import SERVICE_COMPONENT_ID
+
+DEFAULT_EMBEDDING_PROFILE = {
+    "provider": "ollama",
+    "model": "mxbai-embed-large",
+}
+DEFAULT_STANDARD_PROFILE = {
+    "provider": "ollama",
+    "model": "gpt-oss:20b",
+}
 
 
 class LanguageModelProfileSettings(BaseModel):
@@ -32,11 +41,12 @@ class LanguageModelServiceSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
-        provider="ollama",
-        model="mxbai-embed-large",
+        **DEFAULT_EMBEDDING_PROFILE
     )
     quick: LanguageModelProfileSettings
-    standard: LanguageModelProfileSettings
+    standard: LanguageModelProfileSettings = LanguageModelProfileSettings(
+        **DEFAULT_STANDARD_PROFILE
+    )
     deep: LanguageModelProfileSettings
 
 
@@ -46,11 +56,12 @@ class _LanguageModelServiceSettingsInput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
-        provider="ollama",
-        model="mxbai-embed-large",
+        **DEFAULT_EMBEDDING_PROFILE
     )
     quick: LanguageModelOptionalProfileSettings = LanguageModelOptionalProfileSettings()
-    standard: LanguageModelProfileSettings = Field(...)
+    standard: LanguageModelProfileSettings = LanguageModelProfileSettings(
+        **DEFAULT_STANDARD_PROFILE
+    )
     deep: LanguageModelOptionalProfileSettings = LanguageModelOptionalProfileSettings()
 
 

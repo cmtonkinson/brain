@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
@@ -48,6 +48,7 @@ class SignalSendMessageResult(BaseModel):
     detail: str
 
 
+@runtime_checkable
 class SignalAdapter(Protocol):
     """Protocol for Signal webhook registration and health checks."""
 
