@@ -6,6 +6,9 @@ logging:
 
 profile:
   default_dial_code: "+1"
+  operator_name: Operator
+  brain_name: Brain
+  brain_verbosity: normal
 
 components:
   core_boot:
@@ -96,10 +99,6 @@ components:
       dialogue_recent_turns: 10
       dialogue_older_turns: 20
       focus_token_budget: 512
-      profile:
-        operator_name: Operator
-        brain_name: Brain
-        brain_verbosity: normal
     object_authority:
       digest_algorithm: sha256
       digest_version: b1

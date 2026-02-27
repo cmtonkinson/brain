@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from packages.brain_shared.config.models import ProfileSettings
 from packages.brain_shared.envelope import EnvelopeKind, new_meta, success
 from packages.brain_shared.ids import generate_ulid_str
 from services.action.language_model.service import LanguageModelService
@@ -307,11 +308,6 @@ def _build_service(
         dialogue_recent_turns=dialogue_recent_turns,
         dialogue_older_turns=dialogue_older_turns,
         focus_token_budget=focus_token_budget,
-        profile={
-            "operator_name": "Operator",
-            "brain_name": "Brain",
-            "brain_verbosity": BrainVerbosity.NORMAL,
-        },
     )
     repository = _FakeMemoryRepository()
     language_model = _FakeLanguageModelService()
@@ -320,6 +316,11 @@ def _build_service(
         runtime=_FakeRuntime(),
         language_model=language_model,
         repository=repository,
+        profile=ProfileSettings(
+            operator_name="Operator",
+            brain_name="Brain",
+            brain_verbosity=BrainVerbosity.NORMAL,
+        ),
     )
     return service, repository, language_model
 

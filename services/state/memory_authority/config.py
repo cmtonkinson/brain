@@ -6,17 +6,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from packages.brain_shared.config import BrainSettings, resolve_component_settings
 from services.state.memory_authority.component import SERVICE_COMPONENT_ID
-from services.state.memory_authority.domain import BrainVerbosity
-
-
-class MemoryProfileSettings(BaseModel):
-    """Read-only profile values injected into assembled memory context."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    operator_name: str = "Operator"
-    brain_name: str = "Brain"
-    brain_verbosity: BrainVerbosity = BrainVerbosity.NORMAL
 
 
 class MemoryAuthoritySettings(BaseModel):
@@ -27,7 +16,6 @@ class MemoryAuthoritySettings(BaseModel):
     dialogue_recent_turns: int = Field(default=10, gt=0)
     dialogue_older_turns: int = Field(default=20, ge=0)
     focus_token_budget: int = Field(default=512, gt=0)
-    profile: MemoryProfileSettings = MemoryProfileSettings()
 
 
 def resolve_memory_authority_settings(

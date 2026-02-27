@@ -79,6 +79,9 @@ Root profile and operator identity settings.
 | `operator.signal_contact_e164` | `+10000000000` | Canonical operator Signal identity used by Switchboard ingress policy. Replace with the real operator E.164 number. |
 | `default_dial_code` | `+1` | Switchboard fallback dial code for non-E.164 operator/sender values (for example `+1`, `+44`). |
 | `webhook_shared_secret` | `replace-me` | Shared secret used for inbound webhook signature verification. Replace for any non-local environment. |
+| `operator_name` | `Operator` | Operator display name injected into assembled memory context. |
+| `brain_name` | `Brain` | Brain display name injected into assembled memory context. |
+| `brain_verbosity` | `normal` | Context verbosity selector. One of `terse`, `normal`, `verbose`. |
 
 ------------------------------------------------------------------------
 ## `components`
@@ -231,9 +234,6 @@ Memory Authority Service runtime settings.
 | `dialogue_recent_turns` | `10` | Number of recent dialogue turns included verbatim in assembled context. Must be > 0. |
 | `dialogue_older_turns` | `20` | Maximum number of older turns considered for summarized dialogue context. Must be >= 0. |
 | `focus_token_budget` | `512` | Hard token ceiling for session focus content. Must be > 0. |
-| `profile.operator_name` | `Operator` | Operator display name injected into profile context. |
-| `profile.brain_name` | `Brain` | Brain display name injected into profile context. |
-| `profile.brain_verbosity` | `normal` | Profile verbosity selector. One of `terse`, `normal`, `verbose`. |
 
 ### `components.service.object_authority`
 Object Authority Service runtime settings.

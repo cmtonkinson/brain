@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config.models import ProfileSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
@@ -121,6 +122,7 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         runtime: MemoryPostgresRuntime,
         language_model: LanguageModelService,
         repository: MemoryRepository | None = None,
+        profile: ProfileSettings | None = None,
     ) -> None:
         self._settings = settings
         self._runtime = runtime
@@ -129,7 +131,9 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             if repository is None
             else repository
         )
-        self._profile = ProfileModule(settings)
+        self._profile = ProfileModule(
+            profile if profile is not None else ProfileSettings()
+        )
         self._dialogue = DialogueModule(
             repository=self._repository,
             language_model=language_model,
@@ -160,6 +164,7 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             settings=service_settings,
             runtime=runtime,
             language_model=language_model,
+            profile=settings.profile,
         )
 
     @public_api_instrumented(

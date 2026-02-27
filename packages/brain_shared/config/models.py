@@ -67,6 +67,9 @@ class ProfileSettings(BaseModel):
     operator: OperatorProfileSettings = Field(default_factory=OperatorProfileSettings)
     default_dial_code: str = "+1"
     webhook_shared_secret: str = "replace-me"
+    operator_name: str = "Operator"
+    brain_name: str = "Brain"
+    brain_verbosity: str = "normal"
 
 
 class CoreBootSettings(BaseModel):

@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-from services.state.memory_authority.config import MemoryAuthoritySettings
-from services.state.memory_authority.domain import ProfileContext
+from packages.brain_shared.config.models import ProfileSettings
+from services.state.memory_authority.domain import BrainVerbosity, ProfileContext
 
 
 class ProfileModule:
-    """Read-only profile projection loaded from MAS configuration."""
+    """Read-only profile projection loaded from top-level profile configuration."""
 
-    def __init__(self, settings: MemoryAuthoritySettings) -> None:
-        profile = settings.profile
+    def __init__(self, profile: ProfileSettings) -> None:
         self._profile = ProfileContext(
             operator_name=profile.operator_name,
             brain_name=profile.brain_name,
-            brain_verbosity=profile.brain_verbosity,
+            brain_verbosity=BrainVerbosity(profile.brain_verbosity),
         )
 
     def read(self) -> ProfileContext:
