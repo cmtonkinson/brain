@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from resources.substrates.obsidian.component import RESOURCE_COMPONENT_ID
 
 
@@ -20,9 +20,9 @@ class ObsidianSubstrateSettings(BaseModel):
 
 
 def resolve_obsidian_substrate_settings(
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
 ) -> ObsidianSubstrateSettings:
-    """Resolve substrate settings from ``components.substrate.obsidian``."""
+    """Resolve substrate settings from ``substrate.obsidian``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

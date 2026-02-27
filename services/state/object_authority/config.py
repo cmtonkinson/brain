@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.state.object_authority.component import SERVICE_COMPONENT_ID
 
 
@@ -37,9 +37,9 @@ class ObjectAuthoritySettings(BaseModel):
 
 
 def resolve_object_authority_settings(
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
 ) -> ObjectAuthoritySettings:
-    """Resolve OAS settings from ``components.service.object_authority``."""
+    """Resolve OAS settings from ``service.object_authority``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

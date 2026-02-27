@@ -16,7 +16,11 @@ import yaml
 from sqlalchemy import create_engine
 
 from packages.brain_core.migrations import run_startup_migrations
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import (
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 from resources.substrates.postgres.config import resolve_postgres_settings
 from tests.integration.helpers import real_provider_tests_enabled
 
@@ -223,27 +227,34 @@ def postgres_dsn() -> Iterator[str]:
 
 
 @pytest.fixture(scope="session")
-def integration_settings(postgres_dsn: str) -> BrainSettings:
+def integration_settings(postgres_dsn: str) -> CoreRuntimeSettings:
     """Yield settings object bound to temporary Postgres for repository tests."""
-    return BrainSettings(components={"substrate": {"postgres": {"url": postgres_dsn}}})
+    return CoreRuntimeSettings(
+        core=CoreSettings(),
+        resources=ResourcesSettings(
+            substrate={"postgres": {"url": postgres_dsn}}  # type: ignore[arg-type]
+        ),
+    )
 
 
 @pytest.fixture(scope="session")
-def migrated_integration_settings(integration_settings: BrainSettings) -> BrainSettings:
+def migrated_integration_settings(
+    integration_settings: CoreRuntimeSettings,
+) -> CoreRuntimeSettings:
     """Run service migrations against temporary Postgres and return settings."""
     postgres_url = resolve_postgres_settings(integration_settings).url
     if postgres_url == "":
         raise RuntimeError("temporary integration Postgres URL is required")
 
-    previous = os.environ.get("BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__URL")
-    os.environ["BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__URL"] = postgres_url
+    previous = os.environ.get("BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL")
+    os.environ["BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL"] = postgres_url
     try:
         run_startup_migrations(settings=integration_settings)
     finally:
         if previous is None:
-            os.environ.pop("BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__URL", None)
+            os.environ.pop("BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL", None)
         else:
-            os.environ["BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__URL"] = previous
+            os.environ["BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL"] = previous
     return integration_settings
 
 

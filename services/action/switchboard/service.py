@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from resources.adapters.signal.adapter import SignalAdapter
 from services.state.cache_authority.service import CacheAuthorityService
@@ -45,7 +45,7 @@ class SwitchboardService(ABC):
 
 def build_switchboard_service(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     cache_service: CacheAuthorityService,
     signal_adapter: SignalAdapter | None = None,
 ) -> SwitchboardService:
@@ -71,7 +71,7 @@ def build_switchboard_service(
 
 def build_switchboard_service_from_settings(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     cache_service: CacheAuthorityService,
 ) -> SwitchboardService:
     """Backward-compatible helper retaining previous from-settings behavior."""

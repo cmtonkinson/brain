@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
@@ -66,7 +66,9 @@ class DefaultCacheAuthorityService(CacheAuthorityService):
         self._backend = backend
 
     @classmethod
-    def from_settings(cls, settings: BrainSettings) -> "DefaultCacheAuthorityService":
+    def from_settings(
+        cls, settings: CoreRuntimeSettings
+    ) -> "DefaultCacheAuthorityService":
         """Build CAS and owned Redis substrate from typed root settings."""
         service_settings = resolve_cache_authority_settings(settings)
         redis_settings = resolve_redis_settings(settings)

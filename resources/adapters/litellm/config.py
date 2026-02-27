@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from resources.adapters.litellm.component import RESOURCE_COMPONENT_ID
 
 
@@ -54,8 +54,10 @@ class LiteLlmAdapterSettings(BaseModel):
         return self
 
 
-def resolve_litellm_adapter_settings(settings: BrainSettings) -> LiteLlmAdapterSettings:
-    """Resolve LiteLLM adapter settings from ``components.adapter.litellm``."""
+def resolve_litellm_adapter_settings(
+    settings: CoreRuntimeSettings,
+) -> LiteLlmAdapterSettings:
+    """Resolve LiteLLM adapter settings from ``adapter.litellm``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

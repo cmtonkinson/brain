@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -13,7 +14,9 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
-DEFAULT_CONFIG_PATH = Path.home() / ".config" / "brain" / "brain.yaml"
+DEFAULT_CORE_CONFIG_PATH = Path.home() / ".config" / "brain" / "core.yaml"
+DEFAULT_RESOURCES_CONFIG_PATH = Path.home() / ".config" / "brain" / "resources.yaml"
+DEFAULT_ACTORS_CONFIG_PATH = Path.home() / ".config" / "brain" / "actors.yaml"
 SECRETS_CONFIG_FILENAME = "secrets.yaml"
 
 
@@ -73,7 +76,7 @@ class ProfileSettings(BaseModel):
 
 
 class CoreBootSettings(BaseModel):
-    """Core boot framework settings under ``components.core_boot``."""
+    """Core boot framework settings under ``boot``."""
 
     run_migrations_on_startup: bool = True
     readiness_poll_interval_seconds: float = Field(default=0.25, gt=0)
@@ -84,68 +87,39 @@ class CoreBootSettings(BaseModel):
 
 
 class CoreHttpSettings(BaseModel):
-    """Core HTTP runtime settings under ``components.core_http``."""
+    """Core HTTP runtime settings under ``http``."""
 
     socket_path: str = "/app/config/generated/brain.sock"
 
 
 class CoreHealthSettings(BaseModel):
-    """Core aggregate health policy under ``components.core_health``."""
+    """Core aggregate health policy under ``health``."""
 
     max_timeout_seconds: float = Field(default=1.0, gt=0)
 
 
 class ComponentNamespaceSettings(BaseModel):
-    """Namespace map for grouped component settings under ``components.<kind>``."""
+    """Namespace map for grouped component settings."""
 
     model_config = ConfigDict(extra="allow")
 
 
-class ComponentsSettings(BaseModel):
-    """Typed ``components`` subtree with support for component-local extras."""
-
-    model_config = ConfigDict(extra="allow")
-
-    core_boot: CoreBootSettings = Field(default_factory=CoreBootSettings)
-    core_http: CoreHttpSettings = Field(default_factory=CoreHttpSettings)
-    core_health: CoreHealthSettings = Field(default_factory=CoreHealthSettings)
-    service: ComponentNamespaceSettings = Field(
-        default_factory=ComponentNamespaceSettings
-    )
-    adapter: ComponentNamespaceSettings = Field(
-        default_factory=ComponentNamespaceSettings
-    )
-    substrate: ComponentNamespaceSettings = Field(
-        default_factory=ComponentNamespaceSettings
+def _yaml_source_if_exists(
+    settings_cls: type[BaseSettings], path: Path
+) -> YamlConfigSettingsSource | None:
+    """Return a YAML source for path only if the file exists."""
+    if not path.exists():
+        return None
+    return YamlConfigSettingsSource(
+        settings_cls, yaml_file=path, yaml_file_encoding="utf-8"
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def _reject_flat_component_keys(cls, value: object) -> object:
-        """Reject legacy flat component keys in favor of grouped namespaces."""
-        if not isinstance(value, dict):
-            return value
-        flat_prefixed_keys = tuple(
-            key
-            for key in value
-            if isinstance(key, str)
-            and key.startswith(("actor_", "service_", "adapter_", "substrate_"))
-        )
-        if not flat_prefixed_keys:
-            return value
 
-        bad_key = flat_prefixed_keys[0]
-        kind, _, name = bad_key.partition("_")
-        raise ValueError(
-            f"components.{bad_key} is invalid; use components.{kind}.{name} instead"
-        )
-
-
-class BrainSettings(BaseSettings):
-    """Root runtime settings resolved from init/env/yaml/defaults sources."""
+class CoreSettings(BaseSettings):
+    """Core service runtime settings — loaded from core.yaml."""
 
     model_config = SettingsConfigDict(
-        env_prefix="BRAIN_",
+        env_prefix="BRAIN_CORE_",
         env_nested_delimiter="__",
         extra="ignore",
         nested_model_default_partial_update=True,
@@ -154,9 +128,14 @@ class BrainSettings(BaseSettings):
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     profile: ProfileSettings = Field(default_factory=ProfileSettings)
-    components: ComponentsSettings = Field(default_factory=ComponentsSettings)
+    boot: CoreBootSettings = Field(default_factory=CoreBootSettings)
+    http: CoreHttpSettings = Field(default_factory=CoreHttpSettings)
+    health: CoreHealthSettings = Field(default_factory=CoreHealthSettings)
+    service: ComponentNamespaceSettings = Field(
+        default_factory=ComponentNamespaceSettings
+    )
 
-    _config_path: ClassVar[Path] = DEFAULT_CONFIG_PATH
+    _config_path: ClassVar[Path] = DEFAULT_CORE_CONFIG_PATH
 
     @classmethod
     def settings_customise_sources(
@@ -167,30 +146,147 @@ class BrainSettings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Apply Brain precedence: init > env > secrets.yaml > brain.yaml > defaults."""
+        """Apply Core precedence: init > env > secrets.yaml > core.yaml > defaults."""
         config_path = cls._config_path
         secrets_path = config_path.parent / SECRETS_CONFIG_FILENAME
 
-        sources: list[PydanticBaseSettingsSource] = [
-            init_settings,
-            env_settings,
-        ]
-        if secrets_path.exists():
-            sources.append(
-                YamlConfigSettingsSource(
-                    settings_cls,
-                    yaml_file=secrets_path,
-                    yaml_file_encoding="utf-8",
-                )
-            )
+        sources: list[PydanticBaseSettingsSource] = [init_settings, env_settings]
+        secrets_source = _yaml_source_if_exists(settings_cls, secrets_path)
+        if secrets_source is not None:
+            sources.append(secrets_source)
         sources.append(
             YamlConfigSettingsSource(
-                settings_cls,
-                yaml_file=config_path,
-                yaml_file_encoding="utf-8",
+                settings_cls, yaml_file=config_path, yaml_file_encoding="utf-8"
             )
         )
         return tuple(sources)
+
+
+class ResourcesSettings(BaseSettings):
+    """Infrastructure resource settings — loaded from resources.yaml."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="BRAIN_RESOURCES_",
+        env_nested_delimiter="__",
+        extra="ignore",
+        nested_model_default_partial_update=True,
+    )
+
+    substrate: ComponentNamespaceSettings = Field(
+        default_factory=ComponentNamespaceSettings
+    )
+    adapter: ComponentNamespaceSettings = Field(
+        default_factory=ComponentNamespaceSettings
+    )
+
+    _config_path: ClassVar[Path] = DEFAULT_RESOURCES_CONFIG_PATH
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Apply Resources precedence: init > env > secrets.yaml > resources.yaml > defaults."""
+        config_path = cls._config_path
+        secrets_path = config_path.parent / SECRETS_CONFIG_FILENAME
+
+        sources: list[PydanticBaseSettingsSource] = [init_settings, env_settings]
+        secrets_source = _yaml_source_if_exists(settings_cls, secrets_path)
+        if secrets_source is not None:
+            sources.append(secrets_source)
+        sources.append(
+            YamlConfigSettingsSource(
+                settings_cls, yaml_file=config_path, yaml_file_encoding="utf-8"
+            )
+        )
+        return tuple(sources)
+
+
+class ActorCoreConnectionSettings(BaseModel):
+    """How actors connect to Core — path to the Core Unix socket."""
+
+    socket_path: str = str(
+        Path.home() / ".config" / "brain" / "generated" / "brain.sock"
+    )
+    timeout_seconds: float = 10.0
+
+
+class ActorNamespaceSettings(BaseModel):
+    """Per-actor identity settings."""
+
+    model_config = ConfigDict(extra="allow")
+
+    principal: str = "operator"
+    source: str = "actor"
+
+
+class CliActorSettings(ActorNamespaceSettings):
+    """CLI actor identity settings."""
+
+    source: str = "cli"
+
+
+class ActorSettings(BaseSettings):
+    """Actor runtime settings — loaded from actors.yaml."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="BRAIN_ACTORS_",
+        env_nested_delimiter="__",
+        extra="ignore",
+        nested_model_default_partial_update=True,
+    )
+
+    core: ActorCoreConnectionSettings = Field(
+        default_factory=ActorCoreConnectionSettings
+    )
+    cli: CliActorSettings = Field(default_factory=CliActorSettings)
+    agent: ActorNamespaceSettings = Field(
+        default_factory=lambda: ActorNamespaceSettings(source="agent")
+    )
+    beat: ActorNamespaceSettings = Field(
+        default_factory=lambda: ActorNamespaceSettings(source="beat")
+    )
+    worker: ActorNamespaceSettings = Field(
+        default_factory=lambda: ActorNamespaceSettings(source="worker")
+    )
+
+    _config_path: ClassVar[Path] = DEFAULT_ACTORS_CONFIG_PATH
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Apply Actors precedence: init > env > secrets.yaml > actors.yaml > defaults."""
+        config_path = cls._config_path
+        secrets_path = config_path.parent / SECRETS_CONFIG_FILENAME
+
+        sources: list[PydanticBaseSettingsSource] = [init_settings, env_settings]
+        secrets_source = _yaml_source_if_exists(settings_cls, secrets_path)
+        if secrets_source is not None:
+            sources.append(secrets_source)
+        sources.append(
+            YamlConfigSettingsSource(
+                settings_cls, yaml_file=config_path, yaml_file_encoding="utf-8"
+            )
+        )
+        return tuple(sources)
+
+
+@dataclass(frozen=True, slots=True)
+class CoreRuntimeSettings:
+    """Combined Core + Resources settings passed to components and boot hooks."""
+
+    core: CoreSettings
+    resources: ResourcesSettings
 
 
 TComponentSettings = TypeVar("TComponentSettings", bound=BaseModel)
@@ -198,25 +294,34 @@ TComponentSettings = TypeVar("TComponentSettings", bound=BaseModel)
 
 def resolve_component_settings(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     component_id: str,
     model: type[TComponentSettings],
 ) -> TComponentSettings:
-    """Resolve one component settings object from grouped ``components`` keys."""
-    raw_components = settings.components.model_dump(mode="python")
-    kind, separator, name = component_id.partition("_")
-    if separator and kind in {"actor", "service", "adapter", "substrate"}:
-        namespace = raw_components.get(kind, {})
-        namespace_path = f"components.{kind}"
-        if not isinstance(namespace, dict):
-            raise TypeError(f"{namespace_path} must resolve to an object mapping")
-        resolved = namespace.get(name, {})
-        source_path = f"{namespace_path}.{name}"
-    else:
-        # Non-prefixed component settings (for example core_boot) remain flat.
-        resolved = raw_components.get(component_id, {})
-        source_path = f"components.{component_id}"
+    """Resolve one component settings object from the appropriate namespace.
 
+    - ``service_*``   → settings.core.service
+    - ``substrate_*`` → settings.resources.substrate
+    - ``adapter_*``   → settings.resources.adapter
+    """
+    kind, separator, name = component_id.partition("_")
+    if not separator or kind not in {"service", "substrate", "adapter"}:
+        raise ValueError(
+            f"component_id '{component_id}' must be prefixed with "
+            "service_, substrate_, or adapter_"
+        )
+
+    if kind == "service":
+        namespace = settings.core.service.model_dump(mode="python")
+        namespace_path = "service"
+    elif kind == "substrate":
+        namespace = settings.resources.substrate.model_dump(mode="python")
+        namespace_path = "substrate"
+    else:
+        namespace = settings.resources.adapter.model_dump(mode="python")
+        namespace_path = "adapter"
+
+    resolved = namespace.get(name, {})
     if not isinstance(resolved, dict):
-        raise TypeError(f"{source_path} must resolve to an object mapping")
+        raise TypeError(f"{namespace_path}.{name} must resolve to an object mapping")
     return model.model_validate(resolved)

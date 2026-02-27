@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import inspect
 from typing import TypeVar
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 
 
 class BootError(RuntimeError):
@@ -57,7 +57,7 @@ TResolved = TypeVar("TResolved")
 class BootContext:
     """Runtime context shared with all component boot hooks."""
 
-    settings: BrainSettings
+    settings: CoreRuntimeSettings
     resolve_component: Callable[[str], object]
 
     def require_component(self, component_id: str) -> object:

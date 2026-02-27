@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
@@ -152,7 +152,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
     @classmethod
     def from_settings(
         cls,
-        settings: BrainSettings,
+        settings: CoreRuntimeSettings,
         *,
         policy_service: PolicyService,
         registry: CapabilityRegistry | None = None,

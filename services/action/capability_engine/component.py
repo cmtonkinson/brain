@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.manifest import (
     ComponentId,
     ModuleRoot,
@@ -29,7 +29,7 @@ MANIFEST = register_component(
 
 
 def build_component(
-    *, settings: BrainSettings, components: Mapping[str, object]
+    *, settings: CoreRuntimeSettings, components: Mapping[str, object]
 ) -> object:
     """Build concrete runtime instance for this registered service component."""
     from services.action.capability_engine.service import (
@@ -48,7 +48,9 @@ def build_component(
     )
 
 
-def after_boot(*, settings: BrainSettings, components: Mapping[str, object]) -> None:
+def after_boot(
+    *, settings: CoreRuntimeSettings, components: Mapping[str, object]
+) -> None:
     """Load capability manifests after all component boot hooks succeed."""
     from services.action.capability_engine.implementation import (
         DefaultCapabilityEngineService,

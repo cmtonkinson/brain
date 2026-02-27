@@ -1,0 +1,21 @@
+core:
+  # Path to the Brain Core Unix socket. On the host this is typically under
+  # ~/.config/brain/generated/. Inside a container it is /app/config/generated/brain.sock.
+  socket_path: ~/.config/brain/generated/brain.sock
+  timeout_seconds: 10.0
+
+cli:
+  principal: operator
+  source: cli
+
+agent:
+  principal: agent
+  source: agent
+
+beat:
+  principal: operator
+  source: beat
+
+worker:
+  principal: operator
+  source: worker

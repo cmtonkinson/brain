@@ -22,11 +22,7 @@ from packages.brain_sdk import (
     vault_list,
     vault_search,
 )
-from packages.brain_sdk.config import resolve_timeout_seconds
-
-_DEFAULT_HOST_SOCKET_PATH = str(
-    Path.home() / ".config" / "brain" / "generated" / "brain.sock"
-)
+from packages.brain_shared.config import load_actor_settings
 
 SUCCESS_EXIT_CODE = 0
 DOMAIN_ERROR_EXIT_CODE = 3
@@ -323,15 +319,15 @@ vault_app = typer.Typer(help="Vault authority commands")
 @app.callback()
 def main(
     ctx: typer.Context,
-    socket: str = typer.Option(
-        _DEFAULT_HOST_SOCKET_PATH,
-        envvar="BRAIN_SOCKET_PATH",
+    socket: str | None = typer.Option(
+        None,
+        envvar="BRAIN_ACTORS_CORE__SOCKET_PATH",
         help="Brain Core Unix socket path",
     ),
-    principal: str = typer.Option("operator", help="Envelope principal"),
-    source: str = typer.Option("cli", help="Envelope source"),
-    timeout: float = typer.Option(
-        resolve_timeout_seconds(),
+    principal: str | None = typer.Option(None, help="Envelope principal"),
+    source: str | None = typer.Option(None, help="Envelope source"),
+    timeout: float | None = typer.Option(
+        None,
         min=0.001,
         help="Request timeout in seconds",
     ),
@@ -340,12 +336,13 @@ def main(
     parent_id: str | None = typer.Option(None, help="Optional parent envelope id"),
 ) -> None:
     """Store global options for all domain/action commands."""
+    actor_settings = load_actor_settings()
 
     ctx.obj = CliConfig(
-        socket=socket,
-        principal=principal,
-        source=source,
-        timeout=timeout,
+        socket=socket if socket is not None else actor_settings.core.socket_path,
+        principal=principal if principal is not None else actor_settings.cli.principal,
+        source=source if source is not None else actor_settings.cli.source,
+        timeout=timeout if timeout is not None else actor_settings.core.timeout_seconds,
         as_json=as_json,
         trace_id=trace_id,
         parent_id=parent_id,

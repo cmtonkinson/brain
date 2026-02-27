@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
-from resources.adapters.utcp_code_mode import UtcpCodeModeConfigNotFoundError
 from services.action.capability_engine.config import CapabilityEngineSettings
 from services.action.capability_engine.data.repository import (
     InMemoryCapabilityInvocationAuditRepository,
@@ -76,33 +75,41 @@ def _meta():
     return new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator")
 
 
-def test_from_settings_fails_when_utcp_missing(
+def test_from_settings_succeeds_with_inline_utcp_settings(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """CES from_settings should hard-fail when UTCP YAML path is missing."""
-    from packages.brain_shared.config import BrainSettings
+    """CES from_settings should succeed with valid inline code_mode settings."""
+    from packages.brain_shared.config import (
+        CoreRuntimeSettings,
+        CoreSettings,
+        ResourcesSettings,
+    )
 
     monkeypatch.setattr(
         "services.action.capability_engine.implementation.CapabilityEnginePostgresRuntime.from_settings",
         lambda _settings: type("_R", (), {"schema_sessions": object()})(),
     )
-    settings = BrainSettings(
-        components={
-            "service": {
+    settings = CoreRuntimeSettings(
+        core=CoreSettings(
+            service={  # type: ignore[arg-type]
                 "capability_engine": {"discovery_root": str(tmp_path / "caps")}
-            },
-            "adapter": {
+            }
+        ),
+        resources=ResourcesSettings(
+            adapter={  # type: ignore[arg-type]
                 "utcp_code_mode": {
-                    "utcp_yaml_config_path": str(tmp_path / "missing.yaml"),
-                    "generated_utcp_json_path": str(tmp_path / "generated.json"),
+                    "code_mode": {
+                        "defaults": {"call_template_type": "mcp"},
+                        "servers": {"filesystem": {"command": "npx"}},
+                    }
                 }
-            },
-        }
+            }
+        ),
     )
-    with pytest.raises(UtcpCodeModeConfigNotFoundError):
-        DefaultCapabilityEngineService.from_settings(
-            settings, policy_service=_AllowPolicy()
-        )
+    service = DefaultCapabilityEngineService.from_settings(
+        settings, policy_service=_AllowPolicy()
+    )
+    assert isinstance(service, DefaultCapabilityEngineService)
 
 
 def test_invoke_writes_audit_for_allowed_call(tmp_path: Path) -> None:

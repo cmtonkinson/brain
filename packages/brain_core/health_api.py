@@ -8,7 +8,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from packages.brain_core.health import evaluate_core_health
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 
 
 class _ComponentStatus(BaseModel):
@@ -25,7 +25,7 @@ class _HealthResponse(BaseModel):
 def register_routes(
     *,
     router: APIRouter,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     components: Mapping[str, object],
 ) -> None:
     """Register core health route on one router."""

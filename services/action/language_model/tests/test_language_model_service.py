@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import (
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from resources.adapters.litellm import (
     AdapterChatResult,
@@ -279,16 +283,17 @@ def test_chat_rejects_embedding_profile() -> None:
 
 def test_resolve_settings_quick_falls_back_to_standard_when_unset() -> None:
     """Config resolver should map empty quick profile fields to standard."""
-    settings = BrainSettings(
-        components={
-            "service": {
+    settings = CoreRuntimeSettings(
+        core=CoreSettings(
+            service={  # type: ignore[arg-type]
                 "language_model": {
                     "embedding": {"provider": "ollama", "model": "embed-a"},
                     "standard": {"provider": "ollama", "model": "chat-a"},
                     "quick": {"provider": "", "model": ""},
                 }
             }
-        }
+        ),
+        resources=ResourcesSettings(),
     )
 
     resolved = resolve_language_model_service_settings(settings)
@@ -299,16 +304,17 @@ def test_resolve_settings_quick_falls_back_to_standard_when_unset() -> None:
 
 def test_resolve_settings_deep_falls_back_to_standard_when_unset() -> None:
     """Config resolver should map empty deep profile fields to standard."""
-    settings = BrainSettings(
-        components={
-            "service": {
+    settings = CoreRuntimeSettings(
+        core=CoreSettings(
+            service={  # type: ignore[arg-type]
                 "language_model": {
                     "embedding": {"provider": "ollama", "model": "embed-a"},
                     "standard": {"provider": "ollama", "model": "chat-a"},
                     "deep": {"provider": "", "model": ""},
                 }
             }
-        }
+        ),
+        resources=ResourcesSettings(),
     )
 
     resolved = resolve_language_model_service_settings(settings)
@@ -319,14 +325,15 @@ def test_resolve_settings_deep_falls_back_to_standard_when_unset() -> None:
 
 def test_resolve_settings_defaults_standard_profile_when_missing() -> None:
     """Config resolver should default standard profile when it is omitted."""
-    settings = BrainSettings(
-        components={
-            "service": {
+    settings = CoreRuntimeSettings(
+        core=CoreSettings(
+            service={  # type: ignore[arg-type]
                 "language_model": {
                     "embedding": {"provider": "ollama", "model": "embed-a"},
                 }
             }
-        }
+        ),
+        resources=ResourcesSettings(),
     )
 
     resolved = resolve_language_model_service_settings(settings)

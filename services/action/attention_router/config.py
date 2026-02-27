@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.action.attention_router.component import SERVICE_COMPONENT_ID
 
 
@@ -24,9 +24,9 @@ class AttentionRouterServiceSettings(BaseModel):
 
 
 def resolve_attention_router_service_settings(
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
 ) -> AttentionRouterServiceSettings:
-    """Resolve service settings from ``components.service.attention_router``."""
+    """Resolve service settings from ``service.attention_router``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

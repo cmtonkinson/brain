@@ -18,7 +18,7 @@ from packages.brain_shared.component_loader import (
     import_component_modules,
     import_registered_component_modules,
 )
-from packages.brain_shared.config import BrainSettings, load_settings
+from packages.brain_shared.config import CoreRuntimeSettings, load_core_runtime_settings
 from packages.brain_shared.logging import get_logger
 from packages.brain_shared.http.server import create_app, run_app_uds
 from packages.brain_shared.manifest import ComponentManifest, get_registry
@@ -74,7 +74,9 @@ def _resolve_service_http_registrar(manifest: ComponentManifest):
     return None
 
 
-def _instantiate_registered_components(settings: BrainSettings) -> dict[str, object]:
+def _instantiate_registered_components(
+    settings: CoreRuntimeSettings,
+) -> dict[str, object]:
     """Instantiate all registered L0 resources and L1 services by registry walk."""
     registry = get_registry()
     pending = [*registry.list_resources(), *registry.list_services()]
@@ -107,7 +109,7 @@ def _instantiate_registered_components(settings: BrainSettings) -> dict[str, obj
 
 
 def _run_after_boot_lifecycle(
-    *, settings: BrainSettings, components: dict[str, object]
+    *, settings: CoreRuntimeSettings, components: dict[str, object]
 ) -> None:
     """Run optional per-component ``after_boot`` lifecycle hooks."""
     registry = get_registry()
@@ -132,7 +134,7 @@ def _run_after_boot_lifecycle(
 
 def _start_http_runtime(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     components: dict[str, object],
 ) -> tuple[object, threading.Thread]:
     """Start Core HTTP runtime and register all service transport adapters."""
@@ -152,7 +154,7 @@ def _start_http_runtime(
         registered_services.append(str(manifest.id))
 
     app.include_router(router)
-    socket_path = settings.components.core_http.socket_path
+    socket_path = settings.core.http.socket_path
     os.makedirs(os.path.dirname(socket_path), exist_ok=True)
     server = run_app_uds(app, socket_path=socket_path)
     thread = threading.Thread(target=server.run, daemon=True)
@@ -169,8 +171,14 @@ def _start_http_runtime(
 
 def main() -> None:
     """Discover components, instantiate them, run startup, and hold process."""
-    config_path = os.getenv("BRAIN_CONFIG_FILE", "").strip()
-    settings = load_settings(config_path=Path(config_path) if config_path else None)
+    core_config_path = os.getenv("BRAIN_CORE_CONFIG_FILE", "").strip()
+    resources_config_path = os.getenv("BRAIN_RESOURCES_CONFIG_FILE", "").strip()
+    settings = load_core_runtime_settings(
+        core_config_path=Path(core_config_path) if core_config_path else None,
+        resources_config_path=Path(resources_config_path)
+        if resources_config_path
+        else None,
+    )
 
     imported = import_registered_component_modules()
     registry = get_registry()
@@ -185,7 +193,7 @@ def main() -> None:
     )
 
     migration_result = None
-    if settings.components.core_boot.run_migrations_on_startup:
+    if settings.core.boot.run_migrations_on_startup:
         migration_result = run_startup_migrations(settings=settings)
 
     components = _instantiate_registered_components(settings)

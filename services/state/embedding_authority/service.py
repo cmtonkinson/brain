@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Mapping, Sequence
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from resources.substrates.qdrant.substrate import QdrantSubstrate
 from packages.brain_shared.envelope import EnvelopeMeta, Envelope
 from services.state.embedding_authority.domain import (
@@ -207,7 +207,7 @@ class EmbeddingAuthorityService(ABC):
 
 def build_embedding_authority_service(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     qdrant_substrate: QdrantSubstrate | None = None,
 ) -> EmbeddingAuthorityService:
     """Build default Embedding Authority implementation from typed settings."""

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from resources.substrates.redis import RedisSubstrate
 from services.state.cache_authority.domain import (
@@ -89,7 +89,7 @@ class CacheAuthorityService(ABC):
 
 def build_cache_authority_service(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     backend: RedisSubstrate | None = None,
 ) -> CacheAuthorityService:
     """Build default Cache Authority implementation from typed settings."""

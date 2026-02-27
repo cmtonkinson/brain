@@ -10,7 +10,7 @@ from alembic import command
 from alembic.config import Config
 
 from packages.brain_shared.component_loader import import_registered_component_modules
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.manifest import get_registry
 from resources.substrates.postgres.bootstrap import bootstrap_service_schemas
 
@@ -61,7 +61,7 @@ def discover_service_migration_configs(
 
 def run_startup_migrations(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     repo_root: Path | None = None,
     upgrade_fn: Callable[[Config, str], None] = command.upgrade,
 ) -> MigrationRunResult:

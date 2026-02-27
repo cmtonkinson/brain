@@ -7,7 +7,7 @@ from typing import Any, Sequence
 
 from pydantic import BaseModel, ValidationError
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
@@ -84,7 +84,9 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
         self._substrate = substrate
 
     @classmethod
-    def from_settings(cls, settings: BrainSettings) -> "DefaultVaultAuthorityService":
+    def from_settings(
+        cls, settings: CoreRuntimeSettings
+    ) -> "DefaultVaultAuthorityService":
         """Build VAS and owned Obsidian substrate from typed root settings."""
         service_settings = resolve_vault_authority_settings(settings)
         substrate_settings = resolve_obsidian_substrate_settings(settings)

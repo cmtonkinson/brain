@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import text
 
 from packages.brain_shared.component_loader import import_registered_component_modules
-from packages.brain_shared.config import BrainSettings, load_settings
+from packages.brain_shared.config import CoreRuntimeSettings, load_core_runtime_settings
 from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
 from packages.brain_shared.manifest import ServiceManifest, get_registry
 from resources.substrates.postgres.config import resolve_postgres_settings
@@ -40,10 +40,10 @@ class BootstrapResult:
 
 
 def bootstrap_service_schemas(
-    settings: BrainSettings | None = None,
+    settings: CoreRuntimeSettings | None = None,
 ) -> BootstrapResult:
     """Provision all registered service schemas and shared SQL domains."""
-    resolved_settings = load_settings() if settings is None else settings
+    resolved_settings = load_core_runtime_settings() if settings is None else settings
     postgres_config = resolve_postgres_settings(resolved_settings)
 
     imported = import_registered_component_modules()

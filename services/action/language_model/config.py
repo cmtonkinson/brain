@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.action.language_model.component import SERVICE_COMPONENT_ID
 
 DEFAULT_EMBEDDING_PROFILE = {
@@ -66,9 +66,9 @@ class _LanguageModelServiceSettingsInput(BaseModel):
 
 
 def resolve_language_model_service_settings(
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
 ) -> LanguageModelServiceSettings:
-    """Resolve service settings from ``components.service.language_model``."""
+    """Resolve service settings from ``service.language_model``."""
     raw = resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

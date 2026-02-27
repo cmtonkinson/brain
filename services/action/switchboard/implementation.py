@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
@@ -81,7 +81,7 @@ class DefaultSwitchboardService(SwitchboardService):
     def from_settings(
         cls,
         *,
-        settings: BrainSettings,
+        settings: CoreRuntimeSettings,
         cache_service: CacheAuthorityService,
     ) -> "DefaultSwitchboardService":
         """Build Switchboard + owned adapter from typed root settings."""

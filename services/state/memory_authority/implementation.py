@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.config.models import ProfileSettings
 from packages.brain_shared.envelope import (
     Envelope,
@@ -154,7 +154,7 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
     def from_settings(
         cls,
         *,
-        settings: BrainSettings,
+        settings: CoreRuntimeSettings,
         language_model: LanguageModelService,
     ) -> "DefaultMemoryAuthorityService":
         """Build MAS from typed settings and injected LMS public API dependency."""

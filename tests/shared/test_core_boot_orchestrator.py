@@ -15,7 +15,12 @@ from packages.brain_core.boot.contracts import (
     BootReadinessTimeoutError,
 )
 from packages.brain_core.boot.orchestrator import run_boot_hooks
-from packages.brain_shared.config import BrainSettings, CoreBootSettings
+from packages.brain_shared.config import (
+    CoreBootSettings,
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 
 
 @dataclass(slots=True)
@@ -53,7 +58,9 @@ def _hook(
 def _context() -> BootContext:
     """Build a boot context for orchestrator unit tests."""
     return BootContext(
-        settings=BrainSettings(),
+        settings=CoreRuntimeSettings(
+            core=CoreSettings(), resources=ResourcesSettings()
+        ),
         resolve_component=lambda _component_id: object(),
     )
 

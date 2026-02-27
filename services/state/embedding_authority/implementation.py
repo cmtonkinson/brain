@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 from pydantic import BaseModel, ValidationError
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from packages.brain_shared.envelope import (
     EnvelopeMeta,
     Envelope,
@@ -99,7 +99,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
 
     @classmethod
     def from_settings(
-        cls, settings: BrainSettings
+        cls, settings: CoreRuntimeSettings
     ) -> "DefaultEmbeddingAuthorityService":
         """Build EAS from typed application settings and substrate runtimes."""
         embedding_settings = resolve_component_settings(

@@ -8,7 +8,12 @@ from unittest.mock import MagicMock, patch
 
 
 from packages.brain_core.main import _start_http_runtime
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import (
+    CoreHttpSettings,
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,8 +37,9 @@ class _Registry:
 
 def test_start_http_runtime_registers_routes_and_starts() -> None:
     """HTTP runtime should register available routes and start server thread."""
-    settings = BrainSettings(
-        components={"core_http": {"socket_path": "/tmp/test-brain.sock"}}
+    settings = CoreRuntimeSettings(
+        core=CoreSettings(http=CoreHttpSettings(socket_path="/tmp/test-brain.sock")),
+        resources=ResourcesSettings(),
     )
     registry = _Registry(
         services=(_Manifest(id="service_a"), _Manifest(id="service_b"))

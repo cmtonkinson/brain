@@ -21,7 +21,7 @@ class QdrantSettings(BaseModel):
         """Validate supported distance metric names."""
         _validate_distance_metric(
             value=self.distance_metric,
-            field_path="components.substrate.qdrant.distance_metric",
+            field_path="substrate.qdrant.distance_metric",
         )
         return self
 

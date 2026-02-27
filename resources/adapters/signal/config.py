@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from resources.adapters.signal.component import RESOURCE_COMPONENT_ID
 
 
@@ -38,8 +38,10 @@ class SignalAdapterSettings(BaseModel):
         return normalized
 
 
-def resolve_signal_adapter_settings(settings: BrainSettings) -> SignalAdapterSettings:
-    """Resolve adapter settings from ``components.adapter.signal``."""
+def resolve_signal_adapter_settings(
+    settings: CoreRuntimeSettings,
+) -> SignalAdapterSettings:
+    """Resolve adapter settings from ``adapter.signal``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

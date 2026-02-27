@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import (
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 from resources.adapters.litellm.config import (
     LiteLlmAdapterSettings,
     LiteLlmProviderSettings,
@@ -12,7 +16,7 @@ from resources.adapters.litellm.config import (
 
 def test_resolve_litellm_adapter_settings_defaults() -> None:
     """Resolver should return model defaults when component section is absent."""
-    settings = BrainSettings(components={})
+    settings = CoreRuntimeSettings(core=CoreSettings(), resources=ResourcesSettings())
 
     resolved = resolve_litellm_adapter_settings(settings)
 
@@ -21,9 +25,10 @@ def test_resolve_litellm_adapter_settings_defaults() -> None:
 
 def test_resolve_litellm_adapter_settings_component_override() -> None:
     """Resolver should hydrate adapter settings from component subtree."""
-    settings = BrainSettings(
-        components={
-            "adapter": {
+    settings = CoreRuntimeSettings(
+        core=CoreSettings(),
+        resources=ResourcesSettings(
+            adapter={  # type: ignore[arg-type]
                 "litellm": {
                     "timeout_seconds": 5.5,
                     "max_retries": 1,
@@ -36,7 +41,7 @@ def test_resolve_litellm_adapter_settings_component_override() -> None:
                     },
                 },
             }
-        }
+        ),
     )
 
     resolved = resolve_litellm_adapter_settings(settings)

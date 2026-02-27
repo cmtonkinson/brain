@@ -10,7 +10,11 @@ from types import ModuleType
 import pytest
 
 from packages.brain_core.boot import BootContext
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import (
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 
 from packages.brain_core.boot.contracts import BootContractError
 from packages.brain_core.boot.loader import (
@@ -112,7 +116,9 @@ def test_load_boot_hooks_loads_valid_contract(monkeypatch: pytest.MonkeyPatch) -
     assert hooks[0].component_id == "service_a"
     assert hooks[0].dependencies == ("service_b", "service_c")
     context = BootContext(
-        settings=BrainSettings(),
+        settings=CoreRuntimeSettings(
+            core=CoreSettings(), resources=ResourcesSettings()
+        ),
         resolve_component=lambda _component_id: object(),
     )
     assert hooks[0].is_ready(context) is True

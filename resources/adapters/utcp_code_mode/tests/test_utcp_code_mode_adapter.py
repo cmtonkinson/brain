@@ -1,121 +1,77 @@
-"""Unit tests for YAML-driven UTCP code-mode adapter config generation/loading."""
+"""Unit tests for inline-settings UTCP code-mode adapter config generation/loading."""
 
 from __future__ import annotations
-
-import json
-from pathlib import Path
 
 import pytest
 
 from resources.adapters.utcp_code_mode import (
     LocalFileUtcpCodeModeAdapter,
     UtcpCodeModeAdapterSettings,
-    UtcpCodeModeConfigNotFoundError,
-    UtcpCodeModeConfigParseError,
-    UtcpCodeModeConfigSchemaError,
+    UtcpOperatorCodeModeDefaults,
+    UtcpOperatorCodeModeSection,
 )
 
 
-def _write_utcp_yaml(path: Path, payload: str) -> None:
-    """Write one UTF-8 YAML fixture document."""
-    path.write_text(payload, encoding="utf-8")
-
-
-def _valid_utcp_yaml() -> str:
-    """Return a minimal valid UTCP YAML fixture."""
-    return """
-code_mode:
-  defaults:
-    call_template_type: mcp
-  servers:
-    filesystem:
-      command: npx
-      args:
-        - -y
-        - "@modelcontextprotocol/server-filesystem"
-        - "/tmp"
-""".strip()
-
-
-def test_adapter_load_success(tmp_path: Path) -> None:
-    """Adapter should load valid YAML and generate expected JSON output."""
-    yaml_path = tmp_path / "utcp.yaml"
-    generated_json_path = tmp_path / "generated-utcp.json"
-    _write_utcp_yaml(
-        yaml_path,
-        _valid_utcp_yaml(),
-    )
-    adapter = LocalFileUtcpCodeModeAdapter(
-        settings=UtcpCodeModeAdapterSettings(
-            utcp_yaml_config_path=str(yaml_path),
-            generated_utcp_json_path=str(generated_json_path),
+def _valid_settings() -> UtcpCodeModeAdapterSettings:
+    """Return minimum valid adapter settings with one filesystem server."""
+    return UtcpCodeModeAdapterSettings(
+        code_mode=UtcpOperatorCodeModeSection(
+            defaults=UtcpOperatorCodeModeDefaults(call_template_type="mcp"),
+            servers={
+                "filesystem": {
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+                }
+            },
         )
     )
 
+
+def test_adapter_health_is_always_ready() -> None:
+    """Inline adapter health should always report ready."""
+    adapter = LocalFileUtcpCodeModeAdapter(settings=_valid_settings())
+    status = adapter.health()
+    assert status.ready is True
+    assert status.detail == "ok"
+
+
+def test_adapter_load_success() -> None:
+    """Adapter should build expected canonical config from inline settings."""
+    adapter = LocalFileUtcpCodeModeAdapter(settings=_valid_settings())
+
     result = adapter.load()
 
-    assert result.generated_json_path == str(generated_json_path)
-    assert generated_json_path.exists()
-    generated_payload = json.loads(generated_json_path.read_text(encoding="utf-8"))
-    assert isinstance(generated_payload, dict)
-    assert "manual_call_templates" in generated_payload
-    assert len(generated_payload["manual_call_templates"]) == 1
-    template_payload = generated_payload["manual_call_templates"][0]
-    assert template_payload["name"] == "filesystem"
-    assert template_payload["call_template_type"] == "mcp"
-    assert template_payload["config"]["mcpServers"]["filesystem"]["command"] == "npx"
     assert len(result.config.manual_call_templates) == 1
     assert len(result.mcp_templates) == 1
     assert result.mcp_templates[0].name == "filesystem"
     assert result.mcp_templates[0].server_names == ("filesystem",)
 
 
-def test_adapter_load_missing_file_fails(tmp_path: Path) -> None:
-    """Missing UTCP YAML path should fail hard."""
-    adapter = LocalFileUtcpCodeModeAdapter(
-        settings=UtcpCodeModeAdapterSettings(
-            utcp_yaml_config_path=str(tmp_path / "missing-utcp.yaml"),
-            generated_utcp_json_path=str(tmp_path / "generated-utcp.json"),
+def test_adapter_load_templates_sorted_by_server_name() -> None:
+    """Multiple servers should produce templates in alphabetical order."""
+    settings = UtcpCodeModeAdapterSettings(
+        code_mode=UtcpOperatorCodeModeSection(
+            defaults=UtcpOperatorCodeModeDefaults(call_template_type="mcp"),
+            servers={
+                "zzz": {"command": "npx"},
+                "aaa": {"command": "npx"},
+            },
         )
     )
+    adapter = LocalFileUtcpCodeModeAdapter(settings=settings)
 
-    with pytest.raises(UtcpCodeModeConfigNotFoundError):
-        adapter.load()
+    result = adapter.load()
+
+    names = [t.name for t in result.mcp_templates]
+    assert names == ["aaa", "zzz"]
 
 
-def test_adapter_load_invalid_yaml_fails(tmp_path: Path) -> None:
-    """Malformed YAML should fail parse before schema validation."""
-    yaml_path = tmp_path / "utcp.yaml"
-    _write_utcp_yaml(yaml_path, "code_mode: [")
-    adapter = LocalFileUtcpCodeModeAdapter(
-        settings=UtcpCodeModeAdapterSettings(
-            utcp_yaml_config_path=str(yaml_path),
-            generated_utcp_json_path=str(tmp_path / "generated-utcp.json"),
+def test_adapter_load_invalid_mcp_schema_fails() -> None:
+    """Empty servers dict should fail schema validation."""
+    with pytest.raises(Exception):
+        UtcpCodeModeAdapterSettings(
+            code_mode=UtcpOperatorCodeModeSection(
+                defaults=UtcpOperatorCodeModeDefaults(call_template_type="mcp"),
+                servers={},
+            )
         )
-    )
-
-    with pytest.raises(UtcpCodeModeConfigParseError):
-        adapter.load()
-
-
-def test_adapter_load_invalid_mcp_schema_fails(tmp_path: Path) -> None:
-    """YAML missing server definitions should fail schema validation."""
-    yaml_path = tmp_path / "utcp.yaml"
-    _write_utcp_yaml(
-        yaml_path,
-        """
-code_mode:
-  defaults:
-    call_template_type: mcp
-  servers: {}
-""".strip(),
-    )
-    adapter = LocalFileUtcpCodeModeAdapter(
-        settings=UtcpCodeModeAdapterSettings(
-            utcp_yaml_config_path=str(yaml_path),
-            generated_utcp_json_path=str(tmp_path / "generated-utcp.json"),
-        )
-    )
-
-    with pytest.raises(UtcpCodeModeConfigSchemaError):
-        adapter.load()

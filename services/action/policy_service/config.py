@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.action.policy_service.component import SERVICE_COMPONENT_ID
 from services.action.policy_service.domain import (
     PolicyDocument,
@@ -32,8 +32,10 @@ class PolicyServiceSettings(BaseModel):
     overlays: tuple[PolicyOverlay, ...] = ()
 
 
-def resolve_policy_service_settings(settings: BrainSettings) -> PolicyServiceSettings:
-    """Resolve policy settings from ``components.service.policy_service``."""
+def resolve_policy_service_settings(
+    settings: CoreRuntimeSettings,
+) -> PolicyServiceSettings:
+    """Resolve policy settings from ``service.policy_service``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

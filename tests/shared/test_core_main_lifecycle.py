@@ -7,7 +7,11 @@ from dataclasses import dataclass
 import pytest
 
 from packages.brain_core.main import _run_after_boot_lifecycle
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import (
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +65,12 @@ def test_run_after_boot_lifecycle_calls_hooks_in_component_order(
         "packages.brain_core.main._resolve_component_after_boot", _resolver
     )
 
-    _run_after_boot_lifecycle(settings=BrainSettings(), components=components)
+    _run_after_boot_lifecycle(
+        settings=CoreRuntimeSettings(
+            core=CoreSettings(), resources=ResourcesSettings()
+        ),
+        components=components,
+    )
 
     assert calls == ["service_a", "service_b"]
 
@@ -75,6 +84,8 @@ def test_run_after_boot_lifecycle_raises_for_unknown_component(
 
     with pytest.raises(RuntimeError, match="missing from registry"):
         _run_after_boot_lifecycle(
-            settings=BrainSettings(),
+            settings=CoreRuntimeSettings(
+                core=CoreSettings(), resources=ResourcesSettings()
+            ),
             components={"service_missing": object()},
         )

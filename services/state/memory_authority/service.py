@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from services.action.language_model.service import LanguageModelService
 from services.state.memory_authority.domain import (
@@ -81,7 +81,7 @@ class MemoryAuthorityService(ABC):
 
 def build_memory_authority_service(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     language_model: LanguageModelService,
 ) -> MemoryAuthorityService:
     """Build default Memory Authority implementation from typed settings."""

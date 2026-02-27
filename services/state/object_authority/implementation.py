@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
@@ -70,7 +70,9 @@ class DefaultObjectAuthorityService(ObjectAuthorityService):
         self._default_extension = default_extension
 
     @classmethod
-    def from_settings(cls, settings: BrainSettings) -> "DefaultObjectAuthorityService":
+    def from_settings(
+        cls, settings: CoreRuntimeSettings
+    ) -> "DefaultObjectAuthorityService":
         """Build OAS from typed settings and owned resources."""
         service_settings = resolve_object_authority_settings(settings)
         fs_settings = resolve_filesystem_substrate_settings(settings)

@@ -7,7 +7,7 @@ from urllib.parse import quote_plus
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from resources.substrates.redis.component import RESOURCE_COMPONENT_ID
 
 
@@ -50,7 +50,7 @@ def _resolve_password(*, password: str, password_env: str) -> str:
     env_name = password_env.strip()
     if inline != "" and env_name != "":
         raise ValueError(
-            "components.substrate.redis.password and password_env are mutually exclusive"
+            "substrate.redis.password and password_env are mutually exclusive"
         )
     if inline != "":
         return inline
@@ -60,7 +60,7 @@ def _resolve_password(*, password: str, password_env: str) -> str:
     resolved = os.environ.get(env_name, "").strip()
     if resolved == "":
         raise ValueError(
-            f"components.substrate.redis.password_env references missing env var '{env_name}'"
+            f"substrate.redis.password_env references missing env var '{env_name}'"
         )
     return resolved
 
@@ -69,9 +69,7 @@ def _build_redis_url_from_parts(redis: RedisSettings) -> str:
     """Construct Redis URL from split fields when explicit URL is unset."""
     host = redis.host.strip()
     if host == "":
-        raise ValueError(
-            "components.substrate.redis.host is required when url is unset"
-        )
+        raise ValueError("substrate.redis.host is required when url is unset")
 
     auth = ""
     username = redis.username.strip()
@@ -88,8 +86,8 @@ def _build_redis_url_from_parts(redis: RedisSettings) -> str:
     return f"{scheme}://{auth}{host}:{redis.port}/{redis.db}"
 
 
-def resolve_redis_settings(settings: BrainSettings) -> RedisSettings:
-    """Resolve Redis substrate settings from ``components.substrate.redis``."""
+def resolve_redis_settings(settings: CoreRuntimeSettings) -> RedisSettings:
+    """Resolve Redis substrate settings from ``substrate.redis``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

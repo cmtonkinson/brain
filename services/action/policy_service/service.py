@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from services.action.attention_router.service import AttentionRouterService
 from services.action.policy_service.domain import (
@@ -36,7 +36,7 @@ class PolicyService(ABC):
 
 def build_policy_service(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     attention_router_service: AttentionRouterService | None = None,
 ) -> PolicyService:
     """Build default Policy Service implementation from typed settings."""

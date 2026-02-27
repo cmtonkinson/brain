@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Sequence
 
 from pydantic import BaseModel, ValidationError
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
@@ -74,7 +74,9 @@ class DefaultLanguageModelService(LanguageModelService):
         self._adapter = adapter
 
     @classmethod
-    def from_settings(cls, settings: BrainSettings) -> "DefaultLanguageModelService":
+    def from_settings(
+        cls, settings: CoreRuntimeSettings
+    ) -> "DefaultLanguageModelService":
         """Build LMS and owned adapter from typed root settings."""
         service_settings = resolve_language_model_service_settings(settings)
         adapter_settings = resolve_litellm_adapter_settings(settings)

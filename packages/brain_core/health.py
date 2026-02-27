@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from packages.brain_shared.manifest import get_registry
 
@@ -35,14 +35,14 @@ class CoreHealthResult(BaseModel):
 
 def evaluate_core_health(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     components: Mapping[str, object],
 ) -> CoreHealthResult:
     """Evaluate aggregate core health from instantiated components."""
     registry = get_registry()
     service_results: dict[str, ComponentHealthResult] = {}
     resource_results: dict[str, ComponentHealthResult] = {}
-    max_timeout_seconds = settings.components.core_health.max_timeout_seconds
+    max_timeout_seconds = settings.core.health.max_timeout_seconds
 
     for manifest in registry.list_services():
         component_id = str(manifest.id)

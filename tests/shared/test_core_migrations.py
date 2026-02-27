@@ -14,7 +14,11 @@ from packages.brain_core.migrations import (
     discover_service_migration_configs,
     run_startup_migrations,
 )
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import (
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,7 +105,9 @@ def test_run_startup_migrations_executes_bootstrap_then_alembic_upgrades(
         calls.append((str(config.config_file_name), revision))
 
     result = run_startup_migrations(
-        settings=BrainSettings(),
+        settings=CoreRuntimeSettings(
+            core=CoreSettings(), resources=ResourcesSettings()
+        ),
         repo_root=tmp_path,
         upgrade_fn=_upgrade,
     )
@@ -134,7 +140,9 @@ def test_run_startup_migrations_raises_on_upgrade_failure(
 
     with pytest.raises(MigrationExecutionError):
         run_startup_migrations(
-            settings=BrainSettings(),
+            settings=CoreRuntimeSettings(
+                core=CoreSettings(), resources=ResourcesSettings()
+            ),
             repo_root=tmp_path,
             upgrade_fn=lambda config, revision: (_ for _ in ()).throw(
                 RuntimeError("boom")

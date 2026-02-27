@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 from urllib.parse import quote_plus
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from pydantic import BaseModel, Field, model_validator
 from resources.substrates.postgres.component import RESOURCE_COMPONENT_ID
 
@@ -53,17 +53,11 @@ def _build_postgres_url_from_parts(postgres: PostgresSettings) -> str:
     password = postgres.password.strip()
 
     if host == "":
-        raise ValueError(
-            "components.substrate.postgres.host is required when url is unset"
-        )
+        raise ValueError("substrate.postgres.host is required when url is unset")
     if database == "":
-        raise ValueError(
-            "components.substrate.postgres.database is required when url is unset"
-        )
+        raise ValueError("substrate.postgres.database is required when url is unset")
     if user == "":
-        raise ValueError(
-            "components.substrate.postgres.user is required when url is unset"
-        )
+        raise ValueError("substrate.postgres.user is required when url is unset")
 
     return (
         "postgresql+psycopg://"
@@ -71,8 +65,8 @@ def _build_postgres_url_from_parts(postgres: PostgresSettings) -> str:
     )
 
 
-def resolve_postgres_settings(settings: BrainSettings) -> PostgresSettings:
-    """Resolve Postgres substrate settings from ``components.substrate.postgres``."""
+def resolve_postgres_settings(settings: CoreRuntimeSettings) -> PostgresSettings:
+    """Resolve Postgres substrate settings from ``substrate.postgres``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

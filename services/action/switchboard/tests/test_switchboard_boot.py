@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from packages.brain_core.boot import BootContext
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import (
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
 from packages.brain_shared.errors import dependency_error
 from services.action.switchboard import boot as switchboard_boot_module
@@ -150,7 +154,9 @@ def test_boot_starts_http_ingress_before_registration(monkeypatch) -> None:
     )
     monkeypatch.setattr(switchboard_boot_module, "_WEBHOOK_SERVER", None)
     ctx = BootContext(
-        settings=BrainSettings(),
+        settings=CoreRuntimeSettings(
+            core=CoreSettings(), resources=ResourcesSettings()
+        ),
         resolve_component=lambda component_id: (
             service if component_id == "service_switchboard" else None
         ),

@@ -13,7 +13,7 @@ from packages.brain_core.boot import (
     run_boot_hooks,
 )
 from packages.brain_core.migrations import MigrationRunResult, run_startup_migrations
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +26,7 @@ class CoreStartupResult:
 
 def run_core_startup(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     resolve_component: Callable[[str], object],
     run_migrations: bool | None = None,
     repo_root: Path | None = None,
@@ -35,7 +35,7 @@ def run_core_startup(
     boot_runner: Callable[..., BootResult] = run_boot_hooks,
 ) -> CoreStartupResult:
     """Run core startup in strict order: migrations, then boot hooks."""
-    boot_settings = settings.components.core_boot
+    boot_settings = settings.core.boot
     execute_migrations = (
         boot_settings.run_migrations_on_startup
         if run_migrations is None

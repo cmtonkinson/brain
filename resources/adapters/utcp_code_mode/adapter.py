@@ -11,24 +11,12 @@ class UtcpCodeModeAdapterError(Exception):
     """Base exception for UTCP code-mode adapter failures."""
 
 
-class UtcpCodeModeConfigNotFoundError(UtcpCodeModeAdapterError):
-    """UTCP config file path does not exist."""
-
-
-class UtcpCodeModeConfigReadError(UtcpCodeModeAdapterError):
-    """UTCP config file could not be read from disk."""
-
-
-class UtcpCodeModeConfigParseError(UtcpCodeModeAdapterError):
-    """UTCP source config file is not valid YAML."""
-
-
 class UtcpCodeModeConfigSchemaError(UtcpCodeModeAdapterError):
-    """UTCP source or generated config does not satisfy expected schema."""
+    """UTCP config does not satisfy expected schema."""
 
 
 class UtcpOperatorCodeModeDefaults(BaseModel):
-    """Operator YAML defaults for UTCP code-mode source config."""
+    """Defaults for UTCP code-mode config."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -36,20 +24,12 @@ class UtcpOperatorCodeModeDefaults(BaseModel):
 
 
 class UtcpOperatorCodeModeSection(BaseModel):
-    """Operator YAML ``code_mode`` section used to derive UTCP config."""
+    """``code_mode`` section of the UTCP adapter config."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     defaults: UtcpOperatorCodeModeDefaults
     servers: dict[str, dict[str, Any]] = Field(min_length=1)
-
-
-class UtcpOperatorYamlConfig(BaseModel):
-    """Operator UTCP YAML schema (source format) consumed by this adapter."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    code_mode: UtcpOperatorCodeModeSection
 
 
 class UtcpMcpTemplateConfig(BaseModel):
@@ -114,11 +94,10 @@ class UtcpCodeModeLoadResult(BaseModel):
 
     config: UtcpCodeModeConfig
     mcp_templates: tuple[UtcpMcpTemplateSummary, ...]
-    generated_json_path: str
 
 
 class UtcpCodeModeHealthStatus(BaseModel):
-    """UTCP code-mode substrate readiness payload."""
+    """UTCP code-mode adapter readiness payload."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -130,7 +109,7 @@ class UtcpCodeModeAdapter(Protocol):
     """Protocol for loading UTCP code-mode config and MCP template metadata."""
 
     def health(self) -> UtcpCodeModeHealthStatus:
-        """Probe UTCP code-mode substrate readiness."""
+        """Probe UTCP code-mode adapter readiness."""
 
     def load(self) -> UtcpCodeModeLoadResult:
-        """Load and validate UTCP config from local disk."""
+        """Build and validate UTCP config from inline settings."""

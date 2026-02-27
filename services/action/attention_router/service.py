@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from resources.adapters.signal.adapter import SignalAdapter
 from services.action.attention_router.domain import (
@@ -79,7 +79,7 @@ class AttentionRouterService(ABC):
 
 def build_attention_router_service(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     signal_adapter: SignalAdapter | None = None,
 ) -> AttentionRouterService:
     """Build default Attention Router implementation from typed settings."""

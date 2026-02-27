@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from types import SimpleNamespace
 
 from pydantic import BaseModel, ConfigDict
 
 from packages.brain_core import health as health_module
+from packages.brain_shared.config import (
+    CoreHealthSettings,
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 from packages.brain_shared.envelope import EnvelopeMeta, failure, new_meta, success
 from packages.brain_shared.envelope.meta import EnvelopeKind
 from packages.brain_shared.errors import dependency_error
@@ -67,17 +72,23 @@ def _meta() -> EnvelopeMeta:
     return new_meta(kind=EnvelopeKind.RESULT, source="test", principal="test")
 
 
+def _settings(max_timeout_seconds: float = 1.0) -> CoreRuntimeSettings:
+    """Build a minimal CoreRuntimeSettings for health evaluation tests."""
+    return CoreRuntimeSettings(
+        core=CoreSettings(
+            health=CoreHealthSettings(max_timeout_seconds=max_timeout_seconds)
+        ),
+        resources=ResourcesSettings(),
+    )
+
+
 def test_evaluate_core_health_ready_when_services_and_postgres_are_ready(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(health_module, "get_registry", lambda: _Registry())
 
     result = health_module.evaluate_core_health(
-        settings=SimpleNamespace(
-            components=SimpleNamespace(
-                core_health=SimpleNamespace(max_timeout_seconds=1.0)
-            )
-        ),
+        settings=_settings(),
         components={
             "service_a": _HealthyService(),
             "service_b": _HealthyService(),
@@ -95,11 +106,7 @@ def test_evaluate_core_health_degrades_when_any_service_fails(monkeypatch) -> No
     monkeypatch.setattr(health_module, "get_registry", lambda: _Registry())
 
     result = health_module.evaluate_core_health(
-        settings=SimpleNamespace(
-            components=SimpleNamespace(
-                core_health=SimpleNamespace(max_timeout_seconds=1.0)
-            )
-        ),
+        settings=_settings(),
         components={
             "service_a": _HealthyService(),
             "service_b": _FailingService(),
@@ -115,11 +122,7 @@ def test_evaluate_core_health_degrades_when_shared_postgres_fails(monkeypatch) -
     monkeypatch.setattr(health_module, "get_registry", lambda: _Registry())
 
     result = health_module.evaluate_core_health(
-        settings=SimpleNamespace(
-            components=SimpleNamespace(
-                core_health=SimpleNamespace(max_timeout_seconds=1.0)
-            )
-        ),
+        settings=_settings(),
         components={
             "service_a": _HealthyService(),
             "service_b": _HealthyService(),
@@ -140,11 +143,7 @@ def test_evaluate_core_health_timeout_marks_component_unhealthy(monkeypatch) -> 
             return {"ready": True, "detail": "ok"}
 
     result = health_module.evaluate_core_health(
-        settings=SimpleNamespace(
-            components=SimpleNamespace(
-                core_health=SimpleNamespace(max_timeout_seconds=0.01)
-            )
-        ),
+        settings=_settings(max_timeout_seconds=0.01),
         components={
             "service_a": _HealthyService(),
             "service_b": _HealthyService(),

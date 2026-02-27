@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.state.vault_authority.component import SERVICE_COMPONENT_ID
 
 
@@ -17,8 +17,10 @@ class VaultAuthoritySettings(BaseModel):
     max_search_limit: int = Field(default=200, gt=0)
 
 
-def resolve_vault_authority_settings(settings: BrainSettings) -> VaultAuthoritySettings:
-    """Resolve VAS settings from ``components.service.vault_authority``."""
+def resolve_vault_authority_settings(
+    settings: CoreRuntimeSettings,
+) -> VaultAuthoritySettings:
+    """Resolve VAS settings from ``service.vault_authority``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

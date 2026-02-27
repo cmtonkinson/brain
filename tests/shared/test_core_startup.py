@@ -6,7 +6,11 @@ from dataclasses import dataclass
 
 from packages.brain_core.boot import BootResult
 from packages.brain_core.startup import run_core_startup
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import (
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,7 +25,7 @@ class _FakeMigrationResult:
 def test_run_core_startup_runs_migrations_before_boot_hooks() -> None:
     """Startup should run migration phase before boot hook execution."""
     call_order: list[str] = []
-    settings = BrainSettings()
+    settings = CoreRuntimeSettings(core=CoreSettings(), resources=ResourcesSettings())
 
     def _migration_runner(**_kwargs):
         call_order.append("migrate")
@@ -54,7 +58,7 @@ def test_run_core_startup_runs_migrations_before_boot_hooks() -> None:
 
 def test_run_core_startup_skips_migrations_when_disabled() -> None:
     """Startup should skip migration phase when explicitly disabled."""
-    settings = BrainSettings()
+    settings = CoreRuntimeSettings(core=CoreSettings(), resources=ResourcesSettings())
     migration_calls = {"count": 0}
 
     def _migration_runner(**_kwargs):

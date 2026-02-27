@@ -2,53 +2,34 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
+from resources.adapters.utcp_code_mode.adapter import (
+    UtcpOperatorCodeModeDefaults,
+    UtcpOperatorCodeModeSection,
+)
 from resources.adapters.utcp_code_mode.component import RESOURCE_COMPONENT_ID
 
 
 class UtcpCodeModeAdapterSettings(BaseModel):
-    """Runtime settings for local UTCP code-mode configuration loading."""
+    """Inline UTCP code-mode configuration under ``adapter.utcp_code_mode``."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    utcp_yaml_config_path: str = "/app/config/utcp.yaml"
-    generated_utcp_json_path: str = "/app/config/generated/utcp.generated.json"
-
-    @field_validator("utcp_yaml_config_path")
-    @classmethod
-    def _validate_utcp_yaml_config_path(cls, value: str) -> str:
-        """Require a non-empty source YAML config path value."""
-        normalized = value.strip()
-        if normalized == "":
-            raise ValueError("utcp_yaml_config_path is required")
-        return normalized
-
-    @field_validator("generated_utcp_json_path")
-    @classmethod
-    def _validate_generated_utcp_json_path(cls, value: str) -> str:
-        """Require a non-empty generated UTCP JSON path value."""
-        normalized = value.strip()
-        if normalized == "":
-            raise ValueError("generated_utcp_json_path is required")
-        return normalized
-
-    def yaml_config_path(self) -> Path:
-        """Return expanded source YAML path for adapter file reads."""
-        return Path(self.utcp_yaml_config_path).expanduser()
-
-    def generated_json_path(self) -> Path:
-        """Return expanded generated JSON path for adapter writes."""
-        return Path(self.generated_utcp_json_path).expanduser()
+    code_mode: UtcpOperatorCodeModeSection = Field(
+        default_factory=lambda: UtcpOperatorCodeModeSection(
+            defaults=UtcpOperatorCodeModeDefaults(call_template_type="mcp"),
+            servers={},
+        )
+    )
 
 
 def resolve_utcp_code_mode_adapter_settings(
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
 ) -> UtcpCodeModeAdapterSettings:
-    """Resolve adapter settings from ``components.adapter.utcp_code_mode``."""
+    """Resolve adapter settings from ``adapter.utcp_code_mode``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

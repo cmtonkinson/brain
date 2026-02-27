@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Sequence
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from resources.substrates.obsidian.substrate import ObsidianSubstrate
 from services.state.vault_authority.domain import (
@@ -149,7 +149,7 @@ class VaultAuthorityService(ABC):
 
 def build_vault_authority_service(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     substrate: ObsidianSubstrate | None = None,
 ) -> VaultAuthorityService:
     """Build default Vault Authority implementation from typed settings."""

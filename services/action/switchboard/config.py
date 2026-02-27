@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.action.switchboard.component import SERVICE_COMPONENT_ID
 
 
@@ -47,9 +47,9 @@ class SwitchboardIdentitySettings(BaseModel):
 
 
 def resolve_switchboard_service_settings(
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
 ) -> SwitchboardServiceSettings:
-    """Resolve service settings from ``components.service.switchboard``."""
+    """Resolve service settings from ``service.switchboard``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),
@@ -58,7 +58,7 @@ def resolve_switchboard_service_settings(
 
 
 def resolve_switchboard_identity_settings(
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
 ) -> SwitchboardIdentitySettings:
     """Resolve operator identity + webhook secret settings from root profile."""
     return SwitchboardIdentitySettings(

@@ -7,7 +7,7 @@ from hashlib import sha256
 import json
 from typing import Any
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeKind,
@@ -94,7 +94,7 @@ class DefaultPolicyService(PolicyService):
     @classmethod
     def from_settings(
         cls,
-        settings: BrainSettings,
+        settings: CoreRuntimeSettings,
         *,
         attention_router_service: AttentionRouterService | None = None,
     ) -> "DefaultPolicyService":

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.manifest import component_id_to_schema_name
 from resources.substrates.postgres import (
     ServiceSchemaSessionProvider,
@@ -33,7 +33,7 @@ class EmbeddingPostgresRuntime:
     health_timeout_seconds: float
 
     @classmethod
-    def from_settings(cls, settings: BrainSettings) -> "EmbeddingPostgresRuntime":
+    def from_settings(cls, settings: CoreRuntimeSettings) -> "EmbeddingPostgresRuntime":
         """Build EAS DB runtime from typed application settings."""
         postgres_config = resolve_postgres_settings(settings)
         engine = create_postgres_engine(postgres_config)

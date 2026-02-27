@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.action.capability_engine.component import SERVICE_COMPONENT_ID
 
 
@@ -18,9 +18,9 @@ class CapabilityEngineSettings(BaseModel):
 
 
 def resolve_capability_engine_settings(
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
 ) -> CapabilityEngineSettings:
-    """Resolve CES settings from ``components.service.capability_engine``."""
+    """Resolve CES settings from ``service.capability_engine``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Sequence
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from resources.adapters.litellm.adapter import LiteLlmAdapter
 from services.action.language_model.domain import (
@@ -66,7 +66,7 @@ class LanguageModelService(ABC):
 
 def build_language_model_service(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     adapter: LiteLlmAdapter | None = None,
 ) -> LanguageModelService:
     """Build default Language Model implementation from typed settings."""

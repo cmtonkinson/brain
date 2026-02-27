@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
@@ -73,7 +73,7 @@ class DefaultAttentionRouterService(AttentionRouterService):
 
     @classmethod
     def from_settings(
-        cls, *, settings: BrainSettings
+        cls, *, settings: CoreRuntimeSettings
     ) -> "DefaultAttentionRouterService":
         """Build Attention Router + owned Signal adapter from typed settings."""
         service_settings = resolve_attention_router_service_settings(settings)

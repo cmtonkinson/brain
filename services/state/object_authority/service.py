@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from resources.substrates.filesystem.substrate import FilesystemBlobSubstrate
 from services.state.object_authority.domain import (
@@ -53,7 +53,7 @@ class ObjectAuthorityService(ABC):
 
 def build_object_authority_service(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     blob_store: FilesystemBlobSubstrate | None = None,
 ) -> ObjectAuthorityService:
     """Build default Object Authority implementation from typed settings."""

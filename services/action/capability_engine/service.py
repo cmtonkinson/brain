@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from packages.brain_shared.config import BrainSettings
+from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from resources.adapters.utcp_code_mode.adapter import UtcpCodeModeAdapter
 from services.action.policy_service.service import PolicyService
@@ -47,7 +47,7 @@ class CapabilityEngineService(ABC):
 
 def build_capability_engine_service(
     *,
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
     policy_service: PolicyService,
     code_mode_adapter: UtcpCodeModeAdapter | None = None,
 ) -> CapabilityEngineService:

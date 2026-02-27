@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from resources.substrates.filesystem.component import RESOURCE_COMPONENT_ID
 from resources.substrates.filesystem.validation import normalize_extension
 
@@ -51,9 +51,9 @@ class FilesystemSubstrateSettings(BaseModel):
 
 
 def resolve_filesystem_substrate_settings(
-    settings: BrainSettings,
+    settings: CoreRuntimeSettings,
 ) -> FilesystemSubstrateSettings:
-    """Resolve filesystem substrate settings from ``components.substrate.filesystem``."""
+    """Resolve filesystem substrate settings from ``substrate.filesystem``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),

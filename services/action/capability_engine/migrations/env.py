@@ -7,7 +7,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from packages.brain_shared.config import load_settings
+from packages.brain_shared.config import load_core_runtime_settings
 from resources.substrates.postgres.config import resolve_postgres_settings
 from services.action.capability_engine.data.runtime import (
     capability_engine_postgres_schema,
@@ -21,11 +21,11 @@ if config.config_file_name is not None:
 
 target_metadata = metadata
 
-settings = load_settings()
+settings = load_core_runtime_settings()
 postgres_settings = resolve_postgres_settings(settings)
 sqlalchemy_url = postgres_settings.url
 if not sqlalchemy_url:
-    raise ValueError("components.substrate.postgres.url is required for CES migrations")
+    raise ValueError("substrate.postgres.url is required for CES migrations")
 
 schema_name = capability_engine_postgres_schema()
 config.set_main_option("sqlalchemy.url", str(sqlalchemy_url))

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from packages.brain_shared.config import BrainSettings, resolve_component_settings
+from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.state.cache_authority.component import SERVICE_COMPONENT_ID
 
 
@@ -29,8 +29,10 @@ class CacheAuthoritySettings(BaseModel):
         return value
 
 
-def resolve_cache_authority_settings(settings: BrainSettings) -> CacheAuthoritySettings:
-    """Resolve CAS settings from ``components.service.cache_authority``."""
+def resolve_cache_authority_settings(
+    settings: CoreRuntimeSettings,
+) -> CacheAuthoritySettings:
+    """Resolve CAS settings from ``service.cache_authority``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(SERVICE_COMPONENT_ID),

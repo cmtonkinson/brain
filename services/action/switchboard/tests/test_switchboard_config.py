@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.config import load_settings
+from packages.brain_shared.config import load_core_runtime_settings
 from services.action.switchboard.config import resolve_switchboard_service_settings
 
 
 def test_switchboard_settings_include_webhook_ingress_defaults() -> None:
     """Resolver should supply default ingress bind/callback settings."""
-    settings = load_settings(environ={})
+    settings = load_core_runtime_settings()
     switchboard = resolve_switchboard_service_settings(settings)
 
     assert switchboard.webhook_bind_host == "0.0.0.0"
@@ -19,8 +19,8 @@ def test_switchboard_settings_include_webhook_ingress_defaults() -> None:
 
 def test_switchboard_settings_normalize_webhook_path_without_leading_slash() -> None:
     """Webhook path should be canonicalized to a leading-slash absolute path."""
-    settings = load_settings(
-        environ={"BRAIN_COMPONENTS__SERVICE__SWITCHBOARD__WEBHOOK_PATH": "hooks/signal"}
+    settings = load_core_runtime_settings(
+        environ={"BRAIN_CORE_SERVICE__SWITCHBOARD__WEBHOOK_PATH": "hooks/signal"}
     )
     switchboard = resolve_switchboard_service_settings(settings)
 

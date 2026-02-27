@@ -2,58 +2,64 @@
 
 from __future__ import annotations
 
-import json
-
-import pytest
-
 from resources.adapters.utcp_code_mode import (
     LocalFileUtcpCodeModeAdapter,
     UtcpCodeModeAdapterSettings,
-    UtcpCodeModeConfigNotFoundError,
+    UtcpOperatorCodeModeDefaults,
+    UtcpOperatorCodeModeSection,
 )
 
 
-def test_yaml_to_generated_json_roundtrip(tmp_path) -> None:
-    """Adapter should transpose operator YAML into canonical generated JSON."""
-    source = tmp_path / "utcp.yaml"
-    generated = tmp_path / "generated-utcp.json"
-    source.write_text(
-        """
-code_mode:
-  defaults:
-    call_template_type: mcp
-  servers:
-    filesystem:
-      command: npx
-      args:
-        - -y
-        - "@modelcontextprotocol/server-filesystem"
-        - "/tmp"
-""".strip(),
-        encoding="utf-8",
-    )
-    adapter = LocalFileUtcpCodeModeAdapter(
-        settings=UtcpCodeModeAdapterSettings(
-            utcp_yaml_config_path=str(source),
-            generated_utcp_json_path=str(generated),
+def _filesystem_settings() -> UtcpCodeModeAdapterSettings:
+    return UtcpCodeModeAdapterSettings(
+        code_mode=UtcpOperatorCodeModeSection(
+            defaults=UtcpOperatorCodeModeDefaults(call_template_type="mcp"),
+            servers={
+                "filesystem": {
+                    "command": "npx",
+                    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+                }
+            },
         )
     )
+
+
+def test_settings_to_config_transposition() -> None:
+    """Adapter should transpose inline settings into canonical UTCP config."""
+    adapter = LocalFileUtcpCodeModeAdapter(settings=_filesystem_settings())
 
     loaded = adapter.load()
-    payload = json.loads(generated.read_text(encoding="utf-8"))
 
-    assert loaded.generated_json_path == str(generated)
-    assert payload["manual_call_templates"][0]["call_template_type"] == "mcp"
+    assert len(loaded.config.manual_call_templates) == 1
+    template = loaded.config.manual_call_templates[0]
+    assert template.call_template_type == "mcp"
+    assert template.name == "filesystem"
 
 
-def test_missing_operator_yaml_fails_hard(tmp_path) -> None:
-    """Adapter must fail hard when operator YAML file is missing."""
-    adapter = LocalFileUtcpCodeModeAdapter(
-        settings=UtcpCodeModeAdapterSettings(
-            utcp_yaml_config_path=str(tmp_path / "missing.yaml"),
-            generated_utcp_json_path=str(tmp_path / "generated-utcp.json"),
+def test_mcp_template_summary_reflects_server_names() -> None:
+    """MCP template summary server_names should match the configured server keys."""
+    adapter = LocalFileUtcpCodeModeAdapter(settings=_filesystem_settings())
+
+    loaded = adapter.load()
+
+    assert loaded.mcp_templates[0].server_names == ("filesystem",)
+
+
+def test_multiple_servers_produce_one_template_each() -> None:
+    """Each server entry should produce exactly one MCP template."""
+    settings = UtcpCodeModeAdapterSettings(
+        code_mode=UtcpOperatorCodeModeSection(
+            defaults=UtcpOperatorCodeModeDefaults(call_template_type="mcp"),
+            servers={
+                "alpha": {"command": "npx"},
+                "beta": {"command": "uvx"},
+            },
         )
     )
+    adapter = LocalFileUtcpCodeModeAdapter(settings=settings)
 
-    with pytest.raises(UtcpCodeModeConfigNotFoundError):
-        adapter.load()
+    loaded = adapter.load()
+
+    assert len(loaded.mcp_templates) == 2
+    template_names = {t.name for t in loaded.mcp_templates}
+    assert template_names == {"alpha", "beta"}

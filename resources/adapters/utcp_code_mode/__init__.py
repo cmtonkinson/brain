@@ -4,9 +4,6 @@ from resources.adapters.utcp_code_mode.adapter import (
     UtcpCodeModeAdapter,
     UtcpCodeModeAdapterError,
     UtcpCodeModeConfig,
-    UtcpCodeModeConfigNotFoundError,
-    UtcpCodeModeConfigParseError,
-    UtcpCodeModeConfigReadError,
     UtcpCodeModeConfigSchemaError,
     UtcpCodeModeHealthStatus,
     UtcpCodeModeLoadResult,
@@ -16,7 +13,6 @@ from resources.adapters.utcp_code_mode.adapter import (
     UtcpMcpTemplateConfig,
     UtcpOperatorCodeModeDefaults,
     UtcpOperatorCodeModeSection,
-    UtcpOperatorYamlConfig,
 )
 from resources.adapters.utcp_code_mode.component import MANIFEST, RESOURCE_COMPONENT_ID
 from resources.adapters.utcp_code_mode.config import (
@@ -35,9 +31,6 @@ __all__ = [
     "UtcpCodeModeAdapterError",
     "UtcpCodeModeAdapterSettings",
     "UtcpCodeModeConfig",
-    "UtcpCodeModeConfigNotFoundError",
-    "UtcpCodeModeConfigParseError",
-    "UtcpCodeModeConfigReadError",
     "UtcpCodeModeConfigSchemaError",
     "UtcpCodeModeHealthStatus",
     "UtcpCodeModeLoadResult",
@@ -47,6 +40,5 @@ __all__ = [
     "UtcpMcpTemplateConfig",
     "UtcpOperatorCodeModeDefaults",
     "UtcpOperatorCodeModeSection",
-    "UtcpOperatorYamlConfig",
     "resolve_utcp_code_mode_adapter_settings",
 ]
