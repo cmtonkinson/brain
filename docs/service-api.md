@@ -29,6 +29,9 @@ _Route one outbound notification and decide suppress/send/batch._
 `health(*, meta: EnvelopeMeta) -> Envelope[CapabilityEngineHealthStatus]`  
 _Return CES readiness, registry counts, and invocation-audit counters._
 
+`describe_capabilities(*, meta: EnvelopeMeta) -> Envelope[tuple[CapabilityDescriptor, ...]]`  
+_Return descriptors for all registered capabilities._
+
 `invoke_capability(*, meta: EnvelopeMeta, capability_id: str, input_payload: dict[str, object], invocation: CapabilityInvocationMetadata) -> Envelope[CapabilityInvokeResult]`  
 _Invoke by package ``capability_id`` (no version arg) and return normalized policy fields._
 

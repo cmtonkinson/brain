@@ -5,7 +5,31 @@ package brain.action.v1;
 import "brain/shared/v1/envelope.proto";
 
 service CapabilityEngineService {
+  rpc DescribeCapabilities(DescribeCapabilitiesRequest) returns (DescribeCapabilitiesResponse);
   rpc InvokeCapability(InvokeCapabilityRequest) returns (InvokeCapabilityResponse);
+}
+
+message DescribeCapabilitiesRequest {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+}
+
+message DescribeCapabilitiesResponse {
+  brain.shared.v1.EnvelopeMeta metadata = 1;
+  repeated CapabilityDescriptor capabilities = 2;
+  repeated brain.shared.v1.ErrorDetail errors = 3;
+}
+
+message CapabilityDescriptor {
+  string capability_id = 1;
+  string kind = 2;
+  string version = 3;
+  string summary = 4;
+  repeated string input_types = 5;
+  repeated string output_types = 6;
+  int32 autonomy = 7;
+  bool requires_approval = 8;
+  repeated string side_effects = 9;
+  repeated string required_capabilities = 10;
 }
 
 message InvokeCapabilityRequest {

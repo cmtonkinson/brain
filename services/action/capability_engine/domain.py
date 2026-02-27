@@ -111,6 +111,28 @@ class CapabilityPolicySummary(BaseModel):
     proposal_token: str = ""
 
 
+class CapabilityDescriptor(BaseModel):
+    """Agent-facing descriptor for one registered capability.
+
+    Contains everything an L2 agent needs to A) present the capability as an
+    LLM tool call and B) construct a valid ``invoke_capability`` call if the
+    LLM selects it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    capability_id: str
+    kind: Literal["skill", "op"]
+    version: str
+    summary: str
+    input_types: tuple[str, ...]
+    output_types: tuple[str, ...]
+    autonomy: int
+    requires_approval: bool
+    side_effects: tuple[str, ...]
+    required_capabilities: tuple[str, ...]
+
+
 class CapabilityInvocationAuditRow(BaseModel):
     """Append-only invocation audit record owned by Capability Engine Service."""
 

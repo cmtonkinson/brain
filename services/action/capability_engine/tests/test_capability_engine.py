@@ -11,6 +11,7 @@ from services.action.capability_engine.data.repository import (
     InMemoryCapabilityInvocationAuditRepository,
 )
 from services.action.capability_engine.domain import (
+    CapabilityDescriptor,
     CapabilityEngineHealthStatus,
     CapabilityExecutionResponse,
     CapabilityInvocationMetadata,
@@ -451,6 +452,105 @@ def test_health_reflects_injected_audit_repository_count() -> None:
     assert health.ok is True
     assert health.payload is not None
     assert health.payload.value.invocation_audit_rows == 1
+
+
+def test_describe_capabilities_returns_all_registered_manifests() -> None:
+    registry = CapabilityRegistry()
+    op = OpCapabilityManifest(
+        capability_id="demo-op",
+        kind="op",
+        version="1.0.0",
+        summary="An op",
+        call_target="state.op",
+        side_effects=("writes_cache",),
+    )
+    skill = SkillCapabilityManifest(
+        capability_id="demo-skill",
+        kind="skill",
+        version="2.0.0",
+        summary="A skill",
+        skill_type="logic",
+        requires_approval=True,
+    )
+    registry.register_manifest(manifest=op)
+    registry.register_manifest(manifest=skill)
+
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(),
+        policy_service=_FakePolicyService(),
+        registry=registry,
+    )
+
+    result = service.describe_capabilities(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="agent", principal="operator")
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    descriptors: tuple[CapabilityDescriptor, ...] = result.payload.value
+    assert len(descriptors) == 2
+
+    by_id = {d.capability_id: d for d in descriptors}
+
+    assert "demo-op" in by_id
+    op_desc = by_id["demo-op"]
+    assert op_desc.kind == "op"
+    assert op_desc.version == "1.0.0"
+    assert op_desc.summary == "An op"
+    assert op_desc.side_effects == ("writes_cache",)
+    assert op_desc.requires_approval is False
+
+    assert "demo-skill" in by_id
+    skill_desc = by_id["demo-skill"]
+    assert skill_desc.kind == "skill"
+    assert skill_desc.version == "2.0.0"
+    assert skill_desc.summary == "A skill"
+    assert skill_desc.requires_approval is True
+
+
+def test_describe_capabilities_returns_empty_tuple_when_no_manifests() -> None:
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(),
+        policy_service=_FakePolicyService(),
+        registry=CapabilityRegistry(),
+    )
+
+    result = service.describe_capabilities(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="agent", principal="operator")
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value == ()
+
+
+def test_describe_capabilities_descriptors_are_stable_sorted() -> None:
+    registry = CapabilityRegistry()
+    for cid in ("demo-zzz", "demo-aaa", "demo-mmm"):
+        registry.register_manifest(
+            manifest=OpCapabilityManifest(
+                capability_id=cid,
+                kind="op",
+                version="1.0.0",
+                summary=cid,
+                call_target="state.x",
+            )
+        )
+
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(),
+        policy_service=_FakePolicyService(),
+        registry=registry,
+    )
+
+    result = service.describe_capabilities(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="agent", principal="operator")
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    ids = [d.capability_id for d in result.payload.value]
+    assert ids == sorted(ids)
 
 
 def test_ces_health_does_not_depend_on_policy_service_health() -> None:

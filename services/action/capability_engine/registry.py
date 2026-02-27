@@ -297,6 +297,10 @@ class CapabilityRegistry:
         """Resolve one capability handler by package capability identifier."""
         return self._handlers.get(capability_id)
 
+    def list_manifests(self) -> tuple[CapabilityManifest, ...]:
+        """Return all registered capability manifests in stable order."""
+        return tuple(self._manifests[k] for k in sorted(self._manifests))
+
     def count(self) -> int:
         """Return number of discovered capability manifests."""
         return len(self._manifests)

@@ -9,6 +9,7 @@ from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from resources.adapters.utcp_code_mode.adapter import UtcpCodeModeAdapter
 from services.action.policy_service.service import PolicyService
 from services.action.capability_engine.domain import (
+    CapabilityDescriptor,
     CapabilityEngineHealthStatus,
     CapabilityInvocationMetadata,
     CapabilityInvokeResult,
@@ -17,6 +18,16 @@ from services.action.capability_engine.domain import (
 
 class CapabilityEngineService(ABC):
     """Public API for capability invocation under policy governance."""
+
+    @abstractmethod
+    def describe_capabilities(
+        self, *, meta: EnvelopeMeta
+    ) -> Envelope[tuple[CapabilityDescriptor, ...]]:
+        """Return descriptors for all registered capabilities.
+
+        Provides everything an L2 agent needs to present capabilities as LLM
+        tool calls and then invoke them via ``invoke_capability``.
+        """
 
     @abstractmethod
     def invoke_capability(

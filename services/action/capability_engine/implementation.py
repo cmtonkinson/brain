@@ -35,6 +35,7 @@ from services.action.capability_engine.config import (
     resolve_capability_engine_settings,
 )
 from services.action.capability_engine.domain import (
+    CapabilityDescriptor,
     CapabilityEngineHealthStatus,
     CapabilityExecutionResponse,
     CapabilityInvocationAuditRow,
@@ -202,6 +203,40 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 detail="ok",
             ),
         )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("meta",),
+    )
+    def describe_capabilities(
+        self, *, meta: EnvelopeMeta
+    ) -> Envelope[tuple[CapabilityDescriptor, ...]]:
+        """Return descriptors for all registered capabilities."""
+        try:
+            validate_meta(meta)
+        except ValueError as exc:
+            return failure(
+                meta=meta,
+                errors=[validation_error(str(exc), code=codes.INVALID_ARGUMENT)],
+            )
+
+        descriptors = tuple(
+            CapabilityDescriptor(
+                capability_id=manifest.capability_id,
+                kind=manifest.kind,
+                version=manifest.version,
+                summary=manifest.summary,
+                input_types=manifest.input_types,
+                output_types=manifest.output_types,
+                autonomy=manifest.autonomy,
+                requires_approval=manifest.requires_approval,
+                side_effects=manifest.side_effects,
+                required_capabilities=manifest.required_capabilities,
+            )
+            for manifest in self._registry.list_manifests()
+        )
+        return success(meta=meta, payload=descriptors)
 
     @public_api_instrumented(
         logger=_LOGGER,
