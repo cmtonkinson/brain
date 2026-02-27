@@ -53,7 +53,7 @@ def should_skip_runtime_path(rel_path: Path) -> bool:
     parts = rel_path.parts
     if "deprecated" in parts or "generated" in parts:
         return True
-    if "__pycache__" in parts:
+    if "__pycache__" in parts or "tests" in parts:
         return True
     return any(part.startswith("work-") for part in parts)
 

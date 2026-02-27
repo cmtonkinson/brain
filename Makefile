@@ -71,7 +71,7 @@ format:
 	$(PY) -m ruff format .
 
 test: build check
-	$(PYTEST_INTEGRATION_ENV) $(PY) -m pytest --quiet tests resources services
+	$(PYTEST_INTEGRATION_ENV) $(PY) -m pytest --quiet tests resources services actors
 
 integration:
 	:
