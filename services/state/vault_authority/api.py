@@ -256,7 +256,7 @@ def _meta_from_proto(meta: envelope_pb2.EnvelopeMeta) -> EnvelopeMeta:
         trace_id=meta.trace_id,
         parent_id=meta.parent_id,
         timestamp=meta.timestamp.ToDatetime(tzinfo=timezone.utc),
-        kind=EnvelopeKind(meta.kind),
+        kind=_kind_from_proto(meta.kind),
         source=meta.source,
         principal=meta.principal,
     )
@@ -268,12 +268,38 @@ def _meta_to_proto(meta: EnvelopeMeta) -> envelope_pb2.EnvelopeMeta:
         envelope_id=meta.envelope_id,
         trace_id=meta.trace_id,
         parent_id=meta.parent_id,
-        kind=envelope_pb2.EnvelopeKind.Value(meta.kind.value.upper()),
+        kind=_kind_to_proto(meta.kind),
         source=meta.source,
         principal=meta.principal,
     )
     message.timestamp.FromDatetime(meta.timestamp.astimezone(timezone.utc))
     return message
+
+
+def _kind_from_proto(kind: int) -> EnvelopeKind:
+    """Map protobuf envelope kind enum to canonical kind."""
+    if kind == envelope_pb2.ENVELOPE_KIND_COMMAND:
+        return EnvelopeKind.COMMAND
+    if kind == envelope_pb2.ENVELOPE_KIND_EVENT:
+        return EnvelopeKind.EVENT
+    if kind == envelope_pb2.ENVELOPE_KIND_RESULT:
+        return EnvelopeKind.RESULT
+    if kind == envelope_pb2.ENVELOPE_KIND_STREAM:
+        return EnvelopeKind.STREAM
+    return EnvelopeKind.UNSPECIFIED
+
+
+def _kind_to_proto(kind: EnvelopeKind) -> int:
+    """Map canonical envelope kind to protobuf enum value."""
+    if kind == EnvelopeKind.COMMAND:
+        return envelope_pb2.ENVELOPE_KIND_COMMAND
+    if kind == EnvelopeKind.EVENT:
+        return envelope_pb2.ENVELOPE_KIND_EVENT
+    if kind == EnvelopeKind.RESULT:
+        return envelope_pb2.ENVELOPE_KIND_RESULT
+    if kind == EnvelopeKind.STREAM:
+        return envelope_pb2.ENVELOPE_KIND_STREAM
+    return envelope_pb2.ENVELOPE_KIND_UNSPECIFIED
 
 
 def _entry_to_proto(entry: VaultEntry | None) -> vault_pb2.VaultEntry:
@@ -340,10 +366,23 @@ def _error_to_proto(error: ErrorDetail) -> envelope_pb2.ErrorDetail:
     return envelope_pb2.ErrorDetail(
         code=error.code,
         message=error.message,
-        category=envelope_pb2.ErrorCategory.Value(error.category.value.upper()),
+        category=_error_category_to_proto(error.category),
         retryable=error.retryable,
         metadata=dict(error.metadata),
     )
+
+
+def _error_category_to_proto(category: ErrorCategory) -> int:
+    """Map shared-domain error category enum into protobuf enum value."""
+    mapping = {
+        ErrorCategory.VALIDATION: envelope_pb2.ERROR_CATEGORY_VALIDATION,
+        ErrorCategory.CONFLICT: envelope_pb2.ERROR_CATEGORY_CONFLICT,
+        ErrorCategory.NOT_FOUND: envelope_pb2.ERROR_CATEGORY_NOT_FOUND,
+        ErrorCategory.POLICY: envelope_pb2.ERROR_CATEGORY_POLICY,
+        ErrorCategory.DEPENDENCY: envelope_pb2.ERROR_CATEGORY_DEPENDENCY,
+        ErrorCategory.INTERNAL: envelope_pb2.ERROR_CATEGORY_INTERNAL,
+    }
+    return mapping.get(category, envelope_pb2.ERROR_CATEGORY_UNSPECIFIED)
 
 
 def _transport_status_for_error(error: ErrorDetail) -> grpc.StatusCode | None:

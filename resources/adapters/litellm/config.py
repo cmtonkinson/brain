@@ -39,7 +39,9 @@ class LiteLlmAdapterSettings(BaseModel):
     max_retries: int = Field(default=2, ge=0)
     providers: dict[str, LiteLlmProviderSettings] = Field(
         default_factory=lambda: {
-            "ollama": LiteLlmProviderSettings(api_base="http://localhost:11434")
+            "ollama": LiteLlmProviderSettings(
+                api_base="http://host.docker.internal:11434"
+            )
         }
     )
 
