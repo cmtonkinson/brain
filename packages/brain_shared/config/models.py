@@ -83,12 +83,10 @@ class CoreBootSettings(BaseModel):
     boot_timeout_seconds: float = Field(default=30.0, gt=0)
 
 
-class CoreGrpcSettings(BaseModel):
-    """Core gRPC runtime bind settings under ``components.core_grpc``."""
+class CoreHttpSettings(BaseModel):
+    """Core HTTP runtime settings under ``components.core_http``."""
 
-    bind_host: str = "0.0.0.0"
-    bind_port: int = Field(default=50051, ge=1, le=65535)
-    enable_reflection: bool = False
+    socket_path: str = "/app/config/generated/brain.sock"
 
 
 class CoreHealthSettings(BaseModel):
@@ -109,7 +107,7 @@ class ComponentsSettings(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     core_boot: CoreBootSettings = Field(default_factory=CoreBootSettings)
-    core_grpc: CoreGrpcSettings = Field(default_factory=CoreGrpcSettings)
+    core_http: CoreHttpSettings = Field(default_factory=CoreHttpSettings)
     core_health: CoreHealthSettings = Field(default_factory=CoreHealthSettings)
     service: ComponentNamespaceSettings = Field(
         default_factory=ComponentNamespaceSettings

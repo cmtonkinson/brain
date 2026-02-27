@@ -36,6 +36,17 @@ def run_app(
     uvicorn.run(app, host=host, port=port, log_level=log_level)
 
 
+def run_app_uds(
+    app: FastAPI,
+    *,
+    socket_path: str,
+    log_level: str = "warning",
+) -> uvicorn.Server:
+    """Create a uvicorn Server serving app over a Unix Domain Socket."""
+    config = uvicorn.Config(app, uds=socket_path, log_level=log_level)
+    return uvicorn.Server(config)
+
+
 def get_header(
     request: Request,
     name: str,

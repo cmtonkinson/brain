@@ -3,10 +3,7 @@ VENV 						:= .venv
 VENV_PY         := $(VENV)/bin/python
 PY 							:= $(if $(wildcard $(VENV_PY)),$(VENV_PY),python3)
 PYTHON_VERSION  := $(shell cut -d. -f1,2 .python-version)
-PROTO_DIR       := protos
 GENERATED_DIR   := generated
-PROTO_FILES     := $(shell find $(PROTO_DIR) -type f -name '*.proto' | sort)
-PROTO_STAMP     := $(GENERATED_DIR)/.proto-stamp
 GLOSSARY_SRC    := docs/glossary.yaml
 GLOSSARY_DOC    := docs/glossary.md
 GLOSSARY_GEN    := scripts/generate_glossary_docs.py
@@ -51,17 +48,7 @@ clean:
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +
 
-build: $(PROTO_STAMP)
-
-$(PROTO_STAMP): $(PROTO_FILES)
-	mkdir -p $(GENERATED_DIR)
-	$(PY) -m grpc_tools.protoc \
-		--proto_path=$(PROTO_DIR) \
-		--python_out=$(GENERATED_DIR) \
-		--grpc_python_out=$(GENERATED_DIR) \
-		$(PROTO_FILES)
-	$(PY) -m compileall -q $(GENERATED_DIR)
-	touch $(PROTO_STAMP)
+build:
 
 check:
 	$(PY) -m ruff check .
@@ -70,7 +57,7 @@ check:
 format:
 	$(PY) -m ruff format .
 
-test: build check
+test: check
 	$(PYTEST_INTEGRATION_ENV) $(PY) -m pytest --quiet tests resources services actors
 
 integration:

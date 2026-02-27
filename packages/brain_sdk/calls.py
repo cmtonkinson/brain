@@ -1,16 +1,17 @@
-"""Thin typed wrappers for Brain Core SDK gRPC operations."""
+"""Thin typed wrappers for Brain Core SDK HTTP operations."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Callable, Sequence
+from datetime import UTC, datetime
+from typing import Any
 
-import grpc
-
-from packages.brain_sdk._generated import core_health_pb2, language_model_pb2, vault_pb2
-from packages.brain_sdk.errors import map_transport_error, raise_for_domain_errors
-from packages.brain_sdk.meta import MetaOverrides, timestamp_to_datetime
+from packages.brain_sdk.errors import (
+    BrainTransportError,
+    map_transport_error,
+    raise_for_domain_errors,
+)
+from packages.brain_shared.http.errors import HttpRequestError, HttpStatusError
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,214 +78,204 @@ class VaultSearchMatch:
 
 def call_core_health(
     *,
-    rpc: Callable[..., object],
-    metadata: object,
+    http: object,
+    metadata: dict[str, object],
     timeout_seconds: float,
-    wait_for_ready: bool,
 ) -> CoreHealthResult:
-    """Execute one Core health RPC and map envelope payload/errors."""
-    response = _call_rpc(
+    """Execute one Core health request and map response payload."""
+    data = _post_json(
         operation="core.health",
-        rpc=rpc,
-        request=core_health_pb2.CoreHealthRequest(
-            metadata=metadata,
-            payload=core_health_pb2.CoreHealthPayload(),
-        ),
+        http=http,
+        url="/health",
+        body=metadata,
         timeout_seconds=timeout_seconds,
-        wait_for_ready=wait_for_ready,
+        method="get",
     )
-    payload = response.payload
     services = {
-        key: CoreComponentHealth(ready=value.ready, detail=value.detail)
-        for key, value in payload.services.items()
+        k: CoreComponentHealth(
+            ready=bool(v.get("ready")), detail=str(v.get("detail", ""))
+        )
+        for k, v in data.get("services", {}).items()
     }
     resources = {
-        key: CoreComponentHealth(ready=value.ready, detail=value.detail)
-        for key, value in payload.resources.items()
+        k: CoreComponentHealth(
+            ready=bool(v.get("ready")), detail=str(v.get("detail", ""))
+        )
+        for k, v in data.get("resources", {}).items()
     }
-    return CoreHealthResult(ready=payload.ready, services=services, resources=resources)
+    return CoreHealthResult(
+        ready=bool(data.get("ready")),
+        services=services,
+        resources=resources,
+    )
 
 
 def call_lms_chat(
     *,
-    rpc: Callable[..., object],
-    metadata: object,
+    http: object,
+    metadata: dict[str, object],
     prompt: str,
     profile: str,
     timeout_seconds: float,
-    wait_for_ready: bool,
 ) -> LmsChatResult:
-    """Execute one LMS chat RPC and map envelope payload/errors."""
-    response = _call_rpc(
+    """Execute one LMS chat request and map response payload."""
+    data = _post_json(
         operation="lms.chat",
-        rpc=rpc,
-        request=language_model_pb2.ChatRequest(
-            metadata=metadata,
-            payload=language_model_pb2.ChatPayload(
-                prompt=prompt,
-                profile=_reasoning_level(profile),
-            ),
-        ),
+        http=http,
+        url="/lms/chat",
+        body={**metadata, "prompt": prompt, "profile": _reasoning_level(profile)},
         timeout_seconds=timeout_seconds,
-        wait_for_ready=wait_for_ready,
     )
+    raise_for_domain_errors(operation="lms.chat", errors=data.get("errors", []))
+    payload = data.get("payload", {})
     return LmsChatResult(
-        text=response.payload.text,
-        provider=response.payload.provider,
-        model=response.payload.model,
+        text=str(payload.get("text", "")),
+        provider=str(payload.get("provider", "")),
+        model=str(payload.get("model", "")),
     )
 
 
 def call_vault_get(
     *,
-    rpc: Callable[..., object],
-    metadata: object,
+    http: object,
+    metadata: dict[str, object],
     file_path: str,
     timeout_seconds: float,
-    wait_for_ready: bool,
 ) -> VaultFile:
-    """Execute one VAS get-file RPC and map envelope payload/errors."""
-    response = _call_rpc(
+    """Execute one VAS get-file request and map response payload."""
+    data = _post_json(
         operation="vault.get",
-        rpc=rpc,
-        request=vault_pb2.GetFileRequest(
-            metadata=metadata,
-            payload=vault_pb2.GetFilePayload(file_path=file_path),
-        ),
+        http=http,
+        url="/vault/files/get",
+        body={**metadata, "file_path": file_path},
         timeout_seconds=timeout_seconds,
-        wait_for_ready=wait_for_ready,
     )
-    return _vault_file(response.payload)
+    raise_for_domain_errors(operation="vault.get", errors=data.get("errors", []))
+    payload = data.get("payload", {})
+    return VaultFile(
+        path=str(payload.get("path", "")),
+        content=str(payload.get("content", "")),
+        size_bytes=int(payload.get("size_bytes", 0)),
+        created_at=_parse_datetime(payload.get("created_at")),
+        updated_at=_parse_datetime(payload.get("updated_at")),
+        revision=str(payload.get("revision", "")),
+    )
 
 
 def call_vault_list(
     *,
-    rpc: Callable[..., object],
-    metadata: object,
+    http: object,
+    metadata: dict[str, object],
     directory_path: str,
     timeout_seconds: float,
-    wait_for_ready: bool,
 ) -> list[VaultEntry]:
-    """Execute one VAS list-directory RPC and map envelope payload/errors."""
-    response = _call_rpc(
+    """Execute one VAS list-directory request and map response payload."""
+    data = _post_json(
         operation="vault.list",
-        rpc=rpc,
-        request=vault_pb2.ListDirectoryRequest(
-            metadata=metadata,
-            payload=vault_pb2.ListDirectoryPayload(directory_path=directory_path),
-        ),
+        http=http,
+        url="/vault/directories/list",
+        body={**metadata, "directory_path": directory_path},
         timeout_seconds=timeout_seconds,
-        wait_for_ready=wait_for_ready,
     )
-    return [_vault_entry(item) for item in response.payload]
+    raise_for_domain_errors(operation="vault.list", errors=data.get("errors", []))
+    return [_vault_entry(item) for item in data.get("payload", [])]
 
 
 def call_vault_search(
     *,
-    rpc: Callable[..., object],
-    metadata: object,
+    http: object,
+    metadata: dict[str, object],
     query: str,
     directory_scope: str,
     limit: int,
     timeout_seconds: float,
-    wait_for_ready: bool,
 ) -> list[VaultSearchMatch]:
-    """Execute one VAS search-files RPC and map envelope payload/errors."""
-    response = _call_rpc(
+    """Execute one VAS search-files request and map response payload."""
+    data = _post_json(
         operation="vault.search",
-        rpc=rpc,
-        request=vault_pb2.SearchFilesRequest(
-            metadata=metadata,
-            payload=vault_pb2.SearchFilesPayload(
-                query=query,
-                directory_scope=directory_scope,
-                limit=limit,
-            ),
-        ),
+        http=http,
+        url="/vault/files/search",
+        body={
+            **metadata,
+            "query": query,
+            "directory_scope": directory_scope,
+            "limit": limit,
+        },
         timeout_seconds=timeout_seconds,
-        wait_for_ready=wait_for_ready,
     )
-    return [_vault_search_match(item) for item in response.payload]
+    raise_for_domain_errors(operation="vault.search", errors=data.get("errors", []))
+    return [_vault_search_match(item) for item in data.get("payload", [])]
 
 
-def _call_rpc(
+def _post_json(
     *,
     operation: str,
-    rpc: Callable[..., object],
-    request: object,
+    http: object,
+    url: str,
+    body: dict[str, object],
     timeout_seconds: float,
-    wait_for_ready: bool,
-) -> object:
-    """Invoke one RPC call and normalize transport/domain failures."""
+    method: str = "post",
+) -> dict[str, Any]:
+    """Issue one HTTP request and return the JSON response dict."""
     try:
-        response = rpc(
-            request,
-            timeout=timeout_seconds,
-            wait_for_ready=wait_for_ready,
-        )
-    except grpc.RpcError as error:
-        raise map_transport_error(operation=operation, error=error) from error
+        if method == "get":
+            return http.get_json(url, timeout=timeout_seconds)  # type: ignore[union-attr]
+        return http.post_json(url, json=body, timeout=timeout_seconds)  # type: ignore[union-attr]
+    except HttpStatusError as exc:
+        retryable = exc.status_code >= 500 or exc.status_code == 429
+        raise map_transport_error(
+            operation=operation,
+            status_code=exc.status_code,
+            message=exc.response_body or str(exc),
+            retryable=retryable,
+        ) from exc
+    except HttpRequestError as exc:
+        raise BrainTransportError(
+            message=f"{operation} transport failure: {exc}",
+            operation=operation,
+            status_code=0,
+            retryable=True,
+        ) from exc
 
-    raise_for_domain_errors(operation=operation, errors=_response_errors(response))
-    return response
 
-
-def _response_errors(response: object) -> Sequence[object]:
-    """Return envelope errors from a response-like protobuf object."""
-    return tuple(getattr(response, "errors", ()))
-
-
-def _reasoning_level(profile: str) -> int:
-    """Map CLI-friendly reasoning profile names to protobuf enum values."""
-    mapping = {
-        "quick": language_model_pb2.REASONING_LEVEL_QUICK,
-        "standard": language_model_pb2.REASONING_LEVEL_STANDARD,
-        "deep": language_model_pb2.REASONING_LEVEL_DEEP,
-    }
+def _reasoning_level(profile: str) -> str:
+    """Validate and normalize reasoning profile name."""
     normalized = profile.strip().lower()
-    if normalized not in mapping:
+    if normalized not in {"quick", "standard", "deep"}:
         raise ValueError("profile must be one of: quick, standard, deep")
-    return mapping[normalized]
+    return normalized
 
 
-def _vault_entry(value: object) -> VaultEntry:
-    """Convert protobuf ``VaultEntry`` payload to SDK dataclass."""
-    entry_type = {
-        vault_pb2.VAULT_ENTRY_TYPE_DIRECTORY: "directory",
-        vault_pb2.VAULT_ENTRY_TYPE_FILE: "file",
-    }.get(int(value.entry_type), "unspecified")
+def _vault_entry(value: dict[str, Any]) -> VaultEntry:
     return VaultEntry(
-        path=value.path,
-        name=value.name,
-        entry_type=entry_type,
-        size_bytes=int(value.size_bytes),
-        created_at=timestamp_to_datetime(value.created_at),
-        updated_at=timestamp_to_datetime(value.updated_at),
-        revision=value.revision,
+        path=str(value.get("path", "")),
+        name=str(value.get("name", "")),
+        entry_type=str(value.get("entry_type", "unspecified")),
+        size_bytes=int(value.get("size_bytes", 0)),
+        created_at=_parse_datetime(value.get("created_at")),
+        updated_at=_parse_datetime(value.get("updated_at")),
+        revision=str(value.get("revision", "")),
     )
 
 
-def _vault_file(value: object) -> VaultFile:
-    """Convert protobuf ``VaultFileRecord`` payload to SDK dataclass."""
-    return VaultFile(
-        path=value.path,
-        content=value.content,
-        size_bytes=int(value.size_bytes),
-        created_at=timestamp_to_datetime(value.created_at),
-        updated_at=timestamp_to_datetime(value.updated_at),
-        revision=value.revision,
-    )
-
-
-def _vault_search_match(value: object) -> VaultSearchMatch:
-    """Convert protobuf ``SearchFileMatch`` payload to SDK dataclass."""
+def _vault_search_match(value: dict[str, Any]) -> VaultSearchMatch:
     return VaultSearchMatch(
-        path=value.path,
-        score=float(value.score),
-        snippets=tuple(value.snippets),
-        updated_at=timestamp_to_datetime(value.updated_at),
-        revision=value.revision,
+        path=str(value.get("path", "")),
+        score=float(value.get("score", 0.0)),
+        snippets=tuple(value.get("snippets", [])),
+        updated_at=_parse_datetime(value.get("updated_at")),
+        revision=str(value.get("revision", "")),
     )
+
+
+def _parse_datetime(value: object) -> datetime:
+    """Parse ISO datetime string or return epoch UTC on failure."""
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            pass
+    return datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def core_health(
@@ -296,7 +287,7 @@ def core_health(
     parent_id: str | None = None,
 ) -> CoreHealthResult:
     """High-level SDK wrapper for Core health checks."""
-    return client.core_health(
+    return client.core_health(  # type: ignore[union-attr]
         meta=_meta_overrides(
             principal=principal,
             source=source,
@@ -321,7 +312,7 @@ def lms_chat(
     input_prompt = prompt if prompt != "" else message
     if input_prompt == "":
         raise ValueError("prompt is required")
-    return client.lms_chat(
+    return client.lms_chat(  # type: ignore[union-attr]
         input_prompt,
         profile=profile,
         meta=_meta_overrides(
@@ -345,7 +336,7 @@ def vault_get(
     target_path = file_path if file_path != "" else path
     if target_path == "":
         raise ValueError("file_path is required")
-    return client.vault_get(
+    return client.vault_get(  # type: ignore[union-attr]
         target_path,
         meta=_meta_overrides(trace_id=trace_id, parent_id=parent_id),
     )
@@ -361,7 +352,7 @@ def vault_list(
 ) -> list[VaultEntry]:
     """High-level SDK wrapper for vault directory listings."""
     target_path = directory_path if directory_path != "" else path
-    return client.vault_list(
+    return client.vault_list(  # type: ignore[union-attr]
         target_path,
         meta=_meta_overrides(trace_id=trace_id, parent_id=parent_id),
     )
@@ -377,7 +368,7 @@ def vault_search(
     parent_id: str | None = None,
 ) -> list[VaultSearchMatch]:
     """High-level SDK wrapper for vault search calls."""
-    return client.vault_search(
+    return client.vault_search(  # type: ignore[union-attr]
         query,
         directory_scope=directory_scope,
         limit=limit,
@@ -391,8 +382,10 @@ def _meta_overrides(
     source: str = "",
     trace_id: str | None = None,
     parent_id: str | None = None,
-) -> MetaOverrides | None:
+) -> object:
     """Build metadata overrides only when call-site values are provided."""
+    from packages.brain_sdk.meta import MetaOverrides
+
     has_values = any(
         (
             principal != "",

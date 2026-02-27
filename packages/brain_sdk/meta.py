@@ -6,8 +6,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from packages.brain_sdk._generated import envelope_pb2
-
 
 @dataclass(frozen=True, slots=True)
 class MetaOverrides:
@@ -29,25 +27,18 @@ def build_envelope_meta(
     parent_id: str = "",
     envelope_id: str | None = None,
     timestamp: datetime | None = None,
-) -> envelope_pb2.EnvelopeMeta:
-    """Build one protobuf ``EnvelopeMeta`` with sane SDK defaults."""
-    meta = envelope_pb2.EnvelopeMeta(
-        envelope_id=envelope_id or _new_id(),
-        trace_id=trace_id or _new_id(),
-        parent_id=parent_id,
-        kind=envelope_pb2.ENVELOPE_KIND_COMMAND,
-        source=source,
-        principal=principal,
-    )
-    meta.timestamp.FromDatetime(_normalize_utc(timestamp or datetime.now(UTC)))
-    return meta
-
-
-def timestamp_to_datetime(value: object) -> datetime:
-    """Convert protobuf timestamp-like objects to UTC ``datetime`` values."""
-    if hasattr(value, "ToDatetime"):
-        return value.ToDatetime(tzinfo=UTC)
-    raise TypeError("value does not support ToDatetime(tzinfo=...)")
+) -> dict[str, object]:
+    """Build one envelope metadata dict with sane SDK defaults."""
+    ts = _normalize_utc(timestamp or datetime.now(UTC))
+    return {
+        "envelope_id": envelope_id or _new_id(),
+        "trace_id": trace_id or _new_id(),
+        "parent_id": parent_id,
+        "kind": "command",
+        "source": source,
+        "principal": principal,
+        "timestamp": ts.isoformat(),
+    }
 
 
 def _new_id() -> str:

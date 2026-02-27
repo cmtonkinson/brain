@@ -1,5 +1,0 @@
-syntax = "proto3";
-
-package brain.control.v1;
-
-// Placeholder for Job service API definitions.

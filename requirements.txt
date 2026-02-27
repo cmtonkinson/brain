@@ -55,14 +55,7 @@ frozenlist==1.8.0
 fsspec==2026.2.0
     # via huggingface-hub
 grpcio==1.78.0
-    # via
-    #   grpcio-reflection
-    #   grpcio-tools
-    #   qdrant-client
-grpcio-reflection==1.78.0
-    # via -r requirements.in
-grpcio-tools==1.78.0
-    # via -r requirements.in
+    # via qdrant-client
 h11==0.16.0
     # via
     #   httpcore
@@ -140,12 +133,8 @@ propcache==0.4.1
     # via
     #   aiohttp
     #   yarl
-protobuf==6.33.5
-    # via
-    #   -r requirements.in
-    #   grpcio-reflection
-    #   grpcio-tools
-    #   qdrant-client
+protobuf==7.34.0
+    # via qdrant-client
 psycopg[binary]==3.3.3
     # via -r requirements.in
 psycopg-binary==3.3.3
@@ -249,6 +238,3 @@ yarl==1.22.0
     # via aiohttp
 zipp==3.23.0
     # via importlib-metadata
-
-# The following packages are considered to be unsafe in a requirements file:
-# setuptools

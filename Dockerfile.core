@@ -4,24 +4,16 @@ FROM python:${PYTHON_VERSION}-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app:/app/generated \
+    PYTHONPATH=/app \
     BRAIN_CONFIG_FILE=/app/config/brain.yaml
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip && \
     pip install --requirement /app/requirements.txt
-
-# Generate protobuf stubs at image build time so runtime does not require make/grpc tools.
-COPY protos /app/protos
-RUN mkdir -p /app/generated && \
-    python -m grpc_tools.protoc \
-        -I /app/protos \
-        --python_out=/app/generated \
-        --grpc_python_out=/app/generated \
-        $(find /app/protos -type f -name '*.proto' | sort) && \
-    python -m compileall -q /app/generated
 
 COPY . /app
 
@@ -31,6 +23,6 @@ RUN addgroup --system brain && adduser --system --ingroup brain brain && \
 USER brain
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=3 \
-  CMD python -c "import sys,grpc;from brain.shared.v1 import core_health_pb2,core_health_pb2_grpc;channel=grpc.insecure_channel('127.0.0.1:50051');stub=core_health_pb2_grpc.CoreHealthServiceStub(channel);response=stub.Health(core_health_pb2.CoreHealthRequest(),timeout=2);sys.exit(0 if response.payload.ready else 1)"
+  CMD curl --silent --fail --unix-socket /app/config/generated/brain.sock http://localhost/health || exit 1
 
 ENTRYPOINT ["python", "-m", "packages.brain_core.main"]

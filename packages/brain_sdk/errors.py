@@ -5,10 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
-import grpc
-
-from packages.brain_sdk._generated import envelope_pb2
-
 
 @dataclass(frozen=True, slots=True)
 class SdkErrorDetail:
@@ -34,10 +30,10 @@ class BrainSdkError(Exception):
 
 @dataclass(frozen=True)
 class BrainTransportError(BrainSdkError):
-    """Transport-level gRPC call failure."""
+    """Transport-level HTTP call failure."""
 
     operation: str
-    status_code: grpc.StatusCode
+    status_code: int
     retryable: bool = False
 
 
@@ -79,16 +75,15 @@ class BrainInternalError(BrainDomainError):
     """Internal-category domain failure."""
 
 
-def map_transport_error(*, operation: str, error: grpc.RpcError) -> BrainTransportError:
-    """Map one grpc ``RpcError`` into a typed SDK transport error."""
-    status = error.code() if hasattr(error, "code") else grpc.StatusCode.UNKNOWN
-    detail = error.details() if hasattr(error, "details") else str(error)
-    message = f"{operation} transport failure ({status.name}): {detail}"
+def map_transport_error(
+    *, operation: str, status_code: int, message: str, retryable: bool = False
+) -> BrainTransportError:
+    """Map one HTTP error into a typed SDK transport error."""
     return BrainTransportError(
-        message=message,
+        message=f"{operation} transport failure (HTTP {status_code}): {message}",
         operation=operation,
-        status_code=status,
-        retryable=status in _RETRYABLE_TRANSPORT_STATUSES,
+        status_code=status_code,
+        retryable=retryable,
     )
 
 
@@ -97,7 +92,7 @@ def raise_for_domain_errors(*, operation: str, errors: Sequence[object]) -> None
     if len(errors) == 0:
         return
 
-    details = tuple(_detail_from_proto(item) for item in errors)
+    details = tuple(_detail_from_dict(item) for item in errors)
     error_type = _DOMAIN_CATEGORY_TO_ERROR.get(details[0].category, BrainDomainError)
     raise error_type(
         message=f"{operation} domain failure: {'; '.join(item.message for item in details)}",
@@ -106,38 +101,24 @@ def raise_for_domain_errors(*, operation: str, errors: Sequence[object]) -> None
     )
 
 
-def _detail_from_proto(value: object) -> SdkErrorDetail:
-    """Normalize one protobuf ``ErrorDetail`` into SDK-friendly shape."""
+def _detail_from_dict(value: object) -> SdkErrorDetail:
+    """Normalize one error detail dict or object into SDK-friendly shape."""
+    if isinstance(value, dict):
+        return SdkErrorDetail(
+            code=str(value.get("code", "")),
+            message=str(value.get("message", "")),
+            category=str(value.get("category", "unspecified")),
+            retryable=bool(value.get("retryable", False)),
+            metadata=dict(value.get("metadata", {})),
+        )
     return SdkErrorDetail(
         code=str(getattr(value, "code", "")),
         message=str(getattr(value, "message", "")),
-        category=_category_name(int(getattr(value, "category", 0))),
+        category=str(getattr(value, "category", "unspecified")),
         retryable=bool(getattr(value, "retryable", False)),
         metadata=dict(getattr(value, "metadata", {})),
     )
 
-
-def _category_name(value: int) -> str:
-    """Map protobuf error category enum values to stable lowercase names."""
-    mapping = {
-        envelope_pb2.ERROR_CATEGORY_VALIDATION: "validation",
-        envelope_pb2.ERROR_CATEGORY_CONFLICT: "conflict",
-        envelope_pb2.ERROR_CATEGORY_NOT_FOUND: "not_found",
-        envelope_pb2.ERROR_CATEGORY_POLICY: "policy",
-        envelope_pb2.ERROR_CATEGORY_DEPENDENCY: "dependency",
-        envelope_pb2.ERROR_CATEGORY_INTERNAL: "internal",
-    }
-    return mapping.get(value, "unspecified")
-
-
-_RETRYABLE_TRANSPORT_STATUSES: frozenset[grpc.StatusCode] = frozenset(
-    {
-        grpc.StatusCode.UNAVAILABLE,
-        grpc.StatusCode.DEADLINE_EXCEEDED,
-        grpc.StatusCode.RESOURCE_EXHAUSTED,
-        grpc.StatusCode.ABORTED,
-    }
-)
 
 _DOMAIN_CATEGORY_TO_ERROR = {
     "validation": BrainValidationError,

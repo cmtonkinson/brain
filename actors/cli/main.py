@@ -22,7 +22,11 @@ from packages.brain_sdk import (
     vault_list,
     vault_search,
 )
-from packages.brain_sdk.config import resolve_target, resolve_timeout_seconds
+from packages.brain_sdk.config import resolve_timeout_seconds
+
+_DEFAULT_HOST_SOCKET_PATH = str(
+    Path.home() / ".config" / "brain" / "generated" / "brain.sock"
+)
 
 SUCCESS_EXIT_CODE = 0
 DOMAIN_ERROR_EXIT_CODE = 3
@@ -41,7 +45,7 @@ class ReasoningProfile(str, Enum):
 class CliConfig:
     """Global CLI runtime options propagated to SDK calls."""
 
-    grpc_target: str
+    socket: str
     principal: str
     source: str
     timeout: float
@@ -278,7 +282,7 @@ def _render_vault_search(items: list[Any]) -> str:
 def _with_client(cfg: CliConfig) -> BrainSdkClient:
     """Return one SDK client built from global CLI settings."""
     return BrainSdkClient(
-        grpc_target=cfg.grpc_target,
+        socket=cfg.socket,
         timeout=cfg.timeout,
         source=cfg.source,
         principal=cfg.principal,
@@ -319,9 +323,10 @@ vault_app = typer.Typer(help="Vault authority commands")
 @app.callback()
 def main(
     ctx: typer.Context,
-    grpc_target: str = typer.Option(
-        resolve_target(),
-        help="Brain Core gRPC target",
+    socket: str = typer.Option(
+        _DEFAULT_HOST_SOCKET_PATH,
+        envvar="BRAIN_SOCKET_PATH",
+        help="Brain Core Unix socket path",
     ),
     principal: str = typer.Option("operator", help="Envelope principal"),
     source: str = typer.Option("cli", help="Envelope source"),
@@ -337,7 +342,7 @@ def main(
     """Store global options for all domain/action commands."""
 
     ctx.obj = CliConfig(
-        grpc_target=grpc_target,
+        socket=socket,
         principal=principal,
         source=source,
         timeout=timeout,

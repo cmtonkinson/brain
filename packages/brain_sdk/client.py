@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import grpc
+import httpx
 
-from packages.brain_sdk._generated import (
-    core_health_pb2_grpc,
-    language_model_pb2_grpc,
-    vault_pb2_grpc,
-)
 from packages.brain_sdk.calls import (
     CoreHealthResult,
     LmsChatResult,
@@ -22,48 +17,44 @@ from packages.brain_sdk.calls import (
     call_vault_search,
 )
 from packages.brain_sdk.config import BrainSdkConfig
-from packages.brain_sdk.config import resolve_target, resolve_timeout_seconds
+from packages.brain_sdk.config import resolve_socket_path, resolve_timeout_seconds
 from packages.brain_sdk.meta import MetaOverrides, build_envelope_meta
+from packages.brain_shared.http.client import HttpClient
 
 
 class BrainClient:
-    """Thin gRPC client for selected Core/LMS/Vault operations."""
+    """Thin HTTP client for selected Core/LMS/Vault operations."""
 
     def __init__(
         self,
         *,
         config: BrainSdkConfig | None = None,
-        channel: grpc.Channel | None = None,
+        http: HttpClient | None = None,
     ) -> None:
-        """Create one SDK client with injected channel or config-built channel."""
+        """Create one SDK client with injected HttpClient or config-built client."""
         self._config = BrainSdkConfig() if config is None else config
-        self._owns_channel = channel is None
-        self._channel = self._new_channel() if channel is None else channel
-        self._core = core_health_pb2_grpc.CoreHealthServiceStub(self._channel)
-        self._lms = language_model_pb2_grpc.LanguageModelServiceStub(self._channel)
-        self._vault = vault_pb2_grpc.VaultAuthorityServiceStub(self._channel)
+        self._owns_http = http is None
+        self._http = http if http is not None else self._new_http_client()
 
     def close(self) -> None:
-        """Close underlying gRPC channel when the channel supports closing."""
-        close = getattr(self._channel, "close", None)
-        if self._owns_channel and callable(close):
-            close()
+        """Close underlying HTTP client when owned."""
+        if self._owns_http:
+            self._http.close()
 
     def __enter__(self) -> BrainClient:
         """Enter context manager scope."""
         return self
 
     def __exit__(self, *_: object) -> None:
-        """Exit context manager scope and close channel resources."""
+        """Exit context manager scope and close client resources."""
         self.close()
 
     def core_health(self, *, meta: MetaOverrides | None = None) -> CoreHealthResult:
         """Return aggregate Core health status."""
         return call_core_health(
-            rpc=self._core.Health,
+            http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
-            wait_for_ready=self._config.wait_for_ready,
         )
 
     def lms_chat(
@@ -75,12 +66,11 @@ class BrainClient:
     ) -> LmsChatResult:
         """Return one language model chat completion."""
         return call_lms_chat(
-            rpc=self._lms.Chat,
+            http=self._http,
             metadata=self._meta(meta),
             prompt=prompt,
             profile=profile,
             timeout_seconds=self._config.timeout_seconds,
-            wait_for_ready=self._config.wait_for_ready,
         )
 
     def vault_get(
@@ -88,11 +78,10 @@ class BrainClient:
     ) -> VaultFile:
         """Return one vault file by path."""
         return call_vault_get(
-            rpc=self._vault.GetFile,
+            http=self._http,
             metadata=self._meta(meta),
             file_path=file_path,
             timeout_seconds=self._config.timeout_seconds,
-            wait_for_ready=self._config.wait_for_ready,
         )
 
     def vault_list(
@@ -103,11 +92,10 @@ class BrainClient:
     ) -> list[VaultEntry]:
         """Return one directory listing from vault."""
         return call_vault_list(
-            rpc=self._vault.ListDirectory,
+            http=self._http,
             metadata=self._meta(meta),
             directory_path=directory_path,
             timeout_seconds=self._config.timeout_seconds,
-            wait_for_ready=self._config.wait_for_ready,
         )
 
     def vault_search(
@@ -120,17 +108,16 @@ class BrainClient:
     ) -> list[VaultSearchMatch]:
         """Return vault file matches for one search query."""
         return call_vault_search(
-            rpc=self._vault.SearchFiles,
+            http=self._http,
             metadata=self._meta(meta),
             query=query,
             directory_scope=directory_scope,
             limit=limit,
             timeout_seconds=self._config.timeout_seconds,
-            wait_for_ready=self._config.wait_for_ready,
         )
 
-    def _meta(self, overrides: MetaOverrides | None) -> object:
-        """Build one request metadata envelope for an outbound call."""
+    def _meta(self, overrides: MetaOverrides | None) -> dict[str, object]:
+        """Build one request metadata dict for an outbound call."""
         value = MetaOverrides() if overrides is None else overrides
         return build_envelope_meta(
             source=self._config.source if value.source is None else value.source,
@@ -143,41 +130,38 @@ class BrainClient:
             timestamp=value.timestamp,
         )
 
-    def _new_channel(self) -> grpc.Channel:
-        """Create one gRPC channel from SDK runtime configuration."""
-        options = list(self._config.channel_options)
-        if self._config.use_tls:
-            credentials = grpc.ssl_channel_credentials()
-            return grpc.secure_channel(
-                self._config.target,
-                credentials=credentials,
-                options=options,
-            )
-        return grpc.insecure_channel(self._config.target, options=options)
+    def _new_http_client(self) -> HttpClient:
+        """Create one HttpClient over UDS from SDK runtime configuration."""
+        transport = httpx.HTTPTransport(uds=self._config.socket_path)
+        return HttpClient(
+            base_url="http://localhost",
+            timeout_seconds=self._config.timeout_seconds,
+            transport=transport,
+        )
 
 
 class BrainSdkClient(BrainClient):
-    """CLI-friendly SDK client with constructor aliases for target/timeout args."""
+    """CLI-friendly SDK client with constructor aliases for socket/timeout args."""
 
     def __init__(
         self,
-        grpc_target: str | None = None,
+        socket: str | None = None,
         timeout: float | None = None,
         *,
+        socket_path: str | None = None,
         target: str | None = None,
         address: str | None = None,
         timeout_seconds: float | None = None,
         source: str = "cli",
         principal: str = "operator",
-        use_tls: bool = False,
-        wait_for_ready: bool = False,
-        channel_options: tuple[tuple[str, str | int], ...] = (),
-        channel: grpc.Channel | None = None,
+        http: HttpClient | None = None,
     ) -> None:
         """Create one SDK client from direct constructor fields."""
-        resolved_target = (
-            grpc_target
-            if grpc_target is not None
+        resolved_socket = (
+            socket
+            if socket is not None
+            else socket_path
+            if socket_path is not None
             else target
             if target is not None
             else address
@@ -187,13 +171,10 @@ class BrainSdkClient(BrainClient):
         )
         super().__init__(
             config=BrainSdkConfig(
-                target=resolve_target(resolved_target),
+                socket_path=resolve_socket_path(resolved_socket),
                 timeout_seconds=resolved_timeout,
                 source=source,
                 principal=principal,
-                use_tls=use_tls,
-                wait_for_ready=wait_for_ready,
-                channel_options=channel_options,
             ),
-            channel=channel,
+            http=http,
         )

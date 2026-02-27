@@ -32,7 +32,7 @@ def test_load_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
         environ={
             "BRAIN_LOGGING__LEVEL": "ERROR",
             "BRAIN_COMPONENTS__CORE_BOOT__BOOT_RETRY_ATTEMPTS": "4",
-            "BRAIN_COMPONENTS__CORE_GRPC__BIND_PORT": "50052",
+            "BRAIN_COMPONENTS__CORE_HTTP__SOCKET_PATH": "/tmp/test.sock",
             "BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__POOL_SIZE": "9",
         },
         config_path=config_file,
@@ -51,7 +51,7 @@ def test_load_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
 
     assert settings.logging.level == "DEBUG"
     assert settings.components.core_boot.boot_retry_attempts == 4
-    assert settings.components.core_grpc.bind_port == 50052
+    assert settings.components.core_http.socket_path == "/tmp/test.sock"
     assert postgres.pool_size == 9
     assert embedding.max_list_limit == 500
 
@@ -69,8 +69,9 @@ def test_load_settings_uses_model_defaults_when_sources_missing(tmp_path: Path) 
     assert postgres.pool_size == 5
     assert settings.logging.level == "INFO"
     assert settings.components.core_boot.boot_retry_attempts == 3
-    assert settings.components.core_grpc.bind_host == "0.0.0.0"
-    assert settings.components.core_grpc.bind_port == 50051
+    assert (
+        settings.components.core_http.socket_path == "/app/config/generated/brain.sock"
+    )
 
 
 def test_load_settings_applies_secrets_yaml_over_brain_yaml(tmp_path: Path) -> None:

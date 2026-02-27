@@ -32,12 +32,12 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
 
         def __init__(
             self,
-            grpc_target: str,
+            socket: str,
             timeout: float,
             source: str = "cli",
             principal: str = "operator",
         ) -> None:
-            self.grpc_target = grpc_target
+            self.socket = socket
             self.timeout = timeout
             self.source = source
             self.principal = principal
@@ -59,7 +59,7 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
         module.calls.append(
             (
                 "core_health",
-                client.grpc_target,
+                client.socket,
                 client.timeout,
                 principal,
                 source,
@@ -91,7 +91,7 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
         module.calls.append(
             (
                 "lms_chat",
-                client.grpc_target,
+                client.socket,
                 prompt,
                 profile,
                 principal,
@@ -109,7 +109,7 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
         trace_id: str | None = None,
         parent_id: str | None = None,
     ) -> dict[str, Any]:
-        module.calls.append(("vault_get", client.grpc_target, file_path))
+        module.calls.append(("vault_get", client.socket, file_path))
         return {"path": file_path, "content": "hello"}
 
     def vault_list(
@@ -119,7 +119,7 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
         trace_id: str | None = None,
         parent_id: str | None = None,
     ) -> list[str]:
-        module.calls.append(("vault_list", client.grpc_target, directory_path))
+        module.calls.append(("vault_list", client.socket, directory_path))
         return ["a.md", "b.md"]
 
     def vault_search(
@@ -132,7 +132,7 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
         parent_id: str | None = None,
     ) -> list[dict[str, Any]]:
         module.calls.append(
-            ("vault_search", client.grpc_target, query, directory_scope, limit)
+            ("vault_search", client.socket, query, directory_scope, limit)
         )
         return [{"path": "notes/a.md", "score": 0.9}]
 
@@ -146,9 +146,6 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
     module.vault_search = vault_search
 
     config_module = ModuleType("packages.brain_sdk.config")
-    config_module.resolve_target = lambda value=None: (
-        "127.0.0.1:50051" if value is None else value
-    )
     config_module.resolve_timeout_seconds = lambda value=None: (
         10.0 if value is None else value
     )
@@ -173,8 +170,8 @@ def _base_args() -> list[str]:
     """Return required global flag arguments."""
 
     return [
-        "--grpc-target",
-        "127.0.0.1:50051",
+        "--socket",
+        "/tmp/brain.sock",
         "--timeout",
         "1.5",
     ]
@@ -540,7 +537,7 @@ def test_vault_list_empty_result_human(monkeypatch: Any) -> None:
     runner = CliRunner()
 
     def empty_vault_list(*, client: Any, **_: Any) -> list[Any]:
-        sdk.calls.append(("vault_list", client.grpc_target, ""))
+        sdk.calls.append(("vault_list", client.socket, ""))
         return []
 
     monkeypatch.setattr(cli_module, "vault_list", empty_vault_list)
@@ -558,7 +555,7 @@ def test_vault_search_empty_result_human(monkeypatch: Any) -> None:
     runner = CliRunner()
 
     def empty_vault_search(*, client: Any, **_: Any) -> list[Any]:
-        sdk.calls.append(("vault_search", client.grpc_target, ""))
+        sdk.calls.append(("vault_search", client.socket, ""))
         return []
 
     monkeypatch.setattr(cli_module, "vault_search", empty_vault_search)

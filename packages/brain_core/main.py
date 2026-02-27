@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 import os
 import signal
-from pathlib import Path
 import sys
+import threading
+from pathlib import Path
 from time import sleep
 
-import grpc
+from fastapi import APIRouter
 
+from packages.brain_core.health_api import register_routes
 from packages.brain_core.migrations import run_startup_migrations
 from packages.brain_core.startup import run_core_startup
 from packages.brain_shared.component_loader import (
@@ -20,23 +20,11 @@ from packages.brain_shared.component_loader import (
 )
 from packages.brain_shared.config import BrainSettings, load_settings
 from packages.brain_shared.logging import get_logger
+from packages.brain_shared.http.server import create_app, run_app_uds
 from packages.brain_shared.manifest import ComponentManifest, get_registry
 
 _LOGGER = get_logger(__name__)
 _RUNNING = True
-_REFLECTION_SERVICE_NAMES: tuple[str, ...] = (
-    "brain.action.v1.AttentionRouterService",
-    "brain.action.v1.CapabilityEngineService",
-    "brain.action.v1.LanguageModelService",
-    "brain.action.v1.PolicyService",
-    "brain.action.v1.SwitchboardService",
-    "brain.state.v1.CacheAuthorityService",
-    "brain.state.v1.EmbeddingAuthorityService",
-    "brain.state.v1.MemoryAuthorityService",
-    "brain.state.v1.ObjectAuthorityService",
-    "brain.state.v1.VaultAuthorityService",
-    "brain.shared.v1.CoreHealthService",
-)
 
 
 def _handle_shutdown(_signum: int, _frame: object) -> None:
@@ -71,8 +59,8 @@ def _resolve_component_after_boot(manifest: ComponentManifest):
     return None
 
 
-def _resolve_service_grpc_registrar(manifest: ComponentManifest):
-    """Load one optional service-level gRPC registrar from ``api.py``."""
+def _resolve_service_http_registrar(manifest: ComponentManifest):
+    """Load one optional service-level HTTP registrar from ``api.py``."""
     for module_root in sorted(manifest.module_roots):
         candidate = Path.cwd() / Path(*str(module_root).split(".")) / "api.py"
         if not candidate.exists():
@@ -80,7 +68,7 @@ def _resolve_service_grpc_registrar(manifest: ComponentManifest):
         module_name = f"{module_root}.api"
         import_component_modules((module_name,))
         module = sys.modules[module_name]
-        registrar = getattr(module, "register_grpc", None)
+        registrar = getattr(module, "register_routes", None)
         if callable(registrar):
             return registrar
     return None
@@ -142,86 +130,41 @@ def _run_after_boot_lifecycle(
         )
 
 
-def _start_grpc_runtime(
+def _start_http_runtime(
     *,
     settings: BrainSettings,
     components: dict[str, object],
-    server_factory: Callable[..., grpc.Server] = grpc.server,
-) -> grpc.Server:
-    """Start Core gRPC runtime and register all service transport adapters."""
-    generated_root = Path.cwd() / "generated"
-    if generated_root.exists():
-        sys.path.insert(0, str(generated_root))
-    from packages.brain_core.health_api import (
-        register_grpc as register_core_health_grpc,
-    )
+) -> tuple[object, threading.Thread]:
+    """Start Core HTTP runtime and register all service transport adapters."""
+    app = create_app(title="Brain Core API")
+    router = APIRouter()
 
-    server = server_factory(ThreadPoolExecutor(max_workers=32))
+    register_routes(router=router, settings=settings, components=components)
+
     registry = get_registry()
     registered_services: list[str] = []
-    for manifest in sorted(registry.list_services(), key=lambda item: str(item.id)):
-        service_instance = components.get(str(manifest.id))
-        if service_instance is None:
-            raise RuntimeError(f"missing instantiated service '{manifest.id}'")
-        registrar = _resolve_service_grpc_registrar(manifest)
+    for manifest in sorted(registry.list_services(), key=lambda m: str(m.id)):
+        service = components.get(str(manifest.id))
+        registrar = _resolve_service_http_registrar(manifest)
         if registrar is None:
             continue
-        registrar(server=server, service=service_instance)
+        registrar(router=router, service=service)
         registered_services.append(str(manifest.id))
 
-    if hasattr(server, "add_generic_rpc_handlers"):
-        register_core_health_grpc(
-            server=server,
-            settings=settings,
-            components=components,
-        )
-        registered_services.append("core_health")
-
-    if settings.components.core_grpc.enable_reflection:
-        _enable_grpc_reflection(server=server, generated_root=generated_root)
-
-    if len(registered_services) == 0:
-        raise RuntimeError("no service gRPC adapters registered")
-
-    address = (
-        f"{settings.components.core_grpc.bind_host}:"
-        f"{settings.components.core_grpc.bind_port}"
-    )
-    bound_port = server.add_insecure_port(address)
-    if bound_port == 0:
-        raise RuntimeError(f"failed to bind core gRPC server at '{address}'")
-    server.start()
+    app.include_router(router)
+    socket_path = settings.components.core_http.socket_path
+    os.makedirs(os.path.dirname(socket_path), exist_ok=True)
+    server = run_app_uds(app, socket_path=socket_path)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
     _LOGGER.info(
-        "core gRPC runtime started",
+        "core HTTP runtime started",
         extra={
-            "bind_address": address,
+            "socket_path": socket_path,
             "registered_services": registered_services,
         },
     )
-    return server
-
-
-def _enable_grpc_reflection(*, server: grpc.Server, generated_root: Path) -> None:
-    """Enable gRPC Server Reflection for runtime introspection clients."""
-    del generated_root
-    try:
-        from grpc_reflection.v1alpha import reflection
-    except ImportError as exc:
-        raise RuntimeError(
-            "gRPC reflection enabled but grpcio-reflection is not installed"
-        ) from exc
-
-    service_names = list(_REFLECTION_SERVICE_NAMES)
-    if len(service_names) == 0:
-        _LOGGER.warning("gRPC reflection enabled but no protobuf services discovered")
-    reflection.enable_server_reflection(
-        tuple([*service_names, reflection.SERVICE_NAME]),
-        server,
-    )
-    _LOGGER.info(
-        "gRPC reflection enabled",
-        extra={"reflected_service_count": len(service_names)},
-    )
+    return server, thread
 
 
 def main() -> None:
@@ -252,7 +195,9 @@ def main() -> None:
         run_migrations=False,
     )
     _run_after_boot_lifecycle(settings=settings, components=components)
-    grpc_server = _start_grpc_runtime(settings=settings, components=components)
+    http_server, http_thread = _start_http_runtime(
+        settings=settings, components=components
+    )
     _LOGGER.info(
         "brain core startup completed",
         extra={
@@ -267,8 +212,9 @@ def main() -> None:
         while _RUNNING:
             sleep(1.0)
     finally:
-        grpc_server.stop(grace=5.0).wait()
-        _LOGGER.info("core gRPC runtime stopped")
+        http_server.should_exit = True
+        http_thread.join(timeout=5.0)
+        _LOGGER.info("core HTTP runtime stopped")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Static checks for standardized service gRPC registration hooks."""
+"""Static checks for standardized service HTTP registration hooks."""
 
 from __future__ import annotations
 
@@ -20,39 +20,21 @@ class _Violation:
         return f"{self.file_path}:{self.line}: {self.message}"
 
 
-def test_service_api_modules_define_standard_register_grpc_hook() -> None:
-    """Each service API module must expose ``register_grpc(*, server, service)``."""
+def test_service_api_modules_define_standard_register_routes_hook() -> None:
+    """Each service API module must expose ``register_routes(*, router, service)``."""
     violations: list[_Violation] = []
     for api_file in sorted(Path("services").glob("*/*/api.py")):
         module = ast.parse(api_file.read_text(encoding="utf-8"), filename=str(api_file))
         functions = [node for node in module.body if isinstance(node, ast.FunctionDef)]
 
-        legacy = [
-            fn
-            for fn in functions
-            if fn.name != "register_grpc"
-            and (fn.name.startswith("add_") and fn.name.endswith("_to_server"))
-        ]
-        for fn in legacy:
-            violations.append(
-                _Violation(
-                    file_path=api_file,
-                    line=fn.lineno,
-                    message=(
-                        "legacy gRPC registrar name is prohibited; "
-                        "use register_grpc(*, server, service)"
-                    ),
-                )
-            )
-
-        register = next((fn for fn in functions if fn.name == "register_grpc"), None)
+        register = next((fn for fn in functions if fn.name == "register_routes"), None)
         if register is None:
             violations.append(
                 _Violation(
                     file_path=api_file,
                     line=1,
                     message=(
-                        "missing required register_grpc(*, server, service) hook "
+                        "missing required register_routes(*, router, service) hook "
                         "in service api module"
                     ),
                 )
@@ -66,21 +48,21 @@ def test_service_api_modules_define_standard_register_grpc_hook() -> None:
                     file_path=api_file,
                     line=register.lineno,
                     message=(
-                        "register_grpc must declare keyword-only parameters "
-                        "(*, server, service)"
+                        "register_routes must declare keyword-only parameters "
+                        "(*, router, service)"
                     ),
                 )
             )
 
         keyword_only_names = tuple(arg.arg for arg in register.args.kwonlyargs)
-        if keyword_only_names != ("server", "service"):
+        if keyword_only_names != ("router", "service"):
             violations.append(
                 _Violation(
                     file_path=api_file,
                     line=register.lineno,
                     message=(
-                        "register_grpc must declare keyword-only parameters exactly "
-                        "(*, server, service)"
+                        "register_routes must declare keyword-only parameters exactly "
+                        "(*, router, service)"
                     ),
                 )
             )
