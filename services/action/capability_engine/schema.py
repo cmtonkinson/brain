@@ -68,6 +68,12 @@ def _expand_object_shorthand(shorthand_obj: dict[str, Any]) -> dict[str, Any]:
     }
 
     for prop_name, prop_value in shorthand_obj.items():
+        if isinstance(prop_value, dict):
+            # Already a canonical JSON Schema fragment — pass through.
+            schema["properties"][prop_name] = prop_value
+            schema["required"].append(prop_name)
+            continue
+
         if not isinstance(prop_value, str):
             raise SchemaExpansionError(
                 f"Value for property '{prop_name}' in shorthand object must be a string."

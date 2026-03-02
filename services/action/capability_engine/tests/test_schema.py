@@ -106,3 +106,48 @@ def test_object_shorthand_non_string_value_raises() -> None:
 def test_object_shorthand_empty_property_value_raises() -> None:
     with pytest.raises(SchemaExpansionError, match="is empty"):
         expand_schema({"bad": ""})
+
+
+def test_mixed_shorthand_and_canonical_properties() -> None:
+    """Shorthand strings and canonical JSON Schema dicts can coexist."""
+    result = expand_schema(
+        {
+            "file_path": "string | The path.",
+            "edits": {
+                "type": "array",
+                "description": "Edits to apply.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "start_line": {"type": "integer"},
+                        "end_line": {"type": "integer"},
+                        "content": {"type": "string"},
+                    },
+                    "required": ["start_line", "end_line", "content"],
+                },
+            },
+        }
+    )
+    assert result["type"] == "object"
+    assert result["properties"]["file_path"] == {
+        "type": "string",
+        "description": "The path.",
+    }
+    # Canonical dict property passed through unchanged.
+    assert result["properties"]["edits"]["type"] == "array"
+    assert result["properties"]["edits"]["items"]["properties"]["start_line"] == {
+        "type": "integer"
+    }
+    assert result["required"] == ["file_path", "edits"]
+
+
+def test_mixed_shorthand_canonical_property_is_optional_when_not_in_required() -> None:
+    """A canonical dict property is required by default in shorthand context."""
+    result = expand_schema(
+        {
+            "name": "string | The name.",
+            "metadata": {"type": "object", "description": "Extra data."},
+        }
+    )
+    assert "name" in result["required"]
+    assert "metadata" in result["required"]

@@ -5,7 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/app \
-    BRAIN_CONFIG_FILE=/app/config/brain.yaml
+    BRAIN_CONFIG_FILE=/app/config/brain.yaml \
+    BRAIN_CORE_CONFIG_FILE=/app/config/core.yaml \
+    BRAIN_RESOURCES_CONFIG_FILE=/app/config/resources.yaml
 
 WORKDIR /app
 
@@ -23,6 +25,6 @@ RUN addgroup --system brain && adduser --system --ingroup brain brain && \
 USER brain
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=3 \
-  CMD curl --silent --fail --unix-socket /app/config/generated/brain.sock http://localhost/health || exit 1
+  CMD curl --silent --fail --unix-socket /tmp/brain.sock http://localhost/health || exit 1
 
 ENTRYPOINT ["python", "-m", "packages.brain_core.main"]

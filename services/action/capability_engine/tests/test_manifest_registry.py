@@ -409,3 +409,104 @@ def test_discover_skips_disabled_capabilities(tmp_path) -> None:
     assert registry.count() == 1
     assert registry.resolve_manifest(capability_id="demo-active") is not None
     assert registry.resolve_manifest(capability_id="demo-disabled") is None
+
+
+def test_discover_accepts_detailed_schema_against_stub_contract(tmp_path) -> None:
+    """A capability with detailed property schemas should pass validation
+    when the auto-derived call target contract uses coarse type stubs
+    (e.g. ``{"type": "object", "title": "SomeModel"}`` for Pydantic models).
+    """
+    # Simulate auto-derived stubs: the contract uses coarse types for complex
+    # parameters (Sequence[FileEdit] → array of object stubs, return model → object stub).
+    stub_targets = {
+        "state.detailed": CallTargetContract(
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string"},
+                    "edits": {
+                        "type": "array",
+                        "items": {"type": "object", "title": "FileEdit"},
+                    },
+                },
+                "required": ["file_path", "edits"],
+                "additionalProperties": False,
+            },
+            output_schema={"type": "object", "title": "VaultFileRecord"},
+        ),
+    }
+
+    _write_manifest(
+        tmp_path,
+        "demo-detailed",
+        {
+            "capability_id": "demo-detailed",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Detailed schema op",
+            "input_schema": {
+                "file_path": "string | The path.",
+                "edits": {
+                    "type": "array",
+                    "description": "Edits to apply.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "start_line": {"type": "integer"},
+                            "end_line": {"type": "integer"},
+                            "content": {"type": "string"},
+                        },
+                        "required": ["start_line", "end_line", "content"],
+                    },
+                },
+            },
+            "output_schema": {
+                "path": "string | The file path.",
+                "content": "string | The content.",
+                "revision": "string | The revision.",
+            },
+            "call_target": "state.detailed",
+        },
+    )
+
+    registry = CapabilityRegistry()
+    registry.discover(root=tmp_path, call_targets=stub_targets)
+
+    assert registry.count() == 1
+
+
+def test_discover_rejects_truly_incompatible_schema_against_stub(tmp_path) -> None:
+    """A capability whose type fundamentally mismatches the contract should
+    still be rejected even when the contract is a stub.
+    """
+    stub_targets = {
+        "state.typed": CallTargetContract(
+            input_schema={
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+                "required": ["name"],
+                "additionalProperties": False,
+            },
+            output_schema={"type": "array", "title": "SomeList"},
+        ),
+    }
+
+    _write_manifest(
+        tmp_path,
+        "demo-wrong-type",
+        {
+            "capability_id": "demo-wrong-type",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Wrong output type",
+            "input_schema": {"name": "string | The name."},
+            "output_schema": {
+                "path": "string | A path.",
+            },
+            "call_target": "state.typed",
+        },
+    )
+
+    registry = CapabilityRegistry()
+    with pytest.raises(ValueError, match="output schema does not match"):
+        registry.discover(root=tmp_path, call_targets=stub_targets)

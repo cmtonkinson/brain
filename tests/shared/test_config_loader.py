@@ -109,7 +109,7 @@ def test_load_core_settings_uses_model_defaults_when_sources_missing(
     assert settings.logging.service == "brain"
     assert settings.logging.level == "INFO"
     assert settings.boot.boot_retry_attempts == 3
-    assert settings.http.socket_path == "/app/config/generated/brain.sock"
+    assert settings.http.socket_path == "/tmp/brain.sock"
 
 
 def test_load_core_settings_applies_secrets_yaml_over_core_yaml(tmp_path: Path) -> None:
@@ -159,3 +159,20 @@ def test_load_core_settings_ignores_secrets_yaml_when_missing(tmp_path: Path) ->
     settings = load_core_settings(config_path=config_file, environ={})
 
     assert settings.profile.webhook_shared_secret == "public-secret"
+
+
+def test_core_runtime_settings_exposes_profile_via_core() -> None:
+    """CoreRuntimeSettings must access profile via .core.profile, not .profile."""
+    runtime_settings = load_core_runtime_settings()
+
+    # CoreRuntimeSettings should NOT have a top-level .profile attribute.
+    assert not hasattr(runtime_settings, "profile"), (
+        "CoreRuntimeSettings must not expose 'profile' directly; "
+        "use settings.core.profile instead"
+    )
+
+    # The correct path should work.
+    profile = runtime_settings.core.profile
+    assert profile.operator.signal_contact_e164
+    assert profile.default_dial_code
+    assert profile.webhook_shared_secret

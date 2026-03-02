@@ -89,7 +89,7 @@ class CoreBootSettings(BaseModel):
 class CoreHttpSettings(BaseModel):
     """Core HTTP runtime settings under ``http``."""
 
-    socket_path: str = "/app/config/generated/brain.sock"
+    socket_path: str = "/tmp/brain.sock"
 
 
 class CoreHealthSettings(BaseModel):

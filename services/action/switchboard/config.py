@@ -62,7 +62,7 @@ def resolve_switchboard_identity_settings(
 ) -> SwitchboardIdentitySettings:
     """Resolve operator identity + webhook secret settings from root profile."""
     return SwitchboardIdentitySettings(
-        operator_signal_contact_e164=settings.profile.operator.signal_contact_e164,
-        default_dial_code=settings.profile.default_dial_code,
-        webhook_shared_secret=settings.profile.webhook_shared_secret,
+        operator_signal_contact_e164=settings.core.profile.operator.signal_contact_e164,
+        default_dial_code=settings.core.profile.default_dial_code,
+        webhook_shared_secret=settings.core.profile.webhook_shared_secret,
     )

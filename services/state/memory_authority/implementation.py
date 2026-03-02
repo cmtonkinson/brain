@@ -164,7 +164,7 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             settings=service_settings,
             runtime=runtime,
             language_model=language_model,
-            profile=settings.profile,
+            profile=settings.core.profile,
         )
 
     @public_api_instrumented(

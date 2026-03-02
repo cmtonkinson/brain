@@ -166,6 +166,64 @@ class CapabilityRegistry:
             return [self._strip_descriptions(item) for item in schema]
         return schema
 
+    @classmethod
+    def _schemas_compatible(
+        cls,
+        manifest_schema: dict[str, Any] | None,
+        contract_schema: dict[str, Any] | None,
+    ) -> bool:
+        """Check schema compatibility, falling back to structural match.
+
+        The auto-derived contract schemas are coarse stubs for complex types
+        (e.g. ``{"type": "object", "title": "FileEdit"}``).  Accept the
+        manifest schema whenever the contract side is a stub whose ``type``
+        matches, and recurse into ``properties`` / ``items`` so that nested
+        stubs are also tolerated.
+        """
+        if manifest_schema == contract_schema:
+            return True
+        if manifest_schema is None or contract_schema is None:
+            return False
+        if not isinstance(manifest_schema, dict) or not isinstance(
+            contract_schema, dict
+        ):
+            return manifest_schema == contract_schema
+
+        # Stub: contract has a type but no properties/items detail.
+        contract_is_stub = (
+            "properties" not in contract_schema
+            and "items" not in contract_schema
+            and contract_schema.get("type") == manifest_schema.get("type")
+        )
+        if contract_is_stub:
+            return True
+
+        # Both have type — must agree.
+        if contract_schema.get("type") != manifest_schema.get("type"):
+            return False
+
+        # Recurse into object properties: every contract property must be
+        # compatible with the corresponding manifest property.
+        contract_props = contract_schema.get("properties", {})
+        manifest_props = manifest_schema.get("properties", {})
+        if contract_props:
+            if set(contract_props) != set(manifest_props):
+                return False
+            for key in contract_props:
+                if not cls._schemas_compatible(
+                    manifest_props.get(key), contract_props.get(key)
+                ):
+                    return False
+
+        # Recurse into array items.
+        if "items" in contract_schema and "items" in manifest_schema:
+            if not cls._schemas_compatible(
+                manifest_schema["items"], contract_schema["items"]
+            ):
+                return False
+
+        return True
+
     def _validate_call_targets_and_io(
         self,
         *,
@@ -181,7 +239,9 @@ class CapabilityRegistry:
                     )
 
                 manifest_input_schema = self._strip_descriptions(manifest.input_schema)
-                if manifest_input_schema != contract.input_schema:
+                if not self._schemas_compatible(
+                    manifest_input_schema, contract.input_schema
+                ):
                     raise ValueError(
                         f"op capability {capability_id} input schema does not match call target {manifest.call_target}"
                     )
@@ -189,7 +249,9 @@ class CapabilityRegistry:
                 manifest_output_schema = self._strip_descriptions(
                     manifest.output_schema
                 )
-                if manifest_output_schema != contract.output_schema:
+                if not self._schemas_compatible(
+                    manifest_output_schema, contract.output_schema
+                ):
                     raise ValueError(
                         f"op capability {capability_id} output schema does not match call target {manifest.call_target}"
                     )
