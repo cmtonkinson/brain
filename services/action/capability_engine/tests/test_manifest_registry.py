@@ -372,3 +372,40 @@ def test_logic_skill_requires_tests(tmp_path) -> None:
     registry = CapabilityRegistry()
     with pytest.raises(ValueError, match="missing tests"):
         registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
+def test_discover_skips_disabled_capabilities(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-active",
+        {
+            "capability_id": "demo-active",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Active",
+            "input_schema": {"payload": "object | The payload."},
+            "output_schema": "object | The result.",
+            "call_target": "state.echo",
+        },
+    )
+    _write_manifest(
+        tmp_path,
+        "demo-disabled",
+        {
+            "capability_id": "demo-disabled",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Disabled",
+            "enabled": False,
+            "input_schema": {"payload": "object | The payload."},
+            "output_schema": "object | The result.",
+            "call_target": "state.echo",
+        },
+    )
+
+    registry = CapabilityRegistry()
+    registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+    assert registry.count() == 1
+    assert registry.resolve_manifest(capability_id="demo-active") is not None
+    assert registry.resolve_manifest(capability_id="demo-disabled") is None

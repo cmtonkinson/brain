@@ -85,6 +85,8 @@ class CapabilityRegistry:
                 continue
             raw = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest = self._parse_manifest(raw)
+            if not manifest.enabled:
+                continue
             self._validate_manifest_files(package_dir=package_dir, manifest=manifest)
             discovered[manifest.capability_id] = manifest
 

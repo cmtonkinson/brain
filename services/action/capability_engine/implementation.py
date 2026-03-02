@@ -320,19 +320,6 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 reason_codes=(codes.RESOURCE_NOT_FOUND,),
             )
 
-        if not manifest.enabled:
-            errors = (
-                validation_error(
-                    "capability is disabled",
-                    code=codes.PERMISSION_DENIED,
-                    metadata={"capability_id": capability_id},
-                ),
-            )
-            return self._denied_internal(
-                capability_version=manifest.version,
-                errors=errors,
-                reason_codes=("capability_disabled",),
-            )
         if manifest.autonomy > self._settings.default_max_autonomy:
             errors = (
                 validation_error(
