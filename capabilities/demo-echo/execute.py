@@ -4,6 +4,7 @@
 # execution environment for Logic Skills. For now, we assume a simple no-argument
 # function that returns a JSON-serializable value.
 
+
 def execute():
     """Execute the skill."""
     return "Hello, World!"

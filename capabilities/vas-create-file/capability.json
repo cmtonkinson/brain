@@ -1,0 +1,24 @@
+{
+  "capability_id": "vas-create-file",
+  "kind": "native_op",
+  "version": "1.0.0",
+  "summary": "Create one markdown file; fails when it already exists.",
+  "enabled": true,
+  "autonomy": 0,
+  "requires_approval": false,
+  "side_effects": ["writes_vault"],
+  "required_capabilities": [],
+  "input_schema": {
+    "file_path": "string | The full path of the file to create.",
+    "content": "string | The initial content of the file."
+  },
+  "output_schema": {
+    "path": "string | The full path of the file.",
+    "content": "string | The content of the file.",
+    "size_bytes": "integer | The size of the file in bytes.",
+    "created_at": "date-time|null|optional | The timestamp when the file was created.",
+    "updated_at": "date-time|null|optional | The timestamp when the file was last updated.",
+    "revision": "string | The revision identifier for the file."
+  },
+  "call_target": "service_vault_authority.create_file"
+}
