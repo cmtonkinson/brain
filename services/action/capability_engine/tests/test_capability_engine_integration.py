@@ -37,8 +37,8 @@ def _write_manifest(root: Path) -> None:
                 "kind": "op",
                 "version": "1.0.0",
                 "summary": "Echo",
-                "input_types": ["dict[str, object]"],
-                "output_types": ["dict[str, object]"],
+                "input_schema": {"payload": "dict[str, object]"},
+                "output_type": "dict[str, object]",
                 "call_target": "state.echo",
             }
         ),
@@ -121,8 +121,8 @@ def test_invoke_writes_audit_for_allowed_call(tmp_path: Path) -> None:
         root=discovery,
         call_targets={
             "state.echo": CallTargetContract(
-                input_types=("dict[str, object]",),
-                output_types=("dict[str, object]",),
+                input_schema={"payload": "dict[str, object]"},
+                output_type="dict[str, object]",
             )
         },
     )

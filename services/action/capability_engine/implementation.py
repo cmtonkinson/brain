@@ -18,9 +18,11 @@ from packages.brain_shared.envelope import (
 from packages.brain_shared.errors import (
     ErrorDetail,
     codes,
+    internal_error,
     not_found_error,
     validation_error,
 )
+from services.action.capability_engine.op_handler_bridge import OpHandlerBridgeError
 from packages.brain_shared.ids import generate_ulid_str
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.adapters.utcp_code_mode import (
@@ -227,8 +229,8 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 kind=manifest.kind,
                 version=manifest.version,
                 summary=manifest.summary,
-                input_types=manifest.input_types,
-                output_types=manifest.output_types,
+                input_schema=dict(manifest.input_schema),
+                output_type=manifest.output_type,
                 autonomy=manifest.autonomy,
                 requires_approval=manifest.requires_approval,
                 side_effects=manifest.side_effects,
@@ -400,15 +402,43 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 execute=lambda _: self._missing_handler_result(request=request),
             )
 
-        return self._policy_service.authorize_and_execute(
-            request=request,
-            execute=lambda allowed_request: PolicyExecutionResult(
+        def _execute(
+            allowed_request: CapabilityInvocationRequest,
+        ) -> PolicyExecutionResult:
+            try:
+                result = handler(allowed_request, runtime)
+            except OpHandlerBridgeError as exc:
+                return PolicyExecutionResult(
+                    allowed=False,
+                    output=None,
+                    errors=exc.errors,
+                    decision=self._placeholder_allow_decision(),
+                    proposal=None,
+                )
+            except Exception as exc:
+                return PolicyExecutionResult(
+                    allowed=False,
+                    output=None,
+                    errors=(
+                        internal_error(
+                            str(exc),
+                            code=codes.INTERNAL_ERROR,
+                        ),
+                    ),
+                    decision=self._placeholder_allow_decision(),
+                    proposal=None,
+                )
+            return PolicyExecutionResult(
                 allowed=True,
-                output=handler(allowed_request, runtime).output,
+                output=result.output,
                 errors=(),
                 decision=self._placeholder_allow_decision(),
                 proposal=None,
-            ),
+            )
+
+        return self._policy_service.authorize_and_execute(
+            request=request,
+            execute=_execute,
         )
 
     def _append_audit_row(

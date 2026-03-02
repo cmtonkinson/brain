@@ -75,8 +75,8 @@ class CapabilityManifestBase(BaseModel):
     requires_approval: bool = False
     side_effects: tuple[str, ...] = ()
     required_capabilities: tuple[str, ...] = ()
-    input_types: tuple[str, ...] = Field(default=("json",), min_length=1)
-    output_types: tuple[str, ...] = Field(default=("json",), min_length=1)
+    input_schema: dict[str, str] = Field(default_factory=lambda: {"payload": "json"})
+    output_type: str = "json"
 
 
 class OpCapabilityManifest(CapabilityManifestBase):
@@ -125,8 +125,8 @@ class CapabilityDescriptor(BaseModel):
     kind: Literal["skill", "op"]
     version: str
     summary: str
-    input_types: tuple[str, ...]
-    output_types: tuple[str, ...]
+    input_schema: dict[str, str]
+    output_type: str
     autonomy: int
     requires_approval: bool
     side_effects: tuple[str, ...]

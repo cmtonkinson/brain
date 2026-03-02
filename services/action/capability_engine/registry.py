@@ -48,8 +48,8 @@ CapabilityHandler = Callable[
 class CallTargetContract:
     """Contract for one callable target used by Op capability manifests."""
 
-    input_types: tuple[str, ...]
-    output_types: tuple[str, ...]
+    input_schema: dict[str, str]
+    output_type: str
 
 
 class CapabilityRegistry:
@@ -158,13 +158,13 @@ class CapabilityRegistry:
                     raise ValueError(
                         f"op capability {capability_id} references unknown call target {manifest.call_target}"
                     )
-                if manifest.input_types != contract.input_types:
+                if manifest.input_schema != contract.input_schema:
                     raise ValueError(
-                        f"op capability {capability_id} input types do not match call target {manifest.call_target}"
+                        f"op capability {capability_id} input schema does not match call target {manifest.call_target}"
                     )
-                if manifest.output_types != contract.output_types:
+                if manifest.output_type != contract.output_type:
                     raise ValueError(
-                        f"op capability {capability_id} output types do not match call target {manifest.call_target}"
+                        f"op capability {capability_id} output type does not match call target {manifest.call_target}"
                     )
                 continue
 
@@ -174,21 +174,21 @@ class CapabilityRegistry:
                 continue
 
             first = manifests[manifest.pipeline[0]]
-            if manifest.input_types != first.input_types:
+            if manifest.input_schema != first.input_schema:
                 raise ValueError(
-                    f"pipeline skill {capability_id} input types must match first call target {first.capability_id}"
+                    f"pipeline skill {capability_id} input schema must match first call target {first.capability_id}"
                 )
             for index in range(1, len(manifest.pipeline)):
                 previous = manifests[manifest.pipeline[index - 1]]
                 current = manifests[manifest.pipeline[index]]
-                if previous.output_types != current.input_types:
+                if previous.output_type != current.output_type:
                     raise ValueError(
                         f"pipeline skill {capability_id} has incompatible call targets {previous.capability_id} -> {current.capability_id}"
                     )
             last = manifests[manifest.pipeline[-1]]
-            if manifest.output_types != last.output_types:
+            if manifest.output_type != last.output_type:
                 raise ValueError(
-                    f"pipeline skill {capability_id} output types must match final call target {last.capability_id}"
+                    f"pipeline skill {capability_id} output type must match final call target {last.capability_id}"
                 )
 
     def _build_call_target_contracts(
@@ -230,28 +230,28 @@ class CapabilityRegistry:
             if method_name.startswith("_"):
                 continue
             signature = inspect.signature(method)
-            input_types = tuple(
-                self._annotation_name(parameter.annotation)
-                for parameter in signature.parameters.values()
-                if parameter.name not in {"self", "meta"}
-            )
-            if len(input_types) == 0:
-                input_types = ("none",)
-            output_types = self._return_types(signature.return_annotation)
+            input_schema: dict[str, str] = {}
+            for parameter in signature.parameters.values():
+                if parameter.name in {"self", "meta"}:
+                    continue
+                input_schema[parameter.name] = self._annotation_name(
+                    parameter.annotation
+                )
+            output_type = self._return_type(signature.return_annotation)
             contracts[method_name] = CallTargetContract(
-                input_types=input_types,
-                output_types=output_types,
+                input_schema=input_schema,
+                output_type=output_type,
             )
         return contracts
 
-    def _return_types(self, annotation: Any) -> tuple[str, ...]:
+    def _return_type(self, annotation: Any) -> str:
         if annotation is inspect.Signature.empty:
-            return ("any",)
+            return "any"
         if isinstance(annotation, str):
             normalized = annotation.strip()
             if normalized.startswith("Envelope[") and normalized.endswith("]"):
-                return (normalized.removeprefix("Envelope[").removesuffix("]"),)
-            return (normalized,)
+                return normalized.removeprefix("Envelope[").removesuffix("]")
+            return normalized
         origin = get_origin(annotation)
         args = get_args(annotation)
         if (
@@ -259,8 +259,8 @@ class CapabilityRegistry:
             and getattr(origin, "__name__", "") == "Envelope"
             and args
         ):
-            return (self._annotation_name(args[0]),)
-        return (self._annotation_name(annotation),)
+            return self._annotation_name(args[0])
+        return self._annotation_name(annotation)
 
     def _annotation_name(self, annotation: Any) -> str:
         if annotation is inspect.Signature.empty:

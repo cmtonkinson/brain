@@ -37,8 +37,8 @@ def test_ces_invocation_routes_through_policy_and_audit() -> None:
             kind="op",
             version="1.0.0",
             summary="Echo",
-            input_types=("dict[str, object]",),
-            output_types=("dict[str, object]",),
+            input_schema={"component_id": "str", "key": "str"},
+            output_type="CacheEntry | None",
             call_target="service_cache_authority.get_value",
         )
     )

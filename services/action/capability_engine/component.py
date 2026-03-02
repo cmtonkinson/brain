@@ -51,12 +51,31 @@ def build_component(
 def after_boot(
     *, settings: CoreRuntimeSettings, components: Mapping[str, object]
 ) -> None:
-    """Load capability manifests after all component boot hooks succeed."""
+    """Load capability manifests and auto-register Op handlers."""
+    from services.action.capability_engine.domain import OpCapabilityManifest
     from services.action.capability_engine.implementation import (
         DefaultCapabilityEngineService,
     )
+    from services.action.capability_engine.op_handler_bridge import build_op_handler
 
     service = components.get(str(SERVICE_COMPONENT_ID))
     if not isinstance(service, DefaultCapabilityEngineService):
         raise RuntimeError("service_capability_engine is missing or invalid")
     service._load_capabilities()
+
+    for manifest in service._registry.list_manifests():
+        if not isinstance(manifest, OpCapabilityManifest):
+            continue
+        if (
+            service._registry.resolve_handler(capability_id=manifest.capability_id)
+            is not None
+        ):
+            continue
+        handler = build_op_handler(
+            call_target=manifest.call_target,
+            components=components,
+        )
+        service._registry.register_handler(
+            capability_id=manifest.capability_id,
+            handler=handler,
+        )
