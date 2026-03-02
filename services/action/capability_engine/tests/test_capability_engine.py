@@ -134,7 +134,7 @@ def test_ces_invocation_routes_through_policy_wrapper() -> None:
     registry = CapabilityRegistry()
     spec = OpCapabilityManifest(
         capability_id="demo-echo",
-        kind="op",
+        kind="native_op",
         version="1.0.0",
         summary="Echo input",
         call_target="state.echo",
@@ -171,17 +171,16 @@ def test_nested_capability_invocation_re_authorizes_child() -> None:
     registry = CapabilityRegistry()
     child = OpCapabilityManifest(
         capability_id="demo-child",
-        kind="op",
+        kind="native_op",
         version="1.0.0",
         summary="Child op",
         call_target="state.child",
     )
     parent = SkillCapabilityManifest(
         capability_id="demo-parent",
-        kind="skill",
+        kind="logic_skill",
         version="1.0.0",
         summary="Parent skill",
-        skill_type="logic",
     )
     registry.register_manifest(manifest=child)
     registry.register_manifest(manifest=parent)
@@ -234,7 +233,7 @@ def test_disabled_manifest_denied_without_policy_call() -> None:
     registry = CapabilityRegistry()
     spec = OpCapabilityManifest(
         capability_id="demo-disabled",
-        kind="op",
+        kind="native_op",
         version="1.0.0",
         summary="Disabled",
         enabled=False,
@@ -264,7 +263,7 @@ def test_unknown_handler_fails_after_policy_wrapper() -> None:
     registry = CapabilityRegistry()
     spec = OpCapabilityManifest(
         capability_id="demo-no-handler",
-        kind="op",
+        kind="native_op",
         version="1.0.0",
         summary="No handler",
         call_target="state.missing",
@@ -308,7 +307,7 @@ def test_engine_autonomy_ceiling_denies_before_policy() -> None:
     registry = CapabilityRegistry()
     spec = OpCapabilityManifest(
         capability_id="demo-autonomy",
-        kind="op",
+        kind="native_op",
         version="1.0.0",
         summary="Autonomy gated by engine",
         autonomy=2,
@@ -345,7 +344,7 @@ def test_policy_denial_propagates_reason_codes() -> None:
     registry = CapabilityRegistry()
     spec = OpCapabilityManifest(
         capability_id="demo-denied",
-        kind="op",
+        kind="native_op",
         version="1.0.0",
         summary="Denied by policy",
         call_target="state.denied",
@@ -377,7 +376,7 @@ def test_invocation_audit_rows_capture_lineage_and_policy_fields() -> None:
     registry = CapabilityRegistry()
     spec = OpCapabilityManifest(
         capability_id="demo-audit",
-        kind="op",
+        kind="native_op",
         version="1.0.0",
         summary="Audit probe",
         call_target="state.audit",
@@ -420,7 +419,7 @@ def test_health_reflects_injected_audit_repository_count() -> None:
     registry = CapabilityRegistry()
     spec = OpCapabilityManifest(
         capability_id="demo-health-audit",
-        kind="op",
+        kind="native_op",
         version="1.0.0",
         summary="Health audit probe",
         call_target="state.health",
@@ -458,7 +457,7 @@ def test_describe_capabilities_returns_all_registered_manifests() -> None:
     registry = CapabilityRegistry()
     op = OpCapabilityManifest(
         capability_id="demo-op",
-        kind="op",
+        kind="native_op",
         version="1.0.0",
         summary="An op",
         call_target="state.op",
@@ -466,10 +465,9 @@ def test_describe_capabilities_returns_all_registered_manifests() -> None:
     )
     skill = SkillCapabilityManifest(
         capability_id="demo-skill",
-        kind="skill",
+        kind="logic_skill",
         version="2.0.0",
         summary="A skill",
-        skill_type="logic",
         requires_approval=True,
     )
     registry.register_manifest(manifest=op)
@@ -494,7 +492,7 @@ def test_describe_capabilities_returns_all_registered_manifests() -> None:
 
     assert "demo-op" in by_id
     op_desc = by_id["demo-op"]
-    assert op_desc.kind == "op"
+    assert op_desc.kind == "native_op"
     assert op_desc.version == "1.0.0"
     assert op_desc.summary == "An op"
     assert op_desc.side_effects == ("writes_cache",)
@@ -502,7 +500,7 @@ def test_describe_capabilities_returns_all_registered_manifests() -> None:
 
     assert "demo-skill" in by_id
     skill_desc = by_id["demo-skill"]
-    assert skill_desc.kind == "skill"
+    assert skill_desc.kind == "logic_skill"
     assert skill_desc.version == "2.0.0"
     assert skill_desc.summary == "A skill"
     assert skill_desc.requires_approval is True
@@ -530,7 +528,7 @@ def test_describe_capabilities_descriptors_are_stable_sorted() -> None:
         registry.register_manifest(
             manifest=OpCapabilityManifest(
                 capability_id=cid,
-                kind="op",
+                kind="native_op",
                 version="1.0.0",
                 summary=cid,
                 call_target="state.x",

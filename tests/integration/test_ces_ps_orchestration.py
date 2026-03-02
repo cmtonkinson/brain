@@ -34,11 +34,14 @@ def test_ces_invocation_routes_through_policy_and_audit() -> None:
     registry.register_manifest(
         manifest=OpCapabilityManifest(
             capability_id="demo-echo",
-            kind="op",
+            kind="native_op",
             version="1.0.0",
             summary="Echo",
-            input_schema={"component_id": "str", "key": "str"},
-            output_type="CacheEntry | None",
+            input_schema={
+                "component_id": "string | The component identifier.",
+                "key": "string | The cache key.",
+            },
+            output_schema=None,
             call_target="service_cache_authority.get_value",
         )
     )

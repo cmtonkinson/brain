@@ -108,6 +108,44 @@ def _wait_for_tcp(host: str, port: int, *, timeout_seconds: float = 30.0) -> Non
     raise TimeoutError(f"timed out waiting for TCP endpoint {host}:{port}")
 
 
+def _wait_for_redis_ready(
+    host: str, port: int, *, timeout_seconds: float = 30.0
+) -> None:
+    """Wait until Redis responds to PING over the wire."""
+    import redis as redis_lib
+
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            client = redis_lib.Redis(host=host, port=port, socket_timeout=1)
+            try:
+                if client.ping():
+                    return
+            finally:
+                client.close()
+        except Exception:  # noqa: BLE001
+            time.sleep(0.2)
+    raise TimeoutError(f"timed out waiting for Redis readiness at {host}:{port}")
+
+
+def _wait_for_qdrant_ready(
+    host: str, port: int, *, timeout_seconds: float = 30.0
+) -> None:
+    """Wait until Qdrant REST API responds to a health check."""
+    import httpx
+
+    url = f"http://{host}:{port}/healthz"
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            resp = httpx.get(url, timeout=1)
+            if resp.status_code == 200:
+                return
+        except Exception:  # noqa: BLE001
+            time.sleep(0.2)
+    raise TimeoutError(f"timed out waiting for Qdrant readiness at {host}:{port}")
+
+
 def _wait_for_postgres_ready(
     *,
     container_id: str,
@@ -269,6 +307,7 @@ def redis_url() -> Iterator[str]:
         image=_service_image("redis"),
         container_port=6379,
     )
+    _wait_for_redis_ready(container.host, container.port)
     try:
         yield f"redis://{container.host}:{container.port}/0"
     finally:
@@ -286,6 +325,7 @@ def qdrant_url() -> Iterator[str]:
         image=_service_image("qdrant"),
         container_port=6333,
     )
+    _wait_for_qdrant_ready(container.host, container.port)
     try:
         yield f"http://{container.host}:{container.port}"
     finally:

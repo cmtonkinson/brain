@@ -34,11 +34,11 @@ def _write_manifest(root: Path) -> None:
         json.dumps(
             {
                 "capability_id": "demo-echo",
-                "kind": "op",
+                "kind": "native_op",
                 "version": "1.0.0",
                 "summary": "Echo",
-                "input_schema": {"payload": "dict[str, object]"},
-                "output_type": "dict[str, object]",
+                "input_schema": {"payload": "object | The payload to echo."},
+                "output_schema": "object | The echoed payload.",
                 "call_target": "state.echo",
             }
         ),
@@ -121,8 +121,13 @@ def test_invoke_writes_audit_for_allowed_call(tmp_path: Path) -> None:
         root=discovery,
         call_targets={
             "state.echo": CallTargetContract(
-                input_schema={"payload": "dict[str, object]"},
-                output_type="dict[str, object]",
+                input_schema={
+                    "type": "object",
+                    "properties": {"payload": {"type": "object"}},
+                    "required": ["payload"],
+                    "additionalProperties": False,
+                },
+                output_schema={"type": "object"},
             )
         },
     )

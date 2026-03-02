@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 import inspect
 import json
 from pathlib import Path
-from typing import Any, Protocol, get_args, get_origin
+from types import NoneType, UnionType
+from typing import (
+    Any,
+    ForwardRef,
+    Protocol,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from services.action.capability_engine.domain import (
     CapabilityExecutionResponse,
@@ -48,8 +57,8 @@ CapabilityHandler = Callable[
 class CallTargetContract:
     """Contract for one callable target used by Op capability manifests."""
 
-    input_schema: dict[str, str]
-    output_type: str
+    input_schema: dict[str, Any] | None
+    output_schema: dict[str, Any] | None
 
 
 class CapabilityRegistry:
@@ -90,11 +99,11 @@ class CapabilityRegistry:
 
     def _parse_manifest(self, raw: dict[str, Any]) -> CapabilityManifest:
         kind = raw.get("kind")
-        if kind == "op":
+        if kind in ("native_op", "mcp_op"):
             return OpCapabilityManifest.model_validate(raw)
-        if kind == "skill":
+        if kind in ("logic_skill", "pipeline_skill"):
             return SkillCapabilityManifest.model_validate(raw)
-        raise ValueError("capability manifest kind must be 'op' or 'skill'")
+        raise ValueError(f"Unknown or missing capability kind in manifest: {kind}")
 
     def _validate_manifest_files(
         self,
@@ -114,7 +123,7 @@ class CapabilityRegistry:
             )
 
         if isinstance(manifest, SkillCapabilityManifest):
-            if manifest.skill_type == "logic":
+            if manifest.kind == "logic_skill":
                 entrypoint = package_dir / manifest.entrypoint
                 if not entrypoint.exists():
                     raise ValueError(
@@ -125,7 +134,7 @@ class CapabilityRegistry:
                     raise ValueError(
                         f"logic skill missing tests: {manifest.capability_id}"
                     )
-            elif manifest.skill_type == "pipeline" and len(manifest.pipeline) == 0:
+            elif manifest.kind == "pipeline_skill" and len(manifest.pipeline) == 0:
                 raise ValueError(
                     f"pipeline skill must declare pipeline entries: {manifest.capability_id}"
                 )
@@ -145,6 +154,18 @@ class CapabilityRegistry:
                             f"pipeline skill {capability_id} references unknown capability {nested}"
                         )
 
+    def _strip_descriptions(self, schema: Any) -> Any:
+        """Recursively remove 'description' keys from a schema."""
+        if isinstance(schema, dict):
+            return {
+                key: self._strip_descriptions(value)
+                for key, value in schema.items()
+                if key != "description"
+            }
+        if isinstance(schema, list):
+            return [self._strip_descriptions(item) for item in schema]
+        return schema
+
     def _validate_call_targets_and_io(
         self,
         *,
@@ -158,37 +179,49 @@ class CapabilityRegistry:
                     raise ValueError(
                         f"op capability {capability_id} references unknown call target {manifest.call_target}"
                     )
-                if manifest.input_schema != contract.input_schema:
+
+                manifest_input_schema = self._strip_descriptions(manifest.input_schema)
+                if manifest_input_schema != contract.input_schema:
                     raise ValueError(
                         f"op capability {capability_id} input schema does not match call target {manifest.call_target}"
                     )
-                if manifest.output_type != contract.output_type:
+
+                manifest_output_schema = self._strip_descriptions(
+                    manifest.output_schema
+                )
+                if manifest_output_schema != contract.output_schema:
                     raise ValueError(
-                        f"op capability {capability_id} output type does not match call target {manifest.call_target}"
+                        f"op capability {capability_id} output schema does not match call target {manifest.call_target}"
                     )
                 continue
 
-            if manifest.skill_type != "pipeline":
+            if manifest.kind != "pipeline_skill":
                 continue
             if len(manifest.pipeline) == 0:
                 continue
 
             first = manifests[manifest.pipeline[0]]
-            if manifest.input_schema != first.input_schema:
+            if self._strip_descriptions(
+                manifest.input_schema
+            ) != self._strip_descriptions(first.input_schema):
                 raise ValueError(
                     f"pipeline skill {capability_id} input schema must match first call target {first.capability_id}"
                 )
             for index in range(1, len(manifest.pipeline)):
                 previous = manifests[manifest.pipeline[index - 1]]
                 current = manifests[manifest.pipeline[index]]
-                if previous.output_type != current.output_type:
+                if self._strip_descriptions(
+                    previous.output_schema
+                ) != self._strip_descriptions(current.input_schema):
                     raise ValueError(
                         f"pipeline skill {capability_id} has incompatible call targets {previous.capability_id} -> {current.capability_id}"
                     )
             last = manifests[manifest.pipeline[-1]]
-            if manifest.output_type != last.output_type:
+            if self._strip_descriptions(
+                manifest.output_schema
+            ) != self._strip_descriptions(last.output_schema):
                 raise ValueError(
-                    f"pipeline skill {capability_id} output type must match final call target {last.capability_id}"
+                    f"pipeline skill {capability_id} output schema must match final call target {last.capability_id}"
                 )
 
     def _build_call_target_contracts(
@@ -230,51 +263,103 @@ class CapabilityRegistry:
             if method_name.startswith("_"):
                 continue
             signature = inspect.signature(method)
-            input_schema: dict[str, str] = {}
-            for parameter in signature.parameters.values():
-                if parameter.name in {"self", "meta"}:
-                    continue
-                input_schema[parameter.name] = self._annotation_name(
-                    parameter.annotation
-                )
-            output_type = self._return_type(signature.return_annotation)
+            try:
+                hints = get_type_hints(method)
+            except Exception:
+                hints = {}
             contracts[method_name] = CallTargetContract(
-                input_schema=input_schema,
-                output_type=output_type,
+                input_schema=self._schema_from_signature(signature, hints),
+                output_schema=self._schema_from_return_annotation(
+                    hints.get("return", signature.return_annotation)
+                ),
             )
         return contracts
 
-    def _return_type(self, annotation: Any) -> str:
+    def _schema_from_signature(
+        self,
+        signature: inspect.Signature,
+        hints: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        properties = {}
+        required = []
+        for parameter in signature.parameters.values():
+            if parameter.name in {"self", "meta"}:
+                continue
+            annotation = (
+                hints.get(parameter.name, parameter.annotation)
+                if hints
+                else parameter.annotation
+            )
+            prop_schema = self._schema_from_annotation(annotation)
+            properties[parameter.name] = prop_schema
+            if parameter.default is inspect.Parameter.empty:
+                required.append(parameter.name)
+
+        if not properties:
+            return None
+
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": properties,
+            "additionalProperties": False,
+        }
+
+        if required:
+            schema["required"] = required
+        return schema
+
+    def _schema_from_return_annotation(self, annotation: Any) -> dict[str, Any] | None:
         if annotation is inspect.Signature.empty:
-            return "any"
-        if isinstance(annotation, str):
-            normalized = annotation.strip()
-            if normalized.startswith("Envelope[") and normalized.endswith("]"):
-                return normalized.removeprefix("Envelope[").removesuffix("]")
-            return normalized
+            return None
+        # Unpack Envelope[...] — try stdlib generics first, then Pydantic metadata
         origin = get_origin(annotation)
         args = get_args(annotation)
+        if origin is None or not args:
+            pydantic_meta = getattr(annotation, "__pydantic_generic_metadata__", None)
+            if pydantic_meta:
+                origin = pydantic_meta.get("origin")
+                args = pydantic_meta.get("args", ())
         if (
             origin is not None
             and getattr(origin, "__name__", "") == "Envelope"
             and args
         ):
-            return self._annotation_name(args[0])
-        return self._annotation_name(annotation)
+            return self._schema_from_annotation(args[0])
+        return self._schema_from_annotation(annotation)
 
-    def _annotation_name(self, annotation: Any) -> str:
-        if annotation is inspect.Signature.empty:
-            return "any"
-        if isinstance(annotation, str):
-            return annotation
+    def _schema_from_annotation(self, annotation: Any) -> dict[str, Any]:
+        type_map = {
+            str: {"type": "string"},
+            int: {"type": "integer"},
+            bool: {"type": "boolean"},
+            float: {"type": "number"},
+            dict: {"type": "object"},
+            NoneType: {"type": "null"},
+        }
+        if annotation in type_map:
+            return type_map[annotation]
+
+        if annotation is Any:
+            return {}  # Any type
+
         origin = get_origin(annotation)
-        if origin is None:
-            return getattr(annotation, "__name__", str(annotation))
         args = get_args(annotation)
-        origin_name = getattr(origin, "__name__", str(origin))
-        if len(args) == 0:
-            return origin_name
-        return f"{origin_name}[{', '.join(self._annotation_name(arg) for arg in args)}]"
+
+        if origin is list or origin is Sequence:
+            return {"type": "array", "items": self._schema_from_annotation(args[0])}
+
+        if origin is Union or origin is UnionType:
+            # Handles Optional[X] which is Union[X, None]
+            return {"anyOf": [self._schema_from_annotation(arg) for arg in args]}
+
+        if isinstance(annotation, ForwardRef):
+            # Handle forward references by creating a schema for a dictionary
+            return {"type": "object"}
+
+        if hasattr(annotation, "__name__"):
+            return {"type": "object", "title": annotation.__name__}
+
+        return {"type": "object"}  # Default fallback
 
     def register_manifest(self, *, manifest: CapabilityManifest) -> None:
         """Register one manifest directly without filesystem discovery."""

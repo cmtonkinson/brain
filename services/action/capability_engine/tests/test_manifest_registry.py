@@ -25,8 +25,13 @@ def _write_manifest(
 def _discover_call_targets() -> dict[str, CallTargetContract]:
     return {
         "state.echo": CallTargetContract(
-            input_schema={"payload": "dict[str, object]"},
-            output_type="dict[str, object]",
+            input_schema={
+                "type": "object",
+                "properties": {"payload": {"type": "object"}},
+                "required": ["payload"],
+                "additionalProperties": False,
+            },
+            output_schema={"type": "object"},
         )
     }
 
@@ -37,11 +42,11 @@ def test_discover_loads_valid_op_manifest(tmp_path) -> None:
         "demo-echo",
         {
             "capability_id": "demo-echo",
-            "kind": "op",
+            "kind": "native_op",
             "version": "1.0.0",
             "summary": "Echo",
-            "input_schema": {"payload": "dict[str, object]"},
-            "output_type": "dict[str, object]",
+            "input_schema": {"payload": "object | The payload to echo."},
+            "output_schema": "object | The echoed payload.",
             "call_target": "state.echo",
         },
     )
@@ -50,7 +55,10 @@ def test_discover_loads_valid_op_manifest(tmp_path) -> None:
     registry.discover(root=tmp_path, call_targets=_discover_call_targets())
 
     assert registry.count() == 1
-    assert registry.resolve_manifest(capability_id="demo-echo") is not None
+    manifest = registry.resolve_manifest(capability_id="demo-echo")
+    assert manifest is not None
+    assert manifest.input_schema is not None
+    assert manifest.input_schema["properties"]["payload"]["type"] == "object"
 
 
 def test_discover_requires_matching_package_name(tmp_path) -> None:
@@ -59,11 +67,9 @@ def test_discover_requires_matching_package_name(tmp_path) -> None:
         "wrong-name",
         {
             "capability_id": "demo-echo",
-            "kind": "op",
+            "kind": "native_op",
             "version": "1.0.0",
             "summary": "Echo",
-            "input_schema": {"payload": "dict[str, object]"},
-            "output_type": "dict[str, object]",
             "call_target": "state.echo",
         },
     )
@@ -79,11 +85,9 @@ def test_discover_requires_readme(tmp_path) -> None:
         "demo-echo",
         {
             "capability_id": "demo-echo",
-            "kind": "op",
+            "kind": "native_op",
             "version": "1.0.0",
             "summary": "Echo",
-            "input_schema": {"payload": "dict[str, object]"},
-            "output_type": "dict[str, object]",
             "call_target": "state.echo",
         },
         with_readme=False,
@@ -100,12 +104,9 @@ def test_pipeline_skill_requires_known_children(tmp_path) -> None:
         "demo-pipeline",
         {
             "capability_id": "demo-pipeline",
-            "kind": "skill",
+            "kind": "pipeline_skill",
             "version": "1.0.0",
             "summary": "Pipeline",
-            "input_schema": {"payload": "dict[str, object]"},
-            "output_type": "dict[str, object]",
-            "skill_type": "pipeline",
             "pipeline": ["missing-capability"],
         },
     )
@@ -115,21 +116,25 @@ def test_pipeline_skill_requires_known_children(tmp_path) -> None:
         registry.discover(root=tmp_path, call_targets=_discover_call_targets())
 
 
-def test_invalid_manifest_schema_fails_discovery(tmp_path) -> None:
+def test_invalid_shorthand_schema_fails_discovery(tmp_path) -> None:
     _write_manifest(
         tmp_path,
         "demo-invalid",
         {
             "capability_id": "demo-invalid",
-            "kind": "op",
+            "kind": "native_op",
             "version": "1.0.0",
-            "input_schema": {"payload": "dict[str, object]"},
-            "output_type": "dict[str, object]",
+            "summary": "Invalid",
+            "input_schema": {"payload": 123},  # Invalid shorthand value
             "call_target": "state.echo",
         },
     )
     registry = CapabilityRegistry()
-    with pytest.raises(Exception):
+    # Pydantic validation error wraps the custom SchemaExpansionError
+    with pytest.raises(
+        Exception,
+        match="Value for property 'payload' in shorthand object must be a string",
+    ):
         registry.discover(root=tmp_path, call_targets=_discover_call_targets())
 
 
@@ -139,12 +144,9 @@ def test_logic_skill_requires_entrypoint_and_tests(tmp_path) -> None:
         "demo-logic",
         {
             "capability_id": "demo-logic",
-            "kind": "skill",
+            "kind": "logic_skill",
             "version": "1.0.0",
             "summary": "Logic",
-            "input_schema": {"payload": "dict[str, object]"},
-            "output_type": "dict[str, object]",
-            "skill_type": "logic",
         },
     )
     registry = CapabilityRegistry()
@@ -158,11 +160,9 @@ def test_discover_requires_known_op_call_target(tmp_path) -> None:
         "demo-unknown-target",
         {
             "capability_id": "demo-unknown-target",
-            "kind": "op",
+            "kind": "native_op",
             "version": "1.0.0",
             "summary": "Unknown target",
-            "input_schema": {"payload": "dict[str, object]"},
-            "output_type": "dict[str, object]",
             "call_target": "state.missing",
         },
     )
@@ -177,11 +177,10 @@ def test_discover_requires_op_io_to_match_call_target_contract(tmp_path) -> None
         "demo-mismatch",
         {
             "capability_id": "demo-mismatch",
-            "kind": "op",
+            "kind": "native_op",
             "version": "1.0.0",
             "summary": "Mismatch",
-            "input_schema": {"wrong_key": "str"},
-            "output_type": "dict[str, object]",
+            "input_schema": {"wrong_key": "string | This is not the right input"},
             "call_target": "state.echo",
         },
     )
@@ -196,11 +195,11 @@ def test_discover_requires_pipeline_io_chain_compatibility(tmp_path) -> None:
         "demo-first",
         {
             "capability_id": "demo-first",
-            "kind": "op",
+            "kind": "native_op",
             "version": "1.0.0",
             "summary": "First",
-            "input_schema": {"payload": "dict[str, object]"},
-            "output_type": "int",
+            "input_schema": {"payload": "object"},
+            "output_schema": "integer",
             "call_target": "state.first",
         },
     )
@@ -209,11 +208,11 @@ def test_discover_requires_pipeline_io_chain_compatibility(tmp_path) -> None:
         "demo-second",
         {
             "capability_id": "demo-second",
-            "kind": "op",
+            "kind": "native_op",
             "version": "1.0.0",
             "summary": "Second",
-            "input_schema": {"value": "str"},
-            "output_type": "dict[str, object]",
+            "input_schema": "string",
+            "output_schema": "object",
             "call_target": "state.second",
         },
     )
@@ -222,24 +221,28 @@ def test_discover_requires_pipeline_io_chain_compatibility(tmp_path) -> None:
         "demo-pipeline",
         {
             "capability_id": "demo-pipeline",
-            "kind": "skill",
+            "kind": "pipeline_skill",
             "version": "1.0.0",
             "summary": "Pipeline",
-            "input_schema": {"payload": "dict[str, object]"},
-            "output_type": "dict[str, object]",
-            "skill_type": "pipeline",
+            "input_schema": {"payload": "object"},
+            "output_schema": "object",
             "pipeline": ["demo-first", "demo-second"],
         },
     )
 
     call_targets = {
         "state.first": CallTargetContract(
-            input_schema={"payload": "dict[str, object]"},
-            output_type="int",
+            input_schema={
+                "type": "object",
+                "properties": {"payload": {"type": "object"}},
+                "required": ["payload"],
+                "additionalProperties": False,
+            },
+            output_schema={"type": "integer"},
         ),
         "state.second": CallTargetContract(
-            input_schema={"value": "str"},
-            output_type="dict[str, object]",
+            input_schema={"type": "string"},
+            output_schema={"type": "object"},
         ),
     }
     registry = CapabilityRegistry()

@@ -92,7 +92,11 @@ class _FakeVaultService:
 
 
 def _write_op_manifest(
-    root: Path, capability_id: str, call_target: str, input_schema: dict[str, str]
+    root: Path,
+    capability_id: str,
+    call_target: str,
+    input_schema: dict | None,
+    output_schema: dict | None,
 ) -> None:
     pkg = root / capability_id
     pkg.mkdir(parents=True, exist_ok=True)
@@ -100,11 +104,11 @@ def _write_op_manifest(
         json.dumps(
             {
                 "capability_id": capability_id,
-                "kind": "op",
+                "kind": "native_op",
                 "version": "1.0.0",
                 "summary": f"Test op {capability_id}",
                 "input_schema": input_schema,
-                "output_type": "list[VaultEntry]",
+                "output_schema": output_schema,
                 "call_target": call_target,
             }
         ),
@@ -144,7 +148,8 @@ def test_after_boot_registers_handlers_for_op_manifests(tmp_path) -> None:
         tmp_path,
         "test-op",
         "service_vault_authority.list_directory",
-        {"directory_path": "str"},
+        {"directory_path": "string | path to list"},
+        {"type": "array", "items": {"type": "object", "title": "VaultEntry"}},
     )
 
     registry = CapabilityRegistry()
@@ -178,13 +183,11 @@ def test_after_boot_skips_skill_manifests(tmp_path) -> None:
     registry.register_manifest(
         manifest=SkillCapabilityManifest(
             capability_id="test-skill",
-            kind="skill",
+            kind="logic_skill",
             version="1.0.0",
             summary="Test skill",
-            skill_type="logic",
         )
     )
-
     # Monkey-patch _load_capabilities to no-op since we registered directly
     service._load_capabilities = lambda: None  # type: ignore[assignment]
 
@@ -202,7 +205,8 @@ def test_after_boot_does_not_overwrite_existing_handlers(tmp_path) -> None:
         tmp_path,
         "test-op",
         "service_vault_authority.list_directory",
-        {"directory_path": "str"},
+        {"directory_path": "string | path to list"},
+        {"type": "array", "items": {"type": "object", "title": "VaultEntry"}},
     )
 
     registry = CapabilityRegistry()

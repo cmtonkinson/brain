@@ -5,7 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+from services.action.capability_engine.schema import expand_schema
 
 
 class CapabilityInvocationMetadata(BaseModel):
@@ -67,7 +70,7 @@ class CapabilityManifestBase(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     capability_id: str = Field(min_length=1, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-    kind: Literal["skill", "op"]
+    kind: str
     version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
     summary: str = Field(min_length=1)
     enabled: bool = True
@@ -75,22 +78,26 @@ class CapabilityManifestBase(BaseModel):
     requires_approval: bool = False
     side_effects: tuple[str, ...] = ()
     required_capabilities: tuple[str, ...] = ()
-    input_schema: dict[str, str] = Field(default_factory=lambda: {"payload": "json"})
-    output_type: str = "json"
+    input_schema: dict[str, Any] | None = None
+    output_schema: dict[str, Any] | None = None
+
+    _expand_input_schema = field_validator("input_schema", mode="before")(expand_schema)
+    _expand_output_schema = field_validator("output_schema", mode="before")(
+        expand_schema
+    )
 
 
 class OpCapabilityManifest(CapabilityManifestBase):
     """Manifest schema for an Op capability package."""
 
-    kind: Literal["op"]
+    kind: Literal["native_op", "mcp_op"]
     call_target: str = Field(min_length=1)
 
 
 class SkillCapabilityManifest(CapabilityManifestBase):
     """Manifest schema for a Skill capability package."""
 
-    kind: Literal["skill"]
-    skill_type: Literal["logic", "pipeline"]
+    kind: Literal["logic_skill", "pipeline_skill"]
     pipeline: tuple[str, ...] = ()
     entrypoint: str = "execute.py"
 
@@ -122,11 +129,11 @@ class CapabilityDescriptor(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     capability_id: str
-    kind: Literal["skill", "op"]
+    kind: str
     version: str
     summary: str
-    input_schema: dict[str, str]
-    output_type: str
+    input_schema: dict[str, Any] | None
+    output_schema: dict[str, Any] | None
     autonomy: int
     requires_approval: bool
     side_effects: tuple[str, ...]

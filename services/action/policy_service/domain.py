@@ -20,7 +20,7 @@ class CapabilityPolicyInput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     capability_id: str = Field(min_length=1)
-    kind: Literal["skill", "op"]
+    kind: str
     version: str = Field(min_length=1)
     autonomy: int = Field(default=0, ge=0)
     requires_approval: bool = False
