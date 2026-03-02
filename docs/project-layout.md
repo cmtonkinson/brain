@@ -10,14 +10,12 @@ described in [Boundaries & Responsibilities](boundaries-and-responsibilities.md)
 | Directory | Purpose |
 |---|---|
 | `actors/` | L2 _Actor_ processes: `agent/`, `beat/`, `cli/`, `worker/` |
-| `config/` | Configuration samples (`brain.yaml.sample`) |
+| `config/` | Configuration samples (`core.yaml.sample`, `resources.yaml.sample`, `actors.yaml.sample`) |
 | `docs/` | Architecture & contributor documentation |
-| `generated/` | Auto-generated Python from Protobuf (git-ignored) |
 | `host-mcp-gateway/` | Go-based HTTP proxy for host-level MCP Servers |
 | `img/` | Diagrams and images referenced by docs and README |
 | `packages/` | Shared Python packages (see below) |
 | `prompts/` | LLM prompt templates (`embedding/`, `inference/`, `config/`) |
-| `protos/` | Protobuf definitions (`protos/brain/`) |
 | `resources/` | L0 _Resource_ implementations |
 | `scripts/` | Build/generation scripts (glossary, service-api docs) |
 | `services/` | L1 _Service_ implementations |
@@ -59,7 +57,7 @@ Each _Service_ directory contains at minimum an `__init__.py` with its
 | `implementation.py` | Internal business logic |
 | `interfaces.py` | Abstract interfaces / protocols |
 | `domain.py` | Domain models and value objects |
-| `api.py` | gRPC _Service_ adapter (bridges SDK to _Public API_) |
+| `api.py` | FastAPI route registrar (publishes selected SDK-facing endpoints) |
 | `data/` | Data layer: `schema.py`, `repository.py`, `runtime.py` |
 | `migrations/` | Alembic env: `alembic.ini`, `env.py`, `versions/` |
 | `tests/` | _Component_-level tests |
@@ -88,19 +86,13 @@ Shared code lives in `packages/`:
 |---|---|
 | `brain_shared/` | Cross-cutting utilities: `manifest.py` (_Component_ registry), `envelope/`, `errors/`, `http/` (internal HTTP wrappers), `ids/` (ULID helpers), `logging/`, `config/`, `embeddings.py`, `component_loader.py`; contract conventions for these shared types are defined in [Conventions](conventions.md) |
 | `brain_core/` | Brain Core runtime (L1 _Service_ orchestration) |
-| `brain_sdk/` | _Brain Core SDK_ for L2 _Actors_ (gRPC client) |
+| `brain_sdk/` | _Brain Core SDK_ for L2 _Actors_ (thin HTTP client over the Core Unix socket) |
 | `capability_sdk/` | _Capability SDK_ for _Op_/_Skill_ registration and management |
 
-------------------------------------------------------------------------
-## Protos and Generated Code
-Protobuf definitions live in `protos/brain/`. Running `make build` compiles
-them into Python modules in `generated/` (git-ignored). The generated code
-provides the gRPC layer that backs the _Brain Core SDK_.
-
-------------------------------------------------------------------------
 ## Configuration
-Runtime configuration is loaded from `~/.config/brain/brain.yaml`. A sample is
-provided at `config/brain.yaml.sample`. See [Configuration
+Runtime configuration is loaded from `~/.config/brain/core.yaml`,
+`~/.config/brain/resources.yaml`, and `~/.config/brain/actors.yaml`. Matching
+samples are provided under `config/`. See [Configuration
 Reference](configuration.md) for keys and [Conventions](conventions.md) for
 Pydantic contract rules.
 

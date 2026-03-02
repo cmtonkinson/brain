@@ -6,24 +6,19 @@ import httpx
 
 from packages.brain_sdk.calls import (
     CoreHealthResult,
-    LmsChatResult,
-    VaultEntry,
-    VaultFile,
-    VaultSearchMatch,
     call_core_health,
-    call_lms_chat,
-    call_vault_get,
-    call_vault_list,
-    call_vault_search,
 )
-from packages.brain_sdk.config import BrainSdkConfig
-from packages.brain_sdk.config import resolve_socket_path, resolve_timeout_seconds
+from packages.brain_sdk.config import (
+    BrainSdkConfig,
+    resolve_socket_path,
+    resolve_timeout_seconds,
+)
 from packages.brain_sdk.meta import MetaOverrides, build_envelope_meta
 from packages.brain_shared.http.client import HttpClient
 
 
 class BrainClient:
-    """Thin HTTP client for selected Core/LMS/Vault operations."""
+    """Thin HTTP client for selected Core operations."""
 
     def __init__(
         self,
@@ -54,65 +49,6 @@ class BrainClient:
         return call_core_health(
             http=self._http,
             metadata=self._meta(meta),
-            timeout_seconds=self._config.timeout_seconds,
-        )
-
-    def lms_chat(
-        self,
-        prompt: str,
-        *,
-        profile: str = "standard",
-        meta: MetaOverrides | None = None,
-    ) -> LmsChatResult:
-        """Return one language model chat completion."""
-        return call_lms_chat(
-            http=self._http,
-            metadata=self._meta(meta),
-            prompt=prompt,
-            profile=profile,
-            timeout_seconds=self._config.timeout_seconds,
-        )
-
-    def vault_get(
-        self, file_path: str, *, meta: MetaOverrides | None = None
-    ) -> VaultFile:
-        """Return one vault file by path."""
-        return call_vault_get(
-            http=self._http,
-            metadata=self._meta(meta),
-            file_path=file_path,
-            timeout_seconds=self._config.timeout_seconds,
-        )
-
-    def vault_list(
-        self,
-        directory_path: str,
-        *,
-        meta: MetaOverrides | None = None,
-    ) -> list[VaultEntry]:
-        """Return one directory listing from vault."""
-        return call_vault_list(
-            http=self._http,
-            metadata=self._meta(meta),
-            directory_path=directory_path,
-            timeout_seconds=self._config.timeout_seconds,
-        )
-
-    def vault_search(
-        self,
-        query: str,
-        *,
-        directory_scope: str = "",
-        limit: int = 20,
-        meta: MetaOverrides | None = None,
-    ) -> list[VaultSearchMatch]:
-        """Return vault file matches for one search query."""
-        return call_vault_search(
-            http=self._http,
-            metadata=self._meta(meta),
-            query=query,
-            directory_scope=directory_scope,
-            limit=limit,
             timeout_seconds=self._config.timeout_seconds,
         )
 

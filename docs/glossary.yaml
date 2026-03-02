@@ -19,7 +19,7 @@ terms:
   - term: Public API
     definition: "The internal, native, Python surface exported by a given Service. The Public API is the canonical interface for any Service."
   - term: Brain Core SDK
-    definition: "The gRPC interface generated on top of the Public API for direct consumption by Layer 2. This is the only system interface available to Actors."
+    definition: "The interface on top of the Public API for direct consumption (via HTTP) by Layer 2. This is the only system interface available to Actors."
   - term: Capability
     definition: "A governed, testable unit of action with a clear input/output contract, bounded authority, and inspectable results. Types are `Op` and `Skill`."
   - term: Envelope

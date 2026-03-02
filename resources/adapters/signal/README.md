@@ -101,7 +101,6 @@ make test
 - Keep adapter contract transport-focused and implementation-agnostic.
 - Keep Switchboard policy/normalization logic out of adapter internals.
 - Preserve in-memory callback registration behavior unless requirements change.
-- Avoid adding gRPC surface for adapter-specific control methods.
 
 ------------------------------------------------------------------------
 _End of Signal Adapter README_

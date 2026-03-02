@@ -36,11 +36,14 @@ This document covers how to set up, build, test, and contribute to Brain.
 
 4. Copy and edit the configuration sample:
    ```
-   cp config/brain.yaml.sample ~/.config/brain/brain.yaml
+   mkdir -p ~/.config/brain
+   cp config/core.yaml.sample ~/.config/brain/core.yaml
+   cp config/resources.yaml.sample ~/.config/brain/resources.yaml
+   cp config/actors.yaml.sample ~/.config/brain/actors.yaml
    ```
-   The sample includes defaults for `components.substrate.postgres.url`,
-   `components.adapter.signal.base_url`, and Signal profile settings; override
-   them as needed for your environment. See the
+   The samples include defaults for Core HTTP socket settings, resource
+   endpoints, and actor connection settings; override them as needed for your
+   environment. See the
    [Configuration Reference](configuration.md) for all available keys.
 
 5. Run database migrations:
@@ -57,10 +60,10 @@ This document covers how to set up, build, test, and contribute to Brain.
 | `make all` | Full pipeline: deps, clean, build, test, docs |
 | `make deps` | Install Python dependencies from `requirements.txt` |
 | `make clean` | Remove generated code and Python cache files |
-| `make build` | Compile Protobufs into `generated/` |
+| `make build` | Reserved build step (currently no-op) |
 | `make check` | Run linting and format checks (ruff) |
 | `make format` | Auto-format code (ruff) |
-| `make test` | Build, lint, then run pytest across `tests/`, `services/`, and `resources/` |
+| `make test` | Run lint checks, then pytest across `tests/`, `resources/`, `services/`, and `actors/` |
 | `make docs` | Regenerate glossary, service-api docs, and diagrams |
 | `make migrate` | Bootstrap schemas and run Alembic migrations for all _Services_ |
 | `make up` | Start Docker Compose services (detached) |
@@ -68,15 +71,19 @@ This document covers how to set up, build, test, and contribute to Brain.
 
 ------------------------------------------------------------------------
 ## Running Tests
-```
-make test
+```sh
+make test             # unit
+make test integration # unit & integration
 ```
 
-This runs `make build` and `make check` first, then executes pytest. Tests are
-discovered in three locations:
+This runs `make check` first, then executes pytest. The `build` target is
+currently a no-op.
+
+Tests are discovered in four locations:
 - `tests/` -- shared and cross-cutting tests
-- `services/` -- _Component_-level tests in `services/<system>/<service>/tests/`
-- `resources/` -- _Resource_-level tests
+- `actors/` -- _Actor_-level tests in `actors/<actor>/tests`
+- `services/` -- _Service_-level tests in `services/<system>/<service>/tests/`
+- `resources/` -- _Resource_-level tests in `resources/<kind>/<resource>/tests`
 
 ------------------------------------------------------------------------
 ## Adding a New Service

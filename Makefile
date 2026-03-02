@@ -44,7 +44,6 @@ deps-upgrade:
 	$(PY) -m piptools sync requirements.txt
 
 clean:
-	rm -rf $(GENERATED_DIR)
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +
 

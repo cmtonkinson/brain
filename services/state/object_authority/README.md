@@ -11,7 +11,6 @@ Core module roles:
 - `domain.py`: strict payload contracts for object records/results
 - `validation.py`: request-validation and object-key semantics
 - `data/`: Postgres runtime, schema, and repository implementation
-- `api.py`: gRPC transport adapter
 - `migrations/`: Alembic environment and schema migrations
 ------------------------------------------------------------------------
 ## Boundary and Ownership
@@ -39,7 +38,7 @@ Primary interactions:
 - Invalid metadata/request fields return validation-category errors.
 - Missing objects return not-found-category errors for `get`/`stat`.
 - `delete_object` is idempotent and returns `True` even when object is absent.
-- Postgres and filesystem runtime failures map to dependency-category errors (transport abort handled by gRPC interface).
+- Postgres and filesystem runtime failures map to dependency-category errors.
 ------------------------------------------------------------------------
 ## Configuration Surface
 OAS service settings are sourced from `components.service.object_authority`:

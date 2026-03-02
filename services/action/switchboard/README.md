@@ -9,7 +9,6 @@ Action _Service_ that owns inbound external event intake and durable buffering f
 - `implementation.py`: concrete business logic (`DefaultSwitchboardService`)
 - `http_ingress.py`: HTTP webhook ingress server for inbound Signal callbacks
 - `boot.py`: boot hook that starts ingress server and registers callback with `adapter_signal`
-- `api.py`: gRPC transport adapter exposing only published SDK surface
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
@@ -28,8 +27,7 @@ Boundary rules:
 Primary interactions:
 - Calls `resources/adapters/signal/` through `SignalAdapter` protocol for inbound registration.
 - Calls `services/state/cache_authority/service.py` _Public API_ to persist inbound queue entries.
-- Exposes health over gRPC (`api.py`) for L2 clients.
-- Exposes internal-only webhook registration and webhook ingest methods via `service.py` (not published on gRPC SDK).
+- Exposes internal-only webhook registration and webhook ingest methods via `service.py`.
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
@@ -94,7 +92,7 @@ make test
 ------------------------------------------------------------------------
 ## Contributor Notes
 - Keep `service.py` as the canonical in-process contract.
-- Do not publish internal-only methods to gRPC unless L2 access is explicitly required.
+- Do not publish internal-only methods to the SDK unless L2 access is explicitly required.
 - Keep Signal-specific transport details in `adapter_signal`; Switchboard owns ingress policy and normalization.
 - Maintain `public_api_instrumented(...)` decoration on all _Public API_ methods.
 

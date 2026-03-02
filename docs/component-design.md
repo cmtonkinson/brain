@@ -21,7 +21,7 @@ self-register by calling `register_component()` from
 - _Services_ and _Resources_ must expose `health()`.
 - Each _Component_ may apply its own internal timeout semantics.
 - Core aggregate health enforces a global max timeout from
-  `components.core_health.max_timeout_seconds`; any `health()` call exceeding
+  `core.health.max_timeout_seconds`; any `health()` call exceeding
   that limit is unhealthy by definition.
 
 ### Registry behavior
@@ -129,7 +129,7 @@ hooks succeed.
 
 ### Ordering
 - `after_boot(...)` runs after global boot orchestration completes.
-- `after_boot(...)` runs before gRPC runtime starts serving.
+- `after_boot(...)` runs before the Core HTTP runtime starts serving.
 - If any `after_boot(...)` hook raises, Core startup fails hard and exits with
   error.
 

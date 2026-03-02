@@ -2,61 +2,59 @@
 This document describes Brain's configuration system: how settings are loaded,
 where they live, and what every key does.
 
-Primary config is `~/.config/brain/brain.yaml`. An optional secondary config
-file, `~/.config/brain/secrets.yaml`, can hold sensitive overrides. A sample
-with all defaults is at `config/brain.yaml.sample` in the repository.
+Runtime configuration is split across:
+- `~/.config/brain/core.yaml`
+- `~/.config/brain/resources.yaml`
+- `~/.config/brain/actors.yaml`
+
+An optional `~/.config/brain/secrets.yaml` can hold sensitive overrides for any
+of those files. Samples live in `config/*.yaml.sample` in the repository.
 
 ------------------------------------------------------------------------
 ## Precedence Cascade
 Settings are resolved in this order (highest wins):
 
 1. **CLI parameters** — passed programmatically at process startup
-2. **Environment variables** — prefixed with `BRAIN_`, `__`-separated for nesting
+2. **Environment variables** — service-specific prefixes, `__`-separated for nesting
 3. **Secrets config file** — `~/.config/brain/secrets.yaml` (if present)
-4. **Config file** — `~/.config/brain/brain.yaml`
-5. **Model defaults** — defined in each settings model (`packages/brain_shared/config/models.py`
-   for global settings; component-local `config.py` modules for component
-   settings)
+4. **Config file** — one of `core.yaml`, `resources.yaml`, or `actors.yaml`
+5. **Model defaults** — defined in `packages/brain_shared/config/models.py` and
+   component-local `config.py` modules
 
-`secrets.yaml` is loaded after `brain.yaml`, so only keys present in
-`secrets.yaml` override `brain.yaml`; all other values still come from
-`brain.yaml` (then defaults).
+`secrets.yaml` is loaded after the primary YAML file for each settings model, so
+only keys present in `secrets.yaml` override the corresponding config file.
 
 Configuration models follow the canonical Pydantic contract rules in
 [Conventions](conventions.md).
 
 ### Environment Variable Format
 Any config key can be set via environment variable:
-- Prefix: `BRAIN_`
+- Prefixes:
+  - `BRAIN_CORE_` for `core.yaml`
+  - `BRAIN_RESOURCES_` for `resources.yaml`
+  - `BRAIN_ACTORS_` for `actors.yaml`
 - Nested keys: use `__` as the separator
 - Values are coerced: `true`/`false` → bool, integers → int, floats → float,
   JSON objects/arrays → parsed, `null`/`none` → `None`
 
 Examples:
 ```
-BRAIN_LOGGING__LEVEL=DEBUG
-BRAIN_PROFILE__OPERATOR__SIGNAL_CONTACT_E164=+12025550100
-BRAIN_PROFILE__DEFAULT_DIAL_CODE=+1
-BRAIN_PROFILE__WEBHOOK_SHARED_SECRET=replace-me
-BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
-BRAIN_COMPONENTS__CORE_BOOT__BOOT_RETRY_ATTEMPTS=5
-BRAIN_COMPONENTS__CORE_GRPC__BIND_PORT=50051
-BRAIN_COMPONENTS__CORE_GRPC__ENABLE_REFLECTION=true
-BRAIN_COMPONENTS__CORE_HEALTH__MAX_TIMEOUT_SECONDS=1.0
-BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__POOL_SIZE=10
-BRAIN_COMPONENTS__SUBSTRATE__QDRANT__URL=http://qdrant:6333
-BRAIN_COMPONENTS__SUBSTRATE__REDIS__URL=redis://redis:6379/0
-BRAIN_COMPONENTS__ADAPTER__FILESYSTEM__ROOT_DIR=/var/lib/brain/blobs
-BRAIN_COMPONENTS__SERVICE__EMBEDDING_AUTHORITY__MAX_LIST_LIMIT=1000
-BRAIN_COMPONENTS__SERVICE__CACHE_AUTHORITY__DEFAULT_TTL_SECONDS=600
-BRAIN_COMPONENTS__SERVICE__MEMORY_AUTHORITY__DIALOGUE_RECENT_TURNS=12
-BRAIN_COMPONENTS__SERVICE__OBJECT_AUTHORITY__MAX_BLOB_SIZE_BYTES=10485760
-BRAIN_COMPONENTS__ADAPTER__LITELLM__BASE_URL=http://litellm:4000
-BRAIN_COMPONENTS__ADAPTER__SIGNAL__BASE_URL=http://signal-api:8080
-BRAIN_COMPONENTS__SERVICE__LANGUAGE_MODEL__STANDARD__MODEL=gpt-oss:20b
-BRAIN_COMPONENTS__SERVICE__SWITCHBOARD__QUEUE_NAME=signal_inbound
-BRAIN_COMPONENTS__SERVICE__SWITCHBOARD__WEBHOOK_BIND_PORT=8091
-BRAIN_COMPONENTS__SERVICE__SWITCHBOARD__WEBHOOK_PUBLIC_BASE_URL=https://brain.example.com
+BRAIN_CORE__LOGGING__LEVEL=DEBUG
+BRAIN_CORE__PROFILE__OPERATOR__SIGNAL_CONTACT_E164=+12025550100
+BRAIN_CORE__PROFILE__DEFAULT_DIAL_CODE=+1
+BRAIN_CORE__PROFILE__WEBHOOK_SHARED_SECRET=replace-me
+BRAIN_CORE__BOOT__BOOT_RETRY_ATTEMPTS=5
+BRAIN_CORE__HTTP__SOCKET_PATH=/app/config/generated/brain.sock
+BRAIN_CORE__HEALTH__MAX_TIMEOUT_SECONDS=1.0
+BRAIN_RESOURCES__SUBSTRATE__POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
+BRAIN_RESOURCES__SUBSTRATE__POSTGRES__POOL_SIZE=10
+BRAIN_RESOURCES__SUBSTRATE__QDRANT__URL=http://qdrant:6333
+BRAIN_RESOURCES__SUBSTRATE__REDIS__URL=redis://redis:6379/0
+BRAIN_RESOURCES__ADAPTER__LITELLM__BASE_URL=http://litellm:4000
+BRAIN_RESOURCES__ADAPTER__SIGNAL__BASE_URL=http://signal-api:8080
+BRAIN_ACTORS__CORE__SOCKET_PATH=/Users/chris/.config/brain/generated/brain.sock
+BRAIN_ACTORS__CORE__TIMEOUT_SECONDS=10.0
+BRAIN_ACTORS__CLI__PRINCIPAL=operator
 ```
 
 ------------------------------------------------------------------------
@@ -84,12 +82,12 @@ Root profile and operator identity settings.
 | `brain_verbosity` | `normal` | Context verbosity selector. One of `terse`, `normal`, `verbose`. |
 
 ------------------------------------------------------------------------
-## `components`
-Component-local settings grouped under `components.service`,
-`components.adapter`, and `components.substrate`. Each component owns its
-Pydantic model, defaults, and validation rules.
+## Runtime Settings Namespaces
+Core runtime settings live under `core.*`. Component-local settings live under
+`core.service`, `resources.adapter`, and `resources.substrate`. Each component
+owns its Pydantic model, defaults, and validation rules.
 
-### `components.core_boot`
+### `core.boot`
 Core boot framework orchestration settings.
 
 | Key | Default | Description |
@@ -100,28 +98,26 @@ Core boot framework orchestration settings.
 | `boot_retry_delay_seconds` | `0.5` | Delay between `boot()` retry attempts after failures. Must be >= 0. |
 | `boot_timeout_seconds` | `30.0` | Maximum allowed runtime for one successful `boot()` invocation. Must be > 0. |
 
-### `components.core_grpc`
-Core gRPC runtime bind settings.
+### `core.http`
+Core HTTP runtime settings.
 
 | Key | Default | Description |
 |---|---|---|
-| `bind_host` | `0.0.0.0` | Bind host for the Brain Core gRPC server. |
-| `bind_port` | `50051` | Bind port for the Brain Core gRPC server. Must be in `1..65535`. |
-| `enable_reflection` | `false` | Enable gRPC Server Reflection for runtime method/service introspection tools (for example `grpcurl`, Postman gRPC browser). |
+| `socket_path` | `/app/config/generated/brain.sock` | Unix domain socket path for the Brain Core FastAPI runtime. The `brain_sdk` client connects over this socket. |
 
-### `components.core_health`
+### `core.health`
 Core aggregate health policy settings.
 
 | Key | Default | Description |
 |---|---|---|
 | `max_timeout_seconds` | `1.0` | Global maximum duration for any service/resource `health()` call. If exceeded, that component is unhealthy by definition. Must be > 0. |
 
-### `components.substrate.postgres`
+### `resources.substrate.postgres`
 PostgreSQL substrate connection settings.
 
 | Key | Default | Description |
 |---|---|---|
-| `url` | `postgresql+psycopg://brain:brain@postgres:5432/brain` | SQLAlchemy-style connection URL. Override with `BRAIN_COMPONENTS__SUBSTRATE__POSTGRES__URL`. |
+| `url` | `postgresql+psycopg://brain:brain@postgres:5432/brain` | SQLAlchemy-style connection URL. Override with `BRAIN_RESOURCES__SUBSTRATE__POSTGRES__URL`. |
 | `pool_size` | `5` | Number of persistent connections in the pool. |
 | `max_overflow` | `10` | Extra connections allowed above `pool_size` under load. |
 | `pool_timeout_seconds` | `30.0` | Seconds to wait for a connection from the pool before raising. |
@@ -135,7 +131,7 @@ PostgreSQL substrate connection settings.
 | `user` | `brain` | Username used when `url` is unset. |
 | `password` | `brain` | Password used when `url` is unset. |
 
-### `components.substrate.qdrant`
+### `resources.substrate.qdrant`
 Qdrant substrate defaults.
 
 | Key | Default | Description |
@@ -144,7 +140,7 @@ Qdrant substrate defaults.
 | `distance_metric` | `cosine` | Vector distance metric. One of `cosine`, `dot`, `euclid`. |
 | `request_timeout_seconds` | `10.0` | Per-request timeout for Qdrant operations. Must be > 0. |
 
-### `components.substrate.redis`
+### `resources.substrate.redis`
 Redis substrate connection defaults.
 
 | Key | Default | Description |
@@ -162,7 +158,7 @@ Redis substrate connection defaults.
 | `health_timeout_seconds` | `1.0` | Timeout budget in seconds for Redis health probes. Must be > 0. |
 | `max_connections` | `20` | Maximum client pool connections. Must be > 0. |
 
-### `components.substrate.filesystem`
+### `resources.substrate.filesystem`
 Filesystem substrate defaults for OAS blob persistence.
 
 | Key | Default | Description |
@@ -172,7 +168,7 @@ Filesystem substrate defaults for OAS blob persistence.
 | `fsync_writes` | `true` | When `true`, fsync temp files before atomic replace. |
 | `default_extension` | `blob` | Default extension used when OAS put requests omit extension. |
 
-### `components.adapter.litellm`
+### `resources.adapter.litellm`
 LiteLLM adapter connection defaults.
 
 | Key | Default | Description |
@@ -182,7 +178,7 @@ LiteLLM adapter connection defaults.
 | `timeout_seconds` | `30.0` | Per-request HTTP timeout. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
 
-### `components.substrate.obsidian`
+### `resources.substrate.obsidian`
 Obsidian Local REST API substrate defaults.
 
 | Key | Default | Description |
@@ -192,7 +188,7 @@ Obsidian Local REST API substrate defaults.
 | `timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx/429). Must be >= 0. |
 
-### `components.adapter.signal`
+### `resources.adapter.signal`
 Signal runtime adapter defaults.
 
 | Key | Default | Description |
@@ -210,14 +206,14 @@ Signal runtime adapter defaults.
 | `failure_backoff_multiplier` | `2.0` | Exponential multiplier applied to each consecutive failure delay. Must be > 1.0. |
 | `failure_backoff_jitter_ratio` | `0.2` | Symmetric random jitter ratio applied to failure delays. Must be in `[0,1)`. |
 
-### `components.service.embedding_authority`
+### `core.service.embedding_authority`
 Embedding Authority Service runtime settings.
 
 | Key | Default | Description |
 |---|---|---|
 | `max_list_limit` | `500` | Maximum number of results returned by list operations. Must be > 0. |
 
-### `components.service.cache_authority`
+### `core.service.cache_authority`
 Cache Authority Service runtime settings.
 
 | Key | Default | Description |
@@ -226,7 +222,7 @@ Cache Authority Service runtime settings.
 | `default_ttl_seconds` | `300` | Default TTL applied when `set_value` is called without explicit TTL. Must be > 0. |
 | `allow_non_expiring_keys` | `true` | When `true`, `ttl_seconds=0` is allowed and maps to non-expiring keys. |
 
-### `components.service.memory_authority`
+### `core.service.memory_authority`
 Memory Authority Service runtime settings.
 
 | Key | Default | Description |
@@ -235,7 +231,7 @@ Memory Authority Service runtime settings.
 | `dialogue_older_turns` | `20` | Maximum number of older turns considered for summarized dialogue context. Must be >= 0. |
 | `focus_token_budget` | `512` | Hard token ceiling for session focus content. Must be > 0. |
 
-### `components.service.object_authority`
+### `core.service.object_authority`
 Object Authority Service runtime settings.
 
 | Key | Default | Description |
@@ -244,7 +240,7 @@ Object Authority Service runtime settings.
 | `digest_version` | `b1` | Object key version prefix used in canonical object keys. |
 | `max_blob_size_bytes` | `52428800` | Maximum accepted blob payload size in bytes for `put_object`. Must be > 0. |
 
-### `components.service.vault_authority`
+### `core.service.vault_authority`
 Vault Authority Service runtime settings.
 
 | Key | Default | Description |
@@ -252,7 +248,7 @@ Vault Authority Service runtime settings.
 | `max_list_limit` | `500` | Maximum list operation limit accepted by VAS. Must be > 0. |
 | `max_search_limit` | `200` | Maximum lexical search result limit accepted by VAS. Must be > 0. |
 
-### `components.service.language_model`
+### `core.service.language_model`
 Language Model Service profile settings.
 
 | Key | Default | Description |
@@ -266,7 +262,7 @@ Language Model Service profile settings.
 | `deep.provider` | `""` | Optional deep provider override; falls back to `standard.provider` when unset/blank. |
 | `deep.model` | `""` | Optional deep model override; falls back to `standard.model` when unset/blank. |
 
-### `components.service.switchboard`
+### `core.service.switchboard`
 Switchboard Service runtime settings.
 
 | Key | Default | Description |

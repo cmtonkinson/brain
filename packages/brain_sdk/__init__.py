@@ -1,18 +1,6 @@
 """Public Brain SDK interface for CLI and agent callers."""
 
-from packages.brain_sdk.calls import (
-    CoreComponentHealth,
-    CoreHealthResult,
-    LmsChatResult,
-    VaultEntry,
-    VaultFile,
-    VaultSearchMatch,
-    core_health,
-    lms_chat,
-    vault_get,
-    vault_list,
-    vault_search,
-)
+from packages.brain_sdk.calls import CoreComponentHealth, CoreHealthResult, core_health
 from packages.brain_sdk.client import BrainClient, BrainSdkClient
 from packages.brain_sdk.config import BrainSdkConfig
 from packages.brain_sdk.errors import (
@@ -48,16 +36,8 @@ __all__ = [
     "CoreComponentHealth",
     "CoreHealthResult",
     "DomainError",
-    "LmsChatResult",
     "MetaOverrides",
     "SdkErrorDetail",
     "TransportError",
-    "VaultEntry",
-    "VaultFile",
-    "VaultSearchMatch",
     "core_health",
-    "lms_chat",
-    "vault_get",
-    "vault_list",
-    "vault_search",
 ]

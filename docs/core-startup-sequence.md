@@ -37,12 +37,12 @@ exists to make startup behavior explicit, deterministic, and reviewable.
 
 7. **Run `after_boot(...)` lifecycle hooks**
    - Execute optional component-level `after_boot` hooks.
-   - Run after global boot/capability startup work and before serving gRPC.
+   - Run after global boot/capability startup work and before serving HTTP.
    - Fail hard if any `after_boot` hook raises.
 
-8. **Start gRPC runtime**
-   - Construct gRPC server.
-   - Register service adapters/handlers.
+8. **Start HTTP runtime**
+   - Construct the FastAPI app and router.
+   - Register published service route adapters/handlers.
    - Bind listeners and begin serving.
 
 9. **Enter process hold loop**
@@ -53,8 +53,8 @@ exists to make startup behavior explicit, deterministic, and reviewable.
 - **Migrations before instantiation** prevents constructors from touching missing tables.
 - **Global readiness before any boot action** prevents partial boot side effects.
 - **Capabilities after boot** allows dependencies like MCP and boot-generated runtime state to be available before capability discovery/validation.
-- **after_boot before gRPC** ensures post-boot initialization completes before external traffic is accepted.
-- **gRPC last** ensures external traffic is accepted only after startup is complete.
+- **after_boot before HTTP** ensures post-boot initialization completes before external traffic is accepted.
+- **HTTP last** ensures external traffic is accepted only after startup is complete.
 
 ## Non-Goals (Current Phase)
 - This sequence does not require every `is_ready` hook to be deep/strict yet; some hooks may be no-op while implementation matures.

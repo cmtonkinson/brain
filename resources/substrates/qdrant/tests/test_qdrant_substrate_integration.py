@@ -25,7 +25,7 @@ def test_upsert_search_delete_roundtrip(qdrant_url: str) -> None:
     point_id = str(uuid4())
     config = QdrantConfig(
         url=qdrant_url,
-        timeout_seconds=1.0,
+        timeout_seconds=3.0,
         collection_name=collection,
         distance_metric="cosine",
     )

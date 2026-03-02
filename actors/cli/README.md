@@ -1,5 +1,5 @@
 # CLI Actor
-L2 Actor that exposes Brain Core gRPC operations as a Typer command-line interface.
+L2 Actor that exposes Brain Core operations as a Typer command-line interface.
 
 ------------------------------------------------------------------------
 ## What This Component Is
@@ -15,7 +15,7 @@ Sub-command groups:
 - `vault list` — lists entries under a vault directory path
 - `vault search` — searches vault entries by query string
 
-Global options (`--grpc-target`, `--timeout`, `--principal`, `--source`,
+Global options (`--socket`, `--timeout`, `--principal`, `--source`,
 `--json`, `--trace-id`, `--parent-id`) are parsed by the `main()` callback and
 stored in a `CliConfig` dataclass on the Typer context object.
 
@@ -25,7 +25,7 @@ CLI Actor is a Layer 2 Actor. It owns no _Resource_ or _Service_ components.
 
 Boundary rules:
 - All Brain Core access is through `BrainSdkClient` (`packages/brain_sdk`).
-- No direct gRPC calls or database access.
+- No direct HTTP calls or database access.
 - The external boundary is stdin/stdout/stderr and process exit codes.
 
 ------------------------------------------------------------------------
@@ -64,8 +64,8 @@ Global CLI options and their environment variable equivalents:
 
 | Option | Env var | Default |
 |--------|---------|---------|
-| `--grpc-target` | `BRAIN_GRPC_TARGET` | `127.0.0.1:50051` |
-| `--timeout` | `BRAIN_GRPC_TIMEOUT_SECONDS` | `10.0` |
+| `--socket` | `BRAIN_SOCKET_PATH` | (resolved by SDK) |
+| `--timeout` | `BRAIN_TIMEOUT_SECONDS` | `10.0` |
 | `--principal` | — | `operator` |
 | `--source` | — | `cli` |
 | `--json` | — | off |
@@ -80,7 +80,7 @@ See `packages/brain_sdk/config.py` for resolution logic and
 Component tests live in `actors/cli/tests/test_main.py`.
 
 Test approach: a fake `packages.brain_sdk` module is injected via
-`monkeypatch` and `importlib.reload` so no live gRPC connection is required.
+`monkeypatch` and `importlib.reload` so no live connection is required.
 Pure rendering-helper tests call `_serialize`, `_render_human`, and
 `_render_*` helpers directly without invoking the CLI runner.
 
@@ -91,7 +91,7 @@ make test
 
 ------------------------------------------------------------------------
 ## Contributor Notes
-- Keep all Brain Core access through `brain_sdk`; do not call gRPC directly.
+- Keep all Brain Core access through `brain_sdk`; do not call Core directly.
 - Keep rendering logic in `_render_human`, `_looks_like_*`, and `_render_*`
   helpers; do not inline rendering in command callbacks.
 - Use `_run_command` for all SDK call dispatch; do not open `BrainSdkClient`

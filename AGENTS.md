@@ -1,3 +1,4 @@
+
 If ~/.config/agents/agents.md exists, read it and follow its instructions now.
 
 Additional instructions for working in this specific project:
@@ -6,7 +7,9 @@ Additional instructions for working in this specific project:
 - The `deprecated/` directory is exclusively for human reference; do not search
   within or read from it unless explicitly instructed.
 - Use `make test` to validate when making any code/config changes (tests not
-  required for e.g. planning, documentation, etc).
+  required for e.g. planning, documentation, etc). `make test integration` will
+  run the suite with the integration tests (reliant on transient Docker
+  containers).
 - This is a new, unpublished, unsupported project. The author is the only
   contributor, and isn't even a user yet. As such, when making changes:
     - Never keep old naming, docs, functionality, specs, or expectations as

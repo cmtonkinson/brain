@@ -10,7 +10,7 @@ Core module roles:
 - `component.py`: `ServiceManifest` registration (`service_language_model`)
 - `service.py`: authoritative in-process public API contract
 - `implementation.py`: concrete service behavior (`DefaultLanguageModelService`)
-- `api.py`: gRPC adapter for Layer 2 callers
+- `api.py`: FastAPI route adapter for Layer 2 callers
 - `domain.py`: Pydantic payload contracts
 - `validation.py`: strict Pydantic ingress request validation
 - `config.py`: service-local profile settings and resolver
@@ -30,7 +30,7 @@ Boundary rules:
 ## Interactions
 Primary system interactions:
 - In-process callers use `LanguageModelService` (`service.py`).
-- Layer 2 callers use gRPC via `GrpcLanguageModelService` (`api.py`).
+- Layer 2 callers use HTTP via FastAPI routes (`api.py`).
 - `DefaultLanguageModelService.from_settings(...)` resolves:
   - `components.service.language_model`
   - `components.adapter.litellm`
@@ -54,9 +54,9 @@ Primary system interactions:
 - Validation failures return validation-category errors in envelope responses.
 - Adapter dependency failures return dependency-category errors.
 - Adapter internal failures return internal-category errors.
-- In gRPC transport (`api.py`), dependency/internal categories are mapped to
-  transport aborts (`UNAVAILABLE` / `INTERNAL`), while domain errors remain in
-  response envelopes.
+- In HTTP transport (`api.py`), dependency/internal categories are mapped to
+  appropriate HTTP error status codes, while domain errors remain in response
+  envelopes.
 
 ------------------------------------------------------------------------
 ## Configuration Surface

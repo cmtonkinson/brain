@@ -10,7 +10,6 @@ Core module roles:
 - `component.py`: `ServiceManifest` registration (`service_embedding_authority`)
 - `service.py`: authoritative in-process public API contract
 - `implementation.py`: concrete service behavior (`DefaultEmbeddingAuthorityService`)
-- `api.py`: gRPC adapter for Layer 2 callers
 - `domain.py`: Pydantic domain contracts for service payloads
 - `validation.py`: Pydantic request-validation models at ingress boundaries
 - `data/`: Postgres runtime, schema, and repository implementation
@@ -33,7 +32,6 @@ Authority boundaries:
 ## Interactions
 Primary interactions with the rest of Brain:
 - in-process callers use `EmbeddingAuthorityService` (`service.py`)
-- Layer 2 callers use gRPC via `GrpcEmbeddingAuthorityService` (`api.py`)
 - authoritative persistence flows through `PostgresEmbeddingRepository`
   (`data/repository.py`)
 - schema-scoped DB sessions are provided by
@@ -47,8 +45,7 @@ Primary interactions with the rest of Brain:
 ## Operational Flow (High Level)
 1. EAS is constructed from typed settings (`from_settings(...)`) or with
    injected repository/index dependencies.
-2. Requests enter through `service.py` methods (or `api.py` gRPC transport
-   mappings) with envelope metadata.
+2. Requests enter through `service.py` methods with envelope metadata.
 3. EAS validates metadata and request payloads with Pydantic models from
    `validation.py`.
 4. Authoritative records are read/written in Postgres via
@@ -72,9 +69,6 @@ Key behavior patterns:
 - Postgres failures are normalized through
   `resources/substrates/postgres/errors.py`.
 - Qdrant dependency failures are surfaced as typed dependency errors.
-- in gRPC transport (`api.py`), dependency/internal categories are mapped to
-  transport aborts (`UNAVAILABLE` / `INTERNAL`), while domain errors remain in
-  response envelopes.
 
 ------------------------------------------------------------------------
 ## Configuration Surface
