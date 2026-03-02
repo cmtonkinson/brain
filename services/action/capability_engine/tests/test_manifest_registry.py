@@ -248,3 +248,127 @@ def test_discover_requires_pipeline_io_chain_compatibility(tmp_path) -> None:
     registry = CapabilityRegistry()
     with pytest.raises(ValueError, match="incompatible call targets"):
         registry.discover(root=tmp_path, call_targets=call_targets)
+
+
+def test_discover_requires_op_output_schema_to_match_call_target(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-mismatch",
+        {
+            "capability_id": "demo-mismatch",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Mismatch",
+            "input_schema": {"payload": "object | The payload."},
+            "output_schema": "string | Wrong output type.",
+            "call_target": "state.echo",
+        },
+    )
+    registry = CapabilityRegistry()
+    with pytest.raises(ValueError, match="output schema does not match"):
+        registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
+def test_discover_rejects_pipeline_input_mismatch_with_first_step(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-step",
+        {
+            "capability_id": "demo-step",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Step",
+            "input_schema": {"payload": "object"},
+            "output_schema": "object",
+            "call_target": "state.echo",
+        },
+    )
+    _write_manifest(
+        tmp_path,
+        "demo-pipeline",
+        {
+            "capability_id": "demo-pipeline",
+            "kind": "pipeline_skill",
+            "version": "1.0.0",
+            "summary": "Pipeline",
+            "input_schema": "string | Wrong input type.",
+            "output_schema": "object",
+            "pipeline": ["demo-step"],
+        },
+    )
+
+    registry = CapabilityRegistry()
+    with pytest.raises(ValueError, match="input schema must match first"):
+        registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
+def test_discover_rejects_pipeline_output_mismatch_with_last_step(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-step",
+        {
+            "capability_id": "demo-step",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Step",
+            "input_schema": {"payload": "object"},
+            "output_schema": "object",
+            "call_target": "state.echo",
+        },
+    )
+    _write_manifest(
+        tmp_path,
+        "demo-pipeline",
+        {
+            "capability_id": "demo-pipeline",
+            "kind": "pipeline_skill",
+            "version": "1.0.0",
+            "summary": "Pipeline",
+            "input_schema": {"payload": "object"},
+            "output_schema": "integer | Wrong output type.",
+            "pipeline": ["demo-step"],
+        },
+    )
+
+    registry = CapabilityRegistry()
+    with pytest.raises(ValueError, match="output schema must match final"):
+        registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
+def test_discover_rejects_empty_pipeline(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-empty-pipe",
+        {
+            "capability_id": "demo-empty-pipe",
+            "kind": "pipeline_skill",
+            "version": "1.0.0",
+            "summary": "Empty pipeline",
+            "pipeline": [],
+        },
+    )
+    registry = CapabilityRegistry()
+    with pytest.raises(ValueError, match="must declare pipeline entries"):
+        registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
+def test_logic_skill_requires_tests(tmp_path) -> None:
+    pkg = tmp_path / "demo-logic"
+    pkg.mkdir()
+    (pkg / "capability.json").write_text(
+        json.dumps(
+            {
+                "capability_id": "demo-logic",
+                "kind": "logic_skill",
+                "version": "1.0.0",
+                "summary": "Logic",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (pkg / "README.md").write_text("# Logic", encoding="utf-8")
+    (pkg / "execute.py").write_text("# entrypoint", encoding="utf-8")
+
+    registry = CapabilityRegistry()
+    with pytest.raises(ValueError, match="missing tests"):
+        registry.discover(root=tmp_path, call_targets=_discover_call_targets())

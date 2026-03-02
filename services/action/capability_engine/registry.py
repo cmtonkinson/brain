@@ -86,8 +86,6 @@ class CapabilityRegistry:
             raw = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest = self._parse_manifest(raw)
             self._validate_manifest_files(package_dir=package_dir, manifest=manifest)
-            if manifest.capability_id in discovered:
-                raise ValueError(f"duplicate capability id: {manifest.capability_id}")
             discovered[manifest.capability_id] = manifest
 
         self._validate_closure(discovered)
