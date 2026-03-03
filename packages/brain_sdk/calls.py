@@ -105,6 +105,13 @@ class MemoryContextBlock:
 
 
 @dataclass(frozen=True, slots=True)
+class MemorySessionRef:
+    """Minimal MAS session reference returned to SDK callers."""
+
+    session_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class SwitchboardOperatorInstruction:
     """One queued operator instruction delivered from Switchboard."""
 
@@ -279,6 +286,60 @@ def call_memory_assemble_context(
             operation="memory.assemble_context",
         )
     return _memory_context_block(payload)
+
+
+def call_memory_create_session(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+) -> MemorySessionRef:
+    """Create one MAS session and return the new session identifier."""
+    data = _post_json(
+        operation="memory.create_session",
+        http=http,
+        url="/memory/create_session",
+        body=metadata,
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="memory.create_session",
+        errors=_errors_from_data(data),
+    )
+    session_id = str(data.get("session_id", "")).strip()
+    if session_id == "":
+        raise BrainDomainError(
+            message="memory.create_session domain failure: missing session_id",
+            operation="memory.create_session",
+        )
+    return MemorySessionRef(session_id=session_id)
+
+
+def call_memory_get_latest_or_create_session(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+) -> MemorySessionRef:
+    """Return the latest MAS session id or create one when none exist."""
+    data = _post_json(
+        operation="memory.get_latest_or_create_session",
+        http=http,
+        url="/memory/get_latest_or_create_session",
+        body=metadata,
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="memory.get_latest_or_create_session",
+        errors=_errors_from_data(data),
+    )
+    session_id = str(data.get("session_id", "")).strip()
+    if session_id == "":
+        raise BrainDomainError(
+            message="memory.get_latest_or_create_session domain failure: missing session_id",
+            operation="memory.get_latest_or_create_session",
+        )
+    return MemorySessionRef(session_id=session_id)
 
 
 def call_memory_record_response(
@@ -616,6 +677,44 @@ def memory_assemble_context(
             trace_id=trace_id,
             parent_id=parent_id,
         ),
+    )
+
+
+def memory_create_session(
+    *,
+    client: object,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> MemorySessionRef:
+    """High-level SDK wrapper for MAS create-session."""
+    return client.memory_create_session(  # type: ignore[union-attr]
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        )
+    )
+
+
+def memory_get_latest_or_create_session(
+    *,
+    client: object,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> MemorySessionRef:
+    """High-level SDK wrapper for MAS get-latest-or-create-session."""
+    return client.memory_get_latest_or_create_session(  # type: ignore[union-attr]
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        )
     )
 
 

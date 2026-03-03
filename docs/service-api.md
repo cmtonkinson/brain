@@ -205,6 +205,9 @@ _Append inbound message and return assembled Profile/Focus/Dialogue context._
 `update_focus(*, meta: EnvelopeMeta, session_id: str, content: str) -> Envelope[FocusRecord]`  
 _Persist explicit focus content with budget-aware compaction semantics._
 
+`get_latest_or_create_session(*, meta: EnvelopeMeta) -> Envelope[SessionRecord]`  
+_Return latest MAS session or create one when none exist._
+
 `record_response(*, meta: EnvelopeMeta, session_id: str, content: str, model: str, provider: str, token_count: int, reasoning_level: str) -> Envelope[bool]`  
 _Append one outbound dialogue turn with response metadata._
 

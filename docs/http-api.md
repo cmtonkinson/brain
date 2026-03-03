@@ -39,6 +39,18 @@ _Response: `_AssembleContextResponse`_
 _Summary: Append one inbound message and return the assembled MAS context block._
 
 
+`POST /memory/create_session` &mdash; create one new MAS session for the agent  
+_Handler: `create_session`_
+_Response: `_CreateSessionResponse`_
+_Summary: Create one MAS session and return only the session identifier._
+
+
+`POST /memory/get_latest_or_create_session` &mdash; return the latest MAS session id or create one for the agent  
+_Handler: `get_latest_or_create_session`_
+_Response: `_CreateSessionResponse`_
+_Summary: Return the latest MAS session id or create one when none exist._
+
+
 `POST /memory/record_response` &mdash; persist one outbound MAS response turn  
 _Handler: `record_response`_
 _Response: `_RecordResponseResponse`_

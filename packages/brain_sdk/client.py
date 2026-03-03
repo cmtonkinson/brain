@@ -10,12 +10,15 @@ from packages.brain_sdk.calls import (
     CoreHealthResult,
     LmsChatResult,
     MemoryContextBlock,
+    MemorySessionRef,
     SwitchboardOperatorInstruction,
     call_capabilities_describe,
     call_capability_invoke,
     call_core_health,
     call_lms_chat,
     call_memory_assemble_context,
+    call_memory_create_session,
+    call_memory_get_latest_or_create_session,
     call_memory_record_response,
     call_switchboard_poll_operator_instruction,
 )
@@ -131,6 +134,30 @@ class BrainClient:
             timeout_seconds=self._config.timeout_seconds,
             session_id=session_id,
             message=message,
+        )
+
+    def memory_create_session(
+        self,
+        *,
+        meta: MetaOverrides | None = None,
+    ) -> MemorySessionRef:
+        """Create one MAS session and return the new session identifier."""
+        return call_memory_create_session(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+        )
+
+    def memory_get_latest_or_create_session(
+        self,
+        *,
+        meta: MetaOverrides | None = None,
+    ) -> MemorySessionRef:
+        """Return the latest MAS session id or create one when none exist."""
+        return call_memory_get_latest_or_create_session(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
         )
 
     def memory_record_response(

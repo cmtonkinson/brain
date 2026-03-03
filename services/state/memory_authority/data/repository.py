@@ -31,6 +31,9 @@ class MemoryRepository(Protocol):
     def create_session(self) -> SessionRecord:
         """Create and return one session row."""
 
+    def get_latest_session(self) -> SessionRecord | None:
+        """Read the most recently updated session row."""
+
     def get_session(self, *, session_id: str) -> SessionRecord | None:
         """Read one session by id."""
 
@@ -121,6 +124,20 @@ class PostgresMemoryRepository:
                 .one()
             )
             return _to_session(row)
+
+    def get_latest_session(self) -> SessionRecord | None:
+        """Read the most recently updated session row."""
+        with self._sessions.session() as session:
+            row = (
+                session.execute(
+                    select(sessions)
+                    .order_by(desc(sessions.c.updated_at), desc(sessions.c.id))
+                    .limit(1)
+                )
+                .mappings()
+                .one_or_none()
+            )
+            return None if row is None else _to_session(row)
 
     def get_session(self, *, session_id: str) -> SessionRecord | None:
         """Read one session row by id."""

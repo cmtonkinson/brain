@@ -2,6 +2,8 @@
 /capabilities/describe: enumerate all active Capabilities
 /capabilities/invoke: execute tool calls
 /lms/chat: direct access to model inference without CES/PS overhead
+/memory/create_session: create one new MAS session for the agent
+/memory/get_latest_or_create_session: return the latest MAS session id or create one for the agent
 /memory/assemble_context: assemble MAS context for one inbound turn
 /memory/record_response: persist one outbound MAS response turn
 /switchboard/poll_operator_instruction: dequeue the next queued operator instruction for the agent

@@ -51,3 +51,20 @@ def test_session_turn_and_summary_roundtrip(migrated_integration_settings) -> No
 
     turns = repo.list_turns(session_id=session.id)
     assert [item.id for item in turns][:2] == [first.id, second.id]
+
+
+def test_get_latest_session_returns_newest_session(
+    migrated_integration_settings,
+) -> None:
+    """Repository should return the most recently created session when no updates occur."""
+    runtime = MemoryPostgresRuntime.from_settings(migrated_integration_settings)
+    repo = PostgresMemoryRepository(runtime.schema_sessions)
+
+    first = repo.create_session()
+    second = repo.create_session()
+
+    latest = repo.get_latest_session()
+
+    assert latest is not None
+    assert latest.id == second.id
+    assert latest.id != first.id

@@ -197,6 +197,46 @@ def test_call_memory_assemble_context_success() -> None:
     assert result.reference_snippets == ("snippet",)
 
 
+def test_call_memory_create_session_success() -> None:
+    """MAS create-session wrapper should return the new session identifier."""
+    from packages.brain_sdk.calls import call_memory_create_session
+
+    http = _fake_http(
+        {
+            "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "errors": [],
+        }
+    )
+
+    result = call_memory_create_session(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+    )
+
+    assert result.session_id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+
+
+def test_call_memory_get_latest_or_create_session_success() -> None:
+    """MAS get-latest-or-create wrapper should return the resolved session id."""
+    from packages.brain_sdk.calls import call_memory_get_latest_or_create_session
+
+    http = _fake_http(
+        {
+            "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "errors": [],
+        }
+    )
+
+    result = call_memory_get_latest_or_create_session(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+    )
+
+    assert result.session_id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+
+
 def test_call_memory_record_response_success() -> None:
     """MAS record-response wrapper should return the response boolean."""
     from packages.brain_sdk.calls import call_memory_record_response

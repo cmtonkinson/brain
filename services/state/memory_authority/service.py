@@ -66,6 +66,12 @@ class MemoryAuthorityService(ABC):
         """Create and return one new MAS session."""
 
     @abstractmethod
+    def get_latest_or_create_session(
+        self, *, meta: EnvelopeMeta
+    ) -> Envelope[SessionRecord]:
+        """Return latest MAS session or create one when none exist."""
+
+    @abstractmethod
     def get_session(
         self,
         *,

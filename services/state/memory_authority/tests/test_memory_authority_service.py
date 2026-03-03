@@ -56,6 +56,12 @@ class _FakeMemoryRepository:
         self.summaries[session.id] = []
         return session
 
+    def get_latest_session(self) -> SessionRecord | None:
+        """Return the most recently updated session row when present."""
+        if not self.sessions:
+            return None
+        return max(self.sessions.values(), key=lambda item: (item.updated_at, item.id))
+
     def get_session(self, *, session_id: str) -> SessionRecord | None:
         """Read one session by id."""
         return self.sessions.get(session_id)
@@ -374,6 +380,37 @@ def test_assemble_context_returns_expected_shape() -> None:
     assert block.dialogue[0].role == "user"
     assert block.dialogue[0].content == "hi"
     assert block.reference_snippets == []
+
+
+def test_get_latest_or_create_session_prefers_existing_session() -> None:
+    """MAS should return the newest existing session before creating another."""
+    service, repository, _ = _build_service()
+    first = repository.create_session()
+    second = repository.create_session()
+    repository.update_focus(
+        session_id=second.id,
+        focus="active",
+        focus_token_count=1,
+    )
+
+    result = service.get_latest_or_create_session(meta=_meta())
+
+    assert result.ok
+    assert result.payload is not None
+    assert result.payload.value.id == second.id
+    assert set(repository.sessions) == {first.id, second.id}
+
+
+def test_get_latest_or_create_session_creates_when_empty() -> None:
+    """MAS should create one session when none exist yet."""
+    service, repository, _ = _build_service()
+
+    result = service.get_latest_or_create_session(meta=_meta())
+
+    assert result.ok
+    assert result.payload is not None
+    assert result.payload.value.id in repository.sessions
+    assert len(repository.sessions) == 1
 
 
 def test_dialogue_respects_recent_and_older_boundaries() -> None:

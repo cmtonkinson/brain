@@ -360,6 +360,28 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
     @public_api_instrumented(
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
+    )
+    def get_latest_or_create_session(
+        self, *, meta: EnvelopeMeta
+    ) -> Envelope[SessionRecord]:
+        """Return latest session when present, otherwise create one new session."""
+        errors = self._validate_meta(meta)
+        if errors:
+            return failure(meta=meta, errors=errors)
+
+        try:
+            record = self._repository.get_latest_session()
+            if record is None:
+                record = self._repository.create_session()
+            return success(meta=meta, payload=record)
+        except Exception as exc:  # noqa: BLE001
+            return self._handle_exception(
+                meta=meta, operation="get_latest_or_create_session", exc=exc
+            )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
         id_fields=("session_id",),
     )
     def get_session(

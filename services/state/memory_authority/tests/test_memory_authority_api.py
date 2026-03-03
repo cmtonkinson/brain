@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, UTC
 
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
@@ -16,6 +17,7 @@ from services.state.memory_authority.domain import (
     ContextBlock,
     DialogueTurn,
     ProfileContext,
+    SessionRecord,
 )
 from services.state.memory_authority.service import MemoryAuthorityService
 
@@ -50,6 +52,8 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
     def __init__(self) -> None:
         self.assemble_calls: list[_AssembleCall] = []
         self.record_response_calls: list[_RecordResponseCall] = []
+        self.create_session_calls: list[tuple[str, str]] = []
+        self.get_latest_or_create_session_calls: list[tuple[str, str]] = []
         self.assemble_result = success(
             meta=_meta(),
             payload=ContextBlock(
@@ -64,6 +68,17 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
             ),
         )
         self.record_response_result = success(meta=_meta(), payload=True)
+        self.create_session_result = success(
+            meta=_meta(),
+            payload=SessionRecord(
+                id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                focus=None,
+                focus_token_count=None,
+                dialogue_start_turn_id=None,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            ),
+        )
 
     def assemble_context(
         self,
@@ -116,8 +131,12 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
         raise NotImplementedError
 
     def create_session(self, *, meta):
-        del meta
-        raise NotImplementedError
+        self.create_session_calls.append((meta.source, meta.principal))
+        return self.create_session_result
+
+    def get_latest_or_create_session(self, *, meta):
+        self.get_latest_or_create_session_calls.append((meta.source, meta.principal))
+        return self.create_session_result
 
     def get_session(self, *, meta, session_id: str):
         del meta, session_id
@@ -211,3 +230,43 @@ def test_record_response_route_forwards_request_and_maps_errors() -> None:
             principal="operator",
         )
     ]
+
+
+def test_create_session_route_returns_session_id_only() -> None:
+    """create_session route should publish only the created session identifier."""
+    client, service = _client()
+
+    response = client.post(
+        "/memory/create_session",
+        json={
+            "source": "agent",
+            "principal": "agent",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "errors": [],
+    }
+    assert service.create_session_calls == [("agent", "agent")]
+
+
+def test_get_latest_or_create_session_route_returns_session_id_only() -> None:
+    """get_latest_or_create_session should return only the resolved session id."""
+    client, service = _client()
+
+    response = client.post(
+        "/memory/get_latest_or_create_session",
+        json={
+            "source": "agent",
+            "principal": "agent",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "errors": [],
+    }
+    assert service.get_latest_or_create_session_calls == [("agent", "agent")]

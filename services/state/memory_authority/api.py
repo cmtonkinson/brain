@@ -64,8 +64,55 @@ class _RecordResponseResponse(BaseModel):
     errors: list[_ErrorOut]
 
 
+class _CreateSessionResponse(BaseModel):
+    """Serialized response body for MAS create-session."""
+
+    session_id: str | None
+    errors: list[_ErrorOut]
+
+
 def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> None:
     """Register Memory Authority routes on one router."""
+
+    @router.post(
+        "/memory/create_session",
+        response_model=_CreateSessionResponse,
+    )
+    async def create_session(request: Request) -> _CreateSessionResponse:
+        """Create one MAS session and return only the session identifier."""
+        body = await read_json_body(request)
+        req = _RequestMeta.model_validate(body)
+        meta = _meta_from_request(
+            req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
+        )
+        result = service.create_session(meta=meta)
+        session_id = None
+        if result.payload is not None:
+            session_id = result.payload.value.id
+        return _CreateSessionResponse(
+            session_id=session_id,
+            errors=[_error_out(error) for error in result.errors],
+        )
+
+    @router.post(
+        "/memory/get_latest_or_create_session",
+        response_model=_CreateSessionResponse,
+    )
+    async def get_latest_or_create_session(request: Request) -> _CreateSessionResponse:
+        """Return the latest MAS session id or create one when none exist."""
+        body = await read_json_body(request)
+        req = _RequestMeta.model_validate(body)
+        meta = _meta_from_request(
+            req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
+        )
+        result = service.get_latest_or_create_session(meta=meta)
+        session_id = None
+        if result.payload is not None:
+            session_id = result.payload.value.id
+        return _CreateSessionResponse(
+            session_id=session_id,
+            errors=[_error_out(error) for error in result.errors],
+        )
 
     @router.post(
         "/memory/assemble_context",

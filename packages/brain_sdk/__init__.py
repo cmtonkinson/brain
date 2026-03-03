@@ -9,6 +9,7 @@ from packages.brain_sdk.calls import (
     MemoryContextBlock,
     MemoryDialogueTurn,
     MemoryProfileContext,
+    MemorySessionRef,
     PolicyDecision,
     SwitchboardOperatorInstruction,
     core_health,
@@ -16,6 +17,8 @@ from packages.brain_sdk.calls import (
     invoke_capability,
     lms_chat,
     memory_assemble_context,
+    memory_create_session,
+    memory_get_latest_or_create_session,
     memory_record_response,
     switchboard_poll_operator_instruction,
 )
@@ -61,6 +64,7 @@ __all__ = [
     "MemoryContextBlock",
     "MemoryDialogueTurn",
     "MemoryProfileContext",
+    "MemorySessionRef",
     "PolicyDecision",
     "SdkErrorDetail",
     "SwitchboardOperatorInstruction",
@@ -70,6 +74,8 @@ __all__ = [
     "invoke_capability",
     "lms_chat",
     "memory_assemble_context",
+    "memory_create_session",
+    "memory_get_latest_or_create_session",
     "memory_record_response",
     "switchboard_poll_operator_instruction",
 ]
