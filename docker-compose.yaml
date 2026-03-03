@@ -18,6 +18,19 @@ services:
       - qdrant
       - signal-api
 
+  brain-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.13}
+    restart: unless-stopped
+    volumes:
+      - ${HOME}/.config/brain:/app/config:ro
+      - ${HOME}/.config/brain/generated:/app/config/generated:rw
+    depends_on:
+      - brain-core
+
   signal-api:
     image: ${SIGNAL_CLI_REST_API_IMAGE:-bbernhard/signal-cli-rest-api:latest}
     restart: unless-stopped
