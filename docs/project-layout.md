@@ -105,5 +105,6 @@ Pydantic contract rules.
 - Run all tests with `make test` (see [Development
   Guide](development-guide.md)).
 
+
 ------------------------------------------------------------------------
 _End of Project Layout_

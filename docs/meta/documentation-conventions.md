@@ -13,8 +13,10 @@ Yes, this is a meta doc about docs &mdash; Yo Dawg.
 - **Glossary note follows the intro** — where applicable, add a blockquote after
   the intro paragraph:
   `> Check the [Glossary] for key terms such as _X_, _Y_, et cetera.`
-- **Footer** — every doc ends with a 72-dash hr followed by `_End of <title>_`
-  where `<title>` matches the h1 text exactly.
+- **Footer** — every doc ends with:
+  - two blank lines
+  - a 72-dash hr
+  - `_End of <title>_` where `<title>` is exactly the h1 text (except READMEs)
 
 ------------------------------------------------------------------------
 ## Headings

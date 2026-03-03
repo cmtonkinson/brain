@@ -104,5 +104,6 @@ Use this exact skeleton and fill it with component-specific details:
 _End of <Component Name> README_
 ```
 
+
 ------------------------------------------------------------------------
 _End of Component README Guide_

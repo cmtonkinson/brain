@@ -1,5 +1,5 @@
 # Glossary
-_This document is generated from `docs/glossary.yaml`. Do not edit by hand._
+_This document is generated from `docs/meta/glossary.yaml`. Do not edit by hand._
 
 ------------------------------------------------------------------------
 ## Terms
@@ -25,6 +25,7 @@ _This document is generated from `docs/glossary.yaml`. Do not edit by hand._
 - **Substrate &mdash;** A _Resource_ which governs state, such as a database, document store, or cache.
 - **System &mdash;** An abstract 'vertical' segment of Brain architecture defined by its ontological purpose. There are three Systems: State, Action and Control.
 - **Trace &mdash;** A `trace_id`-scoped execution episode linking causally related Envelopes. Cross-_Trace_ causality is preserved via `parent_id` references.
+
 
 ------------------------------------------------------------------------
 _End of Glossary_

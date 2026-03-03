@@ -399,6 +399,14 @@ def _validate_file(*, repo_root: Path, file_path: Path) -> tuple[Violation, ...]
     footer_hr_line_number = non_empty_line_numbers[-2]
     footer_line = lines[footer_line_number - 1].strip()
     footer_hr_line = lines[footer_hr_line_number - 1].strip()
+    blank_lines_before_footer_hr = 0
+    footer_prefix_line = footer_hr_line_number - 1
+
+    while footer_prefix_line >= 1:
+        if lines[footer_prefix_line - 1].strip():
+            break
+        blank_lines_before_footer_hr += 1
+        footer_prefix_line -= 1
 
     if footer_hr_line_number != footer_line_number - 1:
         violations.append(
@@ -407,6 +415,16 @@ def _validate_file(*, repo_root: Path, file_path: Path) -> tuple[Violation, ...]
                 line=footer_hr_line_number,
                 rule="footer-spacing",
                 message="Footer hr must be immediately above '_End of ..._' line.",
+            )
+        )
+
+    if blank_lines_before_footer_hr != 2:
+        violations.append(
+            Violation(
+                path=rel_path,
+                line=footer_hr_line_number,
+                rule="footer-blank-lines",
+                message="Footer must be preceded by exactly two blank lines.",
             )
         )
 

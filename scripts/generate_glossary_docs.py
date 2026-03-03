@@ -12,10 +12,10 @@ import yaml
 
 DOC_NAME = "Glossary"
 HR = "------------------------------------------------------------------------"
-DEFAULT_INPUT = "docs/glossary.yaml"
+DEFAULT_INPUT = "docs/meta/glossary.yaml"
 DEFAULT_OUTPUT = "docs/glossary.md"
 GENERATED_NOTE = (
-    "_This document is generated from `docs/glossary.yaml`. Do not edit by hand._"
+    "_This document is generated from `docs/meta/glossary.yaml`. Do not edit by hand._"
 )
 
 
@@ -140,6 +140,7 @@ def _render_markdown(*, title: str, terms: list[GlossaryTerm]) -> str:
     lines = [f"# {DOC_NAME}", GENERATED_NOTE, "", HR, "## Terms"]
     for item in terms:
         lines.append(f"- **{item.term} &mdash;** {item.definition}")
+    lines.append("")
     lines.append("")
     lines.append(HR)
     lines.append(f"_End of {DOC_NAME}_")

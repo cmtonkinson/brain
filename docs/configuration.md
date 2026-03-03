@@ -301,5 +301,6 @@ defaults are correct for standard deployments and rarely need to change.
 | `metric_qdrant_ops_total` | `brain_qdrant_ops_total` | Counter: total Qdrant operations. |
 | `metric_qdrant_op_duration_ms` | `brain_qdrant_op_duration_ms` | Histogram: Qdrant operation duration in ms. |
 
+
 ------------------------------------------------------------------------
 _End of Configuration Reference_

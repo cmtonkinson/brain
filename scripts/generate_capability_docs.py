@@ -241,40 +241,35 @@ def _render_markdown(manifests: tuple[object, ...]) -> str:
     lines: list[str] = [DOC_TITLE, DOC_GENERATED_NOTE, ""]
     if not manifests:
         lines.append(DOC_EMPTY_MESSAGE)
-        lines.append("")
-        lines.append(HR)
-        lines.append(f"_End of {DOC_NAME}_")
-        lines.append("")
-        return "\n".join(lines)
+    else:
+        grouped: dict[str, list[object]] = {}
+        for manifest in manifests:
+            grouped.setdefault(_service_label(manifest), []).append(manifest)
 
-    grouped: dict[str, list[object]] = {}
-    for manifest in manifests:
-        grouped.setdefault(_service_label(manifest), []).append(manifest)
+        for service_label in sorted(grouped):
+            lines.append(HR)
+            lines.append(f"## `{service_label}`")
+            manifests_for_service = sorted(
+                grouped[service_label],
+                key=lambda item: item.capability_id,
+            )
+            for manifest in manifests_for_service:
+                lines.append(
+                    f"### `{getattr(manifest, 'capability_id')}` - {getattr(manifest, 'summary')}"
+                )
+                lines.append(_tag_line(manifest))
+                lines.extend(_implementation_lines(manifest))
+                lines.append("")
+                lines.extend(
+                    _render_schema_block("Inputs", getattr(manifest, "input_schema"))
+                )
+                lines.extend(
+                    _render_schema_block("Outputs", getattr(manifest, "output_schema"))
+                )
 
-    for service_label in sorted(grouped):
-        lines.append(HR)
-        lines.append(f"## `{service_label}`")
-        manifests_for_service = sorted(
-            grouped[service_label],
-            key=lambda item: item.capability_id,
-        )
-        for manifest in manifests_for_service:
-            lines.append(
-                f"### `{getattr(manifest, 'capability_id')}` - {getattr(manifest, 'summary')}"
-            )
-            lines.append(_tag_line(manifest))
-            lines.extend(_implementation_lines(manifest))
-            lines.append("")
-            lines.extend(
-                _render_schema_block("Inputs", getattr(manifest, "input_schema"))
-            )
-            lines.extend(
-                _render_schema_block("Outputs", getattr(manifest, "output_schema"))
-            )
-
-    lines.append(HR)
-    lines.append(f"_End of {DOC_NAME}_")
-    lines.append("")
+    while lines and lines[-1] == "":
+        lines.pop()
+    lines.extend(["", "", HR, f"_End of {DOC_NAME}_", ""])
     return "\n".join(lines)
 
 

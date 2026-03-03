@@ -189,7 +189,8 @@ order (_State_, then _Action_, then _Control_). This isn't strictly necessary
 given cross-_Service_ FKs are disallowed, however does provide deterministic
 bootstrapping.
 
-`make migrate` will automatically, for every valid, registered _Service_:
+During Core boot, the migration wrapper automatically, for every valid,
+registered _Service_:
 1. Import self-registering _Component_ modules (`*/component.py`).
 2. Validate _Manifest_ registry ownership/invariants.
 3. For each registered _Service_ schema:
@@ -209,6 +210,7 @@ bootstrapping.
 
 For communication rules, wire protocols, error handling, SDKs, and other
 behavioral conventions, see [Conventions](conventions.md).
+
 
 ------------------------------------------------------------------------
 _End of Boundaries & Responsibilities_

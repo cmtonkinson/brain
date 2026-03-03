@@ -46,10 +46,8 @@ This document covers how to set up, build, test, and contribute to Brain.
    environment. See the
    [Configuration Reference](configuration.md) for all available keys.
 
-5. Run database migrations:
-   ```
-   make migrate
-   ```
+5. Start Brain Core. It bootstraps schemas and runs migrations automatically
+   during startup.
 
 `deprecated/` is not part of this runtime path and remains reference-only.
 
@@ -57,15 +55,14 @@ This document covers how to set up, build, test, and contribute to Brain.
 ## Make Targets
 | Target | Description |
 |---|---|
-| `make all` | Full pipeline: deps, clean, build, test, docs |
+| `make all` | Full pipeline: deps, clean, unit + integration tests, docs |
 | `make deps` | Install Python dependencies from `requirements.txt` |
 | `make clean` | Remove generated code and Python cache files |
-| `make build` | Reserved build step (currently no-op) |
 | `make check` | Run linting and format checks (ruff) |
 | `make format` | Auto-format code (ruff) |
 | `make test` | Run lint checks, then pytest across `tests/`, `resources/`, `services/`, and `actors/` |
 | `make docs` | Regenerate glossary, service-api docs, and diagrams |
-| `make migrate` | Bootstrap schemas and run Alembic migrations for all _Services_ |
+| `make outline` | Print the top-level project directory outline |
 | `make up` | Start Docker Compose services (detached) |
 | `make down` | Stop Docker Compose services |
 
@@ -76,8 +73,7 @@ make test             # unit
 make test integration # unit & integration
 ```
 
-This runs `make check` first, then executes pytest. The `build` target is
-currently a no-op.
+This runs `make check` first, then executes pytest.
 
 Tests are discovered in four locations:
 - `tests/` -- shared and cross-cutting tests
@@ -99,7 +95,7 @@ Tests are discovered in four locations:
      [Boundaries & Responsibilities](boundaries-and-responsibilities.md).
    - Keep runtime settings and typed service contracts aligned with the
      Pydantic usage rules in [Conventions](conventions.md).
-5. Run `make migrate` to bootstrap your schema.
+5. Start Brain Core to bootstrap your schema and run migrations.
 6. Add tests in `services/<system>/<service>/tests/`.
 
 ------------------------------------------------------------------------
@@ -128,17 +124,15 @@ make format   # auto-format
 ```
 
 ------------------------------------------------------------------------
-## Running Migrations
-```
-make migrate
-```
-
-This bootstraps schemas, creates the `ulid_bin` domain, and runs Alembic
-migrations in _System_-order (_State_ -> _Action_ -> _Control_). See the Shared
-Infrastructure section of [Boundaries & Responsibilities](boundaries-and-responsibilities.md) for details.
+## Database Bootstrapping
+Brain Core bootstraps schemas, creates the `ulid_bin` domain, and runs Alembic
+migrations in _System_-order (_State_ -> _Action_ -> _Control_) during startup.
+See the Shared Infrastructure section of
+[Boundaries & Responsibilities](boundaries-and-responsibilities.md) for details.
 
 
 [Ruff]: https://docs.astral.sh/ruff/
+
 
 ------------------------------------------------------------------------
 _End of Development Guide_

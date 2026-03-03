@@ -3,13 +3,16 @@ VENV 						:= .venv
 VENV_PY         := $(VENV)/bin/python
 PY 							:= $(if $(wildcard $(VENV_PY)),$(VENV_PY),python3)
 PYTHON_VERSION  := $(shell cut -d. -f1,2 .python-version)
-GENERATED_DIR   := generated
-GLOSSARY_SRC    := docs/glossary.yaml
+GLOSSARY_SRC    := docs/meta/glossary.yaml
 GLOSSARY_DOC    := docs/glossary.md
 GLOSSARY_GEN    := scripts/generate_glossary_docs.py
 SERVICE_API_DOC := docs/service-api.md
 SERVICE_API_GEN := scripts/generate_service_api_docs.py
 SERVICE_API_SRC := $(shell find services -type f -path 'services/*/*/service.py' | sort)
+HTTP_API_DOC    := docs/http-api.md
+HTTP_API_GEN    := scripts/generate_http_api_docs.py
+HTTP_API_META   := docs/meta/http-routes.yaml
+HTTP_API_SRC    := $(shell (printf '%s\n' packages/brain_core/health_api.py; find services -type f -path 'services/*/*/api.py' | sort))
 CAPABILITY_DOC  := docs/capabilities.md
 CAPABILITY_GEN  := scripts/generate_capability_docs.py
 CAPABILITY_SRC  := $(shell find capabilities -type f | sort)
@@ -30,9 +33,11 @@ ifeq ($(INTEGRATION),1)
 PYTEST_INTEGRATION_ENV := BRAIN_RUN_INTEGRATION_REAL=1
 endif
 
-.PHONY: all deps deps-upgrade clean build check format test docs up down integration
+.PHONY: all deps deps-upgrade clean check format test docs up down integration outline
 
-all: deps clean build test docs
+all: deps clean
+	$(MAKE) test integration
+	$(MAKE) docs
 
 deps:
 	$(PY) -m pip install --upgrade pip pip-tools
@@ -50,8 +55,6 @@ clean:
 	find . -type f -name '*.pyc' -delete
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +
 
-build:
-
 check:
 	$(PY) -m ruff check .
 	$(PY) -m ruff format --check .
@@ -65,13 +68,16 @@ test: check
 integration:
 	:
 
-docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(CAPABILITY_DOC) $(DIAGRAM_PNGS)
+docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(HTTP_API_DOC) $(CAPABILITY_DOC) $(DIAGRAM_PNGS)
 
 $(GLOSSARY_DOC): $(GLOSSARY_SRC) $(GLOSSARY_GEN)
 	$(PY) $(GLOSSARY_GEN)
 
 $(SERVICE_API_DOC): $(SERVICE_API_SRC) $(SERVICE_API_GEN)
 	$(PY) $(SERVICE_API_GEN)
+
+$(HTTP_API_DOC): $(HTTP_API_SRC) $(HTTP_API_GEN) $(HTTP_API_META)
+	$(PY) $(HTTP_API_GEN)
 
 $(CAPABILITY_DOC): $(CAPABILITY_SRC) $(CAPABILITY_GEN)
 	$(PY) $(CAPABILITY_GEN)
@@ -86,4 +92,4 @@ down:
 	docker compose down
 
 outline:
-	@tree -d -I tests -I __pycache__ -I data -I migrations packages resources services actors
+	@tree -d -I __pycache__ -I tests -I data -I migrations packages resources services actors

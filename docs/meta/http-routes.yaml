@@ -1,0 +1,4 @@
+/health: full-system diagnostic health check
+/capabilities/describe: enumerate all active Capabilities
+/capabilities/invoke: execute tool calls
+/lms/chat: direct access to model inference without CES/PS overhead

@@ -60,5 +60,6 @@ exists to make startup behavior explicit, deterministic, and reviewable.
 - This sequence does not require every `is_ready` hook to be deep/strict yet; some hooks may be no-op while implementation matures.
 - This sequence definition does not mandate specific deployment topology (single process vs split runtime) as long as ordering guarantees hold.
 
+
 ------------------------------------------------------------------------
 _End of Core Startup Sequence_

@@ -384,5 +384,6 @@ Native Op over `Vault Authority Service update_file()`
 - `updated_at` _(date-time | null, optional)_ The timestamp when the file was last updated.
 - `revision` _(string)_ The revision identifier for the file.
 
+
 ------------------------------------------------------------------------
 _End of Capability Catalog_

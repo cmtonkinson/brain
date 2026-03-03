@@ -275,5 +275,6 @@ _Search markdown files lexically through Obsidian Local REST API._
 `move_path(*, meta: EnvelopeMeta, source_path: str, target_path: str, if_revision: str = '', force: bool = False) -> Envelope[VaultEntry]`  
 _Move one file or directory path._
 
+
 ------------------------------------------------------------------------
 _End of Service API_

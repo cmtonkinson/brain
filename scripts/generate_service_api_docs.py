@@ -238,27 +238,22 @@ def _render_markdown(services: list[ServiceDoc]) -> str:
 
     if not services:
         lines.append(DOC_EMPTY_MESSAGE)
-        lines.append("")
-        lines.append(HR)
-        lines.append(f"_End of {DOC_NAME}_")
-        lines.append("")
-        return "\n".join(lines)
-
-    for service in services:
-        lines.append(HR)
-        lines.append(f"## `{service.class_name}`")
-        lines.append(f"- Module: `{service.module_path}`")
-        if service.summary:
-            lines.append(f"- Summary: {service.summary}")
-        lines.append("")
-        for method in service.methods:
-            lines.append(f"`{method.signature}`  ")
-            lines.append(f"_{method.summary}_")
+    else:
+        for service in services:
+            lines.append(HR)
+            lines.append(f"## `{service.class_name}`")
+            lines.append(f"- Module: `{service.module_path}`")
+            if service.summary:
+                lines.append(f"- Summary: {service.summary}")
             lines.append("")
+            for method in service.methods:
+                lines.append(f"`{method.signature}`  ")
+                lines.append(f"_{method.summary}_")
+                lines.append("")
 
-    lines.append(HR)
-    lines.append(f"_End of {DOC_NAME}_")
-    lines.append("")
+    while lines and lines[-1] == "":
+        lines.pop()
+    lines.extend(["", "", HR, f"_End of {DOC_NAME}_", ""])
     return "\n".join(lines)
 
 

@@ -193,5 +193,6 @@ exported `MANIFEST` symbol:
 This enables deterministic pre-flight checks and bootstrap orchestration from
 the global registry.
 
+
 ------------------------------------------------------------------------
 _End of Component Design_

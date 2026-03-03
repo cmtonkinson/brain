@@ -112,5 +112,6 @@ make test
 - Keep transport mapping concerns in `api.py` and business logic in
   `implementation.py`.
 
+
 ------------------------------------------------------------------------
 _End of Embedding Authority Service README_

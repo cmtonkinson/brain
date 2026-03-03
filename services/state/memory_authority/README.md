@@ -67,5 +67,7 @@ make test
 - Preserve strict schema ownership (`service_memory_authority`) with no cross-schema data access.
 - Keep LMS calls constrained to the LMS public API surface.
 - Keep summary/compaction behavior observable and explicit; do not silently swallow durable-state failures.
+
+
 ------------------------------------------------------------------------
 _End of Memory Authority Service README_

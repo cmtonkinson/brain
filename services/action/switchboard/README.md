@@ -96,5 +96,6 @@ make test
 - Keep Signal-specific transport details in `adapter_signal`; Switchboard owns ingress policy and normalization.
 - Maintain `public_api_instrumented(...)` decoration on all _Public API_ methods.
 
+
 ------------------------------------------------------------------------
 _End of Switchboard Service README_

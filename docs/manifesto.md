@@ -212,5 +212,6 @@ all times, regardless of feature scope or implementation convenience.
 - Attention routing gates all interruptions.
 - Memory governance is ongoing, not one-time.
 
+
 ------------------------------------------------------------------------
 _End of Manifesto_

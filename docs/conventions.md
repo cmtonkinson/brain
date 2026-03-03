@@ -253,5 +253,6 @@ disambiguation fallback.
 - L1 _Services_ are process-local, but restricted to _Public APIs_
 - L0 _Substrates_ and _Adapters_ are non-local
 
+
 ------------------------------------------------------------------------
 _End of Conventions_

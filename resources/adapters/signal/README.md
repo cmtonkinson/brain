@@ -102,5 +102,6 @@ make test
 - Keep Switchboard policy/normalization logic out of adapter internals.
 - Preserve in-memory callback registration behavior unless requirements change.
 
+
 ------------------------------------------------------------------------
 _End of Signal Adapter README_
