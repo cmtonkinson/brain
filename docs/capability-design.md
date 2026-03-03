@@ -32,6 +32,8 @@ include:
 - `summary`: A brief, one-sentence description of what the capability does.
 - `input_schema` / `output_schema`: Defines the contract for the capability's
   inputs and outputs.
+- `required_capabilities`: Optional only for `logic_skill`. It must be omitted
+  for `native_op`, `mcp_op`, and `pipeline_skill`.
 
 #### Canonical Schema
 Under the hood, all capability schemas are standard JSON Schema objects. This
@@ -137,8 +139,13 @@ utilities together.)
 - **Structure**: A Pipeline Skill contains no executable code. Its
   `capability.json` manifest must include a `pipeline` array.
 - **Implementation**: The `pipeline` field in the manifest contains an ordered
-  list of `capability_id`s to be executed in sequence. The output of each step
-  is passed as the input to the next.
+  list of steps to be executed in sequence. Each step may be either:
+  - a bare capability ID string
+  - an object with:
+    - `capability`: The step capability ID
+    - `input_mapping`: Optional `consumer_field -> producer_field` remapping
+      applied only for that step
+  The output of each step is projected into the input of the next.
 
 ### 4. Logic Skill
 Logic Skills define executable Python code to perform unique or complex tasks;
@@ -150,6 +157,8 @@ business logic.
     - `execute.py`: The entrypoint module containing the skill's implementation.
     - `test/`: A directory with one or more `test_*.py` files containing unit
       tests for the skill.
+- **Manifest**: Logic Skills are the only capability type that may declare
+  `required_capabilities`.
 - **Implementation**: The logic is written in Python within the `execute.py`
   file. `execute()` may declare any subset of the supported parameter names
   `input_payload`, `request`, `runtime`, and `invoke_call_target`.

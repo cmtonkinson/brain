@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -53,6 +54,9 @@ class _FakeService:
 
     def echo_bool(self, *, meta: EnvelopeMeta, flag: bool) -> Envelope:
         return _success_envelope(meta, flag)
+
+    def current_datetime(self, *, meta: EnvelopeMeta) -> Envelope:
+        return _success_envelope(meta, datetime(2026, 3, 3, 12, 0, 0, tzinfo=UTC))
 
     def list_items(self, *, meta: EnvelopeMeta, prefix: str) -> Envelope:
         items = [_Item(name=f"{prefix}-1", value=1), _Item(name=f"{prefix}-2", value=2)]
@@ -187,6 +191,14 @@ def test_unwraps_bool_payload() -> None:
     )
     result = handler(_request(_meta(), {"flag": True}), _StubRuntime())
     assert result.output == {"result": True}
+
+
+def test_unwraps_datetime_payload_as_isoformat_string() -> None:
+    handler = build_op_handler(
+        call_target="svc.current_datetime", components=_components(_FakeService())
+    )
+    result = handler(_request(_meta(), {}), _StubRuntime())
+    assert result.output == {"result": "2026-03-03T12:00:00+00:00"}
 
 
 def test_passes_through_structured_errors() -> None:

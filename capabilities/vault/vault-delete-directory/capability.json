@@ -7,7 +7,6 @@
   "autonomy": 0,
   "requires_approval": true,
   "side_effects": ["writes_vault"],
-  "required_capabilities": [],
   "input_schema": {
     "directory_path": "string | The full path of the directory to delete.",
     "recursive": "boolean | optional | Delete the directory even if it is not empty. Defaults to false.",

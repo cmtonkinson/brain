@@ -10,6 +10,9 @@ GLOSSARY_GEN    := scripts/generate_glossary_docs.py
 SERVICE_API_DOC := docs/service-api.md
 SERVICE_API_GEN := scripts/generate_service_api_docs.py
 SERVICE_API_SRC := $(shell find services -type f -path 'services/*/*/service.py' | sort)
+CAPABILITY_DOC  := docs/capabilities.md
+CAPABILITY_GEN  := scripts/generate_capability_docs.py
+CAPABILITY_SRC  := $(shell find capabilities -type f | sort)
 DIAGRAM_SRC     := img/diagrams.drawio
 DIAGRAM_GEN     := img/export-diagrams.sh
 DIAGRAM_PNGS    := \
@@ -62,13 +65,16 @@ test: check
 integration:
 	:
 
-docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(DIAGRAM_PNGS)
+docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(CAPABILITY_DOC) $(DIAGRAM_PNGS)
 
 $(GLOSSARY_DOC): $(GLOSSARY_SRC) $(GLOSSARY_GEN)
 	$(PY) $(GLOSSARY_GEN)
 
 $(SERVICE_API_DOC): $(SERVICE_API_SRC) $(SERVICE_API_GEN)
 	$(PY) $(SERVICE_API_GEN)
+
+$(CAPABILITY_DOC): $(CAPABILITY_SRC) $(CAPABILITY_GEN)
+	$(PY) $(CAPABILITY_GEN)
 
 $(DIAGRAM_PNGS): $(DIAGRAM_SRC) $(DIAGRAM_GEN)
 	$(DIAGRAM_GEN) $(DIAGRAM_SRC)

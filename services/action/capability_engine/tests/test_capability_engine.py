@@ -21,6 +21,9 @@ from services.action.capability_engine.domain import (
 from services.action.capability_engine.implementation import (
     DefaultCapabilityEngineService,
 )
+from services.action.capability_engine.pipeline_handler_bridge import (
+    build_pipeline_skill_handler,
+)
 from services.action.capability_engine.registry import (
     CapabilityRegistry,
     CapabilityRuntime,
@@ -227,6 +230,120 @@ def test_nested_capability_invocation_re_authorizes_child() -> None:
         policy.requests[1].metadata.parent_id == policy.requests[0].metadata.envelope_id
     )
     assert policy.requests[1].metadata.trace_id == policy.requests[0].metadata.trace_id
+
+
+def test_pipeline_skill_projects_step_input_mapping_and_aliased_pipeline_output() -> (
+    None
+):
+    registry = CapabilityRegistry()
+    first = OpCapabilityManifest(
+        capability_id="demo-first",
+        kind="native_op",
+        version="1.0.0",
+        summary="First op",
+        call_target="state.first",
+        input_schema={"seed": "string"},
+        output_schema={
+            "required_value": "string",
+            "optional_value": "string",
+            "producer_extra": "string",
+        },
+    )
+    second = OpCapabilityManifest(
+        capability_id="demo-second",
+        kind="native_op",
+        version="1.0.0",
+        summary="Second op",
+        call_target="state.second",
+        input_schema={
+            "text": "string",
+            "media_type": "string | optional",
+        },
+        output_schema={
+            "embedding_count": "integer",
+            "ignored_output": "string",
+        },
+    )
+    pipeline = SkillCapabilityManifest(
+        capability_id="demo-pipeline",
+        kind="pipeline_skill",
+        version="1.0.0",
+        summary="Pipeline",
+        input_schema={"seed": "string"},
+        output_schema={"count": "integer | from=embedding_count"},
+        pipeline=(
+            "demo-first",
+            {
+                "capability": "demo-second",
+                "input_mapping": {
+                    "text": "required_value",
+                    "media_type": "optional_value",
+                },
+            },
+        ),
+    )
+    registry.register_manifest(manifest=first)
+    registry.register_manifest(manifest=second)
+    registry.register_manifest(manifest=pipeline)
+
+    seen_second_inputs: dict[str, object] = {}
+
+    def first_handler(
+        request: CapabilityInvocationRequest,
+        runtime: CapabilityRuntime,
+    ) -> CapabilityExecutionResponse:
+        return CapabilityExecutionResponse(
+            output={
+                "required_value": "required",
+                "optional_value": "optional",
+                "producer_extra": "drop-me",
+            }
+        )
+
+    registry.register_handler(capability_id=first.capability_id, handler=first_handler)
+
+    def second_handler(
+        request: CapabilityInvocationRequest,
+        runtime: CapabilityRuntime,
+    ) -> CapabilityExecutionResponse:
+        seen_second_inputs.update(request.input_payload)
+        return CapabilityExecutionResponse(
+            output={
+                "embedding_count": 3,
+                "ignored_output": "drop-me-too",
+            }
+        )
+
+    registry.register_handler(
+        capability_id=second.capability_id, handler=second_handler
+    )
+    registry.register_handler(
+        capability_id=pipeline.capability_id,
+        handler=build_pipeline_skill_handler(
+            manifest=pipeline,
+            registry=registry,
+        ),
+    )
+
+    policy = _FakePolicyService()
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(),
+        policy_service=policy,
+        registry=registry,
+    )
+
+    result = service.invoke_capability(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator"),
+        capability_id="demo-pipeline",
+        input_payload={"seed": "hello", "caller_extra": "ignored"},
+        invocation=_invocation(),
+    )
+
+    assert result.ok is True
+    assert policy.calls == 3
+    assert seen_second_inputs == {"text": "required", "media_type": "optional"}
+    assert result.payload is not None
+    assert result.payload.value.output == {"count": 3}
 
 
 def test_disabled_manifest_not_found_after_discovery() -> None:

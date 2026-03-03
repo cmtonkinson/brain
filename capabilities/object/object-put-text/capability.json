@@ -7,7 +7,6 @@
   "autonomy": 0,
   "requires_approval": false,
   "side_effects": ["writes_objects"],
-  "required_capabilities": [],
   "input_schema": {
     "content": "string | The text content to persist.",
     "extension": "string | optional | File extension recorded for the object. Defaults to 'txt'.",

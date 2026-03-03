@@ -142,6 +142,32 @@ def _write_skill_manifest(root: Path, capability_id: str) -> None:
     )
 
 
+def _write_pipeline_manifest(
+    root: Path,
+    capability_id: str,
+    pipeline: list[str],
+    input_schema: dict | None,
+    output_schema: dict | None,
+) -> None:
+    pkg = root / capability_id
+    pkg.mkdir(parents=True, exist_ok=True)
+    (pkg / "capability.json").write_text(
+        json.dumps(
+            {
+                "capability_id": capability_id,
+                "kind": "pipeline_skill",
+                "version": "1.0.0",
+                "summary": f"Test pipeline {capability_id}",
+                "input_schema": input_schema,
+                "output_schema": output_schema,
+                "pipeline": pipeline,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (pkg / "README.md").write_text(f"# {capability_id}", encoding="utf-8")
+
+
 def _sentinel_handler(
     request: CapabilityInvocationRequest,
     runtime: object,
@@ -191,6 +217,43 @@ def test_after_boot_registers_handlers_for_logic_skills(tmp_path) -> None:
     after_boot(settings=_settings(), components=components)
 
     assert registry.resolve_handler(capability_id="test-skill") is not None
+
+
+def test_after_boot_registers_handlers_for_pipeline_skills(tmp_path) -> None:
+    list_directory_output = {
+        "type": "array",
+        "items": {"type": "object", "title": "VaultEntry"},
+    }
+    _write_op_manifest(
+        tmp_path,
+        "test-op",
+        "service_vault_authority.list_directory",
+        {"directory_path": "string | path to list"},
+        list_directory_output,
+    )
+    _write_pipeline_manifest(
+        tmp_path,
+        "test-pipeline",
+        ["test-op"],
+        {"directory_path": "string | path to list"},
+        list_directory_output,
+    )
+
+    registry = CapabilityRegistry()
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(discovery_root=str(tmp_path)),
+        policy_service=_FakePolicyService(),
+        registry=registry,
+    )
+
+    components = {
+        "service_capability_engine": service,
+        "service_vault_authority": _FakeVaultService(),
+    }
+
+    after_boot(settings=_settings(), components=components)
+
+    assert registry.resolve_handler(capability_id="test-pipeline") is not None
 
 
 def test_after_boot_does_not_overwrite_existing_handlers(tmp_path) -> None:

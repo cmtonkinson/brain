@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Mapping
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -131,6 +132,8 @@ def _unwrap_payload(value: Any) -> dict[str, Any] | None:
         return None
     if isinstance(value, bool):
         return {"result": value}
+    if isinstance(value, datetime):
+        return {"result": value.isoformat()}
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json")
     if isinstance(value, list):

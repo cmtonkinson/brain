@@ -7,7 +7,6 @@
   "autonomy": 0,
   "requires_approval": false,
   "side_effects": [],
-  "required_capabilities": [],
   "input_schema": {
     "component_id": "string | The canonical component id namespace for the queue.",
     "queue": "string | The queue name within the component namespace."

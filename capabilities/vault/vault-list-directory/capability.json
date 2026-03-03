@@ -7,7 +7,6 @@
   "autonomy": 0,
   "requires_approval": false,
   "side_effects": [],
-  "required_capabilities": [],
   "input_schema": {
     "directory_path": "string | The path of the directory to list. Use '.' for the vault root."
   },

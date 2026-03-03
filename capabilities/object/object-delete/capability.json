@@ -7,7 +7,6 @@
   "autonomy": 0,
   "requires_approval": true,
   "side_effects": ["writes_objects"],
-  "required_capabilities": [],
   "input_schema": {
     "object_key": "string | The canonical object key to delete."
   },

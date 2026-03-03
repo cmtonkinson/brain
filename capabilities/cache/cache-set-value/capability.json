@@ -7,7 +7,6 @@
   "autonomy": 0,
   "requires_approval": true,
   "side_effects": ["writes_cache"],
-  "required_capabilities": [],
   "input_schema": {
     "component_id": "string | The canonical component id namespace for the cache key.",
     "key": "string | The cache key within the component namespace.",

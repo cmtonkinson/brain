@@ -81,6 +81,20 @@ _Validate, normalize, and enqueue one Signal webhook payload._
 _Register Signal webhook callback URI and shared secret._
 
 ------------------------------------------------------------------------
+## `UtilityService`
+- Module: `services/action/utility_service/service.py`
+- Summary: Public API for lightweight reusable utility operations.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return Utility Service readiness state._
+
+`current_datetime(*, meta: EnvelopeMeta) -> Envelope[datetime]`  
+_Return the current UTC datetime._
+
+`chunk_text(*, meta: EnvelopeMeta, text: str) -> Envelope[list[TextChunk]]`  
+_Return one or more chunks for the provided text content._
+
+------------------------------------------------------------------------
 ## `CacheAuthorityService`
 - Module: `services/state/cache_authority/service.py`
 - Summary: Public API for component-scoped cache and queue operations.

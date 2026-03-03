@@ -1,0 +1,13 @@
+{
+  "capability_id": "current-datetime",
+  "kind": "native_op",
+  "version": "1.0.0",
+  "summary": "Return the current UTC datetime.",
+  "enabled": true,
+  "autonomy": 0,
+  "requires_approval": false,
+  "side_effects": [],
+  "input_schema": null,
+  "output_schema": "date-time | The current UTC datetime in ISO 8601 format.",
+  "call_target": "service_utility_service.current_datetime"
+}

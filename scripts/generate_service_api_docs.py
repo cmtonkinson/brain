@@ -21,7 +21,7 @@ DOC_GENERATED_NOTE = (
     "_This document is generated from `services/*/*/service.py`. Do not edit by hand._"
 )
 DOC_EMPTY_MESSAGE = "No L1 service interfaces were found."
-CHECK_OUT_OF_DATE_MESSAGE = "L1 API docs are out of date. Run: make docs-api"
+CHECK_OUT_OF_DATE_MESSAGE = "L1 API docs are out of date. Run: make docs"
 
 _ENTITY_MODIFIERS = frozenset({"active", "default", "current", "all"})
 _VERB_GROUPS: dict[str, tuple[int, int]] = {

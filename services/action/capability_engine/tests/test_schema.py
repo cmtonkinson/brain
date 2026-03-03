@@ -59,6 +59,16 @@ def test_object_shorthand_null_modifier() -> None:
     assert result["properties"]["value"]["type"] == ["integer", "null"]
 
 
+def test_object_shorthand_from_modifier() -> None:
+    result = expand_schema({"text": "string | from=content | Text to chunk."})
+    assert result["properties"]["text"] == {
+        "type": "string",
+        "description": "Text to chunk.",
+        "x-from": "content",
+    }
+    assert result["required"] == ["text"]
+
+
 def test_object_shorthand_mixed_required_and_optional() -> None:
     result = expand_schema(
         {

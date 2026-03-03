@@ -165,7 +165,9 @@ Capability packages are immutable runtime contracts owned by Capability Engine.
   - `execute.py` entrypoint module
   - `test/` with at least one `test_*.py` file
 - Pipeline `Skill` package:
-  - declarative `pipeline` list of capability IDs
+  - declarative `pipeline` list of steps
+  - each step is either a capability ID string or an object with
+    `capability` plus optional `input_mapping`
   - no required Python module
 
 ### Manifest invariants
@@ -177,6 +179,8 @@ Capability packages are immutable runtime contracts owned by Capability Engine.
   - invalid schema fails boot
   - duplicate `capability_id` fails boot, even across different grouping paths
   - unknown dependency or pipeline member fails boot
+- `required_capabilities` is allowed only on logic skills; other capability
+  kinds must omit it.
 - Runtime overlays may not mutate capability manifests.
 
 ------------------------------------------------------------------------

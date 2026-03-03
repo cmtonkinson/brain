@@ -63,6 +63,9 @@ def after_boot(
         build_logic_skill_handler,
     )
     from services.action.capability_engine.op_handler_bridge import build_op_handler
+    from services.action.capability_engine.pipeline_handler_bridge import (
+        build_pipeline_skill_handler,
+    )
 
     service = components.get(str(SERVICE_COMPONENT_ID))
     if not isinstance(service, DefaultCapabilityEngineService):
@@ -102,6 +105,19 @@ def after_boot(
                 package_dir=package_dir,
                 entrypoint=manifest.entrypoint,
                 components=components,
+            )
+            service._registry.register_handler(
+                capability_id=manifest.capability_id,
+                handler=handler,
+            )
+            continue
+        if (
+            isinstance(manifest, SkillCapabilityManifest)
+            and manifest.kind == "pipeline_skill"
+        ):
+            handler = build_pipeline_skill_handler(
+                manifest=manifest,
+                registry=service._registry,
             )
             service._registry.register_handler(
                 capability_id=manifest.capability_id,

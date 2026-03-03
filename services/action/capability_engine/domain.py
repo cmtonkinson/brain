@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 from services.action.capability_engine.schema import expand_schema
@@ -64,6 +64,39 @@ class CapabilityExecutionResponse(BaseModel):
     output: dict[str, Any] | None = None
 
 
+class PipelineStep(BaseModel):
+    """One pipeline step, optionally with explicit input remapping."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    capability: str = Field(
+        min_length=1,
+        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
+    )
+    input_mapping: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_input_mapping(self) -> PipelineStep:
+        """Require non-empty consumer and producer field names."""
+        for consumer_field, producer_field in self.input_mapping.items():
+            if not consumer_field:
+                raise ValueError(
+                    "pipeline input_mapping consumer fields must be non-empty"
+                )
+            if not producer_field:
+                raise ValueError(
+                    "pipeline input_mapping producer fields must be non-empty"
+                )
+        return self
+
+    @classmethod
+    def from_entry(cls, entry: str | PipelineStep) -> PipelineStep:
+        """Normalize one pipeline entry to the object form."""
+        if isinstance(entry, cls):
+            return entry
+        return cls(capability=entry)
+
+
 class CapabilityManifestBase(BaseModel):
     """Immutable capability manifest metadata shared by ops and skills."""
 
@@ -81,10 +114,22 @@ class CapabilityManifestBase(BaseModel):
     input_schema: dict[str, Any] | None = None
     output_schema: dict[str, Any] | None = None
 
-    _expand_input_schema = field_validator("input_schema", mode="before")(expand_schema)
-    _expand_output_schema = field_validator("output_schema", mode="before")(
-        expand_schema
-    )
+    @model_validator(mode="before")
+    @classmethod
+    def _expand_manifest_schemas(cls, value: Any) -> Any:
+        """Expand manifest schema shorthand with kind-specific alias rules."""
+        if not isinstance(value, dict):
+            return value
+
+        expanded = dict(value)
+        allow_field_aliases = expanded.get("kind") == "pipeline_skill"
+
+        for schema_field in ("input_schema", "output_schema"):
+            expanded[schema_field] = expand_schema(
+                expanded.get(schema_field),
+                allow_field_aliases=allow_field_aliases,
+            )
+        return expanded
 
 
 class OpCapabilityManifest(CapabilityManifestBase):
@@ -93,13 +138,27 @@ class OpCapabilityManifest(CapabilityManifestBase):
     kind: Literal["native_op", "mcp_op"]
     call_target: str = Field(min_length=1)
 
+    @model_validator(mode="after")
+    def _validate_required_capabilities(self) -> OpCapabilityManifest:
+        """Reject explicit sub-capability dependencies for thin op wrappers."""
+        if self.required_capabilities:
+            raise ValueError("required_capabilities is only allowed for logic skills")
+        return self
+
 
 class SkillCapabilityManifest(CapabilityManifestBase):
     """Manifest schema for a Skill capability package."""
 
     kind: Literal["logic_skill", "pipeline_skill"]
-    pipeline: tuple[str, ...] = ()
+    pipeline: tuple[str | PipelineStep, ...] = ()
     entrypoint: str = "execute.py"
+
+    @model_validator(mode="after")
+    def _validate_required_capabilities(self) -> SkillCapabilityManifest:
+        """Allow required_capabilities only for non-declarative logic skills."""
+        if self.kind == "pipeline_skill" and self.required_capabilities:
+            raise ValueError("required_capabilities is only allowed for logic skills")
+        return self
 
 
 CapabilityManifest = OpCapabilityManifest | SkillCapabilityManifest

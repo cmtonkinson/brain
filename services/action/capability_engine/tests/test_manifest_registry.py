@@ -156,6 +156,52 @@ def test_pipeline_skill_requires_known_children(tmp_path) -> None:
         registry.discover(root=tmp_path, call_targets=_discover_call_targets())
 
 
+def test_pipeline_skill_requires_known_children_for_step_objects(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-pipeline",
+        {
+            "capability_id": "demo-pipeline",
+            "kind": "pipeline_skill",
+            "version": "1.0.0",
+            "summary": "Pipeline",
+            "pipeline": [
+                {
+                    "capability": "missing-capability",
+                    "input_mapping": {
+                        "text": "content",
+                    },
+                }
+            ],
+        },
+    )
+
+    registry = CapabilityRegistry()
+    with pytest.raises(ValueError, match="unknown capability"):
+        registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
+def test_discover_skips_disabled_pipeline_with_unknown_members(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-pipeline",
+        {
+            "capability_id": "demo-pipeline",
+            "kind": "pipeline_skill",
+            "version": "1.0.0",
+            "summary": "Pipeline",
+            "enabled": False,
+            "pipeline": ["missing-capability"],
+        },
+    )
+
+    registry = CapabilityRegistry()
+    registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+    assert registry.count() == 0
+    assert registry.resolve_manifest(capability_id="demo-pipeline") is None
+
+
 def test_invalid_shorthand_schema_fails_discovery(tmp_path) -> None:
     _write_manifest(
         tmp_path,
@@ -178,6 +224,63 @@ def test_invalid_shorthand_schema_fails_discovery(tmp_path) -> None:
         registry.discover(root=tmp_path, call_targets=_discover_call_targets())
 
 
+def test_discover_rejects_field_alias_shorthand_for_non_pipeline_capability(
+    tmp_path,
+) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-invalid-alias",
+        {
+            "capability_id": "demo-invalid-alias",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Invalid alias",
+            "input_schema": {"text": "string | from=content | Wrong here."},
+            "call_target": "state.echo",
+        },
+    )
+
+    registry = CapabilityRegistry()
+    with pytest.raises(
+        Exception,
+        match="Field alias modifier 'from=' is only allowed for pipeline skills",
+    ):
+        registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
+def test_discover_rejects_canonical_field_alias_for_non_pipeline_skill(
+    tmp_path,
+) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-logic",
+        {
+            "capability_id": "demo-logic",
+            "kind": "logic_skill",
+            "version": "1.0.0",
+            "summary": "Logic",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "x-from": "content",
+                    }
+                },
+                "required": ["text"],
+                "additionalProperties": False,
+            },
+        },
+    )
+
+    registry = CapabilityRegistry()
+    with pytest.raises(
+        Exception,
+        match="Schema field alias 'x-from' is only allowed for pipeline skills",
+    ):
+        registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
 def test_logic_skill_requires_entrypoint_and_tests(tmp_path) -> None:
     _write_manifest(
         tmp_path,
@@ -191,6 +294,107 @@ def test_logic_skill_requires_entrypoint_and_tests(tmp_path) -> None:
     )
     registry = CapabilityRegistry()
     with pytest.raises(ValueError, match="missing entrypoint"):
+        registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
+def test_discover_allows_required_capabilities_for_logic_skill(tmp_path) -> None:
+    pkg = tmp_path / "demo-logic"
+    (pkg / "test").mkdir(parents=True)
+    (pkg / "capability.json").write_text(
+        json.dumps(
+            {
+                "capability_id": "demo-logic",
+                "kind": "logic_skill",
+                "version": "1.0.0",
+                "summary": "Logic",
+                "required_capabilities": ["demo-echo"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (pkg / "README.md").write_text("# Logic", encoding="utf-8")
+    (pkg / "execute.py").write_text("def execute():\n    return {}\n", encoding="utf-8")
+    (pkg / "test" / "test_demo_logic.py").write_text(
+        "def test_placeholder():\n    assert True\n",
+        encoding="utf-8",
+    )
+
+    _write_manifest(
+        tmp_path,
+        "demo-echo",
+        {
+            "capability_id": "demo-echo",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Echo",
+            "input_schema": {"payload": "object | The payload to echo."},
+            "output_schema": "object | The echoed payload.",
+            "call_target": "state.echo",
+        },
+    )
+
+    registry = CapabilityRegistry()
+    registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+    assert registry.resolve_manifest(capability_id="demo-logic") is not None
+
+
+def test_discover_rejects_required_capabilities_for_native_op(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-echo",
+        {
+            "capability_id": "demo-echo",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Echo",
+            "required_capabilities": ["demo-other"],
+            "input_schema": {"payload": "object | The payload to echo."},
+            "output_schema": "object | The echoed payload.",
+            "call_target": "state.echo",
+        },
+    )
+
+    registry = CapabilityRegistry()
+    with pytest.raises(
+        Exception,
+        match="required_capabilities is only allowed for logic skills",
+    ):
+        registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
+def test_discover_rejects_required_capabilities_for_pipeline_skill(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-pipeline",
+        {
+            "capability_id": "demo-pipeline",
+            "kind": "pipeline_skill",
+            "version": "1.0.0",
+            "summary": "Pipeline",
+            "required_capabilities": ["demo-echo"],
+            "pipeline": ["demo-echo"],
+        },
+    )
+    _write_manifest(
+        tmp_path,
+        "demo-echo",
+        {
+            "capability_id": "demo-echo",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Echo",
+            "input_schema": {"payload": "object | The payload to echo."},
+            "output_schema": "object | The echoed payload.",
+            "call_target": "state.echo",
+        },
+    )
+
+    registry = CapabilityRegistry()
+    with pytest.raises(
+        Exception,
+        match="required_capabilities is only allowed for logic skills",
+    ):
         registry.discover(root=tmp_path, call_targets=_discover_call_targets())
 
 
@@ -290,6 +494,260 @@ def test_discover_requires_pipeline_io_chain_compatibility(tmp_path) -> None:
         registry.discover(root=tmp_path, call_targets=call_targets)
 
 
+def test_discover_accepts_pipeline_handoff_when_producer_has_extra_fields(
+    tmp_path,
+) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-first",
+        {
+            "capability_id": "demo-first",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "First",
+            "input_schema": {"payload": "object"},
+            "output_schema": {
+                "payload": "object",
+                "extra": "string | Extra producer-only field.",
+            },
+            "call_target": "state.first",
+        },
+    )
+    _write_manifest(
+        tmp_path,
+        "demo-second",
+        {
+            "capability_id": "demo-second",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Second",
+            "input_schema": {
+                "payload": "object",
+            },
+            "output_schema": "object",
+            "call_target": "state.second",
+        },
+    )
+    _write_manifest(
+        tmp_path,
+        "demo-pipeline",
+        {
+            "capability_id": "demo-pipeline",
+            "kind": "pipeline_skill",
+            "version": "1.0.0",
+            "summary": "Pipeline",
+            "input_schema": {"payload": "object"},
+            "output_schema": "object",
+            "pipeline": ["demo-first", "demo-second"],
+        },
+    )
+
+    call_targets = {
+        "state.first": CallTargetContract(
+            input_schema={
+                "type": "object",
+                "properties": {"payload": {"type": "object"}},
+                "required": ["payload"],
+                "additionalProperties": False,
+            },
+            output_schema={
+                "type": "object",
+                "properties": {
+                    "payload": {"type": "object"},
+                    "extra": {"type": "string"},
+                },
+                "required": ["payload", "extra"],
+                "additionalProperties": False,
+            },
+        ),
+        "state.second": CallTargetContract(
+            input_schema={
+                "type": "object",
+                "properties": {"payload": {"type": "object"}},
+                "required": ["payload"],
+                "additionalProperties": False,
+            },
+            output_schema={"type": "object"},
+        ),
+    }
+    registry = CapabilityRegistry()
+    registry.discover(root=tmp_path, call_targets=call_targets)
+
+    assert registry.resolve_manifest(capability_id="demo-pipeline") is not None
+
+
+def test_discover_accepts_pipeline_step_input_mapping(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-first",
+        {
+            "capability_id": "demo-first",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "First",
+            "input_schema": {"seed": "string"},
+            "output_schema": {"content": "string | Body text."},
+            "call_target": "state.first",
+        },
+    )
+    _write_manifest(
+        tmp_path,
+        "demo-second",
+        {
+            "capability_id": "demo-second",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Second",
+            "input_schema": {"text": "string | Text to chunk."},
+            "output_schema": {"embedding_count": "integer"},
+            "call_target": "state.second",
+        },
+    )
+    _write_manifest(
+        tmp_path,
+        "demo-pipeline",
+        {
+            "capability_id": "demo-pipeline",
+            "kind": "pipeline_skill",
+            "version": "1.0.0",
+            "summary": "Pipeline",
+            "input_schema": {"seed": "string"},
+            "output_schema": {"count": "integer | from=embedding_count"},
+            "pipeline": [
+                "demo-first",
+                {
+                    "capability": "demo-second",
+                    "input_mapping": {
+                        "text": "content",
+                    },
+                },
+            ],
+        },
+    )
+
+    call_targets = {
+        "state.first": CallTargetContract(
+            input_schema={
+                "type": "object",
+                "properties": {"seed": {"type": "string"}},
+                "required": ["seed"],
+                "additionalProperties": False,
+            },
+            output_schema={
+                "type": "object",
+                "properties": {"content": {"type": "string"}},
+                "required": ["content"],
+                "additionalProperties": False,
+            },
+        ),
+        "state.second": CallTargetContract(
+            input_schema={
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+                "additionalProperties": False,
+            },
+            output_schema={
+                "type": "object",
+                "properties": {"embedding_count": {"type": "integer"}},
+                "required": ["embedding_count"],
+                "additionalProperties": False,
+            },
+        ),
+    }
+    registry = CapabilityRegistry()
+    registry.discover(root=tmp_path, call_targets=call_targets)
+
+    assert registry.resolve_manifest(capability_id="demo-pipeline") is not None
+
+
+def test_discover_rejects_pipeline_step_input_mapping_to_unknown_input_field(
+    tmp_path,
+) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-first",
+        {
+            "capability_id": "demo-first",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "First",
+            "input_schema": {"seed": "string"},
+            "output_schema": {"content": "string"},
+            "call_target": "state.first",
+        },
+    )
+    _write_manifest(
+        tmp_path,
+        "demo-second",
+        {
+            "capability_id": "demo-second",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Second",
+            "input_schema": {"text": "string"},
+            "output_schema": {"embedding_count": "integer"},
+            "call_target": "state.second",
+        },
+    )
+    _write_manifest(
+        tmp_path,
+        "demo-pipeline",
+        {
+            "capability_id": "demo-pipeline",
+            "kind": "pipeline_skill",
+            "version": "1.0.0",
+            "summary": "Pipeline",
+            "input_schema": {"seed": "string"},
+            "output_schema": {"embedding_count": "integer"},
+            "pipeline": [
+                "demo-first",
+                {
+                    "capability": "demo-second",
+                    "input_mapping": {
+                        "missing": "content",
+                    },
+                },
+            ],
+        },
+    )
+
+    call_targets = {
+        "state.first": CallTargetContract(
+            input_schema={
+                "type": "object",
+                "properties": {"seed": {"type": "string"}},
+                "required": ["seed"],
+                "additionalProperties": False,
+            },
+            output_schema={
+                "type": "object",
+                "properties": {"content": {"type": "string"}},
+                "required": ["content"],
+                "additionalProperties": False,
+            },
+        ),
+        "state.second": CallTargetContract(
+            input_schema={
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+                "additionalProperties": False,
+            },
+            output_schema={
+                "type": "object",
+                "properties": {"embedding_count": {"type": "integer"}},
+                "required": ["embedding_count"],
+                "additionalProperties": False,
+            },
+        ),
+    }
+
+    registry = CapabilityRegistry()
+    with pytest.raises(ValueError, match="unknown input field missing"):
+        registry.discover(root=tmp_path, call_targets=call_targets)
+
+
 def test_discover_requires_op_output_schema_to_match_call_target(tmp_path) -> None:
     _write_manifest(
         tmp_path,
@@ -307,6 +765,41 @@ def test_discover_requires_op_output_schema_to_match_call_target(tmp_path) -> No
     registry = CapabilityRegistry()
     with pytest.raises(ValueError, match="output schema does not match"):
         registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
+def test_discover_accepts_equivalent_nullable_type_encodings(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "demo-nullable",
+        {
+            "capability_id": "demo-nullable",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Nullable",
+            "input_schema": {"value": "integer | null | A nullable integer payload."},
+            "output_schema": "integer | null | A nullable integer result.",
+            "call_target": "state.nullable",
+        },
+    )
+    registry = CapabilityRegistry()
+    registry.discover(
+        root=tmp_path,
+        call_targets={
+            "state.nullable": CallTargetContract(
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "value": {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+                    },
+                    "required": ["value"],
+                    "additionalProperties": False,
+                },
+                output_schema={"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            )
+        },
+    )
+
+    assert registry.resolve_manifest(capability_id="demo-nullable") is not None
 
 
 def test_discover_rejects_pipeline_input_mismatch_with_first_step(tmp_path) -> None:
@@ -338,7 +831,7 @@ def test_discover_rejects_pipeline_input_mismatch_with_first_step(tmp_path) -> N
     )
 
     registry = CapabilityRegistry()
-    with pytest.raises(ValueError, match="input schema must match first"):
+    with pytest.raises(ValueError, match="input schema does not satisfy first"):
         registry.discover(root=tmp_path, call_targets=_discover_call_targets())
 
 
@@ -371,7 +864,7 @@ def test_discover_rejects_pipeline_output_mismatch_with_last_step(tmp_path) -> N
     )
 
     registry = CapabilityRegistry()
-    with pytest.raises(ValueError, match="output schema must match final"):
+    with pytest.raises(ValueError, match="output schema is not satisfied by final"):
         registry.discover(root=tmp_path, call_targets=_discover_call_targets())
 
 

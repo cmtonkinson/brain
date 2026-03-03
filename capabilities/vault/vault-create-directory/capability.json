@@ -7,7 +7,6 @@
   "autonomy": 0,
   "requires_approval": false,
   "side_effects": ["writes_vault"],
-  "required_capabilities": [],
   "input_schema": {
     "directory_path": "string | The full path of the directory to create.",
     "recursive": "boolean | optional | Create parent directories if they don't exist. Defaults to false."

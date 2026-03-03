@@ -7,7 +7,6 @@
   "autonomy": 0,
   "requires_approval": false,
   "side_effects": [],
-  "required_capabilities": [],
   "input_schema": {
     "file_path": "string | The full path of the file to read."
   },

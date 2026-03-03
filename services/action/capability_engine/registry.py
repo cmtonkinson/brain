@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 import inspect
 import json
 import os
@@ -23,12 +24,14 @@ from services.action.capability_engine.domain import (
     CapabilityExecutionResponse,
     CapabilityManifest,
     OpCapabilityManifest,
+    PipelineStep,
     SkillCapabilityManifest,
 )
 from services.action.language_model.service import LanguageModelService
 from services.action.policy_service.service import PolicyService
 from services.action.attention_router.service import AttentionRouterService
 from services.action.switchboard.service import SwitchboardService
+from services.action.utility_service.service import UtilityService
 from services.action.policy_service.domain import CapabilityInvocationRequest
 from services.state.cache_authority.service import CacheAuthorityService
 from services.state.embedding_authority.service import EmbeddingAuthorityService
@@ -171,7 +174,8 @@ class CapabilityRegistry:
                         f"capability {capability_id} requires unknown dependency {dependency}"
                     )
             if isinstance(manifest, SkillCapabilityManifest):
-                for nested in manifest.pipeline:
+                for step in manifest.pipeline:
+                    nested = self._pipeline_step(step).capability
                     if nested not in manifest_ids:
                         raise ValueError(
                             f"pipeline skill {capability_id} references unknown capability {nested}"
@@ -212,6 +216,11 @@ class CapabilityRegistry:
         ):
             return manifest_schema == contract_schema
 
+        manifest_simple_types = cls._simple_type_set(manifest_schema)
+        contract_simple_types = cls._simple_type_set(contract_schema)
+        if manifest_simple_types is not None and contract_simple_types is not None:
+            return manifest_simple_types == contract_simple_types
+
         # Stub: contract has a type but no properties/items detail.
         contract_is_stub = (
             "properties" not in contract_schema
@@ -246,6 +255,34 @@ class CapabilityRegistry:
                 return False
 
         return True
+
+    @staticmethod
+    def _simple_type_set(schema: dict[str, Any]) -> set[str] | None:
+        """Return simple scalar/union type set when one schema is type-only."""
+        if "properties" in schema or "items" in schema:
+            return None
+
+        schema_type = schema.get("type")
+        if isinstance(schema_type, str):
+            return {schema_type}
+        if isinstance(schema_type, list) and all(
+            isinstance(value, str) for value in schema_type
+        ):
+            return set(schema_type)
+
+        any_of = schema.get("anyOf")
+        if not isinstance(any_of, list) or not any_of:
+            return None
+
+        types: set[str] = set()
+        for option in any_of:
+            if not isinstance(option, dict) or set(option.keys()) != {"type"}:
+                return None
+            option_type = option.get("type")
+            if not isinstance(option_type, str):
+                return None
+            types.add(option_type)
+        return types
 
     def _validate_call_targets_and_io(
         self,
@@ -285,29 +322,269 @@ class CapabilityRegistry:
             if len(manifest.pipeline) == 0:
                 continue
 
-            first = manifests[manifest.pipeline[0]]
-            if self._strip_descriptions(
-                manifest.input_schema
-            ) != self._strip_descriptions(first.input_schema):
+            first_step = self._pipeline_step(manifest.pipeline[0])
+            first = manifests[first_step.capability]
+            if not self._pipeline_handoff_compatible(
+                producer_schema=manifest.input_schema,
+                consumer_schema=self._pipeline_step_input_schema(
+                    step=first_step,
+                    consumer_schema=first.input_schema,
+                ),
+            ):
                 raise ValueError(
-                    f"pipeline skill {capability_id} input schema must match first call target {first.capability_id}"
+                    "pipeline skill "
+                    f"{capability_id} input schema does not satisfy first call target "
+                    f"{first.capability_id}"
                 )
             for index in range(1, len(manifest.pipeline)):
-                previous = manifests[manifest.pipeline[index - 1]]
-                current = manifests[manifest.pipeline[index]]
-                if self._strip_descriptions(
-                    previous.output_schema
-                ) != self._strip_descriptions(current.input_schema):
+                previous_step = self._pipeline_step(manifest.pipeline[index - 1])
+                current_step = self._pipeline_step(manifest.pipeline[index])
+                previous = manifests[previous_step.capability]
+                current = manifests[current_step.capability]
+                if not self._pipeline_handoff_compatible(
+                    producer_schema=previous.output_schema,
+                    consumer_schema=self._pipeline_step_input_schema(
+                        step=current_step,
+                        consumer_schema=current.input_schema,
+                    ),
+                ):
                     raise ValueError(
                         f"pipeline skill {capability_id} has incompatible call targets {previous.capability_id} -> {current.capability_id}"
                     )
-            last = manifests[manifest.pipeline[-1]]
-            if self._strip_descriptions(
-                manifest.output_schema
-            ) != self._strip_descriptions(last.output_schema):
+            last = manifests[self._pipeline_step(manifest.pipeline[-1]).capability]
+            if not self._pipeline_handoff_compatible(
+                producer_schema=last.output_schema,
+                consumer_schema=manifest.output_schema,
+            ):
                 raise ValueError(
-                    f"pipeline skill {capability_id} output schema must match final call target {last.capability_id}"
+                    "pipeline skill "
+                    f"{capability_id} output schema is not satisfied by final call target "
+                    f"{last.capability_id}"
                 )
+
+    def _pipeline_handoff_compatible(
+        self,
+        *,
+        producer_schema: dict[str, Any] | None,
+        consumer_schema: dict[str, Any] | None,
+    ) -> bool:
+        """Return whether one step's output can satisfy the next step's input.
+
+        Required consumer fields must be present in the producer with compatible
+        schemas. Optional consumer fields may be omitted, but if present in the
+        producer they must also be compatible. Producer-only extra fields are
+        allowed and ignored at runtime.
+        """
+        producer = self._strip_descriptions(producer_schema)
+        consumer = self._strip_descriptions(consumer_schema)
+
+        if producer == consumer:
+            return True
+        if consumer is None:
+            return True
+        if producer is None:
+            return self._schema_required_fields(consumer) == set()
+        if not isinstance(producer, dict) or not isinstance(consumer, dict):
+            return producer == consumer
+
+        producer_props, _producer_required = self._schema_object_fields(producer)
+        consumer_props, consumer_required = self._schema_object_fields(consumer)
+        if producer_props is None or consumer_props is None:
+            return self._schemas_compatible(producer, consumer)
+
+        for field_name in consumer_required:
+            if (
+                self._resolve_schema_source_field(
+                    field_name=field_name,
+                    consumer_field_schema=consumer_props[field_name],
+                    producer_props=producer_props,
+                )
+                is None
+            ):
+                return False
+
+        for field_name, consumer_field_schema in consumer_props.items():
+            producer_field_name = self._resolve_schema_source_field(
+                field_name=field_name,
+                consumer_field_schema=consumer_field_schema,
+                producer_props=producer_props,
+            )
+            if producer_field_name is None:
+                continue
+            producer_field_schema = producer_props.get(producer_field_name)
+            if producer_field_schema is None:
+                continue
+            if not self._schemas_compatible(
+                producer_field_schema,
+                consumer_field_schema,
+            ):
+                return False
+        return True
+
+    def project_pipeline_payload(
+        self,
+        *,
+        payload: Mapping[str, Any] | None,
+        consumer_schema: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Project one payload to the fields accepted by a consumer schema."""
+        consumer = self._strip_descriptions(consumer_schema)
+        if consumer is None:
+            return {}
+
+        consumer_props, consumer_required = self._schema_object_fields(consumer)
+        if consumer_props is None:
+            if payload is None:
+                return {}
+            if isinstance(payload, Mapping):
+                return dict(payload)
+            raise ValueError("pipeline payload must be a mapping")
+
+        if payload is None:
+            payload_mapping: Mapping[str, Any] = {}
+        elif isinstance(payload, Mapping):
+            payload_mapping = payload
+        else:
+            raise ValueError("pipeline payload must be a mapping")
+
+        projected: dict[str, Any] = {}
+        missing_required = sorted(
+            field_name
+            for field_name in consumer_required
+            if self._resolve_payload_source_field(
+                field_name=field_name,
+                consumer_field_schema=consumer_props[field_name],
+                payload=payload_mapping,
+            )
+            is None
+        )
+        if missing_required:
+            raise ValueError(f"missing required input keys: {missing_required}")
+
+        for field_name, consumer_field_schema in consumer_props.items():
+            source_field_name = self._resolve_payload_source_field(
+                field_name=field_name,
+                consumer_field_schema=consumer_field_schema,
+                payload=payload_mapping,
+            )
+            if source_field_name is None:
+                continue
+            projected[field_name] = payload_mapping[source_field_name]
+        return projected
+
+    def _schema_object_fields(
+        self,
+        schema: dict[str, Any],
+    ) -> tuple[dict[str, Any] | None, set[str]]:
+        """Return object properties and required fields when schema is object-like."""
+        if schema.get("type") != "object":
+            return None, set()
+        properties = schema.get("properties", {})
+        if not isinstance(properties, dict):
+            return None, set()
+        required = self._schema_required_fields(schema)
+        return properties, required
+
+    def _schema_required_fields(self, schema: dict[str, Any]) -> set[str]:
+        """Return the set of required fields declared by one object schema."""
+        required = schema.get("required", ())
+        if not isinstance(required, list):
+            return set()
+        return {field_name for field_name in required if isinstance(field_name, str)}
+
+    def _pipeline_step(self, entry: str | PipelineStep) -> PipelineStep:
+        """Normalize one pipeline entry to the object form."""
+        return PipelineStep.from_entry(entry)
+
+    def _pipeline_step_input_schema(
+        self,
+        *,
+        step: PipelineStep,
+        consumer_schema: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Overlay one step's explicit input mapping onto its input schema."""
+        if not step.input_mapping:
+            return consumer_schema
+        if consumer_schema is None:
+            raise ValueError(
+                f"pipeline step {step.capability} declares input_mapping but target has no input schema"
+            )
+        if not isinstance(consumer_schema, dict):
+            raise ValueError(
+                f"pipeline step {step.capability} input schema must be an object when using input_mapping"
+            )
+        if consumer_schema.get("type") != "object":
+            raise ValueError(
+                f"pipeline step {step.capability} input schema must be an object when using input_mapping"
+            )
+        properties = consumer_schema.get("properties")
+        if not isinstance(properties, dict):
+            raise ValueError(
+                f"pipeline step {step.capability} input schema must declare object properties when using input_mapping"
+            )
+
+        schema = json.loads(json.dumps(consumer_schema))
+        remapped_properties = schema.get("properties", {})
+        assert isinstance(remapped_properties, dict)
+        for consumer_field, producer_field in step.input_mapping.items():
+            field_schema = remapped_properties.get(consumer_field)
+            if not isinstance(field_schema, dict):
+                raise ValueError(
+                    f"pipeline step {step.capability} input_mapping references unknown input field {consumer_field}"
+                )
+            field_schema["x-from"] = producer_field
+        return schema
+
+    def _resolve_schema_source_field(
+        self,
+        *,
+        field_name: str,
+        consumer_field_schema: Any,
+        producer_props: Mapping[str, Any],
+    ) -> str | None:
+        """Return the producer field that satisfies one consumer field."""
+        for candidate in self._consumer_source_field_names(
+            field_name=field_name,
+            consumer_field_schema=consumer_field_schema,
+        ):
+            if candidate in producer_props:
+                return candidate
+        return None
+
+    def _resolve_payload_source_field(
+        self,
+        *,
+        field_name: str,
+        consumer_field_schema: Any,
+        payload: Mapping[str, Any],
+    ) -> str | None:
+        """Return the payload field to project into one consumer field."""
+        for candidate in self._consumer_source_field_names(
+            field_name=field_name,
+            consumer_field_schema=consumer_field_schema,
+        ):
+            if candidate in payload:
+                return candidate
+        return None
+
+    def _consumer_source_field_names(
+        self,
+        *,
+        field_name: str,
+        consumer_field_schema: Any,
+    ) -> tuple[str, ...]:
+        """Return accepted source field names for one consumer field."""
+        if not isinstance(consumer_field_schema, dict):
+            return (field_name,)
+
+        source_field = consumer_field_schema.get("x-from")
+        if not isinstance(source_field, str):
+            return (field_name,)
+
+        normalized_source_field = source_field.strip()
+        if not normalized_source_field or normalized_source_field == field_name:
+            return (field_name,)
+        return (field_name, normalized_source_field)
 
     def _build_call_target_contracts(
         self, *, extra: dict[str, CallTargetContract] | None
@@ -329,6 +606,7 @@ class CapabilityRegistry:
             ("service_policy_service", PolicyService),
             ("service_attention_router", AttentionRouterService),
             ("service_switchboard", SwitchboardService),
+            ("service_utility_service", UtilityService),
         )
         for component_id, service_cls in services:
             for method_name, contract in self._service_target_contracts(
@@ -418,6 +696,7 @@ class CapabilityRegistry:
             int: {"type": "integer"},
             bool: {"type": "boolean"},
             float: {"type": "number"},
+            datetime: {"type": "date-time"},
             dict: {"type": "object"},
             NoneType: {"type": "null"},
         }
