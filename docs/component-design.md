@@ -151,6 +151,8 @@ Capability packages are immutable runtime contracts owned by Capability Engine.
 
 ### Package shape
 - Root location is `capabilities/`.
+- Capability package discovery is recursive under that root.
+- Intermediate directories may be used for grouping only.
 - Each package directory is self-named in kebab-case and must exactly match
   `capability_id`.
 - Required files in every package:
@@ -173,7 +175,7 @@ Capability packages are immutable runtime contracts owned by Capability Engine.
 - Exactly one runtime manifest version is active per `capability_id`.
 - Registry validation is fail-closed at boot:
   - invalid schema fails boot
-  - duplicate `capability_id` fails boot
+  - duplicate `capability_id` fails boot, even across different grouping paths
   - unknown dependency or pipeline member fails boot
 - Runtime overlays may not mutate capability manifests.
 

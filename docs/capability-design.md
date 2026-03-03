@@ -10,8 +10,10 @@ tasks.
 ------------------------------------------------------------------------
 ## Global Structure
 All capabilities are defined within the `capabilities/` directory. Each
-capability resides in its own subdirectory, which must be named in `kebab-case`
-and match the `capability_id` defined in its manifest.
+capability resides in its own package directory somewhere under that tree. Any
+intermediate subdirectories are organizational only. The package directory
+itself must be named in `kebab-case` and match the `capability_id` defined in
+its manifest.
 
 ### Required Files
 Every capability package must contain:
@@ -24,6 +26,7 @@ Every capability package must contain:
 The manifest is the source of truth for a capability's contract. Key fields
 include:
 - `capability_id`: A unique identifier that matches the directory name.
+  Intermediate grouping directories are not part of the identifier.
 - `kind`: Defines the specific type of the capability. Must be one of
   `native_op`, `mcp_op`, `pipeline_skill`, or `logic_skill`.
 - `summary`: A brief, one-sentence description of what the capability does.

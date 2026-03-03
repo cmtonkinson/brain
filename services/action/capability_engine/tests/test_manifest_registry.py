@@ -61,6 +61,28 @@ def test_discover_loads_valid_op_manifest(tmp_path) -> None:
     assert manifest.input_schema["properties"]["payload"]["type"] == "object"
 
 
+def test_discover_loads_valid_op_manifest_from_nested_group_directory(tmp_path) -> None:
+    _write_manifest(
+        tmp_path,
+        "author/demo-echo",
+        {
+            "capability_id": "demo-echo",
+            "kind": "native_op",
+            "version": "1.0.0",
+            "summary": "Echo",
+            "input_schema": {"payload": "object | The payload to echo."},
+            "output_schema": "object | The echoed payload.",
+            "call_target": "state.echo",
+        },
+    )
+
+    registry = CapabilityRegistry()
+    registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+    assert registry.count() == 1
+    assert registry.resolve_manifest(capability_id="demo-echo") is not None
+
+
 def test_discover_requires_matching_package_name(tmp_path) -> None:
     _write_manifest(
         tmp_path,
@@ -95,6 +117,24 @@ def test_discover_requires_readme(tmp_path) -> None:
 
     registry = CapabilityRegistry()
     with pytest.raises(ValueError, match="missing README"):
+        registry.discover(root=tmp_path, call_targets=_discover_call_targets())
+
+
+def test_discover_rejects_duplicate_capability_ids_across_groups(tmp_path) -> None:
+    manifest = {
+        "capability_id": "demo-echo",
+        "kind": "native_op",
+        "version": "1.0.0",
+        "summary": "Echo",
+        "input_schema": {"payload": "object | The payload to echo."},
+        "output_schema": "object | The echoed payload.",
+        "call_target": "state.echo",
+    }
+    _write_manifest(tmp_path, "author-a/demo-echo", manifest)
+    _write_manifest(tmp_path, "author-b/demo-echo", manifest)
+
+    registry = CapabilityRegistry()
+    with pytest.raises(ValueError, match="duplicate capability_id discovered"):
         registry.discover(root=tmp_path, call_targets=_discover_call_targets())
 
 

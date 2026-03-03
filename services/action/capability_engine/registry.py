@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 import inspect
 import json
+import os
 from pathlib import Path
 from types import NoneType, UnionType
 from typing import (
@@ -79,15 +80,17 @@ class CapabilityRegistry:
             return
 
         discovered: dict[str, CapabilityManifest] = {}
-        for package_dir in sorted(path for path in root.iterdir() if path.is_dir()):
-            manifest_path = package_dir / "capability.json"
-            if not manifest_path.exists():
-                continue
+        for manifest_path in self._iter_manifest_paths(root=root):
+            package_dir = manifest_path.parent
             raw = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest = self._parse_manifest(raw)
             if not manifest.enabled:
                 continue
             self._validate_manifest_files(package_dir=package_dir, manifest=manifest)
+            if manifest.capability_id in discovered:
+                raise ValueError(
+                    f"duplicate capability_id discovered: {manifest.capability_id}"
+                )
             discovered[manifest.capability_id] = manifest
 
         self._validate_closure(discovered)
@@ -96,6 +99,26 @@ class CapabilityRegistry:
             call_targets=self._build_call_target_contracts(extra=call_targets),
         )
         self._manifests = discovered
+
+    def _iter_manifest_paths(self, *, root: Path) -> tuple[Path, ...]:
+        """Yield package manifest paths under ``root`` in stable order.
+
+        Discovery is recursive, but once a directory is identified as a
+        capability package (it contains ``capability.json``), traversal does
+        not descend beneath it. This keeps nested grouping directories
+        organizational while preventing accidental discovery of files inside a
+        package's implementation or tests.
+        """
+        manifest_paths: list[Path] = []
+        for current_root, dir_names, _file_names in os.walk(root, topdown=True):
+            dir_names.sort()
+            package_dir = Path(current_root)
+            manifest_path = package_dir / "capability.json"
+            if not manifest_path.exists():
+                continue
+            manifest_paths.append(manifest_path)
+            dir_names[:] = []
+        return tuple(manifest_paths)
 
     def _parse_manifest(self, raw: dict[str, Any]) -> CapabilityManifest:
         kind = raw.get("kind")

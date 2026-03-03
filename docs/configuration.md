@@ -276,6 +276,14 @@ Switchboard Service runtime settings.
 | `webhook_register_max_retries` | `8` | Number of boot-time retry attempts after initial callback registration try when dependencies are not ready. Must be >= 0. |
 | `webhook_register_retry_delay_seconds` | `2.0` | Delay between callback registration retries during boot. Must be > 0. |
 
+### `core.service.capability_engine`
+Capability Engine Service runtime settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `discovery_root` | `capabilities` | Root directory scanned recursively for capability packages. Intermediate directories are organizational only; package directory names must still match `capability_id`. |
+| `default_max_autonomy` | `0` | Default engine autonomy ceiling used when evaluating capability execution. Must be >= 0. |
+
 ------------------------------------------------------------------------
 ## `observability`
 OpenTelemetry metric and tracer names. These are advanced settings; the
