@@ -24,6 +24,19 @@ _Response: `_InvokeResponse`_
 _Handler: `lms_chat`_
 _Response: `_ChatResponse`_
 
+------------------------------------------------------------------------
+## `services/state/memory_authority/api.py`
+`POST /memory/assemble_context` &mdash; assemble MAS context for one inbound turn  
+_Handler: `assemble_context`_
+_Response: `_AssembleContextResponse`_
+_Summary: Append one inbound message and return the assembled MAS context block._
+
+
+`POST /memory/record_response` &mdash; persist one outbound MAS response turn  
+_Handler: `record_response`_
+_Response: `_RecordResponseResponse`_
+_Summary: Append one outbound response turn with response metadata._
+
 
 ------------------------------------------------------------------------
 _End of HTTP API_

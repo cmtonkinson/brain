@@ -2,3 +2,5 @@
 /capabilities/describe: enumerate all active Capabilities
 /capabilities/invoke: execute tool calls
 /lms/chat: direct access to model inference without CES/PS overhead
+/memory/assemble_context: assemble MAS context for one inbound turn
+/memory/record_response: persist one outbound MAS response turn
