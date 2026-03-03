@@ -151,7 +151,8 @@ business logic.
     - `test/`: A directory with one or more `test_*.py` files containing unit
       tests for the skill.
 - **Implementation**: The logic is written in Python within the `execute.py`
-  file.
+  file. `execute()` may declare any subset of the supported parameter names
+  `input_payload`, `request`, `runtime`, and `invoke_call_target`.
 
 
 ------------------------------------------------------------------------

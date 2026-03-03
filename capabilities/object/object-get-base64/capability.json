@@ -1,0 +1,18 @@
+{
+  "capability_id": "object-get-base64",
+  "kind": "logic_skill",
+  "version": "1.0.0",
+  "summary": "Read one object and return metadata plus base64-encoded content.",
+  "enabled": true,
+  "autonomy": 0,
+  "requires_approval": false,
+  "side_effects": [],
+  "required_capabilities": [],
+  "input_schema": {
+    "object_key": "string | The canonical object key to read."
+  },
+  "output_schema": {
+    "object": "object | The authoritative object record.",
+    "content_base64": "string | The base64-encoded blob content."
+  }
+}

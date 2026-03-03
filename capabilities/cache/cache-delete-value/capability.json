@@ -1,0 +1,17 @@
+{
+  "capability_id": "cache-delete-value",
+  "kind": "native_op",
+  "version": "1.0.0",
+  "summary": "Delete one component-scoped cache value.",
+  "enabled": true,
+  "autonomy": 0,
+  "requires_approval": true,
+  "side_effects": ["writes_cache"],
+  "required_capabilities": [],
+  "input_schema": {
+    "component_id": "string | The canonical component id namespace for the cache key.",
+    "key": "string | The cache key within the component namespace."
+  },
+  "output_schema": "boolean | True when the cache delete operation completes.",
+  "call_target": "service_cache_authority.delete_value"
+}

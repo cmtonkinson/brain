@@ -1,0 +1,16 @@
+{
+  "capability_id": "object-delete",
+  "kind": "native_op",
+  "version": "1.0.0",
+  "summary": "Delete one persisted object by canonical object key.",
+  "enabled": true,
+  "autonomy": 0,
+  "requires_approval": true,
+  "side_effects": ["writes_objects"],
+  "required_capabilities": [],
+  "input_schema": {
+    "object_key": "string | The canonical object key to delete."
+  },
+  "output_schema": "boolean | True when the object delete operation completes.",
+  "call_target": "service_object_authority.delete_object"
+}

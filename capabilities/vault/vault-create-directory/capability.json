@@ -1,0 +1,25 @@
+{
+  "capability_id": "vault-create-directory",
+  "kind": "native_op",
+  "version": "1.0.0",
+  "summary": "Create one directory in the vault.",
+  "enabled": true,
+  "autonomy": 0,
+  "requires_approval": false,
+  "side_effects": ["writes_vault"],
+  "required_capabilities": [],
+  "input_schema": {
+    "directory_path": "string | The full path of the directory to create.",
+    "recursive": "boolean | optional | Create parent directories if they don't exist. Defaults to false."
+  },
+  "output_schema": {
+    "path": "string | The full path of the created directory.",
+    "name": "string | The name of the created directory.",
+    "entry_type": "string | The type of the entry (will be 'directory').",
+    "size_bytes": "integer | The size of the entry in bytes (will be 0).",
+    "created_at": "date-time|null|optional | The timestamp when the directory was created.",
+    "updated_at": "date-time|null|optional | The timestamp when the directory was last updated.",
+    "revision": "string | The revision identifier for the entry."
+  },
+  "call_target": "service_vault_authority.create_directory"
+}

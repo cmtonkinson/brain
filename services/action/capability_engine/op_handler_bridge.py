@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from pydantic import BaseModel
@@ -35,6 +35,65 @@ def build_op_handler(
     ``call_target`` has the form ``"component_id.method_name"``.
     ``components`` is the runtime component map keyed by component_id.
     """
+    _resolve_call_target(call_target=call_target, components=components)
+
+    def handler(
+        request: CapabilityInvocationRequest,
+        runtime: CapabilityRuntime,
+    ) -> CapabilityExecutionResponse:
+        raw_payload = invoke_call_target(
+            call_target=call_target,
+            components=components,
+            meta=request.metadata,
+            input_payload=request.input_payload,
+        )
+        output = _unwrap_payload(raw_payload)
+        return CapabilityExecutionResponse(output=output)
+
+    return handler
+
+
+def invoke_call_target(
+    *,
+    call_target: str,
+    components: Mapping[str, object],
+    meta: Any,
+    input_payload: Mapping[str, Any],
+) -> Any:
+    """Invoke one service call target and return the raw envelope payload."""
+    method, accepted, required = _resolve_call_target(
+        call_target=call_target,
+        components=components,
+    )
+    payload = dict(input_payload)
+    unknown = set(payload.keys()) - set(accepted.keys())
+    if unknown:
+        raise ValueError(f"unknown input keys: {sorted(unknown)}")
+
+    missing = required - set(payload.keys())
+    if missing:
+        raise ValueError(f"missing required input keys: {sorted(missing)}")
+
+    envelope = method(meta=meta, **payload)
+
+    if not envelope.ok:
+        raise OpHandlerBridgeError(
+            errors=tuple(envelope.errors),
+        )
+
+    return envelope.payload.value if envelope.payload is not None else None
+
+
+def _resolve_call_target(
+    *,
+    call_target: str,
+    components: Mapping[str, object],
+) -> tuple[
+    Callable[..., Any],
+    dict[str, inspect.Parameter],
+    set[str],
+]:
+    """Resolve one call target into a callable and its accepted parameters."""
     parts = call_target.split(".", 1)
     if len(parts) != 2 or not parts[0] or not parts[1]:
         raise ValueError(f"invalid call_target format: {call_target!r}")
@@ -63,32 +122,7 @@ def build_op_handler(
         for name, param in accepted.items()
         if param.default is inspect.Parameter.empty
     }
-
-    def handler(
-        request: CapabilityInvocationRequest,
-        runtime: CapabilityRuntime,
-    ) -> CapabilityExecutionResponse:
-        payload = request.input_payload
-        unknown = set(payload.keys()) - set(accepted.keys())
-        if unknown:
-            raise ValueError(f"unknown input keys: {sorted(unknown)}")
-
-        missing = required - set(payload.keys())
-        if missing:
-            raise ValueError(f"missing required input keys: {sorted(missing)}")
-
-        envelope = method(meta=request.metadata, **payload)
-
-        if not envelope.ok:
-            raise OpHandlerBridgeError(
-                errors=tuple(envelope.errors),
-            )
-
-        raw_payload = envelope.payload.value if envelope.payload is not None else None
-        output = _unwrap_payload(raw_payload)
-        return CapabilityExecutionResponse(output=output)
-
-    return handler
+    return method, accepted, required
 
 
 def _unwrap_payload(value: Any) -> dict[str, Any] | None:

@@ -119,21 +119,27 @@ def _write_op_manifest(
 
 def _write_skill_manifest(root: Path, capability_id: str) -> None:
     pkg = root / capability_id
-    pkg.mkdir(parents=True, exist_ok=True)
+    (pkg / "test").mkdir(parents=True, exist_ok=True)
     (pkg / "capability.json").write_text(
         json.dumps(
             {
                 "capability_id": capability_id,
-                "kind": "skill",
+                "kind": "logic_skill",
                 "version": "1.0.0",
                 "summary": f"Test skill {capability_id}",
-                "skill_type": "pipeline",
-                "pipeline": [],
             }
         ),
         encoding="utf-8",
     )
     (pkg / "README.md").write_text(f"# {capability_id}", encoding="utf-8")
+    (pkg / "execute.py").write_text(
+        "def execute():\n    return {'ok': True}\n",
+        encoding="utf-8",
+    )
+    (pkg / "test" / f"test_{capability_id.replace('-', '_')}.py").write_text(
+        "def test_placeholder():\n    assert True\n",
+        encoding="utf-8",
+    )
 
 
 def _sentinel_handler(
@@ -169,9 +175,8 @@ def test_after_boot_registers_handlers_for_op_manifests(tmp_path) -> None:
     assert registry.resolve_handler(capability_id="test-op") is not None
 
 
-def test_after_boot_skips_skill_manifests(tmp_path) -> None:
-    from services.action.capability_engine.domain import SkillCapabilityManifest
-
+def test_after_boot_registers_handlers_for_logic_skills(tmp_path) -> None:
+    _write_skill_manifest(tmp_path, "test-skill")
     registry = CapabilityRegistry()
     service = DefaultCapabilityEngineService(
         settings=CapabilityEngineSettings(discovery_root=str(tmp_path)),
@@ -179,25 +184,13 @@ def test_after_boot_skips_skill_manifests(tmp_path) -> None:
         registry=registry,
     )
 
-    # Register a skill manifest directly (bypassing discovery validation)
-    registry.register_manifest(
-        manifest=SkillCapabilityManifest(
-            capability_id="test-skill",
-            kind="logic_skill",
-            version="1.0.0",
-            summary="Test skill",
-        )
-    )
-    # Monkey-patch _load_capabilities to no-op since we registered directly
-    service._load_capabilities = lambda: None  # type: ignore[assignment]
-
     components = {
         "service_capability_engine": service,
     }
 
     after_boot(settings=_settings(), components=components)
 
-    assert registry.resolve_handler(capability_id="test-skill") is None
+    assert registry.resolve_handler(capability_id="test-skill") is not None
 
 
 def test_after_boot_does_not_overwrite_existing_handlers(tmp_path) -> None:
