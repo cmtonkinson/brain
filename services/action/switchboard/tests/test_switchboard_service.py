@@ -22,6 +22,7 @@ from services.action.switchboard.config import (
     SwitchboardServiceSettings,
 )
 from services.action.switchboard.implementation import DefaultSwitchboardService
+from services.state.cache_authority.domain import QueueEntry
 from services.state.cache_authority.service import CacheAuthorityService
 
 
@@ -43,6 +44,12 @@ class _QueueDepth:
     component_id: str
     queue: str
     size: int
+
+
+@dataclass(frozen=True)
+class _QueuePopCall:
+    component_id: str
+    queue: str
 
 
 @dataclass(frozen=True)
@@ -100,7 +107,9 @@ class _FakeCacheService(CacheAuthorityService):
 
     def __init__(self) -> None:
         self.queue_calls: list[_QueueCall] = []
+        self.pop_calls: list[_QueuePopCall] = []
         self.push_errors: bool = False
+        self.pop_results: list[object] = []
 
     def set_value(self, *, meta, component_id, key, value, ttl_seconds=None):
         del meta, component_id, key, value, ttl_seconds
@@ -130,8 +139,13 @@ class _FakeCacheService(CacheAuthorityService):
         )
 
     def pop_queue(self, *, meta, component_id, queue):
-        del meta, component_id, queue
-        raise NotImplementedError
+        del meta
+        self.pop_calls.append(_QueuePopCall(component_id=component_id, queue=queue))
+        next_value = self.pop_results.pop(0) if self.pop_results else None
+        if next_value == "dependency_error":
+            return failure(meta=_meta(), errors=[dependency_error("redis unavailable")])
+        payload = next_value if isinstance(next_value, QueueEntry) else None
+        return success(meta=_meta(), payload=payload)
 
     def peek_queue(self, *, meta, component_id, queue):
         del meta, component_id, queue
@@ -382,3 +396,43 @@ def test_health_reports_adapter_and_cas_readiness() -> None:
     assert result.payload.value.service_ready is True
     assert result.payload.value.adapter_ready is False
     assert result.payload.value.cas_ready is True
+
+
+def test_poll_operator_instruction_pops_and_returns_normalized_message() -> None:
+    """Polling should dequeue one queued operator instruction and return it."""
+    service, _adapter, cache = _service()
+    cache.pop_results = [
+        QueueEntry(
+            component_id="service_switchboard",
+            queue="signal_inbound",
+            value={
+                "sender_e164": "+12025550100",
+                "message_text": "hello",
+                "timestamp_ms": 1,
+                "source_device": "1",
+                "source": "signal",
+            },
+        )
+    ]
+
+    result = service.poll_operator_instruction(meta=_meta())
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value is not None
+    assert result.payload.value.message_text == "hello"
+    assert cache.pop_calls == [
+        _QueuePopCall(component_id="service_switchboard", queue="signal_inbound")
+    ]
+
+
+def test_poll_operator_instruction_returns_none_when_queue_is_empty() -> None:
+    """Polling with no queued message should return a successful empty payload."""
+    service, _adapter, cache = _service()
+
+    result = service.poll_operator_instruction(meta=_meta())
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value is None
+    assert len(cache.pop_calls) == 1

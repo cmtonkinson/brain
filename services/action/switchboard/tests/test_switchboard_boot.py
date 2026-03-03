@@ -65,6 +65,10 @@ class _FakeSwitchboardService(SwitchboardService):
             ),
         )
 
+    def poll_operator_instruction(self, *, meta, wait_timeout_seconds: float = 0.0):
+        del meta, wait_timeout_seconds
+        raise NotImplementedError
+
     def health(self, *, meta):
         del meta
         self.health_calls += 1

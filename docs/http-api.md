@@ -25,6 +25,13 @@ _Handler: `lms_chat`_
 _Response: `_ChatResponse`_
 
 ------------------------------------------------------------------------
+## `services/action/switchboard/api.py`
+`POST /switchboard/poll_operator_instruction` &mdash; dequeue the next queued operator instruction for the agent  
+_Handler: `poll_operator_instruction`_
+_Response: `_PollOperatorInstructionResponse`_
+_Summary: Pop the next queued operator instruction, optionally long-polling._
+
+------------------------------------------------------------------------
 ## `services/state/memory_authority/api.py`
 `POST /memory/assemble_context` &mdash; assemble MAS context for one inbound turn  
 _Handler: `assemble_context`_

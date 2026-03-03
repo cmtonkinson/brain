@@ -11,6 +11,7 @@ from services.state.cache_authority.service import CacheAuthorityService
 from services.action.switchboard.domain import (
     HealthStatus,
     IngestResult,
+    NormalizedSignalMessage,
     RegisterSignalWebhookResult,
 )
 
@@ -37,6 +38,15 @@ class SwitchboardService(ABC):
         callback_url: str,
     ) -> Envelope[RegisterSignalWebhookResult]:
         """Register Signal webhook callback URI and shared secret."""
+
+    @abstractmethod
+    def poll_operator_instruction(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        wait_timeout_seconds: float = 0.0,
+    ) -> Envelope[NormalizedSignalMessage | None]:
+        """Pop the next queued operator instruction, optionally long-polling."""
 
     @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:

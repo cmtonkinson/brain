@@ -74,6 +74,9 @@ _Return PolicyExecutionResult with allow/deny output, PolicyDecision, and Approv
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
 _Return Switchboard and dependency health state._
 
+`poll_operator_instruction(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[NormalizedSignalMessage | None]`  
+_Pop the next queued operator instruction, optionally long-polling._
+
 `ingest_signal_webhook(*, meta: EnvelopeMeta, raw_body_json: str, header_timestamp: str, header_signature: str) -> Envelope[IngestResult]`  
 _Validate, normalize, and enqueue one Signal webhook payload._
 

@@ -36,3 +36,11 @@ class RegisterSignalWebhookRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     callback_url: AnyHttpUrl
+
+
+class PollOperatorInstructionRequest(BaseModel):
+    """Validate one poll request for queued operator instructions."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    wait_timeout_seconds: float = Field(default=0.0, ge=0.0)

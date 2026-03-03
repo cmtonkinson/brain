@@ -4,3 +4,4 @@
 /lms/chat: direct access to model inference without CES/PS overhead
 /memory/assemble_context: assemble MAS context for one inbound turn
 /memory/record_response: persist one outbound MAS response turn
+/switchboard/poll_operator_instruction: dequeue the next queued operator instruction for the agent

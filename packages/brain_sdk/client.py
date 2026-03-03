@@ -5,8 +5,19 @@ from __future__ import annotations
 import httpx
 
 from packages.brain_sdk.calls import (
+    CapabilityDescriptor,
+    CapabilityInvokeResult,
     CoreHealthResult,
+    LmsChatResult,
+    MemoryContextBlock,
+    SwitchboardOperatorInstruction,
+    call_capabilities_describe,
+    call_capability_invoke,
     call_core_health,
+    call_lms_chat,
+    call_memory_assemble_context,
+    call_memory_record_response,
+    call_switchboard_poll_operator_instruction,
 )
 from packages.brain_sdk.config import (
     BrainSdkConfig,
@@ -50,6 +61,114 @@ class BrainClient:
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
+        )
+
+    def describe_capabilities(
+        self, *, meta: MetaOverrides | None = None
+    ) -> tuple[CapabilityDescriptor, ...]:
+        """Return all active Capability descriptors."""
+        return call_capabilities_describe(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+        )
+
+    def invoke_capability(
+        self,
+        *,
+        capability_id: str,
+        input_payload: dict[str, object] | None = None,
+        actor: str = "",
+        channel: str = "",
+        invocation_id: str = "",
+        parent_invocation_id: str = "",
+        confirmed: bool = False,
+        approval_token: str = "",
+        meta: MetaOverrides | None = None,
+    ) -> CapabilityInvokeResult:
+        """Invoke one Capability via the CES route surface."""
+        return call_capability_invoke(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            capability_id=capability_id,
+            input_payload=input_payload,
+            actor=actor,
+            channel=channel,
+            invocation_id=invocation_id,
+            parent_invocation_id=parent_invocation_id,
+            confirmed=confirmed,
+            approval_token=approval_token,
+        )
+
+    def lms_chat(
+        self,
+        *,
+        prompt: str,
+        profile: str = "standard",
+        meta: MetaOverrides | None = None,
+    ) -> LmsChatResult:
+        """Execute one direct LMS chat request."""
+        return call_lms_chat(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            prompt=prompt,
+            profile=profile,
+        )
+
+    def memory_assemble_context(
+        self,
+        *,
+        session_id: str,
+        message: str,
+        meta: MetaOverrides | None = None,
+    ) -> MemoryContextBlock:
+        """Append one inbound turn and return the assembled MAS context."""
+        return call_memory_assemble_context(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            session_id=session_id,
+            message=message,
+        )
+
+    def memory_record_response(
+        self,
+        *,
+        session_id: str,
+        content: str,
+        model: str,
+        provider: str,
+        token_count: int,
+        reasoning_level: str,
+        meta: MetaOverrides | None = None,
+    ) -> bool:
+        """Append one outbound MAS response turn."""
+        return call_memory_record_response(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            session_id=session_id,
+            content=content,
+            model=model,
+            provider=provider,
+            token_count=token_count,
+            reasoning_level=reasoning_level,
+        )
+
+    def switchboard_poll_operator_instruction(
+        self,
+        *,
+        wait_timeout_seconds: float = 0.0,
+        meta: MetaOverrides | None = None,
+    ) -> SwitchboardOperatorInstruction | None:
+        """Poll Switchboard for the next queued operator instruction."""
+        return call_switchboard_poll_operator_instruction(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            wait_timeout_seconds=wait_timeout_seconds,
         )
 
     def _meta(self, overrides: MetaOverrides | None) -> dict[str, object]:

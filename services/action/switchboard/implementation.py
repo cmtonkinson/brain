@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import time
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -50,11 +51,13 @@ from services.action.switchboard.domain import (
 from services.action.switchboard.service import SwitchboardService
 from services.action.switchboard.validation import (
     IngestSignalWebhookRequest,
+    PollOperatorInstructionRequest,
     RegisterSignalWebhookRequest,
 )
 from services.state.cache_authority.service import CacheAuthorityService
 
 _LOGGER = get_logger(__name__)
+_POLL_INTERVAL_SECONDS = 0.25
 
 
 class DefaultSwitchboardService(SwitchboardService):
@@ -258,6 +261,61 @@ class DefaultSwitchboardService(SwitchboardService):
                 detail=result.detail,
             ),
         )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
+    def poll_operator_instruction(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        wait_timeout_seconds: float = 0.0,
+    ) -> Envelope[NormalizedSignalMessage | None]:
+        """Pop the next queued operator instruction, optionally long-polling."""
+        request, errors = self._validate_request(
+            meta=meta,
+            model=PollOperatorInstructionRequest,
+            payload={"wait_timeout_seconds": wait_timeout_seconds},
+        )
+        if errors:
+            return failure(meta=meta, errors=errors)
+        assert request is not None
+
+        deadline = time.monotonic() + request.wait_timeout_seconds
+        while True:
+            popped = self._cache_service.pop_queue(
+                meta=meta,
+                component_id=str(SERVICE_COMPONENT_ID),
+                queue=self._settings.queue_name,
+            )
+            if not popped.ok:
+                return failure(meta=meta, errors=popped.errors)
+
+            if popped.payload is not None and popped.payload.value is not None:
+                entry = popped.payload.value
+                try:
+                    message = NormalizedSignalMessage.model_validate(entry.value)
+                except ValidationError:
+                    return failure(
+                        meta=meta,
+                        errors=[
+                            internal_error(
+                                "queued operator instruction payload is invalid",
+                                code=codes.INTERNAL_ERROR,
+                            )
+                        ],
+                    )
+                return success(meta=meta, payload=message)
+
+            now = time.monotonic()
+            if now >= deadline:
+                return success(meta=meta, payload=None)
+
+            sleep_seconds = min(_POLL_INTERVAL_SECONDS, deadline - now)
+            if sleep_seconds <= 0.0:
+                return success(meta=meta, payload=None)
+            time.sleep(sleep_seconds)
 
     @public_api_instrumented(
         logger=_LOGGER,
