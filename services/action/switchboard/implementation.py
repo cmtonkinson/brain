@@ -131,25 +131,61 @@ class DefaultSwitchboardService(SwitchboardService):
         )
         if not verified:
             assert verification_error is not None
+            payload_summary = _summarize_signal_payload(
+                raw_body_json=request.raw_body_json
+            )
+            _LOGGER.warning(
+                "switchboard rejected webhook during signature verification",
+                extra={
+                    "error": verification_error.message,
+                    "header_timestamp": request.header_timestamp,
+                    **payload_summary,
+                },
+            )
             return failure(meta=meta, errors=[verification_error])
 
         message, parse_error = self._normalize_signal_message(
             raw_body_json=request.raw_body_json,
         )
         if parse_error is not None:
+            payload_summary = _summarize_signal_payload(
+                raw_body_json=request.raw_body_json
+            )
+            _LOGGER.warning(
+                "switchboard rejected webhook due to invalid payload",
+                extra={"error": parse_error.message, **payload_summary},
+            )
             return failure(meta=meta, errors=[parse_error])
         if message is None:
+            ignored_reason, payload_summary = _ignored_payload_reason(
+                raw_body_json=request.raw_body_json
+            )
+            _LOGGER.info(
+                "switchboard ignored inbound signal payload",
+                extra={
+                    "reason": ignored_reason,
+                    **payload_summary,
+                },
+            )
             return success(
                 meta=meta,
                 payload=IngestResult(
                     accepted=False,
                     queued=False,
                     queue_name=self._settings.queue_name,
-                    reason="non-message payload",
+                    reason=ignored_reason,
                 ),
             )
 
         if message.sender_e164 != self._operator_e164:
+            _LOGGER.info(
+                "switchboard ignored inbound message from non-operator sender",
+                extra={
+                    "sender_e164": message.sender_e164,
+                    "expected_sender_e164": self._operator_e164,
+                    "channel": message.source,
+                },
+            )
             return success(
                 meta=meta,
                 payload=IngestResult(
@@ -161,6 +197,14 @@ class DefaultSwitchboardService(SwitchboardService):
                 ),
             )
 
+        _LOGGER.debug(
+            "switchboard accepted operator instruction",
+            extra={
+                "channel": message.source,
+                "sender_e164": message.sender_e164,
+                "message_text": message.message_text,
+            },
+        )
         queue_payload = {
             "source": message.source,
             "sender_e164": message.sender_e164,
@@ -306,6 +350,14 @@ class DefaultSwitchboardService(SwitchboardService):
                             )
                         ],
                     )
+                _LOGGER.debug(
+                    "switchboard dequeued operator instruction",
+                    extra={
+                        "channel": message.source,
+                        "sender_e164": message.sender_e164,
+                        "message_text": message.message_text,
+                    },
+                )
                 return success(meta=meta, payload=message)
 
             now = time.monotonic()
@@ -417,8 +469,11 @@ class DefaultSwitchboardService(SwitchboardService):
         if isinstance(data, dict):
             candidate = data
 
+        envelope = _extract_envelope(candidate)
+        message_payload = _extract_message_payload(envelope)
+
         sender_raw = _first_non_empty(
-            candidate,
+            envelope,
             "source",
             "sourceNumber",
             "sender",
@@ -426,17 +481,36 @@ class DefaultSwitchboardService(SwitchboardService):
             "sender_e164",
         )
         message_text = _first_non_empty(
-            candidate,
+            message_payload,
             "message",
             "message_text",
             "text",
             "body",
         )
         if message_text == "":
+            message_text = _first_non_empty(
+                envelope,
+                "message",
+                "message_text",
+                "text",
+                "body",
+            )
+        if message_text == "":
+            message_text = _first_non_empty(
+                candidate,
+                "message",
+                "message_text",
+                "text",
+                "body",
+            )
+        if message_text == "":
             return None, None
 
         timestamp_ms = _parse_timestamp_ms(
-            candidate.get("timestamp_ms")
+            envelope.get("timestamp_ms")
+            or envelope.get("timestamp")
+            or envelope.get("sourceTimestamp")
+            or candidate.get("timestamp_ms")
             or candidate.get("timestamp")
             or candidate.get("sourceTimestamp")
         )
@@ -463,18 +537,22 @@ class DefaultSwitchboardService(SwitchboardService):
                 code=codes.INVALID_ARGUMENT,
             )
 
-        group_id = _extract_group_id(candidate)
+        group_id = _extract_group_id(message_payload) or _extract_group_id(envelope)
         quote_target = _parse_optional_int(
-            _extract_nested(candidate, "quote", "timestamp")
+            _extract_nested(message_payload, "quote", "timestamp")
+            or _extract_nested(message_payload, "quote", "id")
             or candidate.get("quote_target_timestamp_ms")
         )
         reaction_target = _parse_optional_int(
-            _extract_nested(candidate, "reaction", "targetTimestamp")
+            _extract_nested(message_payload, "reaction", "targetSentTimestamp")
+            or _extract_nested(message_payload, "reaction", "targetTimestamp")
             or candidate.get("reaction_target_timestamp_ms")
         )
 
         source_device = str(
-            candidate.get("sourceDevice")
+            envelope.get("sourceDevice")
+            or envelope.get("source_device")
+            or candidate.get("sourceDevice")
             or candidate.get("device")
             or candidate.get("source_device")
             or ""
@@ -524,6 +602,15 @@ def _validation_error_from_pydantic(exc: ValidationError) -> ErrorDetail:
     return validation_error(f"{field}: {message}", code=codes.INVALID_ARGUMENT)
 
 
+def _ignored_payload_reason(raw_body_json: str) -> tuple[str, dict[str, object]]:
+    """Return one stable ignore reason plus a diagnostic payload summary."""
+    payload_summary = _summarize_signal_payload(raw_body_json=raw_body_json)
+    exception_type = str(payload_summary.get("exception_type") or "").strip()
+    if exception_type != "":
+        return f"signal exception event: {exception_type}", payload_summary
+    return "non-message payload", payload_summary
+
+
 def _extract_group_id(payload: dict[str, Any]) -> str | None:
     """Extract optional group identifier from common Signal payload shapes."""
     group_id = payload.get("group_id")
@@ -536,6 +623,76 @@ def _extract_group_id(payload: dict[str, Any]) -> str | None:
         if isinstance(group_id, str) and group_id.strip() != "":
             return group_id
     return None
+
+
+def _summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
+    """Summarize one raw webhook body for diagnostic logging."""
+    try:
+        payload = json.loads(raw_body_json)
+    except json.JSONDecodeError:
+        return {"payload_json_valid": False}
+    if not isinstance(payload, dict):
+        return {"payload_json_valid": True, "payload_type": type(payload).__name__}
+
+    candidate = payload
+    data = payload.get("data")
+    if isinstance(data, dict):
+        candidate = data
+    if not isinstance(candidate, dict):
+        return {
+            "payload_json_valid": True,
+            "payload_type": type(candidate).__name__,
+        }
+
+    envelope = candidate.get("envelope")
+    if not isinstance(envelope, dict):
+        envelope = {}
+    exception = candidate.get("exception")
+    if not isinstance(exception, dict):
+        exception = {}
+
+    return {
+        "payload_json_valid": True,
+        "has_data_wrapper": isinstance(data, dict),
+        "has_envelope": len(envelope) > 0,
+        "has_data_message": isinstance(envelope.get("dataMessage"), dict),
+        "has_sync_message": isinstance(envelope.get("syncMessage"), dict),
+        "exception_type": str(exception.get("type") or "").strip(),
+        "exception_message": str(exception.get("message") or "").strip(),
+        "source": str(
+            envelope.get("source")
+            or envelope.get("sourceNumber")
+            or candidate.get("source")
+            or candidate.get("sourceNumber")
+            or ""
+        ).strip(),
+        "timestamp": str(
+            envelope.get("timestamp") or candidate.get("timestamp") or ""
+        ).strip(),
+    }
+
+
+def _extract_envelope(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return nested Signal envelope when present; otherwise the payload itself."""
+    envelope = payload.get("envelope")
+    if isinstance(envelope, dict):
+        return envelope
+    return payload
+
+
+def _extract_message_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the nested message object most likely to contain message fields."""
+    data_message = payload.get("dataMessage")
+    if isinstance(data_message, dict):
+        return data_message
+
+    sync_message = payload.get("syncMessage")
+    if isinstance(sync_message, dict):
+        sent_message = sync_message.get("sentMessage")
+        if isinstance(sent_message, dict):
+            return sent_message
+
+    return payload
 
 
 def _extract_nested(payload: dict[str, Any], parent: str, child: str) -> Any:

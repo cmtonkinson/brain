@@ -35,12 +35,29 @@ class _FakeCallbackClient:
     def __init__(self) -> None:
         self.posts: list[tuple[str, str, dict[str, str]]] = []
         self.raise_post: Exception | None = None
+        self.response_payload: object = {
+            "ok": True,
+            "accepted": True,
+            "queued": True,
+            "reason": "accepted",
+            "message": {
+                "sender_e164": "+12025550100",
+                "timestamp_ms": 1730000000000,
+            },
+        }
 
-    def post(self, url: str, *, content: str, headers: dict[str, str]):
+    def request_json(
+        self,
+        _method: str,
+        url: str,
+        *,
+        content: str,
+        headers: dict[str, str],
+    ):
         if self.raise_post is not None:
             raise self.raise_post
         self.posts.append((url, content, headers))
-        return object()
+        return self.response_payload
 
 
 def _adapter() -> HttpSignalAdapter:
@@ -54,6 +71,7 @@ def _adapter() -> HttpSignalAdapter:
         )
     )
     adapter._signal_client = _FakeSignalClient()  # type: ignore[attr-defined]
+    adapter._signal_send_client = adapter._signal_client  # type: ignore[attr-defined]
     adapter._callback_client = _FakeCallbackClient()  # type: ignore[attr-defined]
     adapter._ensure_worker_started_locked = lambda: None  # type: ignore[method-assign]
     return adapter
@@ -65,9 +83,15 @@ def test_run_once_polls_and_forwards_signed_webhook() -> None:
     callback = adapter._callback_client
     signal.receive_payload = [
         {
-            "source": "+12025550100",
-            "message": "hello",
-            "timestamp": 1730000000000,
+            "account": "+12025550100",
+            "envelope": {
+                "source": "+12025550100",
+                "sourceDevice": 1,
+                "timestamp": 1730000000000,
+                "dataMessage": {
+                    "message": "hello",
+                },
+            },
         }
     ]
 
@@ -83,9 +107,19 @@ def test_run_once_polls_and_forwards_signed_webhook() -> None:
     url, body, headers = callback.posts[0]
     payload = json.loads(body)
     assert url == "http://switchboard:8091/v1/inbound/signal/webhook"
-    assert payload["data"]["message"] == "hello"
+    assert payload["data"]["envelope"]["dataMessage"]["message"] == "hello"
     assert headers["X-Brain-Signature"].startswith("sha256=")
     assert headers["X-Brain-Timestamp"].isdigit()
+    assert signal.posts == [
+        (
+            "/v1/receipts/%2B13333333333",
+            {
+                "receipt_type": "read",
+                "recipient": "+12025550100",
+                "timestamp": 1730000000000,
+            },
+        )
+    ]
 
 
 def test_run_once_retries_pending_webhook_after_callback_failure() -> None:
@@ -93,7 +127,14 @@ def test_run_once_retries_pending_webhook_after_callback_failure() -> None:
     signal = adapter._signal_client
     callback = adapter._callback_client
     signal.receive_payload = [
-        {"source": "+12025550100", "message": "hello", "timestamp": 1}
+        {
+            "account": "+12025550100",
+            "envelope": {
+                "source": "+12025550100",
+                "timestamp": 1,
+                "dataMessage": {"message": "hello"},
+            },
+        }
     ]
 
     adapter.register_webhook(
@@ -116,6 +157,43 @@ def test_run_once_retries_pending_webhook_after_callback_failure() -> None:
     assert second_delay == 0.1
     assert len(callback.posts) == 1
     assert len(adapter._pending_webhooks) == 0
+    assert len(signal.posts) == 1
+
+
+def test_run_once_does_not_send_read_receipt_when_switchboard_does_not_queue() -> None:
+    adapter = _adapter()
+    signal = adapter._signal_client
+    callback = adapter._callback_client
+    signal.receive_payload = [
+        {
+            "account": "+12025550100",
+            "exception": {
+                "type": "UntrustedIdentityException",
+                "message": "Untrusted identity",
+            },
+            "envelope": {
+                "source": "+12025550100",
+                "timestamp": 1730000000000,
+            },
+        }
+    ]
+    callback.response_payload = {
+        "ok": True,
+        "accepted": False,
+        "queued": False,
+        "reason": "signal exception event: UntrustedIdentityException",
+    }
+
+    adapter.register_webhook(
+        callback_url="http://switchboard:8091/v1/inbound/signal/webhook",
+        shared_secret="secret",
+    )
+
+    delay = adapter._run_once()
+
+    assert delay == 0.1
+    assert len(callback.posts) == 1
+    assert signal.posts == []
 
 
 def test_run_once_applies_exponential_backoff_on_receive_failure() -> None:

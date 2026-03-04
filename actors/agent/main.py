@@ -80,12 +80,13 @@ def _load_system_prompt() -> str:
     return _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
 
 
-def _configure_logging() -> None:
+def _configure_logging(*, level: str) -> None:
     """Install a minimal process-local logging configuration."""
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 class _BrainSdkModelDriver:
@@ -384,8 +385,8 @@ def main() -> None:
     global _RUNNING
     _RUNNING = True
 
-    _configure_logging()
     settings = load_actor_settings(config_path=_resolve_config_path())
+    _configure_logging(level=str(settings.logging.level))
 
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGTERM, _handle_shutdown)
@@ -413,6 +414,14 @@ def main() -> None:
                 )
                 if instruction is None:
                     continue
+                _LOGGER.debug(
+                    "brain agent received instruction",
+                    extra={
+                        "channel": instruction.source,
+                        "sender_e164": instruction.sender_e164,
+                        "message_text": instruction.message_text,
+                    },
+                )
                 response_text = _process_instruction(
                     runtime=runtime,
                     instruction=instruction,

@@ -40,3 +40,19 @@ def test_raise_for_domain_errors_raises_typed_category_error() -> None:
 
     assert exc_info.value.details[0].category == "validation"
     assert exc_info.value.details[0].code == "INVALID_ARGUMENT"
+
+
+def test_sdk_exceptions_allow_traceback_assignment() -> None:
+    """SDK exceptions must remain mutable enough for Python traceback wiring."""
+    from packages.brain_sdk.errors import BrainTransportError
+
+    error = BrainTransportError(
+        message="transport failed",
+        operation="switchboard.poll_operator_instruction",
+        status_code=504,
+        retryable=True,
+    )
+
+    error.__traceback__ = None
+
+    assert str(error) == "transport failed"

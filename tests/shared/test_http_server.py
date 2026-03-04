@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import pytest
 from fastapi import Request
+from fastapi.testclient import TestClient
 
 from packages.brain_shared.http import (
     InvalidBodyError,
@@ -62,6 +64,29 @@ def test_create_app_returns_fastapi_app() -> None:
     app = create_app(title="brain-test", version="1.2.3")
     assert app.title == "brain-test"
     assert app.version == "1.2.3"
+
+
+def test_create_app_can_log_request_summaries(caplog: pytest.LogCaptureFixture) -> None:
+    """create_app should optionally emit one concise log per handled request."""
+    app = create_app(log_requests=True)
+
+    @app.get("/ping")
+    async def _ping() -> dict[str, bool]:
+        return {"ok": True}
+
+    client = TestClient(app)
+    with caplog.at_level(logging.DEBUG):
+        response = client.get("/ping")
+
+    assert response.status_code == 200
+    assert any(
+        record.name == "packages.brain_shared.http.server"
+        and record.message == "HTTP request handled"
+        and getattr(record, "http_method", "") == "GET"
+        and getattr(record, "http_path", "") == "/ping"
+        and getattr(record, "http_status", None) == 200
+        for record in caplog.records
+    )
 
 
 def test_get_header_returns_trimmed_value() -> None:

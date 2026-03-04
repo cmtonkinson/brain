@@ -73,3 +73,4 @@ def test_start_http_runtime_registers_routes_and_starts() -> None:
     assert server is fake_server
     assert registered == ["service_a"]
     assert isinstance(thread, threading.Thread)
+    mock_create_app.assert_called_once_with(title="Brain Core API", log_requests=True)

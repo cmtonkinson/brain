@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Mapping
 
 
-@dataclass(frozen=True)
+@dataclass
 class HttpError(Exception):
     """Base error type for shared HTTP helper failures."""
 
@@ -17,7 +17,7 @@ class HttpError(Exception):
         return self.message
 
 
-@dataclass(frozen=True)
+@dataclass
 class HttpClientError(HttpError):
     """Base error for outbound HTTP client call failures."""
 
@@ -26,14 +26,14 @@ class HttpClientError(HttpError):
     retryable: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass
 class HttpRequestError(HttpClientError):
     """HTTP client transport-level failure."""
 
     cause: Exception | None = None
 
 
-@dataclass(frozen=True)
+@dataclass
 class HttpStatusError(HttpClientError):
     """HTTP client non-success status code failure."""
 
@@ -42,7 +42,7 @@ class HttpStatusError(HttpClientError):
     response_headers: Mapping[str, str] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
+@dataclass
 class HttpJsonDecodeError(HttpClientError):
     """HTTP client JSON decode failure for a successful response."""
 
@@ -51,23 +51,23 @@ class HttpJsonDecodeError(HttpClientError):
     cause: Exception | None = None
 
 
-@dataclass(frozen=True)
+@dataclass
 class HttpServerError(HttpError):
     """Base error type for inbound HTTP parsing/validation helpers."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class MissingHeaderError(HttpServerError):
     """Required inbound HTTP header is missing or blank."""
 
     header_name: str
 
 
-@dataclass(frozen=True)
+@dataclass
 class InvalidBodyError(HttpServerError):
     """Inbound HTTP body is invalid for the expected shape."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class InvalidJsonBodyError(InvalidBodyError):
     """Inbound HTTP body is not valid JSON."""

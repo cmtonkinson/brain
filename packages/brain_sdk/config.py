@@ -22,9 +22,11 @@ class BrainSdkConfig:
 def resolve_socket_path(value: str | None = None) -> str:
     """Resolve one UDS socket path from explicit value or process environment."""
     if value is not None and value.strip() != "":
-        return value
+        return os.path.expandvars(os.path.expanduser(value))
     env_value = os.getenv("BRAIN_SOCKET_PATH", "").strip()
-    return env_value if env_value != "" else DEFAULT_SOCKET_PATH
+    if env_value != "":
+        return os.path.expandvars(os.path.expanduser(env_value))
+    return DEFAULT_SOCKET_PATH
 
 
 def resolve_timeout_seconds(value: float | None = None) -> float:

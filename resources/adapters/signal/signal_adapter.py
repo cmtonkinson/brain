@@ -42,6 +42,15 @@ class _WebhookRegistration:
     shared_secret: str
 
 
+@dataclass(frozen=True)
+class _WebhookCallbackResult:
+    accepted: bool
+    queued: bool
+    reason: str
+    sender_e164: str
+    timestamp_ms: int | None
+
+
 class HttpSignalAdapter(SignalAdapter):
     """Signal adapter backed by HTTP polling + webhook forwarding."""
 
@@ -49,10 +58,17 @@ class HttpSignalAdapter(SignalAdapter):
         self._settings = settings
         self._signal_client = HttpClient(
             base_url=settings.base_url.rstrip("/"),
-            timeout_seconds=settings.timeout_seconds,
+            timeout_seconds=settings.receive_timeout_seconds,
             headers={"Content-Type": "application/json"},
         )
-        self._callback_client = HttpClient(timeout_seconds=settings.timeout_seconds)
+        self._signal_send_client = HttpClient(
+            base_url=settings.base_url.rstrip("/"),
+            timeout_seconds=settings.send_timeout_seconds,
+            headers={"Content-Type": "application/json"},
+        )
+        self._callback_client = HttpClient(
+            timeout_seconds=settings.callback_timeout_seconds
+        )
         self._lock = Lock()
         self._registration: _WebhookRegistration | None = None
         self._pending_webhooks: deque[str] = deque()
@@ -136,7 +152,7 @@ class HttpSignalAdapter(SignalAdapter):
             "recipients": [recipient],
         }
         try:
-            self._signal_client.post("/v2/send", json=payload)
+            self._signal_send_client.post("/v2/send", json=payload)
         except HttpStatusError as exc:
             raise SignalAdapterDependencyError(
                 f"signal send failed with status {exc.status_code}"
@@ -219,15 +235,22 @@ class HttpSignalAdapter(SignalAdapter):
                 for item in payload:
                     if isinstance(item, dict):
                         messages.append(item)
+                if len(messages) == 0:
+                    _LOGGER.debug("signal adapter receive returned empty list")
+                else:
+                    _LOGGER.debug(
+                        "signal adapter received messages",
+                        extra={"message_count": len(messages)},
+                    )
                 return messages
             except HttpStatusError as exc:
-                if attempt < self._settings.max_retries:
+                if exc.retryable and attempt < self._settings.max_retries:
                     continue
                 raise SignalAdapterDependencyError(
                     f"signal receive failed with status {exc.status_code}"
                 ) from None
             except HttpRequestError as exc:
-                if attempt < self._settings.max_retries:
+                if exc.retryable and attempt < self._settings.max_retries:
                     continue
                 raise SignalAdapterDependencyError(
                     str(exc) or "signal receive unavailable"
@@ -243,7 +266,16 @@ class HttpSignalAdapter(SignalAdapter):
         """Forward pending webhook bodies to Switchboard callback endpoint."""
         while len(self._pending_webhooks) > 0:
             body = self._pending_webhooks[0]
-            self._post_callback(registration=registration, raw_body_json=body)
+            callback_result = self._post_callback(
+                registration=registration,
+                raw_body_json=body,
+            )
+            self._log_callback_result(
+                callback_result=callback_result,
+                raw_body_json=body,
+            )
+            if callback_result.accepted and callback_result.queued:
+                self._send_read_receipt(callback_result=callback_result)
             self._pending_webhooks.popleft()
 
     def _post_callback(
@@ -251,7 +283,7 @@ class HttpSignalAdapter(SignalAdapter):
         *,
         registration: _WebhookRegistration,
         raw_body_json: str,
-    ) -> None:
+    ) -> _WebhookCallbackResult:
         """Send one signed webhook payload to the configured callback URL."""
         timestamp = int(time())
         signature = hmac.new(
@@ -266,7 +298,8 @@ class HttpSignalAdapter(SignalAdapter):
         }
 
         try:
-            self._callback_client.post(
+            response = self._callback_client.request_json(
+                "POST",
                 registration.callback_url,
                 content=raw_body_json,
                 headers=headers,
@@ -279,6 +312,116 @@ class HttpSignalAdapter(SignalAdapter):
             raise SignalAdapterDependencyError(
                 str(exc) or "switchboard callback unavailable"
             ) from None
+        except HttpJsonDecodeError as exc:
+            raise SignalAdapterInternalError(
+                f"switchboard callback response JSON invalid: {exc}"
+            ) from None
+
+        return self._parse_callback_result(response)
+
+    def _parse_callback_result(self, response: object) -> _WebhookCallbackResult:
+        """Validate one Switchboard callback response body."""
+        if not isinstance(response, dict):
+            raise SignalAdapterInternalError(
+                "switchboard callback response must be a JSON object"
+            )
+
+        reason = str(response.get("reason") or "").strip()
+        message = response.get("message")
+        sender_e164 = ""
+        timestamp_ms: int | None = None
+        if isinstance(message, dict):
+            sender = message.get("sender_e164")
+            if sender is not None:
+                sender_e164 = str(sender).strip()
+            raw_timestamp = message.get("timestamp_ms")
+            if raw_timestamp is not None:
+                try:
+                    timestamp_ms = int(str(raw_timestamp).strip())
+                except ValueError:
+                    timestamp_ms = None
+
+        return _WebhookCallbackResult(
+            accepted=bool(response.get("accepted", False)),
+            queued=bool(response.get("queued", False)),
+            reason=reason or "unspecified",
+            sender_e164=sender_e164,
+            timestamp_ms=timestamp_ms,
+        )
+
+    def _log_callback_result(
+        self,
+        *,
+        callback_result: _WebhookCallbackResult,
+        raw_body_json: str,
+    ) -> None:
+        """Emit one visible log line for Switchboard accept/reject decisions."""
+        payload_summary = _summarize_signal_payload(raw_body_json)
+        if callback_result.accepted and callback_result.queued:
+            _LOGGER.info(
+                "signal adapter callback acknowledged queued message",
+                extra={
+                    "reason": callback_result.reason,
+                    "sender_e164": callback_result.sender_e164,
+                    "timestamp_ms": callback_result.timestamp_ms,
+                    **payload_summary,
+                },
+            )
+            return
+
+        _LOGGER.info(
+            "signal adapter callback acknowledged without queueing",
+            extra={
+                "reason": callback_result.reason,
+                "sender_e164": callback_result.sender_e164,
+                "timestamp_ms": callback_result.timestamp_ms,
+                **payload_summary,
+            },
+        )
+
+    def _send_read_receipt(
+        self,
+        *,
+        callback_result: _WebhookCallbackResult,
+    ) -> None:
+        """Send a read receipt after Switchboard confirms the message was queued."""
+        if callback_result.sender_e164 == "" or callback_result.timestamp_ms is None:
+            _LOGGER.warning(
+                "signal adapter skipped read receipt after successful callback",
+                extra={
+                    "reason": "missing sender or timestamp",
+                    "sender_e164": callback_result.sender_e164,
+                    "timestamp_ms": callback_result.timestamp_ms,
+                },
+            )
+            return
+
+        path = f"/v1/receipts/{quote(self._settings.receive_e164, safe='')}"
+        payload = {
+            "receipt_type": "read",
+            "recipient": callback_result.sender_e164,
+            "timestamp": callback_result.timestamp_ms,
+        }
+        try:
+            self._signal_send_client.post(path, json=payload)
+        except HttpStatusError as exc:
+            _LOGGER.warning(
+                "signal adapter read receipt failed after successful callback: status %s",
+                exc.status_code,
+                extra={
+                    "sender_e164": callback_result.sender_e164,
+                    "timestamp_ms": callback_result.timestamp_ms,
+                },
+            )
+        except HttpRequestError as exc:
+            _LOGGER.warning(
+                "signal adapter read receipt failed after successful callback: %s",
+                str(exc) or "signal receipt unavailable",
+                extra={
+                    "sender_e164": callback_result.sender_e164,
+                    "timestamp_ms": callback_result.timestamp_ms,
+                },
+            )
 
     def _get_registration(self) -> _WebhookRegistration | None:
         """Return latest callback registration snapshot."""
@@ -298,3 +441,47 @@ class HttpSignalAdapter(SignalAdapter):
             self._settings.failure_backoff_max_seconds,
         )
         return delay
+
+
+def _summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
+    """Summarize one raw Signal receive item for diagnostic logging."""
+    try:
+        payload = json.loads(raw_body_json)
+    except json.JSONDecodeError:
+        return {"payload_json_valid": False}
+    if not isinstance(payload, dict):
+        return {"payload_json_valid": True, "payload_type": type(payload).__name__}
+
+    candidate = payload
+    data = payload.get("data")
+    if isinstance(data, dict):
+        candidate = data
+
+    envelope = candidate.get("envelope")
+    if not isinstance(envelope, dict):
+        envelope = {}
+    exception = candidate.get("exception")
+    if not isinstance(exception, dict):
+        exception = {}
+
+    data_message = envelope.get("dataMessage")
+    sync_message = envelope.get("syncMessage")
+    return {
+        "payload_json_valid": True,
+        "has_data_wrapper": isinstance(data, dict),
+        "has_envelope": len(envelope) > 0,
+        "has_data_message": isinstance(data_message, dict),
+        "has_sync_message": isinstance(sync_message, dict),
+        "exception_type": str(exception.get("type") or "").strip(),
+        "exception_message": str(exception.get("message") or "").strip(),
+        "source": str(
+            envelope.get("source")
+            or envelope.get("sourceNumber")
+            or candidate.get("source")
+            or candidate.get("sourceNumber")
+            or ""
+        ).strip(),
+        "timestamp": str(
+            envelope.get("timestamp") or candidate.get("timestamp") or ""
+        ).strip(),
+    }

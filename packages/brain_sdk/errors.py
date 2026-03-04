@@ -17,7 +17,7 @@ class SdkErrorDetail:
     metadata: Mapping[str, str] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
+@dataclass
 class BrainSdkError(Exception):
     """Base error type for Brain SDK failures."""
 
@@ -28,7 +28,7 @@ class BrainSdkError(Exception):
         return self.message
 
 
-@dataclass(frozen=True)
+@dataclass
 class BrainTransportError(BrainSdkError):
     """Transport-level HTTP call failure."""
 
@@ -37,7 +37,7 @@ class BrainTransportError(BrainSdkError):
     retryable: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass
 class BrainDomainError(BrainSdkError):
     """Domain-level envelope error from a successful transport call."""
 
@@ -45,32 +45,32 @@ class BrainDomainError(BrainSdkError):
     details: tuple[SdkErrorDetail, ...] = ()
 
 
-@dataclass(frozen=True)
+@dataclass
 class BrainValidationError(BrainDomainError):
     """Validation-category domain failure."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class BrainConflictError(BrainDomainError):
     """Conflict-category domain failure."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class BrainNotFoundError(BrainDomainError):
     """Not-found category domain failure."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class BrainPolicyError(BrainDomainError):
     """Policy-category domain failure."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class BrainDependencyError(BrainDomainError):
     """Dependency-category domain failure."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class BrainInternalError(BrainDomainError):
     """Internal-category domain failure."""
 

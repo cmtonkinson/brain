@@ -100,6 +100,20 @@ def test_http_client_maps_json_decode_failure_to_typed_error() -> None:
     assert error.response_body == "not-json"
 
 
+def test_http_errors_allow_traceback_assignment() -> None:
+    """HTTP helper exceptions must remain mutable enough for traceback wiring."""
+    error = HttpRequestError(
+        message="request failed",
+        method="GET",
+        url="https://example.test/health",
+        retryable=True,
+    )
+
+    error.__traceback__ = None
+
+    assert str(error) == "request failed"
+
+
 def test_async_http_client_post_json_returns_decoded_payload() -> None:
     """AsyncHttpClient.post_json should decode and return JSON content."""
 

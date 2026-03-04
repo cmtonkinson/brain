@@ -18,12 +18,14 @@ from packages.brain_shared.http import (
     get_header,
     read_text_body,
 )
+from packages.brain_shared.logging import get_logger
 from services.action.switchboard.config import SwitchboardServiceSettings
 from services.action.switchboard.domain import IngestResult
 from services.action.switchboard.service import SwitchboardService
 
 _HEADER_SIGNATURE = "X-Brain-Signature"
 _HEADER_SIGNATURE_TIMESTAMP = "X-Brain-Timestamp"
+_LOGGER = get_logger(__name__)
 
 
 class SwitchboardWebhookHttpServer:
@@ -107,6 +109,20 @@ def create_switchboard_webhook_app(
         if result.ok and result.payload is not None:
             payload = result.payload.value
             status = HTTPStatus.ACCEPTED if payload.accepted else HTTPStatus.OK
+            _LOGGER.info(
+                "switchboard webhook processed",
+                extra={
+                    "accepted": payload.accepted,
+                    "queued": payload.queued,
+                    "reason": payload.reason,
+                    "sender_e164": ""
+                    if payload.message is None
+                    else payload.message.sender_e164,
+                    "source": "signal"
+                    if payload.message is None
+                    else payload.message.source,
+                },
+            )
             return JSONResponse(
                 status_code=status,
                 content=_ingest_result_payload(payload=payload),
@@ -114,6 +130,14 @@ def create_switchboard_webhook_app(
 
         status_code = (
             _error_status(result.errors[0].category) if result.errors else HTTPStatus.OK
+        )
+        _LOGGER.warning(
+            "switchboard webhook failed",
+            extra={
+                "status_code": int(status_code),
+                "error_code": "" if not result.errors else result.errors[0].code,
+                "error_message": "" if not result.errors else result.errors[0].message,
+            },
         )
         return JSONResponse(
             status_code=status_code,

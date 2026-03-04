@@ -91,6 +91,7 @@ def configure_logging(
 
     root.addHandler(handler)
     root.propagate = False
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     seed_context: dict[str, str] = {}
     if service:

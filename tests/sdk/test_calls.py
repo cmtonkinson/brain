@@ -55,7 +55,7 @@ def test_call_core_health_transport_error() -> None:
     transport_http.get_json.side_effect = HttpStatusError(
         message="unavailable",
         method="GET",
-        url="http://localhost/health",
+        url="http://brain-core/health",
         retryable=True,
         status_code=503,
         response_body="down",

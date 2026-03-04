@@ -214,9 +214,11 @@ class BrainClient:
 
     def _new_http_client(self) -> HttpClient:
         """Create one HttpClient over UDS from SDK runtime configuration."""
-        transport = httpx.HTTPTransport(uds=self._config.socket_path)
+        transport = httpx.HTTPTransport(
+            uds=resolve_socket_path(self._config.socket_path)
+        )
         return HttpClient(
-            base_url="http://localhost",
+            base_url="http://brain-core",
             timeout_seconds=self._config.timeout_seconds,
             transport=transport,
         )

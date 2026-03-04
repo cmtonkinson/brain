@@ -16,7 +16,8 @@ RUN pip install --upgrade pip && \
 COPY . /app
 
 RUN addgroup --system brain && adduser --system --ingroup brain brain && \
-    chown -R brain:brain /app
+    mkdir -p /run/brain && \
+    chown -R brain:brain /app /run/brain
 
 USER brain
 

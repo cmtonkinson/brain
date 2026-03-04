@@ -19,7 +19,7 @@ from packages.brain_shared.component_loader import (
     import_registered_component_modules,
 )
 from packages.brain_shared.config import CoreRuntimeSettings, load_core_runtime_settings
-from packages.brain_shared.logging import get_logger
+from packages.brain_shared.logging import configure_logging, get_logger
 from packages.brain_shared.http.server import create_app, run_app_uds
 from packages.brain_shared.manifest import ComponentManifest, get_registry
 
@@ -138,7 +138,7 @@ def _start_http_runtime(
     components: dict[str, object],
 ) -> tuple[object, threading.Thread]:
     """Start Core HTTP runtime and register all service transport adapters."""
-    app = create_app(title="Brain Core API")
+    app = create_app(title="Brain Core API", log_requests=True)
     router = APIRouter()
 
     register_routes(router=router, settings=settings, components=components)
@@ -178,6 +178,12 @@ def main() -> None:
         resources_config_path=Path(resources_config_path)
         if resources_config_path
         else None,
+    )
+    configure_logging(
+        level=settings.core.logging.level,
+        json_output=settings.core.logging.json_output,
+        service=settings.core.logging.service,
+        environment=settings.core.logging.environment,
     )
 
     imported = import_registered_component_modules()

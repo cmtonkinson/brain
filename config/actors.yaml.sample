@@ -1,3 +1,6 @@
+logging:
+  level: INFO
+
 core:
   # Path to the Brain Core Unix socket. On the host this is typically under
   # ~/.config/brain/generated/. Inside a container it is /app/config/generated/brain.sock.

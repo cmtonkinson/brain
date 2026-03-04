@@ -240,6 +240,7 @@ class ActorSettings(BaseSettings):
         nested_model_default_partial_update=True,
     )
 
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
     core: ActorCoreConnectionSettings = Field(
         default_factory=ActorCoreConnectionSettings
     )

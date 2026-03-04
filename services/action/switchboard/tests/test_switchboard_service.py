@@ -203,9 +203,19 @@ def test_ingest_accepts_operator_message_and_enqueues_in_cas() -> None:
     body = json.dumps(
         {
             "data": {
-                "source": "2025550100",
-                "message": "hello",
-                "timestamp": int(time() * 1000),
+                "account": "+12025550100",
+                "envelope": {
+                    "source": "2025550100",
+                    "sourceNumber": "2025550100",
+                    "sourceDevice": 7,
+                    "timestamp": int(time() * 1000),
+                    "dataMessage": {
+                        "message": "hello",
+                        "groupInfo": {"groupId": "group-123"},
+                        "quote": {"timestamp": 101},
+                        "reaction": {"targetSentTimestamp": 202},
+                    },
+                },
             }
         }
     )
@@ -222,9 +232,26 @@ def test_ingest_accepts_operator_message_and_enqueues_in_cas() -> None:
     assert result.payload is not None
     assert result.payload.value.accepted is True
     assert result.payload.value.queued is True
+    assert result.payload.value.message is not None
+    assert result.payload.value.message.sender_e164 == "+12025550100"
+    assert result.payload.value.message.message_text == "hello"
+    assert result.payload.value.message.source_device == "7"
+    assert result.payload.value.message.group_id == "group-123"
+    assert result.payload.value.message.quote_target_timestamp_ms == 101
+    assert result.payload.value.message.reaction_target_timestamp_ms == 202
     assert len(cache.queue_calls) == 1
     assert cache.queue_calls[0].component_id == "service_switchboard"
     assert cache.queue_calls[0].queue == "signal_inbound"
+    assert cache.queue_calls[0].value == {
+        "source": "signal",
+        "sender_e164": "+12025550100",
+        "message_text": "hello",
+        "timestamp_ms": result.payload.value.message.timestamp_ms,
+        "source_device": "7",
+        "group_id": "group-123",
+        "quote_target_timestamp_ms": 101,
+        "reaction_target_timestamp_ms": 202,
+    }
 
 
 def test_ingest_uses_configured_dial_code_for_non_e164_inputs() -> None:
@@ -254,6 +281,45 @@ def test_ingest_uses_configured_dial_code_for_non_e164_inputs() -> None:
     assert result.ok is True
     assert result.payload is not None
     assert result.payload.value.accepted is True
+    assert len(cache.queue_calls) == 1
+
+
+def test_ingest_accepts_sync_sent_message_shape() -> None:
+    """Sync messages from the upstream receive shape should still normalize."""
+    service, _adapter, cache = _service()
+    body = json.dumps(
+        {
+            "data": {
+                "account": "+12025550100",
+                "envelope": {
+                    "source": "+12025550100",
+                    "sourceDevice": 2,
+                    "timestamp": int(time() * 1000),
+                    "syncMessage": {
+                        "sentMessage": {
+                            "message": "follow up",
+                            "groupInfo": {"id": "group-sync"},
+                        }
+                    },
+                },
+            }
+        }
+    )
+    timestamp = int(time())
+
+    result = service.ingest_signal_webhook(
+        meta=_meta(),
+        raw_body_json=body,
+        header_timestamp=str(timestamp),
+        header_signature=_signature("super-secret", timestamp, body),
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value.accepted is True
+    assert result.payload.value.message is not None
+    assert result.payload.value.message.message_text == "follow up"
+    assert result.payload.value.message.group_id == "group-sync"
     assert len(cache.queue_calls) == 1
 
 
@@ -321,6 +387,42 @@ def test_ingest_ignores_non_message_payload() -> None:
     assert result.payload is not None
     assert result.payload.value.accepted is False
     assert result.payload.value.reason == "non-message payload"
+    assert len(cache.queue_calls) == 0
+
+
+def test_ingest_reports_signal_exception_events_without_queueing() -> None:
+    """Signal exception events should be surfaced with a specific ignore reason."""
+    service, _adapter, cache = _service()
+    body = json.dumps(
+        {
+            "data": {
+                "exception": {
+                    "type": "UntrustedIdentityException",
+                    "message": "Untrusted identity",
+                },
+                "envelope": {
+                    "source": "+12025550100",
+                    "timestamp": 1,
+                },
+            }
+        }
+    )
+    timestamp = int(time())
+
+    result = service.ingest_signal_webhook(
+        meta=_meta(),
+        raw_body_json=body,
+        header_timestamp=str(timestamp),
+        header_signature=_signature("super-secret", timestamp, body),
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value.accepted is False
+    assert (
+        result.payload.value.reason
+        == "signal exception event: UntrustedIdentityException"
+    )
     assert len(cache.queue_calls) == 0
 
 

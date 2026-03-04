@@ -60,10 +60,12 @@ Behavioral semantics:
 
 ------------------------------------------------------------------------
 ## Configuration Surface
-Adapter settings are sourced from `components.adapter.signal`:
+Adapter settings are sourced from `resources.adapter.signal`:
 - `base_url`
 - `receive_e164`
-- `timeout_seconds`
+- `receive_timeout_seconds`
+- `send_timeout_seconds`
+- `callback_timeout_seconds`
 - `max_retries`
 - `poll_interval_seconds`
 - `poll_receive_timeout_seconds`

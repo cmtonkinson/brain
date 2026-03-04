@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 
 from .errors import InvalidBodyError, InvalidJsonBodyError, MissingHeaderError
+from packages.brain_shared.logging import get_logger
+
+_LOGGER = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -20,9 +24,17 @@ class RawRequestData:
     headers: dict[str, str]
 
 
-def create_app(*, title: str = "brain", version: str = "0.0.0") -> FastAPI:
+def create_app(
+    *,
+    title: str = "brain",
+    version: str = "0.0.0",
+    log_requests: bool = True,
+) -> FastAPI:
     """Create a FastAPI app with project defaults."""
-    return FastAPI(title=title, version=version)
+    app = FastAPI(title=title, version=version)
+    if log_requests:
+        _install_request_logging(app)
+    return app
 
 
 def run_app(
@@ -45,6 +57,26 @@ def run_app_uds(
     """Create a uvicorn Server serving app over a Unix Domain Socket."""
     config = uvicorn.Config(app, uds=socket_path, log_level=log_level)
     return uvicorn.Server(config)
+
+
+def _install_request_logging(app: FastAPI) -> None:
+    """Attach one lightweight middleware for per-request summary logs."""
+
+    @app.middleware("http")
+    async def _log_request(request: Request, call_next) -> Response:
+        started = perf_counter()
+        response = await call_next(request)
+        duration_ms = round((perf_counter() - started) * 1000, 2)
+        _LOGGER.debug(
+            "HTTP request handled",
+            extra={
+                "http_method": request.method,
+                "http_path": request.url.path,
+                "http_status": response.status_code,
+                "duration_ms": duration_ms,
+            },
+        )
+        return response
 
 
 def get_header(

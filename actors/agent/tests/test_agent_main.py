@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from packages.brain_sdk import (
     CapabilityDescriptor,
@@ -33,6 +34,19 @@ def test_load_system_prompt_reads_colocated_prompt_file() -> None:
 
     assert "Respond with JSON only." in prompt
     assert '"kind":"tool_call"' in prompt
+
+
+def test_configure_logging_uses_configured_level(monkeypatch) -> None:
+    """Logging helper should honor the configured string log level."""
+    from actors.agent import main
+
+    basic_config = MagicMock()
+    monkeypatch.setattr(main.logging, "basicConfig", basic_config)
+
+    main._configure_logging(level="DEBUG")
+
+    basic_config.assert_called_once()
+    assert basic_config.call_args.kwargs["level"] == main.logging.DEBUG
 
 
 def test_parse_model_output_supports_tool_calls() -> None:

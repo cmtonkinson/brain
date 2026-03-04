@@ -51,7 +51,7 @@ BRAIN_RESOURCES__SUBSTRATE__POSTGRES__POOL_SIZE=10
 BRAIN_RESOURCES__SUBSTRATE__QDRANT__URL=http://qdrant:6333
 BRAIN_RESOURCES__SUBSTRATE__REDIS__URL=redis://redis:6379/0
 BRAIN_RESOURCES__ADAPTER__LITELLM__BASE_URL=http://litellm:4000
-BRAIN_RESOURCES__ADAPTER__SIGNAL__BASE_URL=http://signal-api:8080
+BRAIN_RESOURCES_ADAPTER__SIGNAL__BASE_URL=http://signal-api:8080
 BRAIN_ACTORS__CORE__SOCKET_PATH=/Users/chris/.config/brain/generated/brain.sock
 BRAIN_ACTORS__CORE__TIMEOUT_SECONDS=10.0
 BRAIN_ACTORS__CLI__PRINCIPAL=operator
@@ -194,12 +194,14 @@ Signal runtime adapter defaults.
 | Key | Default | Description |
 |---|---|---|
 | `base_url` | `http://signal-api:8080` | Base URL for Signal runtime receive/health endpoints. |
-| `receive_e164` | `+10000000000` | E.164 identity polled for inbound messages via `/v1/receive/{number}`. |
-| `health_timeout_seconds` | `1.0` | Per-request timeout in seconds for Signal health probes. Must be > 0. |
-| `timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds. Must be > 0. |
+| `receive_e164` | `+13333333333` | E.164 identity polled for inbound messages via `/v1/receive/{number}`. |
+| `health_timeout_seconds` | `0.5` | Per-request timeout in seconds for Signal health probes. Must be > 0. |
+| `receive_timeout_seconds` | `45.0` | End-to-end HTTP timeout in seconds for `/v1/receive/{number}` calls. Must be > `poll_receive_timeout_seconds`. |
+| `send_timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds for outbound `/v2/send` calls. Must be > 0. |
+| `callback_timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds for webhook callback POSTs into Switchboard. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
 | `poll_interval_seconds` | `1.0` | Steady-state delay between successful polling cycles. Must be > 0. |
-| `poll_receive_timeout_seconds` | `5` | Timeout argument passed to `/v1/receive/{number}` long-poll calls. Must be >= 1. |
+| `poll_receive_timeout_seconds` | `15` | Timeout argument passed to `/v1/receive/{number}` long-poll calls. Must be >= 1. |
 | `poll_max_messages` | `10` | Maximum messages requested per receive poll call. Must be >= 1. |
 | `failure_backoff_initial_seconds` | `1.0` | Initial delay after poll/forward failure before retry. Must be > 0. |
 | `failure_backoff_max_seconds` | `30.0` | Maximum capped delay for failure backoff. Must be > 0. |

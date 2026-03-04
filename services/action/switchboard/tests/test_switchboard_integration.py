@@ -139,9 +139,16 @@ def test_ingest_signal_webhook_enqueues_operator_message() -> None:
     body = json.dumps(
         {
             "data": {
-                "source": "+12025550100",
-                "message": "hello",
-                "timestamp": 1730000000000,
+                "account": "+12025550100",
+                "envelope": {
+                    "source": "+12025550100",
+                    "sourceDevice": 1,
+                    "timestamp": 1730000000000,
+                    "dataMessage": {
+                        "message": "hello",
+                        "groupInfo": {"groupId": "group-123"},
+                    },
+                },
             }
         }
     )
@@ -157,6 +164,16 @@ def test_ingest_signal_webhook_enqueues_operator_message() -> None:
     assert result.ok is True
     assert len(cache.pushed) == 1
     assert cache.pushed[0]["queue"] == "signal_inbound"
+    assert cache.pushed[0]["value"] == {
+        "sender_e164": "+12025550100",
+        "message_text": "hello",
+        "timestamp_ms": 1730000000000,
+        "source_device": "1",
+        "source": "signal",
+        "group_id": "group-123",
+        "quote_target_timestamp_ms": None,
+        "reaction_target_timestamp_ms": None,
+    }
 
 
 def test_register_signal_webhook_delegates_to_adapter() -> None:
