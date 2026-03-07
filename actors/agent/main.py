@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import signal
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -349,27 +349,29 @@ def _estimate_token_count(text: str) -> int:
     return (estimated + 1) // 2
 
 
-def _process_instruction(
+async def _process_instruction(
     *,
     runtime: _AgentRuntime,
     instruction: SwitchboardOperatorInstruction,
 ) -> str:
     """Handle one inbound operator instruction end-to-end."""
-    context = runtime.client.memory_assemble_context(
+    context = await asyncio.to_thread(
+        runtime.client.memory_assemble_context,
         session_id=runtime.session_id,
         message=instruction.message_text,
     )
     runtime.turn_state.actor = "operator"
     runtime.turn_state.channel = instruction.source
     runtime.model_driver.last_chat_result = None
-    result = runtime.agent.run_sync(
+    result = await runtime.agent.run(
         _format_user_prompt(instruction=instruction, context=context)
     )
     response_text = str(result.output).strip()
     if response_text == "":
         response_text = "I do not have a response yet."
     chat = runtime.model_driver.last_chat_result
-    runtime.client.memory_record_response(
+    await asyncio.to_thread(
+        runtime.client.memory_record_response,
         session_id=runtime.session_id,
         content=response_text,
         model="brain-sdk-lms" if chat is None else chat.model,
@@ -377,7 +379,7 @@ def _process_instruction(
         token_count=_estimate_token_count(response_text),
         reasoning_level="standard",
     )
-    _route_outbound_response(
+    await _route_outbound_response(
         runtime=runtime,
         instruction=instruction,
         response_text=response_text,
@@ -385,7 +387,7 @@ def _process_instruction(
     return response_text
 
 
-def _route_outbound_response(
+async def _route_outbound_response(
     *,
     runtime: _AgentRuntime,
     instruction: SwitchboardOperatorInstruction,
@@ -401,7 +403,8 @@ def _route_outbound_response(
     if recipient != "":
         payload["recipient_e164"] = recipient
     try:
-        runtime.client.invoke_capability(
+        await asyncio.to_thread(
+            runtime.client.invoke_capability,
             capability_id="attention-notify",
             input_payload=payload,
             actor="operator",
@@ -418,8 +421,8 @@ def _route_outbound_response(
         )
 
 
-def main() -> None:
-    """Run the long-lived Brain Agent process."""
+async def _run_main() -> None:
+    """Run the long-lived Brain Agent process inside one event loop."""
     global _RUNNING
     _RUNNING = True
 
@@ -447,8 +450,9 @@ def main() -> None:
         )
         while _RUNNING:
             try:
-                instruction = runtime.client.switchboard_poll_operator_instruction(
-                    wait_timeout_seconds=wait_timeout_seconds
+                instruction = await asyncio.to_thread(
+                    runtime.client.switchboard_poll_operator_instruction,
+                    wait_timeout_seconds=wait_timeout_seconds,
                 )
                 if instruction is None:
                     continue
@@ -460,7 +464,7 @@ def main() -> None:
                         "message_text": instruction.message_text,
                     },
                 )
-                response_text = _process_instruction(
+                response_text = await _process_instruction(
                     runtime=runtime,
                     instruction=instruction,
                 )
@@ -474,10 +478,15 @@ def main() -> None:
                 )
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("brain agent turn failed")
-                time.sleep(1.0)
+                await asyncio.sleep(1.0)
     finally:
         client.close()
         _LOGGER.info("brain agent stopped")
+
+
+def main() -> None:
+    """Run the long-lived Brain Agent process."""
+    asyncio.run(_run_main())
 
 
 if __name__ == "__main__":

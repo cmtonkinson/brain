@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -173,7 +174,7 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
         def __init__(self, runtime) -> None:
             self._runtime = runtime
 
-        def run_sync(self, _prompt: str) -> _FakeRunResult:
+        async def run(self, _prompt: str) -> _FakeRunResult:
             self._runtime.model_driver.last_chat_result = LmsChatResult(
                 text='{"kind":"final","content":"assistant reply"}',
                 provider="unit",
@@ -191,18 +192,20 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
     )
     runtime.agent = _FakeAgent(runtime)  # type: ignore[assignment]
 
-    response = main._process_instruction(
-        runtime=runtime,
-        instruction=SwitchboardOperatorInstruction(
-            sender_e164="+12025550100",
-            message_text="hello",
-            timestamp_ms=1,
-            source_device="1",
-            source="signal",
-            group_id=None,
-            quote_target_timestamp_ms=None,
-            reaction_target_timestamp_ms=None,
-        ),
+    response = asyncio.run(
+        main._process_instruction(
+            runtime=runtime,
+            instruction=SwitchboardOperatorInstruction(
+                sender_e164="+12025550100",
+                message_text="hello",
+                timestamp_ms=1,
+                source_device="1",
+                source="signal",
+                group_id=None,
+                quote_target_timestamp_ms=None,
+                reaction_target_timestamp_ms=None,
+            ),
+        )
     )
 
     assert response == "assistant reply"
