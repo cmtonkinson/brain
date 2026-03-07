@@ -17,7 +17,7 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
         "/memory/get_latest_or_create_session",
         "/capabilities/describe",
         "/memory/assemble_context",
-        "/lms/chat",
+        "/lms/chat-with-tools",
         "/memory/record_response",
         "/capabilities/invoke",
     ]

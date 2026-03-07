@@ -23,6 +23,8 @@ from packages.brain_shared.errors import (
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.adapters.litellm import (
+    AdapterChatMessage,
+    AdapterChatToolDefinition,
     AdapterDependencyError,
     AdapterInternalError,
     LiteLlmLibraryAdapter,
@@ -36,13 +38,18 @@ from services.action.language_model.config import (
     resolve_language_model_service_settings,
 )
 from services.action.language_model.domain import (
+    ChatMessage,
     ChatResponse,
+    ChatToolCall,
+    ChatToolDefinition,
+    ChatWithToolsResponse,
     EmbeddingVector,
     HealthStatus,
 )
 from services.action.language_model.service import LanguageModelService
 from services.action.language_model.validation import (
     ChatBatchRequest,
+    ChatWithToolsRequest,
     ChatRequest,
     EmbeddingProfile,
     EmbedBatchRequest,
@@ -206,6 +213,115 @@ class DefaultLanguageModelService(LanguageModelService):
                 )
                 for item in results
             ],
+        )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
+    def chat_with_tools(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        messages: Sequence[ChatMessage],
+        tools: Sequence[ChatToolDefinition] = (),
+        tool_choice: str | dict[str, object] | None = None,
+        parallel_tool_calls: bool | None = None,
+        allow_text_output: bool = True,
+        profile: ReasoningLevel = ReasoningLevel.STANDARD,
+    ) -> Envelope[ChatWithToolsResponse]:
+        """Generate one tool-capable completion using the resolved chat profile."""
+        request, errors = self._validate_request(
+            meta=meta,
+            model=ChatWithToolsRequest,
+            payload={
+                "messages": [
+                    item.model_dump(mode="python")
+                    if isinstance(item, BaseModel)
+                    else item
+                    for item in messages
+                ],
+                "tools": [
+                    item.model_dump(mode="python")
+                    if isinstance(item, BaseModel)
+                    else item
+                    for item in tools
+                ],
+                "tool_choice": tool_choice,
+                "parallel_tool_calls": parallel_tool_calls,
+                "allow_text_output": allow_text_output,
+                "profile": profile,
+            },
+        )
+        if errors:
+            return failure(meta=meta, errors=errors)
+        assert request is not None
+
+        resolved = self._resolve_chat_profile(profile=request.profile)
+        try:
+            result = self._adapter.chat_with_tools(
+                provider=resolved.provider,
+                model=resolved.model,
+                messages=[
+                    AdapterChatMessage.model_validate(item.model_dump(mode="python"))
+                    for item in request.messages
+                ],
+                tools=[
+                    AdapterChatToolDefinition.model_validate(
+                        item.model_dump(mode="python")
+                    )
+                    for item in request.tools
+                ],
+                tool_choice=request.tool_choice,
+                parallel_tool_calls=request.parallel_tool_calls,
+            )
+        except AdapterDependencyError as exc:
+            return failure(
+                meta=meta,
+                errors=[
+                    dependency_error(
+                        str(exc) or "litellm dependency failure",
+                        code=codes.DEPENDENCY_UNAVAILABLE,
+                        metadata={"adapter": "adapter_litellm"},
+                    )
+                ],
+            )
+        except AdapterInternalError as exc:
+            return failure(
+                meta=meta,
+                errors=[
+                    internal_error(
+                        str(exc) or "litellm adapter internal failure",
+                        code=codes.INTERNAL_ERROR,
+                        metadata={"adapter": "adapter_litellm"},
+                    )
+                ],
+            )
+
+        if not request.allow_text_output and len(result.tool_calls) == 0:
+            return failure(
+                meta=meta,
+                errors=[
+                    internal_error(
+                        "tool-capable model response did not include any tool calls",
+                        code=codes.INTERNAL_ERROR,
+                        metadata={"adapter": "adapter_litellm"},
+                    )
+                ],
+            )
+
+        return success(
+            meta=meta,
+            payload=ChatWithToolsResponse(
+                text=result.text,
+                tool_calls=tuple(
+                    ChatToolCall.model_validate(item.model_dump(mode="python"))
+                    for item in result.tool_calls
+                ),
+                provider=result.provider,
+                model=result.model,
+                finish_reason=result.finish_reason,
+            ),
         )
 
     @public_api_instrumented(

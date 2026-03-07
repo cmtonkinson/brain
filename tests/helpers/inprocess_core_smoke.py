@@ -19,8 +19,11 @@ from packages.brain_shared.config.models import ProfileSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeKind, Payload, new_meta
 from resources.adapters.litellm import (
     AdapterChatResult,
+    AdapterChatMessage,
+    AdapterChatToolDefinition,
     AdapterEmbeddingResult,
     AdapterHealthResult,
+    AdapterToolChatResult,
     LiteLlmAdapter,
 )
 from resources.adapters.signal import (
@@ -79,13 +82,32 @@ class _FakeLiteLlmAdapter(LiteLlmAdapter):
     def chat(self, *, provider: str, model: str, prompt: str) -> AdapterChatResult:
         del provider, model, prompt
         return AdapterChatResult(
-            text='{"kind":"final","content":"assistant reply"}',
+            text="assistant reply",
             provider="unit",
             model="test-model",
         )
 
     def chat_batch(self, *, provider: str, model: str, prompts):
         raise NotImplementedError
+
+    def chat_with_tools(
+        self,
+        *,
+        provider: str,
+        model: str,
+        messages: tuple[AdapterChatMessage, ...],
+        tools: tuple[AdapterChatToolDefinition, ...],
+        tool_choice: str | dict[str, object] | None = None,
+        parallel_tool_calls: bool | None = None,
+    ) -> AdapterToolChatResult:
+        del provider, model, messages, tools, tool_choice, parallel_tool_calls
+        return AdapterToolChatResult(
+            text="assistant reply",
+            tool_calls=(),
+            provider="unit",
+            model="test-model",
+            finish_reason="stop",
+        )
 
     def embed(self, *, provider: str, model: str, text: str) -> AdapterEmbeddingResult:
         del provider, model, text

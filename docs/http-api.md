@@ -24,6 +24,11 @@ _Response: `_InvokeResponse`_
 _Handler: `lms_chat`_
 _Response: `_ChatResponse`_
 
+
+`POST /lms/chat-with-tools` &mdash; direct access to tool-capable model inference without CES/PS overhead  
+_Handler: `lms_chat_with_tools`_
+_Response: `_ChatWithToolsResponse`_
+
 ------------------------------------------------------------------------
 ## `services/action/switchboard/api.py`
 `POST /switchboard/poll_operator_instruction` &mdash; dequeue the next queued operator instruction for the agent  

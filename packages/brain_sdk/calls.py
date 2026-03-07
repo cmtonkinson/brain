@@ -9,6 +9,7 @@ from typing import Any
 from packages.brain_sdk.errors import (
     BrainDomainError,
     BrainTransportError,
+    BrainValidationError,
     map_transport_error,
     raise_for_domain_errors,
 )
@@ -75,6 +76,48 @@ class LmsChatResult:
     text: str
     provider: str
     model: str
+
+
+@dataclass(frozen=True, slots=True)
+class LmsChatToolDefinition:
+    """One tool definition sent through the tool-capable LMS SDK surface."""
+
+    name: str
+    parameters_json_schema: dict[str, Any]
+    description: str | None = None
+    strict: bool | None = None
+    sequential: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class LmsChatToolCall:
+    """One normalized tool call returned from the tool-capable LMS SDK surface."""
+
+    tool_name: str
+    args_json: str
+    tool_call_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class LmsChatMessage:
+    """One normalized chat message used by the tool-capable LMS SDK surface."""
+
+    role: str
+    content: str = ""
+    tool_name: str = ""
+    tool_call_id: str = ""
+    tool_calls: tuple[LmsChatToolCall, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class LmsToolChatResult:
+    """One tool-capable LMS response payload."""
+
+    provider: str
+    model: str
+    finish_reason: str
+    text: str | None
+    tool_calls: tuple[LmsChatToolCall, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +297,59 @@ def call_lms_chat(
         text=str(payload.get("text", "")),
         provider=str(payload.get("provider", "")),
         model=str(payload.get("model", "")),
+    )
+
+
+def call_lms_chat_with_tools(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    messages: tuple[LmsChatMessage, ...],
+    tools: tuple[LmsChatToolDefinition, ...] = (),
+    tool_choice: str | dict[str, object] | None = None,
+    parallel_tool_calls: bool | None = None,
+    allow_text_output: bool = True,
+    profile: str = "standard",
+) -> LmsToolChatResult:
+    """Execute one tool-capable LMS chat call through Core HTTP."""
+    data = _post_json(
+        operation="lms.chat_with_tools",
+        http=http,
+        url="/lms/chat-with-tools",
+        body={
+            **metadata,
+            "messages": [_lms_chat_message(item) for item in messages],
+            "tools": [_lms_tool_definition(item) for item in tools],
+            "tool_choice": tool_choice,
+            "parallel_tool_calls": parallel_tool_calls,
+            "allow_text_output": allow_text_output,
+            "profile": profile,
+        },
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="lms.chat_with_tools",
+        errors=_errors_from_data(data),
+    )
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        raise BrainDomainError(
+            message="lms.chat_with_tools domain failure: missing payload",
+            operation="lms.chat_with_tools",
+        )
+    tool_calls = payload.get("tool_calls", ())
+    if not isinstance(tool_calls, list):
+        raise BrainDomainError(
+            message="lms.chat_with_tools domain failure: invalid tool_calls",
+            operation="lms.chat_with_tools",
+        )
+    return LmsToolChatResult(
+        provider=str(payload.get("provider", "")),
+        model=str(payload.get("model", "")),
+        finish_reason=str(payload.get("finish_reason", "")),
+        text=None if payload.get("text") is None else str(payload.get("text", "")),
+        tool_calls=tuple(_lms_chat_tool_call(item) for item in tool_calls),
     )
 
 
@@ -505,6 +601,51 @@ def _decode_output_json(value: object) -> Any:
         ) from exc
 
 
+def _lms_chat_tool_call(data: object) -> LmsChatToolCall:
+    """Map one tool call wire payload into an SDK dataclass."""
+    if not isinstance(data, dict):
+        raise BrainValidationError(
+            message="lms.chat_with_tools returned an invalid tool call payload",
+            operation="lms.chat_with_tools",
+        )
+    return LmsChatToolCall(
+        tool_name=str(data.get("tool_name", "")),
+        args_json=str(data.get("args_json", "")),
+        tool_call_id=str(data.get("tool_call_id", "")),
+    )
+
+
+def _lms_chat_tool_call_payload(value: LmsChatToolCall) -> dict[str, object]:
+    """Serialize one tool call dataclass for transport."""
+    return {
+        "tool_name": value.tool_name,
+        "args_json": value.args_json,
+        "tool_call_id": value.tool_call_id,
+    }
+
+
+def _lms_chat_message(value: LmsChatMessage) -> dict[str, object]:
+    """Serialize one tool-capable SDK chat message for transport."""
+    return {
+        "role": value.role,
+        "content": value.content,
+        "tool_name": value.tool_name,
+        "tool_call_id": value.tool_call_id,
+        "tool_calls": [_lms_chat_tool_call_payload(item) for item in value.tool_calls],
+    }
+
+
+def _lms_tool_definition(value: LmsChatToolDefinition) -> dict[str, object]:
+    """Serialize one tool definition dataclass for transport."""
+    return {
+        "name": value.name,
+        "parameters_json_schema": value.parameters_json_schema,
+        "description": value.description,
+        "strict": value.strict,
+        "sequential": value.sequential,
+    }
+
+
 def _memory_context_block(value: dict[str, Any]) -> MemoryContextBlock:
     """Map one raw MAS assembled-context payload into the SDK dataclass."""
     profile = value.get("profile", {})
@@ -649,6 +790,37 @@ def lms_chat(
     """High-level SDK wrapper for direct LMS chat."""
     return client.lms_chat(  # type: ignore[union-attr]
         prompt=prompt,
+        profile=profile,
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        ),
+    )
+
+
+def lms_chat_with_tools(
+    *,
+    client: object,
+    messages: tuple[LmsChatMessage, ...],
+    tools: tuple[LmsChatToolDefinition, ...] = (),
+    tool_choice: str | dict[str, object] | None = None,
+    parallel_tool_calls: bool | None = None,
+    allow_text_output: bool = True,
+    profile: str = "standard",
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> LmsToolChatResult:
+    """High-level SDK wrapper for tool-capable LMS chat."""
+    return client.lms_chat_with_tools(  # type: ignore[union-attr]
+        messages=messages,
+        tools=tools,
+        tool_choice=tool_choice,
+        parallel_tool_calls=parallel_tool_calls,
+        allow_text_output=allow_text_output,
         profile=profile,
         meta=_meta_overrides(
             principal=principal,

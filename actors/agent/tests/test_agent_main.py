@@ -10,7 +10,10 @@ from unittest.mock import MagicMock
 from packages.brain_sdk import (
     BrainDependencyError,
     CapabilityDescriptor,
-    LmsChatResult,
+    LmsChatMessage,
+    LmsChatToolCall,
+    LmsChatToolDefinition,
+    LmsToolChatResult,
     MemoryContextBlock,
     MemoryDialogueTurn,
     MemoryProfileContext,
@@ -35,8 +38,9 @@ def test_load_system_prompt_reads_colocated_prompt_file() -> None:
 
     prompt = main._load_system_prompt()
 
-    assert "Respond with JSON only." in prompt
-    assert '"kind":"tool_call"' in prompt
+    assert prompt != ""
+    assert "tool" in prompt.lower()
+    assert "Respond with JSON only." not in prompt
 
 
 def test_configure_logging_uses_configured_level(monkeypatch) -> None:
@@ -52,40 +56,65 @@ def test_configure_logging_uses_configured_level(monkeypatch) -> None:
     assert basic_config.call_args.kwargs["level"] == main.logging.DEBUG
 
 
-def test_parse_model_output_supports_tool_calls() -> None:
-    """Model-output parser should normalize valid tool-call JSON replies."""
+def test_to_sdk_messages_translates_tool_loop_history() -> None:
+    """Message translation should preserve assistant tool calls and tool returns."""
     from actors.agent import main
-
-    result = main._parse_model_output(
-        '{"kind":"tool_call","tool_name":"vault-get-file","input_payload":{"file_path":"x.md"}}'
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        SystemPromptPart,
+        TextPart,
+        ToolCallPart,
+        ToolReturnPart,
+        UserPromptPart,
     )
 
-    assert result.kind == "tool_call"
-    assert result.tool_name == "vault-get-file"
-    assert result.input_payload == {"file_path": "x.md"}
+    messages = [
+        ModelRequest(parts=[SystemPromptPart("system"), UserPromptPart("hello")]),
+        ModelResponse(
+            parts=[
+                TextPart("checking"),
+                ToolCallPart(
+                    tool_name="vault-get-file",
+                    args={"input_payload": {"file_path": "resume.md"}},
+                    tool_call_id="call-1",
+                ),
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="vault-get-file",
+                    content={"path": "resume.md"},
+                    tool_call_id="call-1",
+                )
+            ]
+        ),
+    ]
 
+    result = main._to_sdk_messages(messages)
 
-def test_parse_model_output_extracts_embedded_json_tool_call() -> None:
-    """Parser should recover a tool call even when the model adds prose first."""
-    from actors.agent import main
-
-    result = main._parse_model_output(
-        'I will inspect the vault first.\n{"kind":"tool_call","tool_name":"vault-list-directory","input_payload":{"directory_path":"."}}'
-    )
-
-    assert result.kind == "tool_call"
-    assert result.tool_name == "vault-list-directory"
-    assert result.input_payload == {"directory_path": "."}
-
-
-def test_parse_model_output_returns_retry_failure_for_plain_text() -> None:
-    """Plain-text output should trigger a retry instead of becoming final text."""
-    from actors.agent import main
-
-    result = main._parse_model_output("I'll check that now.")
-
-    assert isinstance(result, main._ModelOutputParseFailure)
-    assert "Return JSON only" in result.retry_message
+    assert result == [
+        LmsChatMessage(role="system", content="system"),
+        LmsChatMessage(role="user", content="hello"),
+        LmsChatMessage(
+            role="assistant",
+            content="checking",
+            tool_calls=(
+                LmsChatToolCall(
+                    tool_name="vault-get-file",
+                    args_json='{"input_payload": {"file_path": "resume.md"}}',
+                    tool_call_id="call-1",
+                ),
+            ),
+        ),
+        LmsChatMessage(
+            role="tool",
+            content='{"path": "resume.md"}',
+            tool_name="vault-get-file",
+            tool_call_id="call-1",
+        ),
+    ]
 
 
 def test_build_capability_tools_invokes_sdk_client() -> None:
@@ -134,64 +163,110 @@ def test_build_capability_tools_invokes_sdk_client() -> None:
     assert client.calls == [("demo-tool", {"value": "x"}, "operator", "signal")]
 
 
-def test_run_model_retries_invalid_output_before_returning_tool_call() -> None:
-    """Model driver should retry malformed output and then honor a valid tool call."""
+def test_tool_model_requests_lms_chat_with_tools() -> None:
+    """Custom model should translate request history and tool schemas into SDK calls."""
     from actors.agent import main
-    from pydantic_ai.messages import ModelRequest, RetryPromptPart, ToolCallPart
+    from pydantic_ai.messages import (
+        ModelRequest,
+        SystemPromptPart,
+        ToolCallPart,
+        UserPromptPart,
+    )
+    from pydantic_ai.models import ModelRequestParameters
+    from pydantic_ai.tools import ToolDefinition
 
     class _FakeClient:
         def __init__(self) -> None:
-            self.prompts: list[str] = []
-            self.calls = 0
+            self.messages: tuple[LmsChatMessage, ...] | None = None
+            self.tools: tuple[LmsChatToolDefinition, ...] | None = None
 
-        def lms_chat(self, *, prompt: str, profile: str = "standard") -> LmsChatResult:
-            del profile
-            self.prompts.append(prompt)
-            self.calls += 1
-            if self.calls == 1:
-                return LmsChatResult(
-                    text="I'll inspect the vault first.",
-                    provider="unit",
-                    model="test-model",
-                )
-            return LmsChatResult(
-                text='{"kind":"tool_call","tool_name":"vault-get-file","input_payload":{"file_path":"resume.md"}}',
+        def lms_chat_with_tools(
+            self,
+            *,
+            messages: tuple[LmsChatMessage, ...],
+            tools: tuple[LmsChatToolDefinition, ...],
+            tool_choice: str | dict[str, object] | None = None,
+            parallel_tool_calls: bool | None = None,
+            allow_text_output: bool = True,
+            profile: str = "standard",
+            meta: object | None = None,
+        ) -> LmsToolChatResult:
+            del tool_choice, parallel_tool_calls, allow_text_output, profile, meta
+            self.messages = messages
+            self.tools = tools
+            return LmsToolChatResult(
                 provider="unit",
                 model="test-model",
+                finish_reason="tool_call",
+                text=None,
+                tool_calls=(
+                    LmsChatToolCall(
+                        tool_name="vault-get-file",
+                        args_json='{"input_payload":{"file_path":"resume.md"}}',
+                        tool_call_id="call-1",
+                    ),
+                ),
             )
 
-    driver = main._BrainSdkModelDriver(client=_FakeClient())  # type: ignore[arg-type]
-    response = driver.run_model(
-        messages=[ModelRequest(parts=[RetryPromptPart(content="initial")])],
-        info=type(
-            "_Info",
-            (),
-            {
-                "function_tools": [
-                    type(
-                        "_Tool",
-                        (),
-                        {
-                            "name": "vault-get-file",
-                            "description": "Read a file.",
-                            "parameters_json_schema": {
-                                "type": "object",
-                                "properties": {"file_path": {"type": "string"}},
-                                "required": ["file_path"],
+    model = main._BrainSdkToolModel(client=_FakeClient())  # type: ignore[arg-type]
+    response = asyncio.run(
+        model.request(
+            messages=[
+                ModelRequest(
+                    parts=[SystemPromptPart("system"), UserPromptPart("hello")]
+                )
+            ],
+            model_settings=None,
+            model_request_parameters=ModelRequestParameters(
+                function_tools=[
+                    ToolDefinition(
+                        name="vault-get-file",
+                        description="Read a file.",
+                        parameters_json_schema={
+                            "type": "object",
+                            "properties": {
+                                "input_payload": {
+                                    "type": "object",
+                                    "properties": {"file_path": {"type": "string"}},
+                                    "required": ["file_path"],
+                                }
                             },
+                            "required": ["input_payload"],
                         },
-                    )()
-                ],
-                "instructions": None,
-            },
-        )(),
+                    )
+                ]
+            ),
+        )
     )
 
-    assert len(driver._client.prompts) == 2  # type: ignore[attr-defined]
-    assert "retry:" in driver._client.prompts[1]  # type: ignore[attr-defined]
+    assert model.last_result is not None
+    assert model.last_result.model == "test-model"
+    assert model._client.messages == (  # type: ignore[attr-defined]
+        LmsChatMessage(role="system", content="system"),
+        LmsChatMessage(role="user", content="hello"),
+    )
+    assert model._client.tools == (  # type: ignore[attr-defined]
+        LmsChatToolDefinition(
+            name="vault-get-file",
+            description="Read a file.",
+            parameters_json_schema={
+                "type": "object",
+                "properties": {
+                    "input_payload": {
+                        "type": "object",
+                        "properties": {"file_path": {"type": "string"}},
+                        "required": ["file_path"],
+                    }
+                },
+                "required": ["input_payload"],
+            },
+            strict=None,
+            sequential=False,
+        ),
+    )
     assert isinstance(response.parts[0], ToolCallPart)
     assert response.parts[0].tool_name == "vault-get-file"
-    assert response.parts[0].args == {"input_payload": {"file_path": "resume.md"}}
+    assert response.parts[0].tool_call_id == "call-1"
 
 
 def test_process_instruction_assembles_context_and_records_response() -> None:
@@ -260,10 +335,12 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
             self._runtime = runtime
 
         async def run(self, _prompt: str) -> _FakeRunResult:
-            self._runtime.model_driver.last_chat_result = LmsChatResult(
-                text='{"kind":"final","content":"assistant reply"}',
+            self._runtime.model.last_result = LmsToolChatResult(
                 provider="unit",
                 model="test-model",
+                finish_reason="stop",
+                text="assistant reply",
+                tool_calls=(),
             )
             return _FakeRunResult(output="assistant reply")
 
@@ -272,9 +349,10 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
         client=client,  # type: ignore[arg-type]
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
         turn_state=main._TurnState(),
-        model_driver=main._BrainSdkModelDriver.__new__(main._BrainSdkModelDriver),
+        model=main._BrainSdkToolModel.__new__(main._BrainSdkToolModel),
         agent=None,  # type: ignore[arg-type]
     )
+    runtime.model.last_result = None
     runtime.agent = _FakeAgent(runtime)  # type: ignore[assignment]
 
     response = asyncio.run(
@@ -378,8 +456,10 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
     class _FakeAgent:
         async def run(self, _prompt: str):
             raise BrainDependencyError(
-                message=("lms.chat domain failure: provider rate limit exceeded"),
-                operation="lms.chat",
+                message=(
+                    "lms.chat_with_tools domain failure: provider rate limit exceeded"
+                ),
+                operation="lms.chat_with_tools",
                 details=(
                     SdkErrorDetail(
                         code="dependency_unavailable",
@@ -395,9 +475,10 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
         client=client,  # type: ignore[arg-type]
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
         turn_state=main._TurnState(),
-        model_driver=main._BrainSdkModelDriver.__new__(main._BrainSdkModelDriver),
+        model=main._BrainSdkToolModel.__new__(main._BrainSdkToolModel),
         agent=_FakeAgent(),  # type: ignore[arg-type]
     )
+    runtime.model.last_result = None
 
     response = asyncio.run(
         main._process_instruction(
@@ -471,15 +552,8 @@ def test_create_runtime_creates_session_and_registers_tools() -> None:
                 ),
             )
 
-        def lms_chat(self, *, prompt: str, profile: str = "standard") -> LmsChatResult:
-            del prompt, profile
-            return LmsChatResult(
-                text='{"kind":"final","content":"done"}',
-                provider="unit",
-                model="test-model",
-            )
-
     runtime = main._create_runtime(client=_FakeClient())  # type: ignore[arg-type]
 
     assert runtime.session_id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    assert isinstance(runtime.model, main._BrainSdkToolModel)
     assert len(runtime.agent._function_toolset.tools) == 1

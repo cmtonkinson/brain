@@ -55,6 +55,9 @@ _Generate a batch of chat completions._
 `embed_batch(*, meta: EnvelopeMeta, texts: Sequence[str], profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING) -> Envelope[list[EmbeddingVector]]`  
 _Generate a batch of embedding vectors._
 
+`chat_with_tools(*, meta: EnvelopeMeta, messages: Sequence[ChatMessage], tools: Sequence[ChatToolDefinition] = (), tool_choice: str | dict[str, object] | None = None, parallel_tool_calls: bool | None = None, allow_text_output: bool = True, profile: ReasoningLevel = ReasoningLevel.STANDARD) -> Envelope[ChatWithToolsResponse]`  
+_Generate one tool-capable chat completion._
+
 ------------------------------------------------------------------------
 ## `PolicyService`
 - Module: `services/action/policy_service/service.py`

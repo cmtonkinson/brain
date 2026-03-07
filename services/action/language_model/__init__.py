@@ -10,7 +10,11 @@ from services.action.language_model.config import (
     resolve_language_model_service_settings,
 )
 from services.action.language_model.domain import (
+    ChatMessage,
     ChatResponse,
+    ChatToolCall,
+    ChatToolDefinition,
+    ChatWithToolsResponse,
     EmbeddingVector,
     HealthStatus,
 )
@@ -20,6 +24,10 @@ from services.action.language_model.validation import EmbeddingProfile, Reasonin
 
 __all__ = [
     "ChatResponse",
+    "ChatMessage",
+    "ChatToolCall",
+    "ChatToolDefinition",
+    "ChatWithToolsResponse",
     "DefaultLanguageModelService",
     "EmbeddingVector",
     "Envelope",

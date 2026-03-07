@@ -12,10 +12,14 @@ import litellm
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.adapters.litellm.adapter import (
     AdapterChatResult,
+    AdapterChatMessage,
+    AdapterChatToolCall,
+    AdapterChatToolDefinition,
     AdapterDependencyError,
     AdapterEmbeddingResult,
     AdapterHealthResult,
     AdapterInternalError,
+    AdapterToolChatResult,
     LiteLlmAdapter,
 )
 from resources.adapters.litellm.component import RESOURCE_COMPONENT_ID
@@ -84,6 +88,37 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         logger=_LOGGER,
         component_id=str(RESOURCE_COMPONENT_ID),
     )
+    def chat_with_tools(
+        self,
+        *,
+        provider: str,
+        model: str,
+        messages: Sequence[AdapterChatMessage],
+        tools: Sequence[AdapterChatToolDefinition],
+        tool_choice: str | dict[str, object] | None = None,
+        parallel_tool_calls: bool | None = None,
+    ) -> AdapterToolChatResult:
+        """Generate one tool-capable completion using the LiteLLM Python API."""
+        response = self._call_completion(
+            provider=provider,
+            model=model,
+            messages=[_to_litellm_message(item) for item in messages],
+            tools=[_to_litellm_tool(item) for item in tools],
+            tool_choice=tool_choice,
+            parallel_tool_calls=parallel_tool_calls,
+        )
+        return AdapterToolChatResult(
+            text=_extract_optional_chat_content(response),
+            tool_calls=tuple(_extract_tool_calls(response)),
+            provider=provider,
+            model=model,
+            finish_reason=_extract_finish_reason(response),
+        )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(RESOURCE_COMPONENT_ID),
+    )
     def embed(
         self,
         *,
@@ -139,13 +174,22 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         *,
         provider: str,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, object] | None = None,
+        parallel_tool_calls: bool | None = None,
     ) -> object:
         """Invoke `litellm.completion` with resolved provider settings."""
         litellm = _load_litellm_module()
         resolved = self._resolve_provider_settings(provider=provider)
         kwargs = self._request_kwargs(provider=provider, model=model, resolved=resolved)
         kwargs["messages"] = messages
+        if tools is not None:
+            kwargs["tools"] = tools
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
+        if parallel_tool_calls is not None:
+            kwargs["parallel_tool_calls"] = parallel_tool_calls
         started_at = perf_counter()
         _LOGGER.debug(
             "LiteLLM provider request starting",
@@ -298,14 +342,76 @@ def _qualified_model(*, provider: str, model: str) -> str:
 
 def _extract_chat_content(response: object) -> str:
     """Extract first chat message content from LiteLLM completion response."""
+    content = _extract_optional_chat_content(response)
+    if not isinstance(content, str):
+        raise AdapterInternalError("chat response content is invalid")
+    return content
+
+
+def _extract_optional_chat_content(response: object) -> str | None:
+    """Extract optional assistant text from a LiteLLM completion response."""
     choice = _first_item(
         _response_field(response=response, field="choices"), field="choices"
     )
     message = _response_field(response=choice, field="message")
-    content = _response_field(response=message, field="content")
-    if not isinstance(content, str):
-        raise AdapterInternalError("chat response content is invalid")
-    return content
+    content = _response_value(response=message, field="content")
+    if content is None:
+        return None
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for item in content:
+            if isinstance(item, Mapping) and item.get("type") == "text":
+                text = item.get("text")
+                if isinstance(text, str):
+                    text_parts.append(text)
+        return "".join(text_parts)
+    raise AdapterInternalError("chat response content is invalid")
+
+
+def _extract_tool_calls(response: object) -> list[AdapterChatToolCall]:
+    """Extract normalized tool calls from a LiteLLM completion response."""
+    choice = _first_item(
+        _response_field(response=response, field="choices"), field="choices"
+    )
+    message = _response_field(response=choice, field="message")
+    payload = _response_value(response=message, field="tool_calls")
+    if payload is None:
+        return []
+    if not isinstance(payload, list):
+        raise AdapterInternalError("tool call payload is invalid")
+    result: list[AdapterChatToolCall] = []
+    for item in payload:
+        function = _response_field(response=item, field="function")
+        tool_name = _response_field(response=function, field="name")
+        args_json = _response_field(response=function, field="arguments")
+        tool_call_id = _response_field(response=item, field="id")
+        if not all(
+            isinstance(value, str) for value in (tool_name, args_json, tool_call_id)
+        ):
+            raise AdapterInternalError("tool call payload is invalid")
+        result.append(
+            AdapterChatToolCall(
+                tool_name=tool_name,
+                args_json=args_json,
+                tool_call_id=tool_call_id,
+            )
+        )
+    return result
+
+
+def _extract_finish_reason(response: object) -> str:
+    """Extract the normalized finish reason from a LiteLLM completion response."""
+    choice = _first_item(
+        _response_field(response=response, field="choices"), field="choices"
+    )
+    value = _response_value(response=choice, field="finish_reason")
+    if value == "tool_calls":
+        return "tool_call"
+    if isinstance(value, str) and value != "":
+        return value
+    return "stop"
 
 
 def _extract_embedding_vectors(response: object) -> list[tuple[float, ...]]:
@@ -334,6 +440,13 @@ def _response_field(*, response: object, field: str) -> object:
     if value is None:
         raise AdapterInternalError(f"response missing {field}")
     return value
+
+
+def _response_value(*, response: object, field: str) -> object | None:
+    """Read one optional field from a response mapping or object."""
+    if isinstance(response, Mapping):
+        return response.get(field)
+    return getattr(response, field, None)
 
 
 def _first_item(payload: object, *, field: str) -> object:
@@ -369,3 +482,43 @@ def _is_dependency_exception(exc: Exception) -> bool:
     if any(token in text for token in dependency_tokens):
         return True
     return False
+
+
+def _to_litellm_tool(value: AdapterChatToolDefinition) -> dict[str, Any]:
+    """Convert one normalized tool definition into LiteLLM/OpenAI tool shape."""
+    function: dict[str, Any] = {
+        "name": value.name,
+        "parameters": value.parameters_json_schema,
+    }
+    if value.description is not None:
+        function["description"] = value.description
+    if value.strict is not None:
+        function["strict"] = value.strict
+    return {"type": "function", "function": function}
+
+
+def _to_litellm_message(value: AdapterChatMessage) -> dict[str, Any]:
+    """Convert one normalized chat message into LiteLLM/OpenAI message shape."""
+    if value.role == "assistant":
+        payload: dict[str, Any] = {"role": "assistant"}
+        payload["content"] = None if value.content == "" else value.content
+        if value.tool_calls:
+            payload["tool_calls"] = [
+                {
+                    "id": item.tool_call_id,
+                    "type": "function",
+                    "function": {
+                        "name": item.tool_name,
+                        "arguments": item.args_json,
+                    },
+                }
+                for item in value.tool_calls
+            ]
+        return payload
+    if value.role == "tool":
+        return {
+            "role": "tool",
+            "tool_call_id": value.tool_call_id,
+            "content": value.content,
+        }
+    return {"role": value.role, "content": value.content}

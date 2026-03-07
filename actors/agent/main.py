@@ -9,24 +9,30 @@ import os
 import signal
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 from pydantic_ai import Agent, Tool
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
-    RetryPromptPart,
+    SystemPromptPart,
     TextPart,
     ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart,
 )
-from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.models import Model, ModelRequestParameters
+from pydantic_ai.profiles import ModelProfile
+from pydantic_ai.tools import ToolDefinition
 
 from packages.brain_sdk import (
     BrainClient,
     BrainDependencyError,
     BrainSdkConfig,
     CapabilityDescriptor,
-    LmsChatResult,
+    LmsChatMessage,
+    LmsChatToolCall,
+    LmsChatToolDefinition,
+    LmsToolChatResult,
     MemoryContextBlock,
     SwitchboardOperatorInstruction,
 )
@@ -36,7 +42,6 @@ _LOGGER = logging.getLogger(__name__)
 _RUNNING = True
 _LONG_POLL_BUFFER_SECONDS = 1.0
 _MIN_LONG_POLL_SECONDS = 1.0
-_MODEL_OUTPUT_RETRY_LIMIT = 3
 _LMS_THROTTLE_RESPONSE = (
     "I'm temporarily rate limited by the language model provider. "
     "Please try again in a minute."
@@ -53,23 +58,6 @@ class _TurnState:
     channel: str = ""
 
 
-@dataclass(frozen=True, slots=True)
-class _ParsedModelOutput:
-    """Normalized structured output parsed from one LMS chat response."""
-
-    kind: str
-    content: str = ""
-    tool_name: str = ""
-    input_payload: dict[str, object] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class _ModelOutputParseFailure:
-    """Structured parse failure with retry guidance for malformed LMS output."""
-
-    retry_message: str
-
-
 @dataclass(slots=True)
 class _AgentRuntime:
     """Assembled agent runtime dependencies created once at startup."""
@@ -77,7 +65,7 @@ class _AgentRuntime:
     client: BrainClient
     session_id: str
     turn_state: _TurnState
-    model_driver: "_BrainSdkModelDriver"
+    model: "_BrainSdkToolModel"
     agent: Agent[None, str]
 
 
@@ -109,135 +97,59 @@ def _configure_logging(*, level: str) -> None:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
-class _BrainSdkModelDriver:
-    """Function-model bridge that delegates model reasoning to the Brain SDK LMS."""
+class _BrainSdkToolModel(Model):
+    """PydanticAI model backed by the Brain SDK tool-capable LMS endpoint."""
 
-    def __init__(self, *, client: BrainClient) -> None:
+    def __init__(self, *, client: BrainClient, profile_name: str = "standard") -> None:
+        super().__init__(profile=ModelProfile(supports_tools=True))
         self._client = client
-        self.last_chat_result: LmsChatResult | None = None
+        self._profile_name = profile_name
+        self.last_result: LmsToolChatResult | None = None
 
-    def run_model(
+    async def request(
         self,
         messages: list[ModelRequest | ModelResponse],
-        info: AgentInfo,
+        model_settings: object,
+        model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
-        """Convert PydanticAI state into an LMS prompt and normalize the reply."""
-        pending_messages = list(messages)
-        available_tool_names = {tool.name for tool in info.function_tools}
-        for _attempt in range(_MODEL_OUTPUT_RETRY_LIMIT):
-            prompt = self._build_prompt(messages=pending_messages, info=info)
-            chat = self._client.lms_chat(prompt=prompt, profile="standard")
-            self.last_chat_result = chat
-            parsed = _parse_model_output(chat.text)
-            if isinstance(parsed, _ModelOutputParseFailure):
-                pending_messages.append(
-                    ModelRequest(parts=[RetryPromptPart(content=parsed.retry_message)])
-                )
-                continue
-            if parsed.kind == "tool_call" and parsed.tool_name in available_tool_names:
-                return ModelResponse(
-                    parts=[
-                        ToolCallPart(
-                            tool_name=parsed.tool_name,
-                            args={
-                                "input_payload": {}
-                                if parsed.input_payload is None
-                                else parsed.input_payload
-                            },
-                        )
-                    ],
-                    model_name=chat.model,
-                    provider_name=chat.provider,
-                )
-            if parsed.kind == "final" and parsed.content.strip() != "":
-                text = parsed.content.strip()
-                return ModelResponse(
-                    parts=[TextPart(text)],
-                    model_name=chat.model,
-                    provider_name=chat.provider,
-                )
-            pending_messages.append(
-                ModelRequest(
-                    parts=[
-                        RetryPromptPart(
-                            content=(
-                                "Return valid JSON only. "
-                                "Use kind='final' or kind='tool_call' with a known tool."
-                            )
-                        )
-                    ]
-                )
-            )
+        """Request one tool-capable model response from the SDK-backed LMS."""
+        del model_settings
+        prepared_settings, prepared_params = self.prepare_request(
+            None, model_request_parameters
+        )
+        del prepared_settings
+        result = await asyncio.to_thread(
+            self._client.lms_chat_with_tools,
+            messages=tuple(_to_sdk_messages(messages)),
+            tools=tuple(
+                _to_sdk_tool_definition(item) for item in prepared_params.function_tools
+            ),
+            allow_text_output=prepared_params.allow_text_output,
+            profile=self._profile_name,
+        )
+        self.last_result = result
+        parts: list[TextPart | ToolCallPart] = []
+        if result.text is not None and result.text.strip() != "":
+            parts.append(TextPart(result.text.strip()))
+        parts.extend(_to_model_tool_call(item) for item in result.tool_calls)
+        if len(parts) == 0:
+            parts.append(TextPart("I do not have a response yet."))
         return ModelResponse(
-            parts=[
-                TextPart(
-                    "I couldn't complete this turn because the model kept returning "
-                    "invalid tool/output formatting."
-                )
-            ],
-            model_name="brain-sdk-lms",
-            provider_name="brain-sdk",
+            parts=parts,
+            model_name=result.model,
+            provider_name=result.provider,
+            finish_reason=_normalize_finish_reason(result.finish_reason),
         )
 
-    def _build_prompt(
-        self,
-        *,
-        messages: list[ModelRequest | ModelResponse],
-        info: AgentInfo,
-    ) -> str:
-        """Render one deterministic prompt for the SDK-backed LMS call."""
-        tool_lines = []
-        for tool in info.function_tools:
-            schema = json.dumps(tool.parameters_json_schema, sort_keys=True)
-            description = "" if tool.description is None else tool.description
-            tool_lines.append(f"- {tool.name}: {description}\n  schema: {schema}")
-        transcript_lines = []
-        for message in messages:
-            transcript_lines.extend(_render_model_message(message))
-        sections = [
-            "You are choosing the next agent action.",
-            _load_system_prompt(),
-        ]
-        if info.instructions:
-            sections.append(f"Runtime instructions:\n{info.instructions}")
-        sections.append(
-            "Available tools:\n"
-            + ("\n".join(tool_lines) if tool_lines else "(no tools available)")
-        )
-        sections.append(
-            "Conversation state:\n"
-            + ("\n".join(transcript_lines) if transcript_lines else "(empty)")
-        )
-        sections.append(
-            "Return JSON only. Prefer a tool call when external state or actions are needed."
-        )
-        return "\n\n".join(sections)
+    @property
+    def model_name(self) -> str:
+        """Return the stable local model identifier."""
+        return "brain-sdk-lms"
 
-
-def _render_model_message(message: ModelRequest | ModelResponse) -> list[str]:
-    """Render one PydanticAI message into stable plain-text transcript lines."""
-    lines: list[str] = []
-    for part in message.parts:
-        part_kind = getattr(part, "part_kind", "")
-        if part_kind == "system-prompt":
-            lines.append(f"system: {getattr(part, 'content', '')}")
-        elif part_kind == "user-prompt":
-            lines.append(f"user: {_stringify_content(getattr(part, 'content', ''))}")
-        elif part_kind == "tool-return":
-            lines.append(
-                f"tool-result {getattr(part, 'tool_name', '')}: "
-                f"{_stringify_content(getattr(part, 'content', ''))}"
-            )
-        elif part_kind == "retry-prompt":
-            lines.append(f"retry: {_stringify_content(getattr(part, 'content', ''))}")
-        elif part_kind == "tool-call":
-            lines.append(
-                f"tool-call {getattr(part, 'tool_name', '')}: "
-                f"{_stringify_content(getattr(part, 'args', ''))}"
-            )
-        elif part_kind == "text":
-            lines.append(f"assistant: {getattr(part, 'content', '')}")
-    return lines
+    @property
+    def system(self) -> str:
+        """Return the provider/system identifier for telemetry purposes."""
+        return "brain"
 
 
 def _stringify_content(value: object) -> str:
@@ -250,52 +162,119 @@ def _stringify_content(value: object) -> str:
         return str(value)
 
 
-def _extract_json_object(text: str) -> dict[str, object] | None:
-    """Return the first JSON object embedded anywhere in one text response."""
-    decoder = json.JSONDecoder()
-    for index, char in enumerate(text):
-        if char != "{":
-            continue
-        try:
-            payload, _end = decoder.raw_decode(text[index:])
-        except ValueError:
-            continue
-        if isinstance(payload, dict):
-            return cast(dict[str, object], payload)
-    return None
+def _to_sdk_messages(
+    messages: list[ModelRequest | ModelResponse],
+) -> list[LmsChatMessage]:
+    """Convert PydanticAI message history into SDK LMS chat messages."""
+    result: list[LmsChatMessage] = []
+    for message in messages:
+        result.extend(_to_sdk_message_parts(message))
+    return result
 
 
-def _parse_model_output(text: str) -> _ParsedModelOutput | _ModelOutputParseFailure:
-    """Parse one LMS response into a tool-call or final-answer instruction."""
-    payload = _extract_json_object(text)
-    if payload is None:
-        return _ModelOutputParseFailure(
-            retry_message=(
-                "Your previous reply was invalid. Return JSON only with either "
-                '{"kind":"final","content":"..."} or '
-                '{"kind":"tool_call","tool_name":"...","input_payload":{...}}.'
+def _to_sdk_message_parts(
+    message: ModelRequest | ModelResponse,
+) -> list[LmsChatMessage]:
+    """Convert one PydanticAI message into one or more SDK LMS messages."""
+    if isinstance(message, ModelRequest):
+        result: list[LmsChatMessage] = []
+        for part in message.parts:
+            if isinstance(part, SystemPromptPart):
+                result.append(LmsChatMessage(role="system", content=part.content))
+            elif isinstance(part, UserPromptPart):
+                result.append(
+                    LmsChatMessage(
+                        role="user",
+                        content=_stringify_content(part.content),
+                    )
+                )
+            elif isinstance(part, ToolReturnPart):
+                result.append(
+                    LmsChatMessage(
+                        role="tool",
+                        content=_stringify_content(part.content),
+                        tool_name=part.tool_name,
+                        tool_call_id=part.tool_call_id,
+                    )
+                )
+            else:
+                result.append(
+                    LmsChatMessage(
+                        role="user",
+                        content=_stringify_content(getattr(part, "content", "")),
+                    )
+                )
+        return result
+
+    text_parts: list[str] = []
+    tool_calls: list[LmsChatToolCall] = []
+    for part in message.parts:
+        if isinstance(part, TextPart):
+            text_parts.append(part.content)
+        elif isinstance(part, ToolCallPart):
+            tool_calls.append(
+                LmsChatToolCall(
+                    tool_name=part.tool_name,
+                    args_json=_tool_args_json(part.args),
+                    tool_call_id=part.tool_call_id,
+                )
             )
+    if len(text_parts) == 0 and len(tool_calls) == 0:
+        return []
+    return [
+        LmsChatMessage(
+            role="assistant",
+            content="\n".join(part for part in text_parts if part != ""),
+            tool_calls=tuple(tool_calls),
         )
-    kind = str(payload.get("kind", "")).strip()
-    if kind == "tool_call":
-        tool_name = str(payload.get("tool_name", "")).strip()
-        input_payload = payload.get("input_payload", {})
-        if tool_name != "" and isinstance(input_payload, dict):
-            return _ParsedModelOutput(
-                kind="tool_call",
-                tool_name=tool_name,
-                input_payload=dict(input_payload),
-            )
-    if kind == "final":
-        content = str(payload.get("content", "")).strip()
-        if content != "":
-            return _ParsedModelOutput(kind="final", content=content)
-    return _ModelOutputParseFailure(
-        retry_message=(
-            "Your previous reply used an invalid JSON shape. Return JSON only with "
-            "a valid kind and required fields."
-        )
+    ]
+
+
+def _tool_args_json(value: str | dict[str, object] | None) -> str:
+    """Convert one tool-call args payload into canonical JSON text."""
+    if value is None:
+        return "{}"
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, sort_keys=True)
+
+
+def _to_sdk_tool_definition(value: ToolDefinition) -> LmsChatToolDefinition:
+    """Convert one PydanticAI tool definition into an SDK LMS tool definition."""
+    return LmsChatToolDefinition(
+        name=value.name,
+        parameters_json_schema=dict(value.parameters_json_schema),
+        description=value.description,
+        strict=value.strict,
+        sequential=value.sequential,
     )
+
+
+def _to_model_tool_call(value: LmsChatToolCall) -> ToolCallPart:
+    """Convert one SDK LMS tool call into a PydanticAI response part."""
+    return ToolCallPart(
+        tool_name=value.tool_name,
+        args=_decode_tool_args_json(value.args_json),
+        tool_call_id=value.tool_call_id,
+    )
+
+
+def _decode_tool_args_json(value: str) -> str | dict[str, object]:
+    """Decode canonical tool args JSON into dict form when valid."""
+    try:
+        payload = json.loads(value)
+    except ValueError:
+        return value
+    if isinstance(payload, dict):
+        return payload
+    return value
+
+
+def _normalize_finish_reason(value: str) -> str | None:
+    """Normalize LMS finish reasons into the subset PydanticAI expects."""
+    if value in {"stop", "length", "content_filter", "tool_call", "error"}:
+        return value
+    return None
 
 
 def _build_capability_tools(
@@ -355,11 +334,12 @@ def _create_runtime(*, client: BrainClient) -> _AgentRuntime:
     session = client.memory_get_latest_or_create_session()
     capabilities = client.describe_capabilities()
     turn_state = _TurnState()
-    model_driver = _BrainSdkModelDriver(client=client)
+    model = _BrainSdkToolModel(client=client)
     agent = Agent(
-        FunctionModel(model_driver.run_model, model_name="brain-sdk-lms"),
+        model,
         system_prompt=_load_system_prompt(),
         retries=3,
+        max_concurrency=1,
         tools=_build_capability_tools(
             client=client,
             capabilities=capabilities,
@@ -370,7 +350,7 @@ def _create_runtime(*, client: BrainClient) -> _AgentRuntime:
         client=client,
         session_id=session.session_id,
         turn_state=turn_state,
-        model_driver=model_driver,
+        model=model,
         agent=agent,
     )
 
@@ -419,7 +399,7 @@ def _estimate_token_count(text: str) -> int:
 
 def _is_retryable_lms_throttle(exc: BrainDependencyError) -> bool:
     """Return True when one LMS dependency failure represents provider throttling."""
-    if exc.operation != "lms.chat":
+    if exc.operation not in {"lms.chat", "lms.chat_with_tools"}:
         return False
     if not any(detail.retryable for detail in exc.details):
         return False
@@ -441,7 +421,7 @@ async def _process_instruction(
     )
     runtime.turn_state.actor = "operator"
     runtime.turn_state.channel = instruction.source
-    runtime.model_driver.last_chat_result = None
+    runtime.model.last_result = None
     try:
         result = await runtime.agent.run(
             _format_user_prompt(instruction=instruction, context=context)
@@ -457,7 +437,7 @@ async def _process_instruction(
             extra={"operation": exc.operation},
         )
         response_text = _LMS_THROTTLE_RESPONSE
-    chat = runtime.model_driver.last_chat_result
+    chat = runtime.model.last_result
     await asyncio.to_thread(
         runtime.client.memory_record_response,
         session_id=runtime.session_id,

@@ -29,6 +29,52 @@ class AdapterChatResult(BaseModel):
     model: str
 
 
+class AdapterChatToolDefinition(BaseModel):
+    """One normalized tool definition passed to LiteLLM."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    parameters_json_schema: dict[str, object]
+    description: str | None = None
+    strict: bool | None = None
+    sequential: bool = False
+
+
+class AdapterChatToolCall(BaseModel):
+    """One normalized tool call returned by LiteLLM."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tool_name: str
+    args_json: str
+    tool_call_id: str
+
+
+class AdapterChatMessage(BaseModel):
+    """One normalized chat history message passed through LiteLLM."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    role: str
+    content: str = ""
+    tool_name: str = ""
+    tool_call_id: str = ""
+    tool_calls: tuple[AdapterChatToolCall, ...] = ()
+
+
+class AdapterToolChatResult(BaseModel):
+    """One normalized tool-capable completion returned by LiteLLM."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    text: str | None = None
+    tool_calls: tuple[AdapterChatToolCall, ...] = ()
+    provider: str
+    model: str
+    finish_reason: str
+
+
 class AdapterEmbeddingResult(BaseModel):
     """Adapter response payload for one embedding generation."""
 
@@ -68,6 +114,18 @@ class LiteLlmAdapter(Protocol):
         prompts: Sequence[str],
     ) -> list[AdapterChatResult]:
         """Generate chat completions for one batch."""
+
+    def chat_with_tools(
+        self,
+        *,
+        provider: str,
+        model: str,
+        messages: Sequence[AdapterChatMessage],
+        tools: Sequence[AdapterChatToolDefinition],
+        tool_choice: str | dict[str, object] | None = None,
+        parallel_tool_calls: bool | None = None,
+    ) -> AdapterToolChatResult:
+        """Generate one tool-capable chat completion."""
 
     def embed(
         self,

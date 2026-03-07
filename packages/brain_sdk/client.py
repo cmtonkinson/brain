@@ -9,6 +9,9 @@ from packages.brain_sdk.calls import (
     CapabilityInvokeResult,
     CoreHealthResult,
     LmsChatResult,
+    LmsChatMessage,
+    LmsChatToolDefinition,
+    LmsToolChatResult,
     MemoryContextBlock,
     MemorySessionRef,
     SwitchboardOperatorInstruction,
@@ -16,6 +19,7 @@ from packages.brain_sdk.calls import (
     call_capability_invoke,
     call_core_health,
     call_lms_chat,
+    call_lms_chat_with_tools,
     call_memory_assemble_context,
     call_memory_create_session,
     call_memory_get_latest_or_create_session,
@@ -117,6 +121,30 @@ class BrainClient:
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
             prompt=prompt,
+            profile=profile,
+        )
+
+    def lms_chat_with_tools(
+        self,
+        *,
+        messages: tuple[LmsChatMessage, ...],
+        tools: tuple[LmsChatToolDefinition, ...] = (),
+        tool_choice: str | dict[str, object] | None = None,
+        parallel_tool_calls: bool | None = None,
+        allow_text_output: bool = True,
+        profile: str = "standard",
+        meta: MetaOverrides | None = None,
+    ) -> LmsToolChatResult:
+        """Execute one tool-capable LMS chat request."""
+        return call_lms_chat_with_tools(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            messages=messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            parallel_tool_calls=parallel_tool_calls,
+            allow_text_output=allow_text_output,
             profile=profile,
         )
 

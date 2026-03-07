@@ -197,6 +197,53 @@ def test_call_lms_chat_success() -> None:
     assert result.model == "gpt-test"
 
 
+def test_call_lms_chat_with_tools_success() -> None:
+    """Tool-capable LMS chat wrapper should return typed tool call payloads."""
+    from packages.brain_sdk.calls import (
+        LmsChatMessage,
+        LmsChatToolDefinition,
+        call_lms_chat_with_tools,
+    )
+
+    http = _fake_http(
+        {
+            "payload": {
+                "provider": "openai",
+                "model": "gpt-test",
+                "finish_reason": "tool_call",
+                "text": None,
+                "tool_calls": [
+                    {
+                        "tool_name": "demo-tool",
+                        "args_json": '{"value":"x"}',
+                        "tool_call_id": "call-1",
+                    }
+                ],
+            },
+            "errors": [],
+        }
+    )
+
+    result = call_lms_chat_with_tools(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+        messages=(LmsChatMessage(role="user", content="hello"),),
+        tools=(
+            LmsChatToolDefinition(
+                name="demo-tool",
+                parameters_json_schema={"type": "object"},
+            ),
+        ),
+        tool_choice="auto",
+        parallel_tool_calls=True,
+    )
+
+    assert result.provider == "openai"
+    assert result.finish_reason == "tool_call"
+    assert result.tool_calls[0].tool_name == "demo-tool"
+
+
 def test_call_memory_assemble_context_success() -> None:
     """MAS assemble-context wrapper should return the typed context payload."""
     from packages.brain_sdk.calls import call_memory_assemble_context

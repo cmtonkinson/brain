@@ -14,7 +14,7 @@ from packages.brain_sdk import (
     BrainClient,
     BrainSdkConfig,
     CapabilityDescriptor,
-    LmsChatResult,
+    LmsToolChatResult,
     MemoryContextBlock,
     MemoryDialogueTurn,
     MemoryProfileContext,
@@ -69,11 +69,13 @@ class AgentTurnScenario:
             reference_snippets=(),
         )
     )
-    chat_result: LmsChatResult = field(
-        default_factory=lambda: LmsChatResult(
-            text='{"kind":"final","content":"assistant reply"}',
+    chat_result: LmsToolChatResult = field(
+        default_factory=lambda: LmsToolChatResult(
             provider="unit",
             model="test-model",
+            finish_reason="stop",
+            text="assistant reply",
+            tool_calls=(),
         )
     )
     capability_invoke_output: dict[str, Any] | None = field(
@@ -158,14 +160,23 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                     "errors": [],
                 },
             )
-        if path == "/lms/chat":
+        if path == "/lms/chat-with-tools":
             return _json_response(
                 request,
                 {
                     "payload": {
-                        "text": scenario.chat_result.text,
                         "provider": scenario.chat_result.provider,
                         "model": scenario.chat_result.model,
+                        "finish_reason": scenario.chat_result.finish_reason,
+                        "text": scenario.chat_result.text,
+                        "tool_calls": [
+                            {
+                                "tool_name": item.tool_name,
+                                "args_json": item.args_json,
+                                "tool_call_id": item.tool_call_id,
+                            }
+                            for item in scenario.chat_result.tool_calls
+                        ],
                     },
                     "errors": [],
                 },

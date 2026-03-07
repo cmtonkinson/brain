@@ -234,6 +234,29 @@ class _FakeLanguageModelService(LanguageModelService):
         del meta, prompts, profile
         raise NotImplementedError
 
+    def chat_with_tools(
+        self,
+        *,
+        meta: object,
+        messages,
+        tools=(),
+        tool_choice=None,
+        parallel_tool_calls=None,
+        allow_text_output: bool = True,
+        profile: object = "standard",
+    ) -> object:
+        """Unused by MAS tests."""
+        del (
+            meta,
+            messages,
+            tools,
+            tool_choice,
+            parallel_tool_calls,
+            allow_text_output,
+            profile,
+        )
+        raise NotImplementedError
+
     def embed(
         self,
         *,

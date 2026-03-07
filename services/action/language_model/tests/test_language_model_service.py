@@ -13,10 +13,14 @@ from packages.brain_shared.config import (
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from resources.adapters.litellm import (
     AdapterChatResult,
+    AdapterChatMessage,
+    AdapterChatToolCall,
+    AdapterChatToolDefinition,
     AdapterDependencyError,
     AdapterEmbeddingResult,
     AdapterHealthResult,
     AdapterInternalError,
+    AdapterToolChatResult,
     LiteLlmAdapter,
 )
 from services.action.language_model.config import (
@@ -25,6 +29,7 @@ from services.action.language_model.config import (
     resolve_language_model_service_settings,
 )
 from services.action.language_model.implementation import DefaultLanguageModelService
+from services.action.language_model.domain import ChatMessage, ChatToolDefinition
 from services.action.language_model.validation import EmbeddingProfile, ReasoningLevel
 
 
@@ -45,6 +50,14 @@ class _ChatBatchCall(_Call):
 
 
 @dataclass
+class _ChatWithToolsCall(_Call):
+    messages: tuple[AdapterChatMessage, ...]
+    tools: tuple[AdapterChatToolDefinition, ...]
+    tool_choice: str | dict[str, object] | None
+    parallel_tool_calls: bool | None
+
+
+@dataclass
 class _EmbedCall(_Call):
     text: str
 
@@ -60,10 +73,12 @@ class _FakeAdapter(LiteLlmAdapter):
     def __init__(self) -> None:
         self.chat_calls: list[_ChatCall] = []
         self.chat_batch_calls: list[_ChatBatchCall] = []
+        self.chat_with_tools_calls: list[_ChatWithToolsCall] = []
         self.embed_calls: list[_EmbedCall] = []
         self.embed_batch_calls: list[_EmbedBatchCall] = []
         self.raise_chat: Exception | None = None
         self.raise_chat_batch: Exception | None = None
+        self.raise_chat_with_tools: Exception | None = None
         self.raise_embed: Exception | None = None
         self.raise_embed_batch: Exception | None = None
         self.health_result = AdapterHealthResult(adapter_ready=True, detail="ok")
@@ -96,6 +111,42 @@ class _FakeAdapter(LiteLlmAdapter):
             AdapterChatResult(text=f"ok:{item}", provider=provider, model=model)
             for item in prompts
         ]
+
+    def chat_with_tools(
+        self,
+        *,
+        provider: str,
+        model: str,
+        messages: Sequence[AdapterChatMessage],
+        tools: Sequence[AdapterChatToolDefinition],
+        tool_choice: str | dict[str, object] | None = None,
+        parallel_tool_calls: bool | None = None,
+    ) -> AdapterToolChatResult:
+        self.chat_with_tools_calls.append(
+            _ChatWithToolsCall(
+                provider=provider,
+                model=model,
+                messages=tuple(messages),
+                tools=tuple(tools),
+                tool_choice=tool_choice,
+                parallel_tool_calls=parallel_tool_calls,
+            )
+        )
+        if self.raise_chat_with_tools is not None:
+            raise self.raise_chat_with_tools
+        return AdapterToolChatResult(
+            text=None,
+            tool_calls=(
+                AdapterChatToolCall(
+                    tool_name="demo-tool",
+                    args_json='{"value":"x"}',
+                    tool_call_id="call-1",
+                ),
+            ),
+            provider=provider,
+            model=model,
+            finish_reason="tool_call",
+        )
 
     def embed(
         self,
@@ -211,6 +262,53 @@ def test_chat_batch_trims_prompts_and_maps_payload() -> None:
     assert [item.text for item in result.payload.value] == ["ok:one", "ok:two"]
     assert adapter.chat_batch_calls == [
         _ChatBatchCall(provider="ollama", model="chat-a", prompts=("one", "two"))
+    ]
+
+
+def test_chat_with_tools_maps_messages_tools_and_response() -> None:
+    """Tool-capable chat should route normalized messages and tool calls."""
+    adapter = _FakeAdapter()
+    service = DefaultLanguageModelService(settings=_settings(), adapter=adapter)
+
+    result = service.chat_with_tools(
+        meta=_meta(),
+        messages=[
+            ChatMessage(role="system", content="system"),
+            ChatMessage(role="user", content="hello"),
+        ],
+        tools=[
+            ChatToolDefinition(
+                name="demo-tool",
+                description="Do a thing.",
+                parameters_json_schema={"type": "object"},
+            )
+        ],
+        tool_choice="auto",
+        parallel_tool_calls=True,
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value.finish_reason == "tool_call"
+    assert result.payload.value.tool_calls[0].tool_name == "demo-tool"
+    assert adapter.chat_with_tools_calls == [
+        _ChatWithToolsCall(
+            provider="ollama",
+            model="chat-a",
+            messages=(
+                AdapterChatMessage(role="system", content="system"),
+                AdapterChatMessage(role="user", content="hello"),
+            ),
+            tools=(
+                AdapterChatToolDefinition(
+                    name="demo-tool",
+                    description="Do a thing.",
+                    parameters_json_schema={"type": "object"},
+                ),
+            ),
+            tool_choice="auto",
+            parallel_tool_calls=True,
+        )
     ]
 
 

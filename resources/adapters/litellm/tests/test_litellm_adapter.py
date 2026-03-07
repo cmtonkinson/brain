@@ -9,6 +9,8 @@ import pytest
 
 import resources.adapters.litellm.litellm_adapter as adapter_module
 from resources.adapters.litellm.adapter import (
+    AdapterChatMessage,
+    AdapterChatToolDefinition,
     AdapterDependencyError,
     AdapterInternalError,
 )
@@ -80,6 +82,67 @@ def test_chat_calls_litellm_completion_with_resolved_provider_settings(
     assert fake_module.completion_calls[0]["timeout"] == 9.0
     assert fake_module.completion_calls[0]["num_retries"] == 2
     assert fake_module.completion_calls[0]["temperature"] == 0.0
+
+
+def test_chat_with_tools_passes_tools_and_maps_tool_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tool-capable chat should pass through tool settings and map tool calls."""
+    fake_module = _FakeLiteLlmModule(
+        completion_response={
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call-1",
+                                "function": {
+                                    "name": "demo-tool",
+                                    "arguments": '{"value":"x"}',
+                                },
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(adapter_module, "_load_litellm_module", lambda: fake_module)
+    adapter = LiteLlmLibraryAdapter(settings=_settings())
+
+    result = adapter.chat_with_tools(
+        provider="ollama",
+        model="gpt-oss",
+        messages=(AdapterChatMessage(role="user", content="hello"),),
+        tools=(
+            AdapterChatToolDefinition(
+                name="demo-tool",
+                description="Do a thing.",
+                parameters_json_schema={"type": "object"},
+                strict=True,
+            ),
+        ),
+        tool_choice="auto",
+        parallel_tool_calls=True,
+    )
+
+    assert result.finish_reason == "tool_call"
+    assert result.tool_calls[0].tool_name == "demo-tool"
+    assert fake_module.completion_calls[0]["tool_choice"] == "auto"
+    assert fake_module.completion_calls[0]["parallel_tool_calls"] is True
+    assert fake_module.completion_calls[0]["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "demo-tool",
+                "description": "Do a thing.",
+                "parameters": {"type": "object"},
+                "strict": True,
+            },
+        }
+    ]
 
 
 def test_embed_batch_maps_vectors_from_litellm_response(
