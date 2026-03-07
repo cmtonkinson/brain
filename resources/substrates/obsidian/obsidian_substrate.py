@@ -6,11 +6,11 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
-from uuid import uuid4
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
+from packages.brain_shared.ids import generate_ulid_str
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from packages.brain_shared.vault_paths import (
     normalize_vault_directory_path,
@@ -130,7 +130,7 @@ class ObsidianLocalRestSubstrate(ObsidianSubstrate):
                     "parent directory does not exist"
                 ) from None
 
-        sentinel = f"{normalized}/.brain_directory_{uuid4().hex}.md"
+        sentinel = f"{normalized}/.brain_directory_{generate_ulid_str()}.md"
         self._request_raw(
             method="PUT",
             endpoint=_vault_file_endpoint(sentinel),

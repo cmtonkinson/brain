@@ -136,6 +136,40 @@ def test_call_capability_invoke_success() -> None:
     assert result.policy.decision_id == "dec-1"
 
 
+def test_call_capability_invoke_autogenerates_invocation_id() -> None:
+    """Capability invoke should auto-generate invocation_id when omitted."""
+    from packages.brain_sdk.calls import call_capability_invoke
+
+    http = _fake_http(
+        {
+            "output_json": "{}",
+            "policy": {
+                "decision_id": "dec-1",
+                "allowed": True,
+                "reason_codes": [],
+                "obligations": [],
+                "proposal_id": "",
+            },
+            "errors": [],
+        }
+    )
+
+    call_capability_invoke(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+        capability_id="attention-notify",
+        input_payload={"message": "hello", "actor": "operator", "channel": "signal"},
+        actor="operator",
+        channel="signal",
+        invocation_id="",
+    )
+
+    body = http.post_json.call_args.kwargs["json"]
+    assert isinstance(body["invocation_id"], str)
+    assert len(body["invocation_id"]) == 26
+
+
 def test_call_lms_chat_success() -> None:
     """LMS chat wrapper should return the typed chat payload."""
     from packages.brain_sdk.calls import call_lms_chat

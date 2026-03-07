@@ -377,7 +377,45 @@ def _process_instruction(
         token_count=_estimate_token_count(response_text),
         reasoning_level="standard",
     )
+    _route_outbound_response(
+        runtime=runtime,
+        instruction=instruction,
+        response_text=response_text,
+    )
     return response_text
+
+
+def _route_outbound_response(
+    *,
+    runtime: _AgentRuntime,
+    instruction: SwitchboardOperatorInstruction,
+    response_text: str,
+) -> None:
+    """Deliver one finalized response via Attention Router notify capability."""
+    payload: dict[str, object] = {
+        "actor": "operator",
+        "channel": instruction.source,
+        "message": response_text,
+    }
+    recipient = instruction.sender_e164.strip()
+    if recipient != "":
+        payload["recipient_e164"] = recipient
+    try:
+        runtime.client.invoke_capability(
+            capability_id="attention-notify",
+            input_payload=payload,
+            actor="operator",
+            channel=instruction.source,
+        )
+    except Exception:  # noqa: BLE001
+        _LOGGER.exception(
+            "brain agent outbound notify failed",
+            extra={
+                "capability_id": "attention-notify",
+                "channel": instruction.source,
+                "recipient_e164": instruction.sender_e164,
+            },
+        )
 
 
 def main() -> None:

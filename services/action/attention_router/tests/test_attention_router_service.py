@@ -85,14 +85,14 @@ def _service() -> tuple[DefaultAttentionRouterService, _FakeSignalAdapter]:
     service = DefaultAttentionRouterService(
         settings=AttentionRouterServiceSettings(
             default_channel="signal",
-            default_signal_recipient_e164="+12025550100",
-            default_signal_sender_e164="+12025550101",
             dedupe_window_seconds=120,
             rate_limit_window_seconds=60,
             rate_limit_max_per_window=2,
             batch_summary_max_items=2,
         ),
         signal_adapter=adapter,
+        operator_signal_contact_e164="+12025550100",
+        signal_receive_e164="+12025550101",
     )
     return service, adapter
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from uuid import uuid4
+from packages.brain_shared.ids import generate_ulid_str
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +43,7 @@ def build_envelope_meta(
 
 def _new_id() -> str:
     """Return one compact random identifier for envelope metadata."""
-    return uuid4().hex
+    return generate_ulid_str()
 
 
 def _normalize_utc(value: datetime) -> datetime:

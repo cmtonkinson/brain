@@ -12,6 +12,7 @@ from packages.brain_sdk.errors import (
     map_transport_error,
     raise_for_domain_errors,
 )
+from packages.brain_shared.ids import generate_ulid_str
 from packages.brain_shared.http.errors import HttpRequestError, HttpStatusError
 
 
@@ -195,6 +196,7 @@ def call_capability_invoke(
     approval_token: str = "",
 ) -> CapabilityInvokeResult:
     """Invoke one Capability through the CES HTTP surface."""
+    resolved_invocation_id = invocation_id.strip() or generate_ulid_str()
     data = _post_json(
         operation="capabilities.invoke",
         http=http,
@@ -205,7 +207,7 @@ def call_capability_invoke(
             "input_payload": {} if input_payload is None else input_payload,
             "actor": actor,
             "channel": channel,
-            "invocation_id": invocation_id,
+            "invocation_id": resolved_invocation_id,
             "parent_invocation_id": parent_invocation_id,
             "confirmed": confirmed,
             "approval_token": approval_token,

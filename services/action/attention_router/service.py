@@ -94,8 +94,10 @@ def build_attention_router_service(
         DefaultAttentionRouterService,
     )
 
+    adapter_settings = resolve_signal_adapter_settings(settings)
     return DefaultAttentionRouterService(
         settings=resolve_attention_router_service_settings(settings),
-        signal_adapter=signal_adapter
-        or HttpSignalAdapter(settings=resolve_signal_adapter_settings(settings)),
+        operator_signal_contact_e164=settings.core.profile.operator.signal_contact_e164,
+        signal_adapter=signal_adapter or HttpSignalAdapter(settings=adapter_settings),
+        signal_receive_e164=adapter_settings.receive_e164,
     )

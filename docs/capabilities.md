@@ -2,6 +2,51 @@
 _This document is generated from `capabilities/**/capability.json`. Do not edit by hand._
 
 ------------------------------------------------------------------------
+## `Attention Router Service`
+### `attention-flush-batch` - Flush one pending batch by key and deliver consolidated summary.
+`native_op` `1.0.0`
+Native Op over `Attention Router Service flush_batch()`
+
+**Inputs:**
+- `batch_key` _(string)_ The batch key to flush.
+- `actor` _(string, optional)_ Actor identity for routing context. Defaults to 'operator'.
+- `channel` _(string, optional)_ Channel identifier. Defaults to service routing default.
+- `recipient_e164` _(string, optional)_ Explicit recipient E.164 override.
+- `sender_e164` _(string, optional)_ Explicit sender E.164 override.
+- `title` _(string, optional)_ Optional title for flushed summary notification.
+
+**Outputs:**
+- `decision` _(string)_ Router decision outcome: sent or suppressed.
+- `delivered` _(boolean)_ Whether a message was delivered to channel.
+- `detail` _(string)_ Human-readable routing detail.
+- `suppressed_reason` _(string, optional)_ Suppression reason when no batch is available.
+- `batched_count` _(integer, optional)_ Pending item count when relevant.
+- `notification` _(object, optional)_ Normalized routed notification payload.
+
+### `attention-notify` - Route one outbound notification and decide suppress/send/batch.
+`native_op` `1.0.0`
+Native Op over `Attention Router Service route_notification()`
+
+**Inputs:**
+- `actor` _(string, optional)_ Actor identity for routing context. Defaults to 'operator'.
+- `channel` _(string, optional)_ Channel identifier. Defaults to service routing default.
+- `title` _(string, optional)_ Optional title rendered above message content.
+- `message` _(string)_ The notification body to route.
+- `recipient_e164` _(string, optional)_ Explicit recipient E.164 override.
+- `sender_e164` _(string, optional)_ Explicit sender E.164 override.
+- `dedupe_key` _(string, optional)_ Suppress duplicate sends within configured dedupe window.
+- `batch_key` _(string, optional)_ Queue into batch instead of immediate send.
+- `force` _(boolean, optional)_ Bypass dedupe, batch, and rate-limit suppression checks. Defaults to false.
+
+**Outputs:**
+- `decision` _(string)_ Router decision outcome: sent, suppressed, or batched.
+- `delivered` _(boolean)_ Whether a message was delivered to channel.
+- `detail` _(string)_ Human-readable routing detail.
+- `suppressed_reason` _(string, optional)_ Suppression reason when decision is suppressed.
+- `batched_count` _(integer, optional)_ Pending item count when decision is batched.
+- `notification` _(object, optional)_ Normalized routed notification payload.
+
+------------------------------------------------------------------------
 ## `Cache Authority Service`
 ### `cache-delete-value` - Delete one component-scoped cache value.
 `native_op` `1.0.0` `approval: required`

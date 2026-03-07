@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 import resources.substrates.qdrant.qdrant_substrate as substrate_module
 from resources.substrates.qdrant.config import QdrantConfig
-from resources.substrates.qdrant.qdrant_substrate import QdrantClientSubstrate
+from resources.substrates.qdrant.qdrant_substrate import (
+    QdrantClientSubstrate,
+    _provider_point_id,
+)
 
 
 class _FakeDeleteClient:
@@ -70,3 +75,12 @@ def test_delete_point_noops_when_collection_missing(monkeypatch: object) -> None
     assert deleted is False
     assert fake_client.delete_calls == 0
     assert fake_client.retrieve_calls == 0
+
+
+def test_provider_point_id_maps_arbitrary_ids_to_stable_uuid() -> None:
+    """Provider point ids should be deterministic UUIDs for Qdrant compatibility."""
+    first = _provider_point_id("01kk36whybvs0ctb9xr8b1em6m")
+    second = _provider_point_id("01kk36whybvs0ctb9xr8b1em6m")
+
+    assert first == second
+    assert str(UUID(first)) == first

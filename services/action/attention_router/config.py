@@ -14,8 +14,6 @@ class AttentionRouterServiceSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     default_channel: str = "signal"
-    default_signal_recipient_e164: str = "+10000000000"
-    default_signal_sender_e164: str = "+10000000000"
     max_message_chars: int = Field(default=4000, ge=1)
     dedupe_window_seconds: int = Field(default=120, ge=0)
     rate_limit_window_seconds: int = Field(default=60, ge=0)

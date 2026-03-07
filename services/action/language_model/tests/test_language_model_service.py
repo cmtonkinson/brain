@@ -284,16 +284,18 @@ def test_chat_rejects_embedding_profile() -> None:
 def test_resolve_settings_quick_falls_back_to_standard_when_unset() -> None:
     """Config resolver should map empty quick profile fields to standard."""
     settings = CoreRuntimeSettings(
-        core=CoreSettings(
-            service={  # type: ignore[arg-type]
-                "language_model": {
-                    "embedding": {"provider": "ollama", "model": "embed-a"},
-                    "standard": {"provider": "ollama", "model": "chat-a"},
-                    "quick": {"provider": "", "model": ""},
+        core=CoreSettings.model_validate(
+            {
+                "service": {
+                    "language_model": {
+                        "embedding": {"provider": "ollama", "model": "embed-a"},
+                        "standard": {"provider": "ollama", "model": "chat-a"},
+                        "quick": {"provider": "", "model": ""},
+                    }
                 }
             }
         ),
-        resources=ResourcesSettings(),
+        resources=ResourcesSettings.model_validate({}),
     )
 
     resolved = resolve_language_model_service_settings(settings)
@@ -305,16 +307,18 @@ def test_resolve_settings_quick_falls_back_to_standard_when_unset() -> None:
 def test_resolve_settings_deep_falls_back_to_standard_when_unset() -> None:
     """Config resolver should map empty deep profile fields to standard."""
     settings = CoreRuntimeSettings(
-        core=CoreSettings(
-            service={  # type: ignore[arg-type]
-                "language_model": {
-                    "embedding": {"provider": "ollama", "model": "embed-a"},
-                    "standard": {"provider": "ollama", "model": "chat-a"},
-                    "deep": {"provider": "", "model": ""},
+        core=CoreSettings.model_validate(
+            {
+                "service": {
+                    "language_model": {
+                        "embedding": {"provider": "ollama", "model": "embed-a"},
+                        "standard": {"provider": "ollama", "model": "chat-a"},
+                        "deep": {"provider": "", "model": ""},
+                    }
                 }
             }
         ),
-        resources=ResourcesSettings(),
+        resources=ResourcesSettings.model_validate({}),
     )
 
     resolved = resolve_language_model_service_settings(settings)
@@ -326,14 +330,16 @@ def test_resolve_settings_deep_falls_back_to_standard_when_unset() -> None:
 def test_resolve_settings_defaults_standard_profile_when_missing() -> None:
     """Config resolver should default standard profile when it is omitted."""
     settings = CoreRuntimeSettings(
-        core=CoreSettings(
-            service={  # type: ignore[arg-type]
-                "language_model": {
-                    "embedding": {"provider": "ollama", "model": "embed-a"},
+        core=CoreSettings.model_validate(
+            {
+                "service": {
+                    "language_model": {
+                        "embedding": {"provider": "ollama", "model": "embed-a"},
+                    }
                 }
             }
         ),
-        resources=ResourcesSettings(),
+        resources=ResourcesSettings.model_validate({}),
     )
 
     resolved = resolve_language_model_service_settings(settings)

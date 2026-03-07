@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 import pytest
 
+from packages.brain_shared.ids import generate_ulid_str
 from resources.substrates.qdrant.config import QdrantConfig
 from resources.substrates.qdrant.qdrant_substrate import QdrantClientSubstrate
 from tests.integration.helpers import real_provider_tests_enabled
@@ -21,8 +20,8 @@ pytestmark = pytest.mark.skipif(
 
 def test_upsert_search_delete_roundtrip(qdrant_url: str) -> None:
     """Qdrant substrate should upsert/search/delete one point in unique collection."""
-    collection = f"int_qdrant_{uuid4().hex[:8]}"
-    point_id = str(uuid4())
+    collection = f"int_qdrant_{generate_ulid_str().lower()}"
+    point_id = generate_ulid_str()
     config = QdrantConfig(
         url=qdrant_url,
         timeout_seconds=3.0,

@@ -45,6 +45,8 @@ adapter:
         api_base: http://host.docker.internal:11434
       openai:
         api_key_env: OPENAI_API_KEY
+      anthropic:
+        api_key_env: ANTHROPIC_API_KEY
   signal:
     base_url: http://signal-api:8080
     receive_e164: +13333333333

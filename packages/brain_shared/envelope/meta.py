@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
-from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
+from packages.brain_shared.ids import generate_ulid_str
 
 
 class EnvelopeKind(str, Enum):
@@ -57,7 +57,7 @@ def new_meta(
 
 def _new_id() -> str:
     """Return a compact random identifier."""
-    return uuid4().hex
+    return generate_ulid_str()
 
 
 def _utc_now() -> datetime:

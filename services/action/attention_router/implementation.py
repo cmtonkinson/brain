@@ -62,9 +62,13 @@ class DefaultAttentionRouterService(AttentionRouterService):
         *,
         settings: AttentionRouterServiceSettings,
         signal_adapter: SignalAdapter,
+        operator_signal_contact_e164: str,
+        signal_receive_e164: str,
     ) -> None:
         self._settings = settings
         self._signal_adapter = signal_adapter
+        self._operator_signal_contact_e164 = operator_signal_contact_e164.strip()
+        self._signal_receive_e164 = signal_receive_e164.strip()
         self._recent_dedupe: dict[str, datetime] = {}
         self._recent_by_channel_recipient: dict[tuple[str, str], deque[datetime]] = (
             defaultdict(deque)
@@ -81,6 +85,8 @@ class DefaultAttentionRouterService(AttentionRouterService):
         return cls(
             settings=service_settings,
             signal_adapter=HttpSignalAdapter(settings=adapter_settings),
+            operator_signal_contact_e164=settings.core.profile.operator.signal_contact_e164,
+            signal_receive_e164=adapter_settings.receive_e164,
         )
 
     @public_api_instrumented(
@@ -361,10 +367,8 @@ class DefaultAttentionRouterService(AttentionRouterService):
     ) -> RoutedNotification:
         """Resolve defaults and clamp message payload before delivery."""
         resolved_channel = request.channel or self._settings.default_channel
-        recipient = (
-            request.recipient_e164 or self._settings.default_signal_recipient_e164
-        )
-        sender = request.sender_e164 or self._settings.default_signal_sender_e164
+        recipient = request.recipient_e164 or self._operator_signal_contact_e164
+        sender = request.sender_e164 or self._signal_receive_e164
 
         message = request.message.strip()
         if len(message) > self._settings.max_message_chars:

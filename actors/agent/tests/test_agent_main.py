@@ -116,6 +116,7 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
         def __init__(self) -> None:
             self.assembled: list[tuple[str, str]] = []
             self.recorded: list[tuple[str, str, str, str, int, str]] = []
+            self.invoked: list[tuple[str, dict[str, object], str, str]] = []
 
         def memory_assemble_context(
             self, *, session_id: str, message: str
@@ -152,6 +153,17 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
                 (session_id, content, model, provider, token_count, reasoning_level)
             )
             return True
+
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+        ):
+            self.invoked.append((capability_id, input_payload, actor, channel))
+            return type("InvokeResult", (), {"output": {"decision": "sent"}})()
 
     @dataclass
     class _FakeRunResult:
@@ -203,6 +215,19 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
             "unit",
             main._estimate_token_count("assistant reply"),
             "standard",
+        )
+    ]
+    assert client.invoked == [
+        (
+            "attention-notify",
+            {
+                "actor": "operator",
+                "channel": "signal",
+                "message": "assistant reply",
+                "recipient_e164": "+12025550100",
+            },
+            "operator",
+            "signal",
         )
     ]
 

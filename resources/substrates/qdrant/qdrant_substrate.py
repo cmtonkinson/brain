@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from threading import Lock
 from typing import Iterable, Mapping, Sequence
+from uuid import UUID, uuid5
 
 from packages.brain_shared.embeddings import (
     DISTANCE_METRIC_COSINE,
@@ -29,6 +30,7 @@ _DISTANCE_MAPPING = {
     DISTANCE_METRIC_DOT: models.Distance.DOT,
     DISTANCE_METRIC_EUCLID: models.Distance.EUCLID,
 }
+_POINT_ID_NAMESPACE = UUID("6ba7b811-9dad-11d1-80b4-00c04fd430c8")
 
 
 class QdrantClientSubstrate(QdrantSubstrate):
@@ -85,7 +87,7 @@ class QdrantClientSubstrate(QdrantSubstrate):
         """Insert or replace a point in the configured collection."""
         self._ensure_collection(len(vector))
         point = models.PointStruct(
-            id=point_id,
+            id=_provider_point_id(point_id),
             vector=list(vector),
             payload=dict(payload),
         )
@@ -107,7 +109,7 @@ class QdrantClientSubstrate(QdrantSubstrate):
 
         points = self._client.retrieve(
             collection_name=self._collection,
-            ids=[point_id],
+            ids=[_provider_point_id(point_id)],
             with_payload=True,
             with_vectors=True,
         )
@@ -144,7 +146,7 @@ class QdrantClientSubstrate(QdrantSubstrate):
 
         self._client.delete(
             collection_name=self._collection,
-            points_selector=models.PointIdsList(points=[point_id]),
+            points_selector=models.PointIdsList(points=[_provider_point_id(point_id)]),
             wait=True,
         )
         return True
@@ -226,3 +228,11 @@ class QdrantClientSubstrate(QdrantSubstrate):
 def _distance(metric: str) -> models.Distance:
     """Map configured metric name to Qdrant distance enum."""
     return _DISTANCE_MAPPING[metric]
+
+
+def _provider_point_id(point_id: str) -> str:
+    """Map one Brain point identifier into a Qdrant-accepted UUID string."""
+    normalized = point_id.strip()
+    if normalized == "":
+        raise ValueError("point_id must be non-empty")
+    return str(uuid5(_POINT_ID_NAMESPACE, normalized))

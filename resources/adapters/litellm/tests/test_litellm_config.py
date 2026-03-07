@@ -16,7 +16,10 @@ from resources.adapters.litellm.config import (
 
 def test_resolve_litellm_adapter_settings_defaults() -> None:
     """Resolver should return model defaults when component section is absent."""
-    settings = CoreRuntimeSettings(core=CoreSettings(), resources=ResourcesSettings())
+    settings = CoreRuntimeSettings(
+        core=CoreSettings.model_validate({}),
+        resources=ResourcesSettings.model_validate({}),
+    )
 
     resolved = resolve_litellm_adapter_settings(settings)
 
@@ -26,20 +29,22 @@ def test_resolve_litellm_adapter_settings_defaults() -> None:
 def test_resolve_litellm_adapter_settings_component_override() -> None:
     """Resolver should hydrate adapter settings from component subtree."""
     settings = CoreRuntimeSettings(
-        core=CoreSettings(),
-        resources=ResourcesSettings(
-            adapter={  # type: ignore[arg-type]
-                "litellm": {
-                    "timeout_seconds": 5.5,
-                    "max_retries": 1,
-                    "providers": {
-                        "openai": {
-                            "api_key_env": "OPENAI_API_KEY",
-                            "timeout_seconds": 7.5,
-                            "max_retries": 4,
-                        }
+        core=CoreSettings.model_validate({}),
+        resources=ResourcesSettings.model_validate(
+            {
+                "adapter": {
+                    "litellm": {
+                        "timeout_seconds": 5.5,
+                        "max_retries": 1,
+                        "providers": {
+                            "openai": {
+                                "api_key_env": "OPENAI_API_KEY",
+                                "timeout_seconds": 7.5,
+                                "max_retries": 4,
+                            }
+                        },
                     },
-                },
+                }
             }
         ),
     )
