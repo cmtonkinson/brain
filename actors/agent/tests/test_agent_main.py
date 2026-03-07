@@ -65,6 +65,29 @@ def test_parse_model_output_supports_tool_calls() -> None:
     assert result.input_payload == {"file_path": "x.md"}
 
 
+def test_parse_model_output_extracts_embedded_json_tool_call() -> None:
+    """Parser should recover a tool call even when the model adds prose first."""
+    from actors.agent import main
+
+    result = main._parse_model_output(
+        'I will inspect the vault first.\n{"kind":"tool_call","tool_name":"vault-list-directory","input_payload":{"directory_path":"."}}'
+    )
+
+    assert result.kind == "tool_call"
+    assert result.tool_name == "vault-list-directory"
+    assert result.input_payload == {"directory_path": "."}
+
+
+def test_parse_model_output_returns_retry_failure_for_plain_text() -> None:
+    """Plain-text output should trigger a retry instead of becoming final text."""
+    from actors.agent import main
+
+    result = main._parse_model_output("I'll check that now.")
+
+    assert isinstance(result, main._ModelOutputParseFailure)
+    assert "Return JSON only" in result.retry_message
+
+
 def test_build_capability_tools_invokes_sdk_client() -> None:
     """Capability tool wrappers should route tool calls through Brain SDK only."""
     from actors.agent import main
@@ -109,6 +132,66 @@ def test_build_capability_tools_invokes_sdk_client() -> None:
 
     assert result == {"ok": True}
     assert client.calls == [("demo-tool", {"value": "x"}, "operator", "signal")]
+
+
+def test_run_model_retries_invalid_output_before_returning_tool_call() -> None:
+    """Model driver should retry malformed output and then honor a valid tool call."""
+    from actors.agent import main
+    from pydantic_ai.messages import ModelRequest, RetryPromptPart, ToolCallPart
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+            self.calls = 0
+
+        def lms_chat(self, *, prompt: str, profile: str = "standard") -> LmsChatResult:
+            del profile
+            self.prompts.append(prompt)
+            self.calls += 1
+            if self.calls == 1:
+                return LmsChatResult(
+                    text="I'll inspect the vault first.",
+                    provider="unit",
+                    model="test-model",
+                )
+            return LmsChatResult(
+                text='{"kind":"tool_call","tool_name":"vault-get-file","input_payload":{"file_path":"resume.md"}}',
+                provider="unit",
+                model="test-model",
+            )
+
+    driver = main._BrainSdkModelDriver(client=_FakeClient())  # type: ignore[arg-type]
+    response = driver.run_model(
+        messages=[ModelRequest(parts=[RetryPromptPart(content="initial")])],
+        info=type(
+            "_Info",
+            (),
+            {
+                "function_tools": [
+                    type(
+                        "_Tool",
+                        (),
+                        {
+                            "name": "vault-get-file",
+                            "description": "Read a file.",
+                            "parameters_json_schema": {
+                                "type": "object",
+                                "properties": {"file_path": {"type": "string"}},
+                                "required": ["file_path"],
+                            },
+                        },
+                    )()
+                ],
+                "instructions": None,
+            },
+        )(),
+    )
+
+    assert len(driver._client.prompts) == 2  # type: ignore[attr-defined]
+    assert "retry:" in driver._client.prompts[1]  # type: ignore[attr-defined]
+    assert isinstance(response.parts[0], ToolCallPart)
+    assert response.parts[0].tool_name == "vault-get-file"
+    assert response.parts[0].args == {"input_payload": {"file_path": "resume.md"}}
 
 
 def test_process_instruction_assembles_context_and_records_response() -> None:

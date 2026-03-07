@@ -9,9 +9,16 @@ import os
 import signal
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from pydantic_ai import Agent, Tool
-from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    RetryPromptPart,
+    TextPart,
+    ToolCallPart,
+)
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from packages.brain_sdk import (
@@ -29,6 +36,7 @@ _LOGGER = logging.getLogger(__name__)
 _RUNNING = True
 _LONG_POLL_BUFFER_SECONDS = 1.0
 _MIN_LONG_POLL_SECONDS = 1.0
+_MODEL_OUTPUT_RETRY_LIMIT = 3
 _LMS_THROTTLE_RESPONSE = (
     "I'm temporarily rate limited by the language model provider. "
     "Please try again in a minute."
@@ -53,6 +61,13 @@ class _ParsedModelOutput:
     content: str = ""
     tool_name: str = ""
     input_payload: dict[str, object] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ModelOutputParseFailure:
+    """Structured parse failure with retry guidance for malformed LMS output."""
+
+    retry_message: str
 
 
 @dataclass(slots=True)
@@ -107,37 +122,61 @@ class _BrainSdkModelDriver:
         info: AgentInfo,
     ) -> ModelResponse:
         """Convert PydanticAI state into an LMS prompt and normalize the reply."""
-        prompt = self._build_prompt(messages=messages, info=info)
-        chat = self._client.lms_chat(prompt=prompt, profile="standard")
-        self.last_chat_result = chat
-        parsed = _parse_model_output(chat.text)
-        if parsed.kind == "tool_call" and parsed.tool_name in {
-            tool.name for tool in info.function_tools
-        }:
-            return ModelResponse(
-                parts=[
-                    ToolCallPart(
-                        tool_name=parsed.tool_name,
-                        args={
-                            "input_payload": {}
-                            if parsed.input_payload is None
-                            else parsed.input_payload
-                        },
-                    )
-                ],
-                model_name=chat.model,
-                provider_name=chat.provider,
+        pending_messages = list(messages)
+        available_tool_names = {tool.name for tool in info.function_tools}
+        for _attempt in range(_MODEL_OUTPUT_RETRY_LIMIT):
+            prompt = self._build_prompt(messages=pending_messages, info=info)
+            chat = self._client.lms_chat(prompt=prompt, profile="standard")
+            self.last_chat_result = chat
+            parsed = _parse_model_output(chat.text)
+            if isinstance(parsed, _ModelOutputParseFailure):
+                pending_messages.append(
+                    ModelRequest(parts=[RetryPromptPart(content=parsed.retry_message)])
+                )
+                continue
+            if parsed.kind == "tool_call" and parsed.tool_name in available_tool_names:
+                return ModelResponse(
+                    parts=[
+                        ToolCallPart(
+                            tool_name=parsed.tool_name,
+                            args={
+                                "input_payload": {}
+                                if parsed.input_payload is None
+                                else parsed.input_payload
+                            },
+                        )
+                    ],
+                    model_name=chat.model,
+                    provider_name=chat.provider,
+                )
+            if parsed.kind == "final" and parsed.content.strip() != "":
+                text = parsed.content.strip()
+                return ModelResponse(
+                    parts=[TextPart(text)],
+                    model_name=chat.model,
+                    provider_name=chat.provider,
+                )
+            pending_messages.append(
+                ModelRequest(
+                    parts=[
+                        RetryPromptPart(
+                            content=(
+                                "Return valid JSON only. "
+                                "Use kind='final' or kind='tool_call' with a known tool."
+                            )
+                        )
+                    ]
+                )
             )
-        if parsed.kind == "final" and parsed.content.strip() != "":
-            text = parsed.content.strip()
-        else:
-            text = chat.text.strip()
-        if text == "":
-            text = "I do not have a response yet."
         return ModelResponse(
-            parts=[TextPart(text)],
-            model_name=chat.model,
-            provider_name=chat.provider,
+            parts=[
+                TextPart(
+                    "I couldn't complete this turn because the model kept returning "
+                    "invalid tool/output formatting."
+                )
+            ],
+            model_name="brain-sdk-lms",
+            provider_name="brain-sdk",
         )
 
     def _build_prompt(
@@ -211,14 +250,32 @@ def _stringify_content(value: object) -> str:
         return str(value)
 
 
-def _parse_model_output(text: str) -> _ParsedModelOutput:
+def _extract_json_object(text: str) -> dict[str, object] | None:
+    """Return the first JSON object embedded anywhere in one text response."""
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            payload, _end = decoder.raw_decode(text[index:])
+        except ValueError:
+            continue
+        if isinstance(payload, dict):
+            return cast(dict[str, object], payload)
+    return None
+
+
+def _parse_model_output(text: str) -> _ParsedModelOutput | _ModelOutputParseFailure:
     """Parse one LMS response into a tool-call or final-answer instruction."""
-    try:
-        payload = json.loads(text)
-    except ValueError:
-        return _ParsedModelOutput(kind="final", content=text)
-    if not isinstance(payload, dict):
-        return _ParsedModelOutput(kind="final", content=text)
+    payload = _extract_json_object(text)
+    if payload is None:
+        return _ModelOutputParseFailure(
+            retry_message=(
+                "Your previous reply was invalid. Return JSON only with either "
+                '{"kind":"final","content":"..."} or '
+                '{"kind":"tool_call","tool_name":"...","input_payload":{...}}.'
+            )
+        )
     kind = str(payload.get("kind", "")).strip()
     if kind == "tool_call":
         tool_name = str(payload.get("tool_name", "")).strip()
@@ -233,7 +290,12 @@ def _parse_model_output(text: str) -> _ParsedModelOutput:
         content = str(payload.get("content", "")).strip()
         if content != "":
             return _ParsedModelOutput(kind="final", content=content)
-    return _ParsedModelOutput(kind="final", content=text)
+    return _ModelOutputParseFailure(
+        retry_message=(
+            "Your previous reply used an invalid JSON shape. Return JSON only with "
+            "a valid kind and required fields."
+        )
+    )
 
 
 def _build_capability_tools(
@@ -297,6 +359,7 @@ def _create_runtime(*, client: BrainClient) -> _AgentRuntime:
     agent = Agent(
         FunctionModel(model_driver.run_model, model_name="brain-sdk-lms"),
         system_prompt=_load_system_prompt(),
+        retries=3,
         tools=_build_capability_tools(
             client=client,
             capabilities=capabilities,
