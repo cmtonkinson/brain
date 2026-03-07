@@ -286,20 +286,17 @@ def _build_capability_tools(
     """Create one PydanticAI tool wrapper per active Capability."""
     tools: list[Tool[None]] = []
     for descriptor in capabilities:
-        input_schema = (
-            ""
-            if descriptor.input_schema is None
-            else json.dumps(descriptor.input_schema, sort_keys=True)
-        )
         summary = descriptor.summary.strip()
         description = summary
-        if input_schema != "":
-            description = f"{summary} Input schema: {input_schema}"
+        input_schema = (
+            {"type": "object", "properties": {}, "additionalProperties": False}
+            if descriptor.input_schema is None
+            else dict(descriptor.input_schema)
+        )
 
         def _invoke(
-            input_payload: dict[str, object],
-            *,
             _capability_id: str = descriptor.capability_id,
+            **input_payload: object,
         ) -> object:
             result = client.invoke_capability(
                 capability_id=_capability_id,
@@ -310,10 +307,11 @@ def _build_capability_tools(
             return result.output
 
         tools.append(
-            Tool(
+            Tool.from_schema(
                 _invoke,
                 name=descriptor.capability_id,
                 description=description,
+                json_schema=input_schema,
             )
         )
     return tools

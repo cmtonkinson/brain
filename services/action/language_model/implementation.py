@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Sequence
 
 from pydantic import BaseModel, ValidationError
+
 from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
@@ -27,8 +29,9 @@ from resources.adapters.litellm import (
     AdapterChatToolDefinition,
     AdapterDependencyError,
     AdapterInternalError,
-    LiteLlmLibraryAdapter,
+    AdapterProviderCallAudit,
     LiteLlmAdapter,
+    LiteLlmLibraryAdapter,
     resolve_litellm_adapter_settings,
 )
 from services.action.language_model.component import SERVICE_COMPONENT_ID
@@ -36,6 +39,9 @@ from services.action.language_model.config import (
     LanguageModelProfileSettings,
     LanguageModelServiceSettings,
     resolve_language_model_service_settings,
+)
+from services.action.language_model.data.repository import (
+    InMemoryLanguageModelCallAuditRepository,
 )
 from services.action.language_model.domain import (
     ChatMessage,
@@ -45,15 +51,17 @@ from services.action.language_model.domain import (
     ChatWithToolsResponse,
     EmbeddingVector,
     HealthStatus,
+    LanguageModelCallAuditRow,
 )
+from services.action.language_model.interfaces import LanguageModelCallAuditRepository
 from services.action.language_model.service import LanguageModelService
 from services.action.language_model.validation import (
     ChatBatchRequest,
-    ChatWithToolsRequest,
     ChatRequest,
-    EmbeddingProfile,
+    ChatWithToolsRequest,
     EmbedBatchRequest,
     EmbedRequest,
+    EmbeddingProfile,
     ReasoningLevel,
 )
 
@@ -76,9 +84,15 @@ class DefaultLanguageModelService(LanguageModelService):
         *,
         settings: LanguageModelServiceSettings,
         adapter: LiteLlmAdapter,
+        audit_repository: LanguageModelCallAuditRepository | None = None,
     ) -> None:
         self._settings = settings
         self._adapter = adapter
+        self._audit_repository = (
+            InMemoryLanguageModelCallAuditRepository()
+            if audit_repository is None
+            else audit_repository
+        )
 
     @classmethod
     def from_settings(
@@ -121,6 +135,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 prompt=request.prompt,
             )
         except AdapterDependencyError as exc:
+            self._append_call_audit(
+                meta=meta,
+                provider=resolved.provider,
+                model=resolved.model,
+                profile=request.profile.value,
+                operation="chat",
+                request_phase="initial",
+                outcome_kind="error",
+                raw_call=getattr(exc, "raw_call", None),
+                error_message=str(exc) or "litellm dependency failure",
+            )
             return failure(
                 meta=meta,
                 errors=[
@@ -132,6 +157,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 ],
             )
         except AdapterInternalError as exc:
+            self._append_call_audit(
+                meta=meta,
+                provider=resolved.provider,
+                model=resolved.model,
+                profile=request.profile.value,
+                operation="chat",
+                request_phase="initial",
+                outcome_kind="error",
+                raw_call=getattr(exc, "raw_call", None),
+                error_message=str(exc) or "litellm adapter internal failure",
+            )
             return failure(
                 meta=meta,
                 errors=[
@@ -143,6 +179,16 @@ class DefaultLanguageModelService(LanguageModelService):
                 ],
             )
 
+        self._append_call_audit(
+            meta=meta,
+            provider=result.provider,
+            model=result.model,
+            profile=request.profile.value,
+            operation="chat",
+            request_phase="initial",
+            outcome_kind="final",
+            raw_call=result.raw_call,
+        )
         return success(
             meta=meta,
             payload=ChatResponse(
@@ -181,6 +227,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 prompts=request.prompts,
             )
         except AdapterDependencyError as exc:
+            self._append_call_audit(
+                meta=meta,
+                provider=resolved.provider,
+                model=resolved.model,
+                profile=request.profile.value,
+                operation="chat_batch",
+                request_phase="initial",
+                outcome_kind="error",
+                raw_call=getattr(exc, "raw_call", None),
+                error_message=str(exc) or "litellm dependency failure",
+            )
             return failure(
                 meta=meta,
                 errors=[
@@ -192,6 +249,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 ],
             )
         except AdapterInternalError as exc:
+            self._append_call_audit(
+                meta=meta,
+                provider=resolved.provider,
+                model=resolved.model,
+                profile=request.profile.value,
+                operation="chat_batch",
+                request_phase="initial",
+                outcome_kind="error",
+                raw_call=getattr(exc, "raw_call", None),
+                error_message=str(exc) or "litellm adapter internal failure",
+            )
             return failure(
                 meta=meta,
                 errors=[
@@ -203,6 +271,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 ],
             )
 
+        first = results[0] if results else None
+        self._append_call_audit(
+            meta=meta,
+            provider="" if first is None else first.provider,
+            model="" if first is None else first.model,
+            profile=request.profile.value,
+            operation="chat_batch",
+            request_phase="initial",
+            outcome_kind="final",
+            raw_call=None if first is None else first.raw_call,
+        )
         return success(
             meta=meta,
             payload=[
@@ -258,6 +337,7 @@ class DefaultLanguageModelService(LanguageModelService):
         assert request is not None
 
         resolved = self._resolve_chat_profile(profile=request.profile)
+        request_phase = _request_phase_for_messages(request.messages)
         try:
             result = self._adapter.chat_with_tools(
                 provider=resolved.provider,
@@ -276,6 +356,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 parallel_tool_calls=request.parallel_tool_calls,
             )
         except AdapterDependencyError as exc:
+            self._append_call_audit(
+                meta=meta,
+                provider=resolved.provider,
+                model=resolved.model,
+                profile=request.profile.value,
+                operation="chat_with_tools",
+                request_phase=request_phase,
+                outcome_kind="error",
+                raw_call=getattr(exc, "raw_call", None),
+                error_message=str(exc) or "litellm dependency failure",
+            )
             return failure(
                 meta=meta,
                 errors=[
@@ -287,6 +378,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 ],
             )
         except AdapterInternalError as exc:
+            self._append_call_audit(
+                meta=meta,
+                provider=resolved.provider,
+                model=resolved.model,
+                profile=request.profile.value,
+                operation="chat_with_tools",
+                request_phase=request_phase,
+                outcome_kind="error",
+                raw_call=getattr(exc, "raw_call", None),
+                error_message=str(exc) or "litellm adapter internal failure",
+            )
             return failure(
                 meta=meta,
                 errors=[
@@ -299,6 +401,18 @@ class DefaultLanguageModelService(LanguageModelService):
             )
 
         if not request.allow_text_output and len(result.tool_calls) == 0:
+            self._append_call_audit(
+                meta=meta,
+                provider=result.provider,
+                model=result.model,
+                profile=request.profile.value,
+                operation="chat_with_tools",
+                request_phase=request_phase,
+                outcome_kind="error",
+                raw_call=result.raw_call,
+                finish_reason=result.finish_reason,
+                error_message="tool-capable model response did not include any tool calls",
+            )
             return failure(
                 meta=meta,
                 errors=[
@@ -310,6 +424,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 ],
             )
 
+        self._append_call_audit(
+            meta=meta,
+            provider=result.provider,
+            model=result.model,
+            profile=request.profile.value,
+            operation="chat_with_tools",
+            request_phase=request_phase,
+            outcome_kind=_tool_chat_outcome_kind(result=result),
+            raw_call=result.raw_call,
+            finish_reason=result.finish_reason,
+        )
         return success(
             meta=meta,
             payload=ChatWithToolsResponse(
@@ -353,6 +478,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 text=request.text,
             )
         except AdapterDependencyError as exc:
+            self._append_call_audit(
+                meta=meta,
+                provider=resolved.provider,
+                model=resolved.model,
+                profile=request.profile.value,
+                operation="embed",
+                request_phase="embedding",
+                outcome_kind="error",
+                raw_call=getattr(exc, "raw_call", None),
+                error_message=str(exc) or "litellm dependency failure",
+            )
             return failure(
                 meta=meta,
                 errors=[
@@ -364,6 +500,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 ],
             )
         except AdapterInternalError as exc:
+            self._append_call_audit(
+                meta=meta,
+                provider=resolved.provider,
+                model=resolved.model,
+                profile=request.profile.value,
+                operation="embed",
+                request_phase="embedding",
+                outcome_kind="error",
+                raw_call=getattr(exc, "raw_call", None),
+                error_message=str(exc) or "litellm adapter internal failure",
+            )
             return failure(
                 meta=meta,
                 errors=[
@@ -375,6 +522,16 @@ class DefaultLanguageModelService(LanguageModelService):
                 ],
             )
 
+        self._append_call_audit(
+            meta=meta,
+            provider=result.provider,
+            model=result.model,
+            profile=request.profile.value,
+            operation="embed",
+            request_phase="embedding",
+            outcome_kind="embedding",
+            raw_call=result.raw_call,
+        )
         return success(
             meta=meta,
             payload=EmbeddingVector(
@@ -413,6 +570,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 texts=request.texts,
             )
         except AdapterDependencyError as exc:
+            self._append_call_audit(
+                meta=meta,
+                provider=resolved.provider,
+                model=resolved.model,
+                profile=request.profile.value,
+                operation="embed_batch",
+                request_phase="embedding",
+                outcome_kind="error",
+                raw_call=getattr(exc, "raw_call", None),
+                error_message=str(exc) or "litellm dependency failure",
+            )
             return failure(
                 meta=meta,
                 errors=[
@@ -424,6 +592,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 ],
             )
         except AdapterInternalError as exc:
+            self._append_call_audit(
+                meta=meta,
+                provider=resolved.provider,
+                model=resolved.model,
+                profile=request.profile.value,
+                operation="embed_batch",
+                request_phase="embedding",
+                outcome_kind="error",
+                raw_call=getattr(exc, "raw_call", None),
+                error_message=str(exc) or "litellm adapter internal failure",
+            )
             return failure(
                 meta=meta,
                 errors=[
@@ -435,6 +614,17 @@ class DefaultLanguageModelService(LanguageModelService):
                 ],
             )
 
+        first = results[0] if results else None
+        self._append_call_audit(
+            meta=meta,
+            provider="" if first is None else first.provider,
+            model="" if first is None else first.model,
+            profile=request.profile.value,
+            operation="embed_batch",
+            request_phase="embedding",
+            outcome_kind="embedding",
+            raw_call=None if first is None else first.raw_call,
+        )
         return success(
             meta=meta,
             payload=[
@@ -508,7 +698,82 @@ class DefaultLanguageModelService(LanguageModelService):
 
         return validated, []
 
+    def _append_call_audit(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        provider: str,
+        model: str,
+        profile: str,
+        operation: str,
+        request_phase: str,
+        outcome_kind: str,
+        raw_call: AdapterProviderCallAudit | None,
+        finish_reason: str = "",
+        error_message: str = "",
+    ) -> None:
+        """Append one provider-bound LMS call audit row."""
+        row = LanguageModelCallAuditRow(
+            envelope_id=meta.envelope_id,
+            trace_id=meta.trace_id,
+            parent_id=meta.parent_id,
+            source=meta.source,
+            principal=meta.principal,
+            provider=provider,
+            model=model,
+            profile=profile,
+            operation=operation,
+            request_phase=request_phase,
+            outcome_kind=outcome_kind,
+            call_index=self._audit_repository.next_call_index(trace_id=meta.trace_id),
+            finish_reason=finish_reason,
+            error_message=error_message,
+            request_json=None if raw_call is None else _provider_request_json(raw_call),
+            response_json=None
+            if raw_call is None
+            else _provider_response_json(raw_call),
+            created_at=datetime.now(UTC),
+        )
+        self._audit_repository.append(row=row)
+
 
 def _from_settings(settings: LanguageModelProfileSettings) -> _ResolvedProfile:
     """Convert required profile settings into resolved call-time tuple."""
     return _ResolvedProfile(provider=settings.provider, model=settings.model)
+
+
+def _request_phase_for_messages(messages: Sequence[ChatMessage]) -> str:
+    """Classify one tool-capable request as initial or tool follow-up."""
+    for message in messages:
+        if message.role == "tool":
+            return "tool_followup"
+        if message.role == "assistant" and len(message.tool_calls) > 0:
+            return "tool_followup"
+    return "initial"
+
+
+def _tool_chat_outcome_kind(*, result: Any) -> str:
+    """Classify one tool-capable model response for audit reporting."""
+    has_tool_calls = len(result.tool_calls) > 0
+    has_text = isinstance(result.text, str) and result.text.strip() != ""
+    if has_tool_calls and has_text:
+        return "mixed"
+    if has_tool_calls:
+        return "tool_call"
+    if has_text:
+        return "final"
+    return "empty"
+
+
+def _provider_request_json(raw_call: AdapterProviderCallAudit) -> dict[str, object]:
+    """Serialize provider request artifacts into one JSON document."""
+    return {
+        "api_base": raw_call.request_api_base,
+        "headers": raw_call.request_headers,
+        "body": raw_call.request_body,
+    }
+
+
+def _provider_response_json(raw_call: AdapterProviderCallAudit) -> dict[str, object]:
+    """Serialize provider response artifacts into one JSON document."""
+    return {"body": raw_call.response_body}

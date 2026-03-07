@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, Sequence
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AdapterError(Exception):
@@ -14,9 +14,32 @@ class AdapterError(Exception):
 class AdapterDependencyError(AdapterError):
     """Dependency-level adapter failure (network, upstream, timeout)."""
 
+    def __init__(
+        self, message: str, *, raw_call: "AdapterProviderCallAudit | None" = None
+    ) -> None:
+        super().__init__(message)
+        self.raw_call = raw_call
+
 
 class AdapterInternalError(AdapterError):
     """Internal adapter failure (malformed response, mapping bug)."""
+
+    def __init__(
+        self, message: str, *, raw_call: "AdapterProviderCallAudit | None" = None
+    ) -> None:
+        super().__init__(message)
+        self.raw_call = raw_call
+
+
+class AdapterProviderCallAudit(BaseModel):
+    """Raw provider request/response artifacts captured around one adapter call."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    request_api_base: str = ""
+    request_headers: dict[str, object] = Field(default_factory=dict)
+    request_body: object | None = None
+    response_body: object | None = None
 
 
 class AdapterChatResult(BaseModel):
@@ -27,6 +50,7 @@ class AdapterChatResult(BaseModel):
     text: str
     provider: str
     model: str
+    raw_call: AdapterProviderCallAudit | None = None
 
 
 class AdapterChatToolDefinition(BaseModel):
@@ -73,6 +97,7 @@ class AdapterToolChatResult(BaseModel):
     provider: str
     model: str
     finish_reason: str
+    raw_call: AdapterProviderCallAudit | None = None
 
 
 class AdapterEmbeddingResult(BaseModel):
@@ -83,6 +108,7 @@ class AdapterEmbeddingResult(BaseModel):
     values: tuple[float, ...]
     provider: str
     model: str
+    raw_call: AdapterProviderCallAudit | None = None
 
 
 class AdapterHealthResult(BaseModel):

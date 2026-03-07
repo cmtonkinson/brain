@@ -23,7 +23,7 @@ SECRETS_CONFIG_FILENAME = "secrets.yaml"
 class LoggingSettings(BaseModel):
     """Structured logging configuration shared by Brain components."""
 
-    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    level: Literal["VERBOSE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     json_output: bool = True
     service: str = "brain"
     environment: str = "dev"

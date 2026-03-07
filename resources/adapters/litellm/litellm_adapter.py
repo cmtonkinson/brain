@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any, Mapping, Sequence
 
@@ -19,6 +21,7 @@ from resources.adapters.litellm.adapter import (
     AdapterEmbeddingResult,
     AdapterHealthResult,
     AdapterInternalError,
+    AdapterProviderCallAudit,
     AdapterToolChatResult,
     LiteLlmAdapter,
 )
@@ -60,13 +63,18 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         prompt: str,
     ) -> AdapterChatResult:
         """Generate one chat completion using the LiteLLM Python API."""
-        response = self._call_completion(
+        response, raw_call = self._call_completion(
             provider=provider,
             model=model,
             messages=[{"role": "user", "content": prompt}],
         )
         content = _extract_chat_content(response)
-        return AdapterChatResult(text=content, provider=provider, model=model)
+        return AdapterChatResult(
+            text=content,
+            provider=provider,
+            model=model,
+            raw_call=raw_call,
+        )
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -99,7 +107,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         parallel_tool_calls: bool | None = None,
     ) -> AdapterToolChatResult:
         """Generate one tool-capable completion using the LiteLLM Python API."""
-        response = self._call_completion(
+        response, raw_call = self._call_completion(
             provider=provider,
             model=model,
             messages=[_to_litellm_message(item) for item in messages],
@@ -113,6 +121,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
             provider=provider,
             model=model,
             finish_reason=_extract_finish_reason(response),
+            raw_call=raw_call,
         )
 
     @public_api_instrumented(
@@ -144,14 +153,19 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         texts: Sequence[str],
     ) -> list[AdapterEmbeddingResult]:
         """Generate embedding vectors from one batch request."""
-        response = self._call_embedding(
+        response, raw_call = self._call_embedding(
             provider=provider,
             model=model,
             inputs=list(texts),
         )
         vectors = _extract_embedding_vectors(response)
         return [
-            AdapterEmbeddingResult(values=item, provider=provider, model=model)
+            AdapterEmbeddingResult(
+                values=item,
+                provider=provider,
+                model=model,
+                raw_call=raw_call,
+            )
             for item in vectors
         ]
 
@@ -178,12 +192,20 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, object] | None = None,
         parallel_tool_calls: bool | None = None,
-    ) -> object:
+    ) -> tuple[object, AdapterProviderCallAudit | None]:
         """Invoke `litellm.completion` with resolved provider settings."""
         litellm = _load_litellm_module()
         resolved = self._resolve_provider_settings(provider=provider)
+        raw_call = _RawCallCapture()
         kwargs = self._request_kwargs(provider=provider, model=model, resolved=resolved)
         kwargs["messages"] = messages
+        kwargs["logger_fn"] = _provider_raw_json_logger(
+            logger=_LOGGER,
+            provider=provider,
+            model=model,
+            operation="completion",
+            capture=raw_call,
+        )
         if tools is not None:
             kwargs["tools"] = tools
         if tool_choice is not None:
@@ -203,7 +225,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         try:
             response = litellm.completion(**kwargs)
         except Exception as exc:
-            self._raise_mapped_exception(exc)
+            self._raise_mapped_exception(exc, raw_call=raw_call.to_model())
         _LOGGER.debug(
             "LiteLLM provider request completed",
             extra={
@@ -213,7 +235,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
                 "duration_ms": round((perf_counter() - started_at) * 1000, 3),
             },
         )
-        return response
+        return response, raw_call.to_model()
 
     def _call_embedding(
         self,
@@ -221,12 +243,20 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         provider: str,
         model: str,
         inputs: list[str],
-    ) -> object:
+    ) -> tuple[object, AdapterProviderCallAudit | None]:
         """Invoke `litellm.embedding` with resolved provider settings."""
         litellm = _load_litellm_module()
         resolved = self._resolve_provider_settings(provider=provider)
+        raw_call = _RawCallCapture()
         kwargs = self._request_kwargs(provider=provider, model=model, resolved=resolved)
         kwargs["input"] = inputs
+        kwargs["logger_fn"] = _provider_raw_json_logger(
+            logger=_LOGGER,
+            provider=provider,
+            model=model,
+            operation="embedding",
+            capture=raw_call,
+        )
         started_at = perf_counter()
         _LOGGER.debug(
             "LiteLLM provider request starting",
@@ -241,7 +271,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         try:
             response = litellm.embedding(**kwargs)
         except Exception as exc:
-            self._raise_mapped_exception(exc)
+            self._raise_mapped_exception(exc, raw_call=raw_call.to_model())
         _LOGGER.debug(
             "LiteLLM provider request completed",
             extra={
@@ -252,7 +282,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
                 "duration_ms": round((perf_counter() - started_at) * 1000, 3),
             },
         )
-        return response
+        return response, raw_call.to_model()
 
     def _resolve_provider_settings(self, *, provider: str) -> _ResolvedProviderSettings:
         """Resolve provider-specific settings and enforce configuration validity."""
@@ -319,20 +349,147 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         kwargs.update(resolved.options)
         return kwargs
 
-    def _raise_mapped_exception(self, exc: Exception) -> None:
+    def _raise_mapped_exception(
+        self, exc: Exception, *, raw_call: AdapterProviderCallAudit | None = None
+    ) -> None:
         """Map third-party exceptions into adapter dependency/internal classes."""
         if _is_dependency_exception(exc):
             raise AdapterDependencyError(
-                str(exc) or "litellm dependency failure"
+                str(exc) or "litellm dependency failure",
+                raw_call=raw_call,
             ) from None
         raise AdapterInternalError(
-            str(exc) or "litellm adapter internal failure"
+            str(exc) or "litellm adapter internal failure",
+            raw_call=raw_call,
         ) from None
 
 
 def _load_litellm_module() -> Any:
     """Return the imported `litellm` module."""
     return litellm
+
+
+def _provider_raw_json_logger(
+    *,
+    logger: Any,
+    provider: str,
+    model: str,
+    operation: str,
+    capture: "_RawCallCapture",
+):
+    """Return one LiteLLM logger_fn that emits raw upstream request/response JSON."""
+
+    def _log(model_call_details: dict[str, Any]) -> None:
+        if not isinstance(model_call_details, dict):
+            return
+        event_type = str(model_call_details.get("log_event_type", "")).strip()
+        if event_type == "pre_api_call":
+            raw_request = model_call_details.get("raw_request_typed_dict", {})
+            capture.request_api_base = str(
+                _json_safe_value(_mapping_get(raw_request, "raw_request_api_base", ""))
+            )
+            capture.request_headers = _coerce_json_object(
+                _json_safe_value(_mapping_get(raw_request, "raw_request_headers", {}))
+            )
+            capture.request_body = _json_safe_value(
+                _mapping_get(raw_request, "raw_request_body", {})
+            )
+            payload = {
+                "provider": provider,
+                "model": model,
+                "operation": operation,
+                "event": "provider_raw_request",
+                "api_base": _json_safe_value(
+                    _mapping_get(raw_request, "raw_request_api_base", "")
+                ),
+                "headers": _json_safe_value(
+                    _mapping_get(raw_request, "raw_request_headers", {})
+                ),
+                "body": _json_safe_value(
+                    _mapping_get(raw_request, "raw_request_body", {})
+                ),
+                "logged_at": datetime.now(UTC).isoformat(),
+            }
+            logger.verbose(
+                "LiteLLM provider raw json %s", json.dumps(payload, default=str)
+            )
+            return
+        if event_type == "post_api_call":
+            capture.response_body = _json_safe_value(
+                model_call_details.get("original_response")
+            )
+            payload = {
+                "provider": provider,
+                "model": model,
+                "operation": operation,
+                "event": "provider_raw_response",
+                "response": capture.response_body,
+                "logged_at": datetime.now(UTC).isoformat(),
+            }
+            logger.verbose(
+                "LiteLLM provider raw json %s", json.dumps(payload, default=str)
+            )
+
+    return _log
+
+
+def _mapping_get(value: object, key: str, default: object) -> object:
+    """Return ``value[key]`` when ``value`` is mapping-shaped, else ``default``."""
+    if isinstance(value, Mapping):
+        return value.get(key, default)
+    return default
+
+
+def _json_safe_value(value: object) -> object:
+    """Convert arbitrary objects into JSON-serializable log payloads."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return {str(k): _json_safe_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(item) for item in value]
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        return _json_safe_value(model_dump())
+    to_dict = getattr(value, "dict", None)
+    if callable(to_dict):
+        return _json_safe_value(to_dict())
+    return str(value)
+
+
+def _coerce_json_object(value: object) -> dict[str, object]:
+    """Return mapping-shaped JSON payloads as ``dict[str, object]``."""
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe_value(item) for key, item in value.items()}
+    return {}
+
+
+@dataclass
+class _RawCallCapture:
+    """Mutable per-call raw provider payload capture populated by LiteLLM hooks."""
+
+    request_api_base: str = ""
+    request_headers: dict[str, object] | None = None
+    request_body: object | None = None
+    response_body: object | None = None
+
+    def to_model(self) -> AdapterProviderCallAudit | None:
+        """Return immutable audit payload when any raw call data was captured."""
+        if (
+            self.request_api_base == ""
+            and self.request_headers is None
+            and self.request_body is None
+            and self.response_body is None
+        ):
+            return None
+        return AdapterProviderCallAudit(
+            request_api_base=self.request_api_base,
+            request_headers={}
+            if self.request_headers is None
+            else self.request_headers,
+            request_body=self.request_body,
+            response_body=self.response_body,
+        )
 
 
 def _qualified_model(*, provider: str, model: str) -> str:

@@ -17,6 +17,30 @@ from typing import Any
 from .context import get_context
 from . import fields
 
+VERBOSE = 5
+
+
+def _register_verbose_level() -> None:
+    """Register the custom ``VERBOSE`` level and logger method once."""
+    if getattr(logging, "VERBOSE", None) != VERBOSE:
+        logging.addLevelName(VERBOSE, "VERBOSE")
+        setattr(logging, "VERBOSE", VERBOSE)
+
+    if hasattr(logging.Logger, "verbose"):
+        return
+
+    def verbose(
+        self: logging.Logger, msg: object, *args: object, **kwargs: object
+    ) -> None:
+        """Log one message at the custom ``VERBOSE`` level."""
+        if self.isEnabledFor(VERBOSE):
+            self._log(VERBOSE, msg, args, **kwargs)
+
+    setattr(logging.Logger, "verbose", verbose)
+
+
+_register_verbose_level()
+
 
 class ContextFilter(logging.Filter):
     """Inject per-request/service context into each log record."""
@@ -80,6 +104,7 @@ def configure_logging(
     This function is idempotent for handler setup: existing root handlers are
     replaced to avoid duplicate emissions when called multiple times.
     """
+    _register_verbose_level()
     root = logging.getLogger()
     root.handlers.clear()
     root.setLevel(level.upper())
@@ -106,4 +131,5 @@ def configure_logging(
 
 def get_logger(name: str | None = None) -> logging.Logger:
     """Return a logger using Python's standard logging hierarchy."""
+    _register_verbose_level()
     return logging.getLogger(name)

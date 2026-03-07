@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
+from unittest.mock import MagicMock
 
 import resources.adapters.litellm.litellm_adapter as adapter_module
 from resources.adapters.litellm.adapter import (
@@ -13,6 +14,7 @@ from resources.adapters.litellm.adapter import (
     AdapterChatToolDefinition,
     AdapterDependencyError,
     AdapterInternalError,
+    AdapterProviderCallAudit,
 )
 from resources.adapters.litellm.config import (
     LiteLlmAdapterSettings,
@@ -82,6 +84,7 @@ def test_chat_calls_litellm_completion_with_resolved_provider_settings(
     assert fake_module.completion_calls[0]["timeout"] == 9.0
     assert fake_module.completion_calls[0]["num_retries"] == 2
     assert fake_module.completion_calls[0]["temperature"] == 0.0
+    assert callable(fake_module.completion_calls[0]["logger_fn"])
 
 
 def test_chat_with_tools_passes_tools_and_maps_tool_calls(
@@ -132,6 +135,7 @@ def test_chat_with_tools_passes_tools_and_maps_tool_calls(
     assert result.tool_calls[0].tool_name == "demo-tool"
     assert fake_module.completion_calls[0]["tool_choice"] == "auto"
     assert fake_module.completion_calls[0]["parallel_tool_calls"] is True
+    assert callable(fake_module.completion_calls[0]["logger_fn"])
     assert fake_module.completion_calls[0]["tools"] == [
         {
             "type": "function",
@@ -170,6 +174,53 @@ def test_embed_batch_maps_vectors_from_litellm_response(
     assert result[0].values == (0.1, 0.2)
     assert result[1].values == (0.3, 0.4)
     assert fake_module.embedding_calls[0]["model"] == "ollama/mxbai-embed-large"
+    assert callable(fake_module.embedding_calls[0]["logger_fn"])
+
+
+def test_provider_raw_json_logger_emits_request_and_response_payloads() -> None:
+    """Raw JSON logger should emit LiteLLM provider request and response payloads."""
+    logger = MagicMock()
+    capture = adapter_module._RawCallCapture()
+    callback = adapter_module._provider_raw_json_logger(
+        logger=logger,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="completion",
+        capture=capture,
+    )
+
+    callback(
+        {
+            "log_event_type": "pre_api_call",
+            "raw_request_typed_dict": {
+                "raw_request_api_base": "https://api.anthropic.com/v1/messages",
+                "raw_request_headers": {"authorization": "Bearer ****1234"},
+                "raw_request_body": {"model": "claude-sonnet-4-6", "messages": []},
+            },
+        }
+    )
+    callback(
+        {
+            "log_event_type": "post_api_call",
+            "original_response": {"id": "msg_123", "content": []},
+        }
+    )
+
+    assert logger.verbose.call_count == 2
+    request_message = logger.verbose.call_args_list[0].args[1]
+    response_message = logger.verbose.call_args_list[1].args[1]
+    assert '"event": "provider_raw_request"' in request_message
+    assert '"raw_request_api_base"' not in request_message
+    assert '"api_base": "https://api.anthropic.com/v1/messages"' in request_message
+    assert '"body": {"model": "claude-sonnet-4-6", "messages": []}' in request_message
+    assert '"event": "provider_raw_response"' in response_message
+    assert '"response": {"id": "msg_123", "content": []}' in response_message
+    assert capture.to_model() == AdapterProviderCallAudit(
+        request_api_base="https://api.anthropic.com/v1/messages",
+        request_headers={"authorization": "Bearer ****1234"},
+        request_body={"model": "claude-sonnet-4-6", "messages": []},
+        response_body={"id": "msg_123", "content": []},
+    )
 
 
 def test_chat_uses_provider_api_key_from_environment(

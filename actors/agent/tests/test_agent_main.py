@@ -157,10 +157,58 @@ def test_build_capability_tools_invokes_sdk_client() -> None:
         turn_state=turn_state,
     )
 
-    result = tools[0].function(input_payload={"value": "x"})
+    result = tools[0].function(value="x")
 
     assert result == {"ok": True}
     assert client.calls == [("demo-tool", {"value": "x"}, "operator", "signal")]
+
+
+def test_build_capability_tools_uses_descriptor_input_schema() -> None:
+    """Capability tool wrappers should advertise the CES input schema directly."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+        ):
+            del capability_id, input_payload, actor, channel
+            return type("InvokeResult", (), {"output": {"ok": True}})()
+
+    tools = main._build_capability_tools(
+        client=_FakeClient(),  # type: ignore[arg-type]
+        capabilities=(
+            CapabilityDescriptor(
+                capability_id="vault-get-file",
+                kind="native_op",
+                version="1.0.0",
+                summary="Read one markdown file by path.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"file_path": {"type": "string"}},
+                    "required": ["file_path"],
+                    "additionalProperties": False,
+                },
+                output_schema={"type": "object"},
+                autonomy=0,
+                requires_approval=False,
+                side_effects=(),
+                required_capabilities=(),
+            ),
+        ),
+        turn_state=main._TurnState(actor="operator", channel="signal"),
+    )
+
+    assert tools[0].tool_def.parameters_json_schema == {
+        "type": "object",
+        "properties": {"file_path": {"type": "string"}},
+        "required": ["file_path"],
+        "additionalProperties": False,
+    }
 
 
 def test_tool_model_requests_lms_chat_with_tools() -> None:

@@ -20,6 +20,7 @@ from resources.adapters.litellm import (
     AdapterEmbeddingResult,
     AdapterHealthResult,
     AdapterInternalError,
+    AdapterProviderCallAudit,
     AdapterToolChatResult,
     LiteLlmAdapter,
 )
@@ -27,6 +28,9 @@ from services.action.language_model.config import (
     LanguageModelProfileSettings,
     LanguageModelServiceSettings,
     resolve_language_model_service_settings,
+)
+from services.action.language_model.data.repository import (
+    InMemoryLanguageModelCallAuditRepository,
 )
 from services.action.language_model.implementation import DefaultLanguageModelService
 from services.action.language_model.domain import ChatMessage, ChatToolDefinition
@@ -531,3 +535,146 @@ def test_health_maps_adapter_readiness_into_service_payload() -> None:
     assert result.payload.value.service_ready is True
     assert result.payload.value.adapter_ready is False
     assert result.payload.value.detail == "litellm unavailable"
+
+
+def test_chat_appends_provider_call_audit_with_raw_payloads() -> None:
+    """Successful chat calls should append one raw provider audit row."""
+    adapter = _FakeAdapter()
+    audit_repository = InMemoryLanguageModelCallAuditRepository()
+    raw_call = AdapterProviderCallAudit(
+        request_api_base="https://api.example.test/v1/chat",
+        request_headers={"authorization": "Bearer ****1234"},
+        request_body={
+            "model": "chat-a",
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+        response_body={"id": "resp_123", "choices": []},
+    )
+    adapter.chat = lambda **kwargs: AdapterChatResult(  # type: ignore[method-assign]
+        text="ok:hello",
+        provider=kwargs["provider"],
+        model=kwargs["model"],
+        raw_call=raw_call,
+    )
+    service = DefaultLanguageModelService(
+        settings=_settings(),
+        adapter=adapter,
+        audit_repository=audit_repository,
+    )
+
+    result = service.chat(meta=_meta(), prompt="hello")
+
+    assert result.ok is True
+    rows = audit_repository.list_rows()
+    assert len(rows) == 1
+    assert rows[0].operation == "chat"
+    assert rows[0].request_phase == "initial"
+    assert rows[0].outcome_kind == "final"
+    assert rows[0].call_index == 1
+    assert rows[0].request_json == {
+        "api_base": "https://api.example.test/v1/chat",
+        "headers": {"authorization": "Bearer ****1234"},
+        "body": {"model": "chat-a", "messages": [{"role": "user", "content": "hello"}]},
+    }
+    assert rows[0].response_json == {"body": {"id": "resp_123", "choices": []}}
+
+
+def test_chat_with_tools_marks_followup_and_sequences_audit_rows() -> None:
+    """Tool follow-up calls should be classified separately and sequenced by trace."""
+    adapter = _FakeAdapter()
+    audit_repository = InMemoryLanguageModelCallAuditRepository()
+    first_raw_call = AdapterProviderCallAudit(
+        request_api_base="https://api.example.test/v1/chat",
+        request_headers={},
+        request_body={"messages": [{"role": "user", "content": "find resume"}]},
+        response_body={"id": "resp_1", "choices": []},
+    )
+    second_raw_call = AdapterProviderCallAudit(
+        request_api_base="https://api.example.test/v1/chat",
+        request_headers={},
+        request_body={"messages": [{"role": "tool", "content": "search results"}]},
+        response_body={"id": "resp_2", "choices": []},
+    )
+    raw_calls = [first_raw_call, second_raw_call]
+
+    def _chat_with_tools(**kwargs: object) -> AdapterToolChatResult:
+        raw_call = raw_calls.pop(0)
+        messages = kwargs["messages"]
+        has_tool_message = any(item.role == "tool" for item in messages)  # type: ignore[attr-defined]
+        return AdapterToolChatResult(
+            text="done" if has_tool_message else None,
+            tool_calls=()
+            if has_tool_message
+            else (
+                AdapterChatToolCall(
+                    tool_name="demo-tool",
+                    args_json='{"value":"x"}',
+                    tool_call_id="call-1",
+                ),
+            ),
+            provider=str(kwargs["provider"]),
+            model=str(kwargs["model"]),
+            finish_reason="stop" if has_tool_message else "tool_call",
+            raw_call=raw_call,
+        )
+
+    adapter.chat_with_tools = _chat_with_tools  # type: ignore[method-assign]
+    service = DefaultLanguageModelService(
+        settings=_settings(),
+        adapter=adapter,
+        audit_repository=audit_repository,
+    )
+    meta = _meta()
+
+    first = service.chat_with_tools(
+        meta=meta,
+        messages=[ChatMessage(role="user", content="find resume")],
+    )
+    second = service.chat_with_tools(
+        meta=meta,
+        messages=[
+            ChatMessage(role="assistant", tool_calls=first.payload.value.tool_calls),  # type: ignore[union-attr]
+            ChatMessage(
+                role="tool",
+                tool_call_id="call-1",
+                tool_name="demo-tool",
+                content="search results",
+            ),
+        ],
+    )
+
+    assert first.ok is True
+    assert second.ok is True
+    rows = audit_repository.list_rows()
+    assert len(rows) == 2
+    assert [row.call_index for row in rows] == [1, 2]
+    assert [row.request_phase for row in rows] == ["initial", "tool_followup"]
+    assert [row.outcome_kind for row in rows] == ["tool_call", "final"]
+
+
+def test_chat_error_appends_audit_row_with_error_outcome() -> None:
+    """Adapter failures should still append one audit row with raw request data."""
+    adapter = _FakeAdapter()
+    audit_repository = InMemoryLanguageModelCallAuditRepository()
+    adapter.raise_chat = AdapterDependencyError(
+        "adapter down",
+        raw_call=AdapterProviderCallAudit(
+            request_api_base="https://api.example.test/v1/chat",
+            request_headers={},
+            request_body={"messages": [{"role": "user", "content": "hello"}]},
+        ),
+    )
+    service = DefaultLanguageModelService(
+        settings=_settings(),
+        adapter=adapter,
+        audit_repository=audit_repository,
+    )
+
+    result = service.chat(meta=_meta(), prompt="hello")
+
+    assert result.ok is False
+    rows = audit_repository.list_rows()
+    assert len(rows) == 1
+    assert rows[0].outcome_kind == "error"
+    assert rows[0].error_message == "adapter down"
+    assert rows[0].response_json == {"body": None}

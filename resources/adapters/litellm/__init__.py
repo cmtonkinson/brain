@@ -9,6 +9,7 @@ from resources.adapters.litellm.adapter import (
     AdapterEmbeddingResult,
     AdapterHealthResult,
     AdapterInternalError,
+    AdapterProviderCallAudit,
     AdapterToolChatResult,
     LiteLlmAdapter,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "AdapterEmbeddingResult",
     "AdapterHealthResult",
     "AdapterInternalError",
+    "AdapterProviderCallAudit",
     "AdapterToolChatResult",
     "LiteLlmLibraryAdapter",
     "LiteLlmAdapter",

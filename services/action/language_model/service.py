@@ -91,6 +91,10 @@ def build_language_model_service(
         LiteLlmLibraryAdapter,
         resolve_litellm_adapter_settings,
     )
+    from services.action.language_model.data.repository import (
+        PostgresLanguageModelCallAuditRepository,
+    )
+    from services.action.language_model.data.runtime import LanguageModelPostgresRuntime
     from services.action.language_model.config import (
         resolve_language_model_service_settings,
     )
@@ -98,8 +102,12 @@ def build_language_model_service(
         DefaultLanguageModelService,
     )
 
+    runtime = LanguageModelPostgresRuntime.from_settings(settings)
     return DefaultLanguageModelService(
         settings=resolve_language_model_service_settings(settings),
         adapter=adapter
         or LiteLlmLibraryAdapter(settings=resolve_litellm_adapter_settings(settings)),
+        audit_repository=PostgresLanguageModelCallAuditRepository(
+            runtime.schema_sessions
+        ),
     )
