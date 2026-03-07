@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, new_meta
@@ -85,7 +86,7 @@ def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> No
         meta = _meta_from_request(
             req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
         )
-        result = service.create_session(meta=meta)
+        result = await run_in_threadpool(service.create_session, meta=meta)
         session_id = None
         if result.payload is not None:
             session_id = result.payload.value.id
@@ -105,7 +106,10 @@ def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> No
         meta = _meta_from_request(
             req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
         )
-        result = service.get_latest_or_create_session(meta=meta)
+        result = await run_in_threadpool(
+            service.get_latest_or_create_session,
+            meta=meta,
+        )
         session_id = None
         if result.payload is not None:
             session_id = result.payload.value.id
@@ -125,7 +129,8 @@ def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> No
         meta = _meta_from_request(
             req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
         )
-        result = service.assemble_context(
+        result = await run_in_threadpool(
+            service.assemble_context,
             meta=meta,
             session_id=req.session_id,
             message=req.message,
@@ -147,7 +152,8 @@ def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> No
         meta = _meta_from_request(
             req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
         )
-        result = service.record_response(
+        result = await run_in_threadpool(
+            service.record_response,
             meta=meta,
             session_id=req.session_id,
             content=req.content,

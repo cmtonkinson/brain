@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from urllib import error as urllib_error
-
-import resources.substrates.obsidian.obsidian_substrate as substrate_module
+from packages.brain_shared.http import HttpStatusError
 from resources.substrates.obsidian import (
     ObsidianSubstrateNotFoundError,
     ObsidianSubstrateSettings,
@@ -13,20 +11,11 @@ from resources.substrates.obsidian import (
 
 
 class _Resp:
-    """Minimal context-managed HTTP response fake."""
+    """Minimal shared-client response fake."""
 
     def __init__(self, *, status: int, payload: bytes) -> None:
-        self.status = status
-        self._payload = payload
-
-    def read(self) -> bytes:
-        return self._payload
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_args):
-        return None
+        self.status_code = status
+        self.content = payload
 
 
 def _substrate() -> ObsidianLocalRestSubstrate:
@@ -38,14 +27,15 @@ def _substrate() -> ObsidianLocalRestSubstrate:
 
 def test_list_directory_http_contract(monkeypatch) -> None:
     """Substrate should parse Local REST API directory payload contract."""
+    substrate = _substrate()
     monkeypatch.setattr(
-        substrate_module.urllib_request,
-        "urlopen",
+        substrate._client,
+        "request",
         lambda *_args, **_kwargs: _Resp(
             status=200, payload=b'{"files":["notes/","todo.md"]}'
         ),
     )
-    entries = _substrate().list_directory(directory_path="")
+    entries = substrate.list_directory(directory_path="")
     assert len(entries) == 2
 
 
@@ -53,11 +43,18 @@ def test_not_found_maps_correctly(monkeypatch) -> None:
     """HTTP 404 should map to substrate not-found domain error."""
 
     def _raise(*_args, **_kwargs):
-        raise urllib_error.HTTPError("u", 404, "nf", None, None)
+        raise HttpStatusError(
+            message="HTTP 404",
+            method="GET",
+            url="http://localhost",
+            retryable=False,
+            status_code=404,
+        )
 
-    monkeypatch.setattr(substrate_module.urllib_request, "urlopen", _raise)
+    substrate = _substrate()
+    monkeypatch.setattr(substrate._client, "request", _raise)
     try:
-        _substrate().get_file(file_path="missing.md")
+        substrate.get_file(file_path="missing.md")
     except ObsidianSubstrateNotFoundError:
         pass
     else:

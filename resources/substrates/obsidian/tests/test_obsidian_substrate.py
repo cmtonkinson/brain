@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from urllib import error as urllib_error
-
 import pytest
 
-import resources.substrates.obsidian.obsidian_substrate as substrate_module
+from packages.brain_shared.http import HttpRequestError, HttpStatusError
 from resources.substrates.obsidian import (
     ObsidianSubstrateAlreadyExistsError,
     ObsidianSubstrateConflictError,
@@ -19,37 +17,27 @@ from resources.substrates.obsidian import (
 
 
 class _FakeResponse:
-    """Minimal HTTP response fake implementing context-manager methods."""
+    """Minimal HTTP response fake used by the shared HTTP client boundary."""
 
     def __init__(self, *, status: int, payload: bytes) -> None:
-        self.status = status
-        self._payload = payload
-
-    def read(self) -> bytes:
-        return self._payload
-
-    def __enter__(self) -> "_FakeResponse":
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        return None
+        self.status_code = status
+        self.content = payload
 
 
-class _FakeHttpError(urllib_error.HTTPError):
-    """HTTPError subclass with deterministic body for mapping tests."""
+def _raise_status(code: int, body: bytes = b""):
+    """Return one raising callable for shared-client status failures."""
 
-    def __init__(self, code: int, body: bytes = b"") -> None:
-        super().__init__(
+    def _raise(*_args: object, **_kwargs: object) -> object:
+        raise HttpStatusError(
+            message=f"HTTP {code}",
+            method="GET",
             url="http://localhost",
-            code=code,
-            msg="error",
-            hdrs=None,
-            fp=None,
+            retryable=code >= 500 or code == 429,
+            status_code=code,
+            response_body=body.decode("utf-8"),
         )
-        self._body = body
 
-    def read(self, *_: object, **__: object) -> bytes:
-        return self._body
+    return _raise
 
 
 def _substrate() -> ObsidianLocalRestSubstrate:
@@ -61,15 +49,15 @@ def _substrate() -> ObsidianLocalRestSubstrate:
 
 def test_list_directory_maps_payload(monkeypatch: object) -> None:
     """Directory list should map API ``files`` entries into typed DTOs."""
+    substrate = _substrate()
     monkeypatch.setattr(
-        substrate_module.urllib_request,
-        "urlopen",
+        substrate._client,
+        "request",
         lambda *_args, **_kwargs: _FakeResponse(
             status=200,
-            payload=(b'{"files":["notes/","todo.md"]}'),
+            payload=b'{"files":["notes/","todo.md"]}',
         ),
     )
-    substrate = _substrate()
 
     entries = substrate.list_directory(directory_path="")
 
@@ -82,12 +70,8 @@ def test_list_directory_maps_payload(monkeypatch: object) -> None:
 
 def test_status_404_maps_to_not_found(monkeypatch: object) -> None:
     """HTTP 404 should map to substrate not-found error type."""
-    monkeypatch.setattr(
-        substrate_module.urllib_request,
-        "urlopen",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(_FakeHttpError(404)),
-    )
     substrate = _substrate()
+    monkeypatch.setattr(substrate._client, "request", _raise_status(404))
 
     with pytest.raises(ObsidianSubstrateNotFoundError):
         substrate.get_file(file_path="missing.md")
@@ -95,12 +79,8 @@ def test_status_404_maps_to_not_found(monkeypatch: object) -> None:
 
 def test_status_409_maps_to_already_exists(monkeypatch: object) -> None:
     """HTTP 409 should map to substrate already-exists error type."""
-    monkeypatch.setattr(
-        substrate_module.urllib_request,
-        "urlopen",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(_FakeHttpError(409)),
-    )
     substrate = _substrate()
+    monkeypatch.setattr(substrate._client, "request", _raise_status(409))
 
     with pytest.raises(ObsidianSubstrateAlreadyExistsError):
         substrate.create_file(file_path="note.md", content="x")
@@ -108,12 +88,8 @@ def test_status_409_maps_to_already_exists(monkeypatch: object) -> None:
 
 def test_status_412_maps_to_conflict(monkeypatch: object) -> None:
     """HTTP 412 should map to optimistic-concurrency conflict type."""
-    monkeypatch.setattr(
-        substrate_module.urllib_request,
-        "urlopen",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(_FakeHttpError(412)),
-    )
     substrate = _substrate()
+    monkeypatch.setattr(substrate._client, "request", _raise_status(412))
 
     with pytest.raises(ObsidianSubstrateConflictError):
         substrate.update_file(
@@ -123,18 +99,23 @@ def test_status_412_maps_to_conflict(monkeypatch: object) -> None:
 
 def test_retry_exhaustion_raises_dependency_error(monkeypatch: object) -> None:
     """Repeated network failures should raise dependency failure after retries."""
-    monkeypatch.setattr(
-        substrate_module.urllib_request,
-        "urlopen",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            urllib_error.URLError("connection refused")
-        ),
-    )
     substrate = ObsidianLocalRestSubstrate(
         settings=ObsidianSubstrateSettings(
             base_url="http://localhost:27123",
             max_retries=1,
         )
+    )
+    monkeypatch.setattr(
+        substrate._client,
+        "request",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            HttpRequestError(
+                message="connection refused",
+                method="GET",
+                url="http://localhost",
+                retryable=True,
+            )
+        ),
     )
 
     with pytest.raises(ObsidianSubstrateDependencyError):
@@ -145,17 +126,22 @@ def test_append_file_does_not_retry_on_dependency_failure(monkeypatch: object) -
     """Append should not retry because POST append is non-idempotent."""
     calls = {"count": 0}
 
-    def _urlopen(*_args: object, **_kwargs: object) -> object:
+    def _request(*_args: object, **_kwargs: object) -> object:
         calls["count"] += 1
-        raise urllib_error.URLError("connection refused")
+        raise HttpRequestError(
+            message="connection refused",
+            method="POST",
+            url="http://localhost",
+            retryable=True,
+        )
 
-    monkeypatch.setattr(substrate_module.urllib_request, "urlopen", _urlopen)
     substrate = ObsidianLocalRestSubstrate(
         settings=ObsidianSubstrateSettings(
             base_url="http://localhost:27123",
             max_retries=3,
         )
     )
+    monkeypatch.setattr(substrate._client, "request", _request)
 
     with pytest.raises(ObsidianSubstrateDependencyError):
         substrate.append_file(

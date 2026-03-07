@@ -52,7 +52,7 @@ adapter:
     receive_e164: +13333333333
     health_timeout_seconds: 0.5
     receive_timeout_seconds: 45.0
-    send_timeout_seconds: 10.0
+    send_timeout_seconds: 30.0
     callback_timeout_seconds: 10.0
     max_retries: 2
     poll_interval_seconds: 1.0

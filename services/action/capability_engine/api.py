@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, new_meta
@@ -93,7 +94,7 @@ def register_routes(*, router: APIRouter, service: CapabilityEngineService) -> N
         meta = _meta_from_request(
             req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
         )
-        result = service.describe_capabilities(meta=meta)
+        result = await run_in_threadpool(service.describe_capabilities, meta=meta)
         capabilities = (
             []
             if result.payload is None
@@ -120,7 +121,8 @@ def register_routes(*, router: APIRouter, service: CapabilityEngineService) -> N
             confirmed=req.confirmed,
             approval_token=req.approval_token,
         )
-        result = service.invoke_capability(
+        result = await run_in_threadpool(
+            service.invoke_capability,
             meta=meta,
             capability_id=req.capability_id,
             input_payload=req.input_payload,

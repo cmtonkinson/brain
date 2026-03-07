@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any, Mapping, Sequence
 
 import litellm
@@ -145,10 +146,30 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         resolved = self._resolve_provider_settings(provider=provider)
         kwargs = self._request_kwargs(provider=provider, model=model, resolved=resolved)
         kwargs["messages"] = messages
+        started_at = perf_counter()
+        _LOGGER.debug(
+            "LiteLLM provider request starting",
+            extra={
+                "provider": provider,
+                "model": model,
+                "operation": "completion",
+                "api_base": resolved.api_base,
+            },
+        )
         try:
-            return litellm.completion(**kwargs)
+            response = litellm.completion(**kwargs)
         except Exception as exc:
             self._raise_mapped_exception(exc)
+        _LOGGER.debug(
+            "LiteLLM provider request completed",
+            extra={
+                "provider": provider,
+                "model": model,
+                "operation": "completion",
+                "duration_ms": round((perf_counter() - started_at) * 1000, 3),
+            },
+        )
+        return response
 
     def _call_embedding(
         self,
@@ -162,10 +183,32 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         resolved = self._resolve_provider_settings(provider=provider)
         kwargs = self._request_kwargs(provider=provider, model=model, resolved=resolved)
         kwargs["input"] = inputs
+        started_at = perf_counter()
+        _LOGGER.debug(
+            "LiteLLM provider request starting",
+            extra={
+                "provider": provider,
+                "model": model,
+                "operation": "embedding",
+                "api_base": resolved.api_base,
+                "input_count": len(inputs),
+            },
+        )
         try:
-            return litellm.embedding(**kwargs)
+            response = litellm.embedding(**kwargs)
         except Exception as exc:
             self._raise_mapped_exception(exc)
+        _LOGGER.debug(
+            "LiteLLM provider request completed",
+            extra={
+                "provider": provider,
+                "model": model,
+                "operation": "embedding",
+                "input_count": len(inputs),
+                "duration_ms": round((perf_counter() - started_at) * 1000, 3),
+            },
+        )
+        return response
 
     def _resolve_provider_settings(self, *, provider: str) -> _ResolvedProviderSettings:
         """Resolve provider-specific settings and enforce configuration validity."""

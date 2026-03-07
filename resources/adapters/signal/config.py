@@ -17,7 +17,7 @@ class SignalAdapterSettings(BaseModel):
     receive_e164: str = "+13333333333"
     health_timeout_seconds: float = Field(default=0.5, gt=0)
     receive_timeout_seconds: float = Field(default=45.0, gt=0)
-    send_timeout_seconds: float = Field(default=10.0, gt=0)
+    send_timeout_seconds: float = Field(default=30.0, gt=0)
     callback_timeout_seconds: float = Field(default=10.0, gt=0)
     max_retries: int = Field(default=2, ge=0)
     poll_interval_seconds: float = Field(default=1.0, gt=0)
@@ -45,6 +45,10 @@ class SignalAdapterSettings(BaseModel):
         if self.receive_timeout_seconds <= float(self.poll_receive_timeout_seconds):
             raise ValueError(
                 "receive_timeout_seconds must be greater than poll_receive_timeout_seconds"
+            )
+        if self.send_timeout_seconds <= float(self.poll_receive_timeout_seconds):
+            raise ValueError(
+                "send_timeout_seconds must be greater than poll_receive_timeout_seconds"
             )
         return self
 

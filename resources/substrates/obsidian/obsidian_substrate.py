@@ -6,10 +6,9 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
-from urllib import error as urllib_error
 from urllib import parse as urllib_parse
-from urllib import request as urllib_request
 
+from packages.brain_shared.http import HttpClient, HttpRequestError, HttpStatusError
 from packages.brain_shared.ids import generate_ulid_str
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from packages.brain_shared.vault_paths import (
@@ -52,7 +51,10 @@ class ObsidianLocalRestSubstrate(ObsidianSubstrate):
 
     def __init__(self, *, settings: ObsidianSubstrateSettings) -> None:
         self._settings = settings
-        self._base_url = settings.base_url.rstrip("/")
+        self._client = HttpClient(
+            base_url=settings.base_url.rstrip("/"),
+            timeout_seconds=settings.timeout_seconds,
+        )
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
     def health(self) -> ObsidianHealthStatus:
@@ -557,48 +559,35 @@ class ObsidianLocalRestSubstrate(ObsidianSubstrate):
         if content_type is not None:
             headers["Content-Type"] = content_type
 
-        encoded_query = ""
-        if query:
-            items = [(key, value) for key, value in query.items() if value != ""]
-            encoded_query = urllib_parse.urlencode(items)
-
-        url = f"{self._base_url}{endpoint}"
-        if encoded_query:
-            url = f"{url}?{encoded_query}"
-
-        request = urllib_request.Request(
-            url=url,
-            data=body,
-            method=method,
-            headers=headers,
-        )
-
         try:
-            with urllib_request.urlopen(  # noqa: S310
-                request,
+            response = self._client.request(
+                method,
+                endpoint,
+                params={
+                    key: value for key, value in (query or {}).items() if value != ""
+                },
+                content=body,
+                headers=headers,
                 timeout=self._settings.timeout_seconds,
-            ) as response:
-                status_code = int(getattr(response, "status", 200))
-                raw = response.read()
-                return _HttpResult(status_code=status_code, payload=raw)
-        except urllib_error.HTTPError as exc:
+            )
+            return _HttpResult(
+                status_code=response.status_code,
+                payload=response.content,
+            )
+        except HttpStatusError as exc:
             self._raise_http_error(exc)
-        except urllib_error.URLError as exc:
+        except HttpRequestError as exc:
             raise ObsidianSubstrateDependencyError(
-                f"obsidian substrate request failed: {exc.reason}"
-            ) from None
-        except TimeoutError as exc:
-            raise ObsidianSubstrateDependencyError(
-                str(exc) or "obsidian request timed out"
+                str(exc) or "obsidian substrate request failed"
             ) from None
 
         raise ObsidianSubstrateInternalError(
             "obsidian substrate request failed unexpectedly"
         )
 
-    def _raise_http_error(self, exc: urllib_error.HTTPError) -> None:
+    def _raise_http_error(self, exc: HttpStatusError) -> None:
         """Map HTTP status codes into substrate-specific exceptions."""
-        status = int(exc.code)
+        status = int(exc.status_code)
         message = _http_error_message(exc)
         if status in {500, 502, 503, 504, 429, 408}:
             raise ObsidianSubstrateDependencyError(message) from None
@@ -650,13 +639,10 @@ def _vault_directory_endpoint(directory_path: str) -> str:
     return f"/vault/{encoded}"
 
 
-def _http_error_message(exc: urllib_error.HTTPError) -> str:
+def _http_error_message(exc: HttpStatusError) -> str:
     """Extract best-effort error message from an HTTP error response."""
     body = ""
-    try:
-        raw = exc.read()
-    except Exception:  # noqa: BLE001
-        raw = b""
+    raw = exc.response_body.encode("utf-8")
     if raw:
         try:
             payload = json.loads(raw.decode("utf-8"))
@@ -668,7 +654,7 @@ def _http_error_message(exc: urllib_error.HTTPError) -> str:
             body = ""
     if body != "":
         return body
-    return str(exc.reason) or f"http {exc.code}"
+    return str(exc) or f"http {exc.status_code}"
 
 
 def _ensure_list_of_mappings(

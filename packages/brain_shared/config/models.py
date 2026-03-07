@@ -212,7 +212,7 @@ class ActorCoreConnectionSettings(BaseModel):
     socket_path: str = str(
         Path.home() / ".config" / "brain" / "generated" / "brain.sock"
     )
-    timeout_seconds: float = 10.0
+    timeout_seconds: float = 30.0
 
 
 class ActorNamespaceSettings(BaseModel):

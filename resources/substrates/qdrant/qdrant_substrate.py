@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from threading import Lock
+from time import perf_counter
 from typing import Iterable, Mapping, Sequence
 from uuid import UUID, uuid5
 
@@ -49,7 +50,11 @@ class QdrantClientSubstrate(QdrantSubstrate):
     def health(self) -> QdrantHealthStatus:
         """Return substrate readiness based on client collection existence probe."""
         try:
-            self._client.collection_exists(self._collection)
+            self._qdrant_call(
+                "collection_exists",
+                self._client.collection_exists,
+                self._collection,
+            )
         except Exception as exc:  # noqa: BLE001
             return QdrantHealthStatus(
                 ready=False,
@@ -66,7 +71,11 @@ class QdrantClientSubstrate(QdrantSubstrate):
         if not self._collection_exists():
             return None
 
-        collection = self._client.get_collection(self._collection)
+        collection = self._qdrant_call(
+            "get_collection",
+            self._client.get_collection,
+            self._collection,
+        )
         vectors = collection.config.params.vectors
         if isinstance(vectors, models.VectorParams):
             return int(vectors.size)
@@ -91,7 +100,9 @@ class QdrantClientSubstrate(QdrantSubstrate):
             vector=list(vector),
             payload=dict(payload),
         )
-        self._client.upsert(
+        self._qdrant_call(
+            "upsert",
+            self._client.upsert,
             collection_name=self._collection,
             points=[point],
             wait=True,
@@ -107,7 +118,9 @@ class QdrantClientSubstrate(QdrantSubstrate):
         if not self._collection_exists():
             return None
 
-        points = self._client.retrieve(
+        points = self._qdrant_call(
+            "retrieve",
+            self._client.retrieve,
             collection_name=self._collection,
             ids=[_provider_point_id(point_id)],
             with_payload=True,
@@ -144,7 +157,9 @@ class QdrantClientSubstrate(QdrantSubstrate):
         if not self._collection_exists():
             return False
 
-        self._client.delete(
+        self._qdrant_call(
+            "delete",
+            self._client.delete,
             collection_name=self._collection,
             points_selector=models.PointIdsList(points=[_provider_point_id(point_id)]),
             wait=True,
@@ -174,7 +189,9 @@ class QdrantClientSubstrate(QdrantSubstrate):
 
         query_filter = models.Filter(must=must_conditions)
         if hasattr(self._client, "search"):
-            results = self._client.search(
+            results = self._qdrant_call(
+                "search",
+                self._client.search,
                 collection_name=self._collection,
                 query_vector=list(query_vector),
                 query_filter=query_filter,
@@ -183,7 +200,9 @@ class QdrantClientSubstrate(QdrantSubstrate):
                 with_vectors=False,
             )
         else:
-            query_response = self._client.query_points(
+            query_response = self._qdrant_call(
+                "query_points",
+                self._client.query_points,
                 collection_name=self._collection,
                 query=list(query_vector),
                 query_filter=query_filter,
@@ -206,7 +225,13 @@ class QdrantClientSubstrate(QdrantSubstrate):
 
     def _collection_exists(self) -> bool:
         """Return True if the configured collection exists."""
-        return bool(self._client.collection_exists(self._collection))
+        return bool(
+            self._qdrant_call(
+                "collection_exists",
+                self._client.collection_exists,
+                self._collection,
+            )
+        )
 
     def _ensure_collection(self, vector_size: int) -> None:
         """Create collection if absent using configured distance metric."""
@@ -216,13 +241,38 @@ class QdrantClientSubstrate(QdrantSubstrate):
         with self._lock:
             if self._collection_exists():
                 return
-            self._client.create_collection(
+            self._qdrant_call(
+                "create_collection",
+                self._client.create_collection,
                 collection_name=self._collection,
                 vectors_config=models.VectorParams(
                     size=vector_size,
                     distance=_distance(self._config.distance_metric),
                 ),
             )
+
+    def _qdrant_call(self, operation: str, func, /, *args, **kwargs):
+        """Log one Qdrant provider call around the native client invocation."""
+        started_at = perf_counter()
+        _LOGGER.debug(
+            "Qdrant provider request starting",
+            extra={
+                "operation": operation,
+                "url": self._config.url,
+                "collection_name": self._collection,
+            },
+        )
+        result = func(*args, **kwargs)
+        _LOGGER.debug(
+            "Qdrant provider request completed",
+            extra={
+                "operation": operation,
+                "url": self._config.url,
+                "collection_name": self._collection,
+                "duration_ms": round((perf_counter() - started_at) * 1000, 3),
+            },
+        )
+        return result
 
 
 def _distance(metric: str) -> models.Distance:

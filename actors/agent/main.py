@@ -16,6 +16,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from packages.brain_sdk import (
     BrainClient,
+    BrainDependencyError,
     BrainSdkConfig,
     CapabilityDescriptor,
     LmsChatResult,
@@ -28,6 +29,10 @@ _LOGGER = logging.getLogger(__name__)
 _RUNNING = True
 _LONG_POLL_BUFFER_SECONDS = 1.0
 _MIN_LONG_POLL_SECONDS = 1.0
+_LMS_THROTTLE_RESPONSE = (
+    "I'm temporarily rate limited by the language model provider. "
+    "Please try again in a minute."
+)
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 _SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "system.txt"
 
@@ -349,6 +354,17 @@ def _estimate_token_count(text: str) -> int:
     return (estimated + 1) // 2
 
 
+def _is_retryable_lms_throttle(exc: BrainDependencyError) -> bool:
+    """Return True when one LMS dependency failure represents provider throttling."""
+    if exc.operation != "lms.chat":
+        return False
+    if not any(detail.retryable for detail in exc.details):
+        return False
+    message = str(exc).lower()
+    throttle_tokens = ("rate limit", "rate_limit", "throttle", "too many requests")
+    return any(token in message for token in throttle_tokens)
+
+
 async def _process_instruction(
     *,
     runtime: _AgentRuntime,
@@ -363,12 +379,21 @@ async def _process_instruction(
     runtime.turn_state.actor = "operator"
     runtime.turn_state.channel = instruction.source
     runtime.model_driver.last_chat_result = None
-    result = await runtime.agent.run(
-        _format_user_prompt(instruction=instruction, context=context)
-    )
-    response_text = str(result.output).strip()
-    if response_text == "":
-        response_text = "I do not have a response yet."
+    try:
+        result = await runtime.agent.run(
+            _format_user_prompt(instruction=instruction, context=context)
+        )
+        response_text = str(result.output).strip()
+        if response_text == "":
+            response_text = "I do not have a response yet."
+    except BrainDependencyError as exc:
+        if not _is_retryable_lms_throttle(exc):
+            raise
+        _LOGGER.warning(
+            "brain agent lms throttled; returning fallback response",
+            extra={"operation": exc.operation},
+        )
+        response_text = _LMS_THROTTLE_RESPONSE
     chat = runtime.model_driver.last_chat_result
     await asyncio.to_thread(
         runtime.client.memory_record_response,

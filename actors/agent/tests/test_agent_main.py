@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from packages.brain_sdk import (
+    BrainDependencyError,
     CapabilityDescriptor,
     LmsChatResult,
     MemoryContextBlock,
@@ -16,6 +17,7 @@ from packages.brain_sdk import (
     MemorySessionRef,
     SwitchboardOperatorInstruction,
 )
+from packages.brain_sdk.errors import SdkErrorDetail
 
 
 def test_resolve_config_path_uses_env_override(monkeypatch) -> None:
@@ -227,6 +229,127 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
                 "actor": "operator",
                 "channel": "signal",
                 "message": "assistant reply",
+                "recipient_e164": "+12025550100",
+            },
+            "operator",
+            "signal",
+        )
+    ]
+
+
+def test_process_instruction_handles_lms_throttle_gracefully() -> None:
+    """Retryable LMS rate limiting should produce a fallback operator response."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.recorded: list[tuple[str, str, str, str, int, str]] = []
+            self.invoked: list[tuple[str, dict[str, object], str, str]] = []
+
+        def memory_assemble_context(
+            self, *, session_id: str, message: str
+        ) -> MemoryContextBlock:
+            return MemoryContextBlock(
+                profile=MemoryProfileContext(
+                    operator_name="Operator",
+                    brain_name="Brain",
+                    brain_verbosity="normal",
+                ),
+                focus="current focus",
+                dialogue=(
+                    MemoryDialogueTurn(
+                        role="user",
+                        content=message,
+                        is_summary=False,
+                    ),
+                ),
+                reference_snippets=(),
+            )
+
+        def memory_record_response(
+            self,
+            *,
+            session_id: str,
+            content: str,
+            model: str,
+            provider: str,
+            token_count: int,
+            reasoning_level: str,
+        ) -> bool:
+            self.recorded.append(
+                (session_id, content, model, provider, token_count, reasoning_level)
+            )
+            return True
+
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+        ):
+            self.invoked.append((capability_id, input_payload, actor, channel))
+            return type("InvokeResult", (), {"output": {"decision": "sent"}})()
+
+    class _FakeAgent:
+        async def run(self, _prompt: str):
+            raise BrainDependencyError(
+                message=("lms.chat domain failure: provider rate limit exceeded"),
+                operation="lms.chat",
+                details=(
+                    SdkErrorDetail(
+                        code="dependency_unavailable",
+                        message="provider rate limit exceeded",
+                        category="dependency",
+                        retryable=True,
+                    ),
+                ),
+            )
+
+    client = _FakeClient()
+    runtime = main._AgentRuntime(
+        client=client,  # type: ignore[arg-type]
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        turn_state=main._TurnState(),
+        model_driver=main._BrainSdkModelDriver.__new__(main._BrainSdkModelDriver),
+        agent=_FakeAgent(),  # type: ignore[arg-type]
+    )
+
+    response = asyncio.run(
+        main._process_instruction(
+            runtime=runtime,
+            instruction=SwitchboardOperatorInstruction(
+                sender_e164="+12025550100",
+                message_text="hello",
+                timestamp_ms=1,
+                source_device="1",
+                source="signal",
+                group_id=None,
+                quote_target_timestamp_ms=None,
+                reaction_target_timestamp_ms=None,
+            ),
+        )
+    )
+
+    assert response == main._LMS_THROTTLE_RESPONSE
+    assert client.recorded == [
+        (
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            main._LMS_THROTTLE_RESPONSE,
+            "brain-sdk-lms",
+            "brain-sdk",
+            main._estimate_token_count(main._LMS_THROTTLE_RESPONSE),
+            "standard",
+        )
+    ]
+    assert client.invoked == [
+        (
+            "attention-notify",
+            {
+                "actor": "operator",
+                "channel": "signal",
+                "message": main._LMS_THROTTLE_RESPONSE,
                 "recipient_e164": "+12025550100",
             },
             "operator",

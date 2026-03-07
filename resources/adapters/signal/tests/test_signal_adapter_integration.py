@@ -113,6 +113,15 @@ def test_settings_require_http_timeout_to_exceed_receive_timeout() -> None:
         )
 
 
+def test_settings_require_send_timeout_to_exceed_receive_timeout() -> None:
+    """Signal send timeout should exceed the receive poll budget."""
+    with pytest.raises(ValueError, match="send_timeout_seconds"):
+        SignalAdapterSettings(
+            send_timeout_seconds=10.0,
+            poll_receive_timeout_seconds=15,
+        )
+
+
 def test_callback_status_failure_maps_to_dependency_error() -> None:
     """Adapter should surface callback 5xx as dependency failure on poll loop."""
     adapter = HttpSignalAdapter(settings=SignalAdapterSettings(max_retries=0))

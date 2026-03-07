@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from time import perf_counter
 from typing import Any
 
 import httpx
 
+from packages.brain_shared.logging import get_logger
+
 from .errors import HttpJsonDecodeError, HttpRequestError, HttpStatusError
+
+_LOGGER = get_logger(__name__)
 
 
 def _response_text(response: httpx.Response) -> str:
@@ -31,6 +36,17 @@ def _status_error(response: httpx.Response) -> HttpStatusError:
         response_body=_response_text(response),
         response_headers=dict(response.headers.items()),
     )
+
+
+def _resolve_log_url(*, client: httpx.Client | httpx.AsyncClient, url: str) -> str:
+    """Resolve one request URL into a stable string for debug logging."""
+    base_url = str(client.base_url)
+    if base_url == "":
+        return url
+    try:
+        return str(client.base_url.join(url))
+    except Exception:
+        return url
 
 
 class HttpClient:
@@ -78,12 +94,28 @@ class HttpClient:
         **kwargs: Any,
     ) -> httpx.Response:
         """Issue one request and map transport/status failures to typed errors."""
+        request_method = method.upper()
+        request_url = _resolve_log_url(client=self._client, url=url)
+        started_at = perf_counter()
+        _LOGGER.debug(
+            "HTTP client request starting",
+            extra={"method": request_method, "url": request_url},
+        )
         try:
             response = self._client.request(method=method, url=url, **kwargs)
         except httpx.RequestError as exc:
             request = exc.request
             request_url = str(request.url) if request is not None else url
             request_method = request.method if request is not None else method.upper()
+            _LOGGER.debug(
+                "HTTP client request failed",
+                extra={
+                    "method": request_method,
+                    "url": request_url,
+                    "duration_ms": round((perf_counter() - started_at) * 1000, 3),
+                    "failure": type(exc).__name__,
+                },
+            )
             raise HttpRequestError(
                 message=f"HTTP request failed for {request_method} {request_url}",
                 method=request_method,
@@ -92,6 +124,15 @@ class HttpClient:
                 cause=exc,
             ) from exc
 
+        _LOGGER.debug(
+            "HTTP client request completed",
+            extra={
+                "method": request_method,
+                "url": request_url,
+                "status_code": response.status_code,
+                "duration_ms": round((perf_counter() - started_at) * 1000, 3),
+            },
+        )
         if raise_for_status and response.is_error:
             raise _status_error(response)
         return response
@@ -186,12 +227,28 @@ class AsyncHttpClient:
         **kwargs: Any,
     ) -> httpx.Response:
         """Issue one request and map transport/status failures to typed errors."""
+        request_method = method.upper()
+        request_url = _resolve_log_url(client=self._client, url=url)
+        started_at = perf_counter()
+        _LOGGER.debug(
+            "HTTP client request starting",
+            extra={"method": request_method, "url": request_url},
+        )
         try:
             response = await self._client.request(method=method, url=url, **kwargs)
         except httpx.RequestError as exc:
             request = exc.request
             request_url = str(request.url) if request is not None else url
             request_method = request.method if request is not None else method.upper()
+            _LOGGER.debug(
+                "HTTP client request failed",
+                extra={
+                    "method": request_method,
+                    "url": request_url,
+                    "duration_ms": round((perf_counter() - started_at) * 1000, 3),
+                    "failure": type(exc).__name__,
+                },
+            )
             raise HttpRequestError(
                 message=f"HTTP request failed for {request_method} {request_url}",
                 method=request_method,
@@ -200,6 +257,15 @@ class AsyncHttpClient:
                 cause=exc,
             ) from exc
 
+        _LOGGER.debug(
+            "HTTP client request completed",
+            extra={
+                "method": request_method,
+                "url": request_url,
+                "status_code": response.status_code,
+                "duration_ms": round((perf_counter() - started_at) * 1000, 3),
+            },
+        )
         if raise_for_status and response.is_error:
             raise _status_error(response)
         return response
