@@ -32,6 +32,6 @@ def build_component(
     """Build concrete runtime instance for this registered resource component."""
     del components
     from resources.adapters.signal.config import resolve_signal_adapter_settings
-    from resources.adapters.signal.signal_adapter import HttpSignalAdapter
+    from resources.adapters.signal.signal_adapter import SignalRestApiAdapter
 
-    return HttpSignalAdapter(settings=resolve_signal_adapter_settings(settings))
+    return SignalRestApiAdapter(settings=resolve_signal_adapter_settings(settings))

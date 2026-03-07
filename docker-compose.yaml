@@ -48,7 +48,9 @@ services:
     image: ${SIGNAL_CLI_REST_API_IMAGE:-bbernhard/signal-cli-rest-api:latest}
     restart: unless-stopped
     environment:
-      MODE: ${SIGNAL_CLI_REST_API_MODE:-native}
+      MODE: ${SIGNAL_CLI_REST_API_MODE:-json-rpc}
+      JSON_RPC_IGNORE_ATTACHMENTS: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_ATTACHMENTS:-true}
+      JSON_RPC_IGNORE_STORIES: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_STORIES:-true}
     ports:
       - "${SIGNAL_CLI_REST_API_PORT:-8080}:8080"
     volumes:

@@ -84,7 +84,7 @@ def build_attention_router_service(
 ) -> AttentionRouterService:
     """Build default Attention Router implementation from typed settings."""
     from resources.adapters.signal import (
-        HttpSignalAdapter,
+        SignalRestApiAdapter,
         resolve_signal_adapter_settings,
     )
     from services.action.attention_router.config import (
@@ -98,6 +98,7 @@ def build_attention_router_service(
     return DefaultAttentionRouterService(
         settings=resolve_attention_router_service_settings(settings),
         operator_signal_contact_e164=settings.core.profile.operator.signal_contact_e164,
-        signal_adapter=signal_adapter or HttpSignalAdapter(settings=adapter_settings),
+        signal_adapter=signal_adapter
+        or SignalRestApiAdapter(settings=adapter_settings),
         signal_receive_e164=adapter_settings.receive_e164,
     )

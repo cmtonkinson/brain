@@ -14,10 +14,9 @@ from resources.adapters.signal.config import (
     SignalAdapterSettings,
     resolve_signal_adapter_settings,
 )
-from resources.adapters.signal.signal_adapter import HttpSignalAdapter
+from resources.adapters.signal.signal_adapter import SignalRestApiAdapter
 
 __all__ = [
-    "HttpSignalAdapter",
     "MANIFEST",
     "RESOURCE_COMPONENT_ID",
     "SignalAdapter",
@@ -28,5 +27,6 @@ __all__ = [
     "SignalAdapterSettings",
     "SignalSendMessageResult",
     "SignalWebhookRegistrationResult",
+    "SignalRestApiAdapter",
     "resolve_signal_adapter_settings",
 ]

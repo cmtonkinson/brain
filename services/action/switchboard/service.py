@@ -61,7 +61,7 @@ def build_switchboard_service(
 ) -> SwitchboardService:
     """Build default Switchboard implementation from typed settings."""
     from resources.adapters.signal import (
-        HttpSignalAdapter,
+        SignalRestApiAdapter,
         resolve_signal_adapter_settings,
     )
     from services.action.switchboard.config import (
@@ -74,7 +74,7 @@ def build_switchboard_service(
         settings=resolve_switchboard_service_settings(settings),
         identity=resolve_switchboard_identity_settings(settings),
         adapter=signal_adapter
-        or HttpSignalAdapter(settings=resolve_signal_adapter_settings(settings)),
+        or SignalRestApiAdapter(settings=resolve_signal_adapter_settings(settings)),
         cache_service=cache_service,
     )
 

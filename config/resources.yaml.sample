@@ -51,13 +51,11 @@ adapter:
     base_url: http://signal-api:8080
     receive_e164: +13333333333
     health_timeout_seconds: 0.5
-    receive_timeout_seconds: 45.0
+    receive_connect_timeout_seconds: 10.0
+    receive_heartbeat_seconds: 30.0
     send_timeout_seconds: 30.0
     callback_timeout_seconds: 10.0
     max_retries: 2
-    poll_interval_seconds: 1.0
-    poll_receive_timeout_seconds: 15
-    poll_max_messages: 10
     failure_backoff_initial_seconds: 1.0
     failure_backoff_max_seconds: 30.0
     failure_backoff_multiplier: 2.0

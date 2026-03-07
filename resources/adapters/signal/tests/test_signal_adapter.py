@@ -1,28 +1,26 @@
-"""Behavior tests for Signal polling adapter."""
+"""Behavior tests for the Signal websocket adapter."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 
-from packages.brain_shared.http import HttpRequestError, HttpStatusError
+import aiohttp
+import pytest
+
+from packages.brain_shared.http import HttpRequestError
+from resources.adapters.signal.adapter import SignalAdapterDependencyError
 from resources.adapters.signal.config import SignalAdapterSettings
-from resources.adapters.signal.signal_adapter import HttpSignalAdapter
+from resources.adapters.signal.signal_adapter import SignalRestApiAdapter
 
 
 class _FakeSignalClient:
     def __init__(self) -> None:
-        self.receive_payload: object = []
-        self.raise_receive: Exception | None = None
         self.raise_send: Exception | None = None
         self.posts: list[tuple[str, object]] = []
 
-    def get(self, _url: str):
+    def get(self, _url: str, **_kwargs):
         return object()
-
-    def get_json(self, _url: str, **_kwargs):
-        if self.raise_receive is not None:
-            raise self.raise_receive
-        return self.receive_payload
 
     def post(self, url: str, **kwargs):
         if self.raise_send is not None:
@@ -60,10 +58,70 @@ class _FakeCallbackClient:
         return self.response_payload
 
 
-def _adapter() -> HttpSignalAdapter:
-    adapter = HttpSignalAdapter(
+class _FakeWebsocketMessage:
+    def __init__(self, *, message_type: aiohttp.WSMsgType, data: str | bytes | None):
+        self.type = message_type
+        self.data = data
+
+
+class _FakeWebsocket:
+    def __init__(self, *, adapter: SignalRestApiAdapter, payloads: list[str]) -> None:
+        self._adapter = adapter
+        self._payloads = list(payloads)
+        self._receive_calls = 0
+
+    async def __aenter__(self) -> "_FakeWebsocket":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        del exc_type, exc, tb
+
+    async def receive(self) -> _FakeWebsocketMessage:
+        if self._payloads:
+            self._receive_calls += 1
+            payload = self._payloads.pop(0)
+            self._adapter._stop_event.set()  # type: ignore[attr-defined]
+            return _FakeWebsocketMessage(
+                message_type=aiohttp.WSMsgType.TEXT,
+                data=payload,
+            )
+        return _FakeWebsocketMessage(
+            message_type=aiohttp.WSMsgType.CLOSED,
+            data=None,
+        )
+
+    def exception(self) -> Exception | None:
+        return None
+
+
+class _FakeClientSession:
+    last_connect_url: str | None = None
+    last_heartbeat: float | None = None
+
+    def __init__(
+        self, *, adapter: SignalRestApiAdapter, payloads: list[str], **_kwargs
+    ):
+        self._adapter = adapter
+        self._payloads = payloads
+
+    async def __aenter__(self) -> "_FakeClientSession":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        del exc_type, exc, tb
+
+    def ws_connect(self, url: str, *, heartbeat: float, autoping: bool):
+        del autoping
+        type(self).last_connect_url = url
+        type(self).last_heartbeat = heartbeat
+        return _FakeWebsocket(adapter=self._adapter, payloads=self._payloads)
+
+
+def _adapter() -> SignalRestApiAdapter:
+    adapter = SignalRestApiAdapter(
         settings=SignalAdapterSettings(
-            poll_interval_seconds=0.1,
+            receive_connect_timeout_seconds=2.0,
+            receive_heartbeat_seconds=5.0,
             failure_backoff_initial_seconds=1.0,
             failure_backoff_max_seconds=8.0,
             failure_backoff_multiplier=2.0,
@@ -71,38 +129,39 @@ def _adapter() -> HttpSignalAdapter:
         )
     )
     adapter._signal_client = _FakeSignalClient()  # type: ignore[attr-defined]
-    adapter._signal_send_client = adapter._signal_client  # type: ignore[attr-defined]
     adapter._callback_client = _FakeCallbackClient()  # type: ignore[attr-defined]
     adapter._ensure_worker_started_locked = lambda: None  # type: ignore[method-assign]
     return adapter
 
 
-def test_run_once_polls_and_forwards_signed_webhook() -> None:
+def test_process_receive_payload_forwards_signed_webhook_and_receipt() -> None:
     adapter = _adapter()
     signal = adapter._signal_client
     callback = adapter._callback_client
-    signal.receive_payload = [
-        {
-            "account": "+12025550100",
-            "envelope": {
-                "source": "+12025550100",
-                "sourceDevice": 1,
-                "timestamp": 1730000000000,
-                "dataMessage": {
-                    "message": "hello",
-                },
-            },
-        }
-    ]
-
     adapter.register_webhook(
         callback_url="http://switchboard:8091/v1/inbound/signal/webhook",
         shared_secret="secret",
     )
 
-    delay = adapter._run_once()
+    registration = adapter._get_registration()
+    assert registration is not None
+    adapter._process_receive_payload(
+        registration=registration,
+        raw_payload_json=json.dumps(
+            {
+                "account": "+12025550100",
+                "envelope": {
+                    "source": "+12025550100",
+                    "sourceDevice": 1,
+                    "timestamp": 1730000000000,
+                    "dataMessage": {
+                        "message": "hello",
+                    },
+                },
+            }
+        ),
+    )
 
-    assert delay == 0.1
     assert len(callback.posts) == 1
     url, body, headers = callback.posts[0]
     payload = json.loads(body)
@@ -122,25 +181,18 @@ def test_run_once_polls_and_forwards_signed_webhook() -> None:
     ]
 
 
-def test_run_once_retries_pending_webhook_after_callback_failure() -> None:
+def test_process_receive_payload_retries_pending_webhook_after_callback_failure() -> (
+    None
+):
     adapter = _adapter()
     signal = adapter._signal_client
     callback = adapter._callback_client
-    signal.receive_payload = [
-        {
-            "account": "+12025550100",
-            "envelope": {
-                "source": "+12025550100",
-                "timestamp": 1,
-                "dataMessage": {"message": "hello"},
-            },
-        }
-    ]
-
     adapter.register_webhook(
         callback_url="http://switchboard:8091/v1/inbound/signal/webhook",
         shared_secret="secret",
     )
+    registration = adapter._get_registration()
+    assert registration is not None
 
     callback.raise_post = HttpRequestError(
         message="connect failed",
@@ -148,75 +200,128 @@ def test_run_once_retries_pending_webhook_after_callback_failure() -> None:
         url="http://switchboard:8091/v1/inbound/signal/webhook",
         retryable=True,
     )
-    first_delay = adapter._run_once()
-    assert first_delay == 1.0
+    with pytest.raises(SignalAdapterDependencyError, match="connect failed"):
+        adapter._process_receive_payload(
+            registration=registration,
+            raw_payload_json=json.dumps(
+                {
+                    "account": "+12025550100",
+                    "envelope": {
+                        "source": "+12025550100",
+                        "timestamp": 1,
+                        "dataMessage": {"message": "hello"},
+                    },
+                }
+            ),
+        )
     assert len(adapter._pending_webhooks) == 1
 
     callback.raise_post = None
-    second_delay = adapter._run_once()
-    assert second_delay == 0.1
+    adapter._flush_pending(registration=registration)
     assert len(callback.posts) == 1
     assert len(adapter._pending_webhooks) == 0
     assert len(signal.posts) == 1
 
 
-def test_run_once_does_not_send_read_receipt_when_switchboard_does_not_queue() -> None:
+def test_process_receive_payload_does_not_send_read_receipt_when_not_queued() -> None:
     adapter = _adapter()
     signal = adapter._signal_client
     callback = adapter._callback_client
-    signal.receive_payload = [
-        {
-            "account": "+12025550100",
-            "exception": {
-                "type": "UntrustedIdentityException",
-                "message": "Untrusted identity",
-            },
-            "envelope": {
-                "source": "+12025550100",
-                "timestamp": 1730000000000,
-            },
-        }
-    ]
     callback.response_payload = {
         "ok": True,
         "accepted": False,
         "queued": False,
         "reason": "signal exception event: UntrustedIdentityException",
     }
-
     adapter.register_webhook(
         callback_url="http://switchboard:8091/v1/inbound/signal/webhook",
         shared_secret="secret",
     )
+    registration = adapter._get_registration()
+    assert registration is not None
 
-    delay = adapter._run_once()
+    adapter._process_receive_payload(
+        registration=registration,
+        raw_payload_json=json.dumps(
+            {
+                "account": "+12025550100",
+                "exception": {
+                    "type": "UntrustedIdentityException",
+                    "message": "Untrusted identity",
+                },
+                "envelope": {
+                    "source": "+12025550100",
+                    "timestamp": 1730000000000,
+                },
+            }
+        ),
+    )
 
-    assert delay == 0.1
     assert len(callback.posts) == 1
     assert signal.posts == []
 
 
-def test_run_once_applies_exponential_backoff_on_receive_failure() -> None:
+def test_run_loop_once_applies_exponential_backoff_on_receive_failure() -> None:
     adapter = _adapter()
-    signal = adapter._signal_client
-    signal.raise_receive = HttpStatusError(
-        message="bad request",
-        method="GET",
-        url="http://signal-api:8080/v1/receive/%2B12025550100",
-        retryable=False,
-        status_code=400,
-    )
-
     adapter.register_webhook(
         callback_url="http://switchboard:8091/v1/inbound/signal/webhook",
         shared_secret="secret",
     )
 
-    assert adapter._run_once() == 1.0
-    assert adapter._run_once() == 2.0
-    assert adapter._run_once() == 4.0
-    assert adapter._run_once() == 8.0
-    assert adapter._run_once() == 8.0
+    async def _raise_receive(*, registration) -> None:
+        del registration
+        raise SignalAdapterDependencyError("signal receive websocket closed")
+
+    adapter._run_receive_session = _raise_receive  # type: ignore[method-assign]
+
+    assert adapter._run_loop_once() == 1.0
+    assert adapter._run_loop_once() == 2.0
+    assert adapter._run_loop_once() == 4.0
+    assert adapter._run_loop_once() == 8.0
+    assert adapter._run_loop_once() == 8.0
+
+
+def test_run_receive_session_connects_to_receive_websocket_and_forwards() -> None:
+    adapter = _adapter()
+    signal = adapter._signal_client
+    callback = adapter._callback_client
+    adapter.register_webhook(
+        callback_url="http://switchboard:8091/v1/inbound/signal/webhook",
+        shared_secret="secret",
+    )
+    registration = adapter._get_registration()
+    assert registration is not None
+
+    payload = json.dumps(
+        {
+            "account": "+12025550100",
+            "envelope": {
+                "source": "+12025550100",
+                "timestamp": 1730000000000,
+                "dataMessage": {"message": "hello"},
+            },
+        }
+    )
+    original_client_session = aiohttp.ClientSession
+
+    def _fake_client_session(*args, **kwargs):
+        del args
+        return _FakeClientSession(adapter=adapter, payloads=[payload], **kwargs)
+
+    aiohttp.ClientSession = _fake_client_session  # type: ignore[assignment]
+    try:
+        asyncio.run(adapter._run_receive_session(registration=registration))
+    finally:
+        aiohttp.ClientSession = original_client_session  # type: ignore[assignment]
+        adapter._stop_event.clear()  # type: ignore[attr-defined]
+
+    assert (
+        _FakeClientSession.last_connect_url
+        == "ws://signal-api:8080/v1/receive/%2B13333333333"
+    )
+    assert _FakeClientSession.last_heartbeat == 5.0
+    assert len(callback.posts) == 1
+    assert len(signal.posts) == 1
 
 
 def test_send_message_posts_expected_payload() -> None:

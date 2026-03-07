@@ -36,7 +36,7 @@ Primary interactions:
 3. Boot computes callback URL from `webhook_public_base_url + webhook_path`.
 4. Boot calls `register_signal_webhook(...)` on Switchboard.
 5. Switchboard delegates registration to `adapter_signal` with callback URL, shared secret, and operator identity.
-6. Signal adapter polls Signal runtime receive endpoint and forwards signed callback POSTs to Switchboard ingress.
+6. Signal adapter opens the Signal runtime receive websocket and forwards signed callback POSTs to Switchboard ingress.
 7. Switchboard verifies timestamp/signature, normalizes payload, applies sender policy, then enqueues accepted events to CAS.
 
 ------------------------------------------------------------------------

@@ -2,32 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
+
+import aiohttp
 import pytest
 
 from packages.brain_shared.http import HttpStatusError
 from resources.adapters.signal.config import SignalAdapterSettings
 from resources.adapters.signal.signal_adapter import SignalAdapterDependencyError
-from resources.adapters.signal.signal_adapter import HttpSignalAdapter
+from resources.adapters.signal.signal_adapter import SignalRestApiAdapter
 
 
 class _CaptureClient:
-    """Minimal HTTP client fake capturing GET/POST request shapes."""
+    """Minimal HTTP client fake capturing outbound request shapes."""
 
     def __init__(self) -> None:
-        self.last_url: str | None = None
-        self.last_params: dict[str, str] | None = None
         self.posts: list[tuple[str, str, dict[str, str]]] = []
         self.signal_posts: list[tuple[str, object]] = []
-        self.get_json_calls = 0
 
     def get(self, _url: str, **_kwargs):
         return object()
-
-    def get_json(self, url: str, **kwargs):
-        self.get_json_calls += 1
-        self.last_url = url
-        self.last_params = kwargs.get("params")
-        return []
 
     def post(self, url: str, **kwargs):
         if "content" in kwargs and "headers" in kwargs:
@@ -51,45 +45,97 @@ class _CaptureClient:
         }
 
 
-def test_receive_poll_params_and_health_contract() -> None:
-    """Adapter should query receive endpoint with configured polling parameters."""
-    adapter = HttpSignalAdapter(
+class _FakeWebsocketMessage:
+    def __init__(self, *, message_type: aiohttp.WSMsgType, data: str | None):
+        self.type = message_type
+        self.data = data
+
+
+class _FakeWebsocket:
+    def __init__(self, *, adapter: SignalRestApiAdapter, payload: str) -> None:
+        self._adapter = adapter
+        self._payload = payload
+        self._delivered = False
+
+    async def __aenter__(self) -> "_FakeWebsocket":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        del exc_type, exc, tb
+
+    async def receive(self) -> _FakeWebsocketMessage:
+        if not self._delivered:
+            self._delivered = True
+            self._adapter._stop_event.set()  # type: ignore[attr-defined]
+            return _FakeWebsocketMessage(
+                message_type=aiohttp.WSMsgType.TEXT,
+                data=self._payload,
+            )
+        return _FakeWebsocketMessage(
+            message_type=aiohttp.WSMsgType.CLOSED,
+            data=None,
+        )
+
+    def exception(self) -> Exception | None:
+        return None
+
+
+class _FakeClientSession:
+    def __init__(
+        self, *, adapter: SignalRestApiAdapter, payload: str, **_kwargs
+    ) -> None:
+        self._adapter = adapter
+        self._payload = payload
+        self.last_url: str | None = None
+        self.last_heartbeat: float | None = None
+
+    async def __aenter__(self) -> "_FakeClientSession":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        del exc_type, exc, tb
+
+    def ws_connect(self, url: str, *, heartbeat: float, autoping: bool):
+        del autoping
+        self.last_url = url
+        self.last_heartbeat = heartbeat
+        return _FakeWebsocket(adapter=self._adapter, payload=self._payload)
+
+
+def test_receive_websocket_url_and_health_contract() -> None:
+    """Adapter should connect to the websocket receive endpoint."""
+    adapter = SignalRestApiAdapter(
         settings=SignalAdapterSettings(receive_e164="+15551234567")
     )
     fake = _CaptureClient()
+    payload = """
+        {"account":"+15551234567","envelope":{"source":"+12025550100","timestamp":1730000000000,"dataMessage":{"message":"hello"}}}
+    """.strip()
+    session = _FakeClientSession(adapter=adapter, payload=payload)
+    original_client_session = aiohttp.ClientSession
 
-    def _get_json(url: str, **kwargs):
-        fake.last_url = url
-        fake.last_params = kwargs.get("params")
-        return [
-            {
-                "account": "+15551234567",
-                "envelope": {
-                    "source": "+12025550100",
-                    "timestamp": 1730000000000,
-                    "dataMessage": {
-                        "message": "hello",
-                    },
-                },
-            }
-        ]
+    def _fake_client_session(*args, **kwargs):
+        del args
+        return session
 
-    fake.get_json = _get_json  # type: ignore[method-assign]
+    aiohttp.ClientSession = _fake_client_session  # type: ignore[assignment]
     adapter._signal_client = fake  # type: ignore[attr-defined]
-    adapter._signal_send_client = fake  # type: ignore[attr-defined]
     adapter._callback_client = fake  # type: ignore[attr-defined]
     adapter._ensure_worker_started_locked = lambda: None  # type: ignore[method-assign]
+    try:
+        adapter.register_webhook(
+            callback_url="http://localhost/webhook",
+            shared_secret="secret",
+        )
+        registration = adapter._get_registration()
+        assert registration is not None
+        asyncio.run(adapter._run_receive_session(registration=registration))
+    finally:
+        aiohttp.ClientSession = original_client_session  # type: ignore[assignment]
+        adapter._stop_event.clear()  # type: ignore[attr-defined]
 
-    adapter.register_webhook(
-        callback_url="http://localhost/webhook",
-        shared_secret="secret",
-    )
-    adapter._run_once()
-
-    assert fake.last_url == "/v1/receive/%2B15551234567"
-    assert fake.last_params is not None
-    assert "timeout" in fake.last_params
-    assert fake.last_params["send_read_receipts"] == "false"
+    assert session.last_url == "ws://signal-api:8080/v1/receive/%2B15551234567"
+    assert session.last_heartbeat == 30.0
     assert fake.posts[0][0] == "http://localhost/webhook"
     assert fake.signal_posts == [
         (
@@ -104,27 +150,18 @@ def test_receive_poll_params_and_health_contract() -> None:
     assert adapter.health().adapter_ready is True
 
 
-def test_settings_require_http_timeout_to_exceed_receive_timeout() -> None:
-    """Signal adapter config should fail fast on impossible timeout budgets."""
-    with pytest.raises(ValueError, match="receive_timeout_seconds"):
+def test_settings_require_heartbeat_to_exceed_connect_timeout() -> None:
+    """Signal adapter config should fail fast on invalid websocket timing."""
+    with pytest.raises(ValueError, match="receive_heartbeat_seconds"):
         SignalAdapterSettings(
-            receive_timeout_seconds=10.0,
-            poll_receive_timeout_seconds=15,
-        )
-
-
-def test_settings_require_send_timeout_to_exceed_receive_timeout() -> None:
-    """Signal send timeout should exceed the receive poll budget."""
-    with pytest.raises(ValueError, match="send_timeout_seconds"):
-        SignalAdapterSettings(
-            send_timeout_seconds=10.0,
-            poll_receive_timeout_seconds=15,
+            receive_connect_timeout_seconds=10.0,
+            receive_heartbeat_seconds=10.0,
         )
 
 
 def test_callback_status_failure_maps_to_dependency_error() -> None:
     """Adapter should surface callback 5xx as dependency failure on poll loop."""
-    adapter = HttpSignalAdapter(settings=SignalAdapterSettings(max_retries=0))
+    adapter = SignalRestApiAdapter(settings=SignalAdapterSettings(max_retries=0))
     fake = _CaptureClient()
 
     def _raise_post(*_args, **_kwargs):
@@ -132,7 +169,6 @@ def test_callback_status_failure_maps_to_dependency_error() -> None:
 
     fake.post = _raise_post  # type: ignore[method-assign]
     adapter._signal_client = fake  # type: ignore[attr-defined]
-    adapter._signal_send_client = fake  # type: ignore[attr-defined]
     adapter._callback_client = fake  # type: ignore[attr-defined]
     adapter._ensure_worker_started_locked = lambda: None  # type: ignore[method-assign]
 
@@ -141,47 +177,57 @@ def test_callback_status_failure_maps_to_dependency_error() -> None:
         shared_secret="secret",
     )
     adapter._pending_webhooks.append('{"data": {"message": "x"}}')  # type: ignore[attr-defined]
-    delay = adapter._run_once()
+    registration = adapter._get_registration()
+    assert registration is not None
+    delay = 0.0
+    with pytest.raises(SignalAdapterDependencyError, match="status 503"):
+        adapter._flush_pending(registration=registration)
 
     assert delay >= 0
 
 
-def test_non_retryable_receive_status_is_not_retried() -> None:
-    """Adapter should not retry non-retryable 4xx receive failures."""
-    adapter = HttpSignalAdapter(settings=SignalAdapterSettings(max_retries=2))
-    fake = _CaptureClient()
-    calls = 0
-
-    def _raise_get_json(*_args, **_kwargs):
-        nonlocal calls
-        calls += 1
-        raise HttpStatusError(
-            message="err",
-            method="GET",
-            url="http://signal-api:8080/v1/receive/%2B15551234567",
-            status_code=400,
-            retryable=False,
-        )
-
-    fake.get_json = _raise_get_json  # type: ignore[method-assign]
-    adapter._signal_client = fake  # type: ignore[attr-defined]
-    adapter._signal_send_client = fake  # type: ignore[attr-defined]
-    adapter._callback_client = fake  # type: ignore[attr-defined]
+def test_receive_websocket_handshake_failure_maps_to_dependency_error() -> None:
+    """Adapter should surface websocket handshake failures as dependency errors."""
+    adapter = SignalRestApiAdapter(settings=SignalAdapterSettings())
     adapter._ensure_worker_started_locked = lambda: None  # type: ignore[method-assign]
+    original_client_session = aiohttp.ClientSession
 
-    adapter.register_webhook(
-        callback_url="http://localhost/webhook",
-        shared_secret="secret",
-    )
-    delay = adapter._run_once()
+    class _HandshakeErrorSession:
+        async def __aenter__(self) -> "_HandshakeErrorSession":
+            return self
 
-    assert delay >= 0
-    assert calls == 1
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        def ws_connect(self, *_args, **_kwargs):
+            raise aiohttp.WSServerHandshakeError(
+                request_info=None,
+                history=(),
+                status=400,
+                message="bad request",
+                headers=None,
+            )
+
+    aiohttp.ClientSession = lambda *args, **kwargs: _HandshakeErrorSession()  # type: ignore[assignment]
+    try:
+        adapter.register_webhook(
+            callback_url="http://localhost/webhook",
+            shared_secret="secret",
+        )
+        registration = adapter._get_registration()
+        assert registration is not None
+        with pytest.raises(
+            SignalAdapterDependencyError,
+            match="handshake failed with status 400",
+        ):
+            asyncio.run(adapter._run_receive_session(registration=registration))
+    finally:
+        aiohttp.ClientSession = original_client_session  # type: ignore[assignment]
 
 
 def test_send_message_maps_transport_status_errors_to_dependency() -> None:
     """Outbound send should map HTTP status failures into dependency errors."""
-    adapter = HttpSignalAdapter(settings=SignalAdapterSettings())
+    adapter = SignalRestApiAdapter(settings=SignalAdapterSettings())
     fake = _CaptureClient()
 
     def _raise_post(*_args, **_kwargs):
@@ -193,7 +239,7 @@ def test_send_message_maps_transport_status_errors_to_dependency() -> None:
         )
 
     fake.post = _raise_post  # type: ignore[method-assign]
-    adapter._signal_send_client = fake  # type: ignore[attr-defined]
+    adapter._signal_client = fake  # type: ignore[attr-defined]
 
     try:
         adapter.send_message(

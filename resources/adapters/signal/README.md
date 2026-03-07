@@ -6,7 +6,7 @@ Action _Adapter_ _Resource_ that integrates `signal-cli-rest-api` for Switchboar
 `resources/adapters/signal/` implements Layer 0 Signal integration:
 - `component.py`: `ResourceManifest` registration (`adapter_signal`)
 - `adapter.py`: protocol, DTOs, and adapter error taxonomy
-- `signal_adapter.py`: concrete HTTP polling + callback forwarding implementation (`HttpSignalAdapter`)
+- `signal_adapter.py`: concrete websocket receive + callback forwarding implementation (`SignalRestApiAdapter`)
 - `config.py`: adapter settings model and resolver
 - `boot.py`: readiness hook that probes Signal container `/v1/health`
 
@@ -28,23 +28,23 @@ Primary interactions:
   - callback URL
   - shared secret
   - receive identity (from adapter config)
-- Polls Signal runtime:
+- Talks to Signal runtime:
   - `GET /v1/health`
-  - `GET /v1/receive/{receive_e164}`
+  - WebSocket `/v1/receive/{receive_e164}`
 - Forwards each received message as signed JSON callback POST to Switchboard webhook endpoint.
 - Sends outbound messages for Attention Router over `POST /v2/send`.
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
 1. Switchboard calls `register_webhook(callback_url, shared_secret)`.
-2. Adapter stores registration in memory and ensures polling worker is running.
-3. Worker polls Signal runtime receive endpoint for inbound messages.
+2. Adapter stores registration in memory and ensures receive worker is running.
+3. Worker opens Signal runtime receive websocket for inbound messages.
 4. Adapter wraps each received item as `{"data": <message>}`.
 5. Adapter computes HMAC SHA-256 signature over `<timestamp>.<raw_body_json>`.
 6. Adapter POSTs signed payload to configured Switchboard callback with:
    - `X-Brain-Timestamp`
    - `X-Brain-Signature` (`sha256=<digest>`)
-7. On forwarding/poll dependency failure, adapter retains pending messages and retries using exponential backoff with jitter.
+7. On forwarding/receive dependency failure, adapter retains pending messages and retries using exponential backoff with jitter.
 
 ------------------------------------------------------------------------
 ## Failure Modes and Error Semantics
@@ -54,7 +54,7 @@ Adapter-level failure classes:
 
 Behavioral semantics:
 - Registration input validation failures raise internal adapter errors.
-- Polling receive failures trigger retry + capped backoff.
+- Receive websocket failures trigger retry + capped backoff.
 - Callback delivery failures keep unsent payloads in pending in-memory queue for retry.
 - Health reports Signal runtime readiness and callback/worker status detail.
 
@@ -63,13 +63,11 @@ Behavioral semantics:
 Adapter settings are sourced from `resources.adapter.signal`:
 - `base_url`
 - `receive_e164`
-- `receive_timeout_seconds`
+- `receive_connect_timeout_seconds`
+- `receive_heartbeat_seconds`
 - `send_timeout_seconds`
 - `callback_timeout_seconds`
 - `max_retries`
-- `poll_interval_seconds`
-- `poll_receive_timeout_seconds`
-- `poll_max_messages`
 - `failure_backoff_initial_seconds`
 - `failure_backoff_max_seconds`
 - `failure_backoff_multiplier`

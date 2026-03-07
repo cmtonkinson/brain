@@ -1,7 +1,8 @@
-"""In-process Signal adapter implementation over HTTP."""
+"""In-process Signal adapter implementation over signal-cli-rest-api."""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -10,7 +11,9 @@ from dataclasses import dataclass
 from random import random
 from threading import Event, Lock, Thread
 from time import time
-from urllib.parse import quote
+from urllib.parse import quote, urlparse, urlunparse
+
+import aiohttp
 
 from packages.brain_shared.http import (
     HttpClient,
@@ -34,6 +37,8 @@ from resources.adapters.signal.constants import SIGNAL_HEALTH_PATH
 _LOGGER = get_logger(__name__)
 _HEADER_SIGNATURE = "X-Brain-Signature"
 _HEADER_TIMESTAMP = "X-Brain-Timestamp"
+_REGISTRATION_WAIT_SECONDS = 0.25
+_RECEIVE_CHECK_INTERVAL_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
@@ -51,17 +56,12 @@ class _WebhookCallbackResult:
     timestamp_ms: int | None
 
 
-class HttpSignalAdapter(SignalAdapter):
-    """Signal adapter backed by HTTP polling + webhook forwarding."""
+class SignalRestApiAdapter(SignalAdapter):
+    """Signal adapter backed by websocket receive and HTTP send/callback flows."""
 
     def __init__(self, *, settings: SignalAdapterSettings) -> None:
         self._settings = settings
         self._signal_client = HttpClient(
-            base_url=settings.base_url.rstrip("/"),
-            timeout_seconds=settings.receive_timeout_seconds,
-            headers={"Content-Type": "application/json"},
-        )
-        self._signal_send_client = HttpClient(
             base_url=settings.base_url.rstrip("/"),
             timeout_seconds=settings.send_timeout_seconds,
             headers={"Content-Type": "application/json"},
@@ -83,7 +83,7 @@ class HttpSignalAdapter(SignalAdapter):
         callback_url: str,
         shared_secret: str,
     ) -> SignalWebhookRegistrationResult:
-        """Configure callback target and start polling loop when needed."""
+        """Configure callback target and start receive loop when needed."""
         registration = _WebhookRegistration(
             callback_url=callback_url.strip(),
             shared_secret=shared_secret.strip(),
@@ -99,7 +99,7 @@ class HttpSignalAdapter(SignalAdapter):
 
         return SignalWebhookRegistrationResult(
             registered=True,
-            detail="configured; polling loop active",
+            detail="configured; receive loop active",
         )
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
@@ -123,7 +123,7 @@ class HttpSignalAdapter(SignalAdapter):
         loop_state = "running" if worker_alive else "stopped"
         return SignalAdapterHealthResult(
             adapter_ready=True,
-            detail=f"ok; callback={callback_state}; loop={loop_state}",
+            detail=f"ok; callback={callback_state}; receive_loop={loop_state}",
         )
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
@@ -152,7 +152,7 @@ class HttpSignalAdapter(SignalAdapter):
             "recipients": [recipient],
         }
         try:
-            self._signal_send_client.post("/v2/send", json=payload)
+            self._signal_client.post("/v2/send", json=payload)
         except HttpStatusError as exc:
             raise SignalAdapterDependencyError(
                 f"signal send failed with status {exc.status_code}"
@@ -170,97 +170,190 @@ class HttpSignalAdapter(SignalAdapter):
         )
 
     def _run_loop(self) -> None:
-        """Poll Signal receive endpoint and forward messages to callback URL."""
+        """Drive the receive websocket loop until shutdown."""
         while not self._stop_event.is_set():
-            delay = self._run_once()
+            delay = self._run_loop_once()
             if delay > 0:
                 self._stop_event.wait(delay)
 
+    def _run_loop_once(self) -> float:
+        """Run one receive-loop session and return the next delay."""
+        registration = self._get_registration()
+        if registration is None:
+            return _REGISTRATION_WAIT_SECONDS
+
+        for attempt in range(self._settings.max_retries + 1):
+            try:
+                asyncio.run(self._run_receive_session(registration=registration))
+                self._backoff_seconds = self._settings.failure_backoff_initial_seconds
+                return 0.0
+            except SignalAdapterDependencyError as exc:
+                if attempt < self._settings.max_retries:
+                    continue
+                _LOGGER.warning(
+                    "signal adapter receive/forward dependency failure: %s",
+                    str(exc),
+                )
+                return self._next_backoff_delay()
+            except SignalAdapterInternalError as exc:
+                if attempt < self._settings.max_retries:
+                    continue
+                _LOGGER.error(
+                    "signal adapter receive/forward internal failure: %s",
+                    str(exc),
+                )
+                return self._next_backoff_delay()
+        return self._next_backoff_delay()
+
     def _ensure_worker_started_locked(self) -> None:
-        """Start polling worker once when callback registration is first configured."""
+        """Start receive worker once when callback registration is configured."""
         if self._worker is not None:
             return
         self._stop_event.clear()
         self._worker = Thread(target=self._run_loop, daemon=True)
         self._worker.start()
 
-    def _run_once(self) -> float:
-        """Run one polling-forwarding cycle and return next sleep delay."""
-        registration = self._get_registration()
-        if registration is None:
-            return self._settings.poll_interval_seconds
-
+    async def _run_receive_session(self, *, registration: _WebhookRegistration) -> None:
+        """Open one receive websocket session and process frames until stopped."""
+        timeout = aiohttp.ClientTimeout(
+            total=None,
+            connect=self._settings.receive_connect_timeout_seconds,
+            sock_connect=self._settings.receive_connect_timeout_seconds,
+            sock_read=None,
+        )
         try:
-            if len(self._pending_webhooks) == 0:
-                messages = self._receive_messages(
-                    receive_e164=self._settings.receive_e164
-                )
-                for message in messages:
-                    self._pending_webhooks.append(json.dumps({"data": message}))
-
-            self._flush_pending(registration=registration)
-            self._backoff_seconds = self._settings.failure_backoff_initial_seconds
-            return self._settings.poll_interval_seconds
-        except SignalAdapterDependencyError as exc:
-            _LOGGER.warning(
-                "signal adapter poll/forward dependency failure: %s",
-                str(exc),
-            )
-            return self._next_backoff_delay()
-        except SignalAdapterInternalError as exc:
-            _LOGGER.error(
-                "signal adapter poll/forward internal failure: %s",
-                str(exc),
-            )
-            return self._next_backoff_delay()
-
-    def _receive_messages(self, *, receive_e164: str) -> list[dict[str, object]]:
-        """Receive one batch of Signal messages for the configured receiver."""
-        path = f"/v1/receive/{quote(receive_e164, safe='')}"
-        params = {
-            "timeout": str(self._settings.poll_receive_timeout_seconds),
-            "max_messages": str(self._settings.poll_max_messages),
-            "ignore_attachments": "true",
-            "ignore_stories": "true",
-            "send_read_receipts": "false",
-        }
-        for attempt in range(self._settings.max_retries + 1):
-            try:
-                payload = self._signal_client.get_json(path, params=params)
-                if not isinstance(payload, list):
-                    raise SignalAdapterInternalError(
-                        "signal receive response must be a JSON array"
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.ws_connect(
+                    self._build_receive_websocket_url(),
+                    heartbeat=self._settings.receive_heartbeat_seconds,
+                    autoping=True,
+                ) as websocket:
+                    self._backoff_seconds = (
+                        self._settings.failure_backoff_initial_seconds
                     )
-                messages: list[dict[str, object]] = []
-                for item in payload:
-                    if isinstance(item, dict):
-                        messages.append(item)
-                if len(messages) == 0:
-                    _LOGGER.debug("signal adapter receive returned empty list")
-                else:
-                    _LOGGER.debug(
-                        "signal adapter received messages",
-                        extra={"message_count": len(messages)},
-                    )
-                return messages
-            except HttpStatusError as exc:
-                if exc.retryable and attempt < self._settings.max_retries:
-                    continue
-                raise SignalAdapterDependencyError(
-                    f"signal receive failed with status {exc.status_code}"
-                ) from None
-            except HttpRequestError as exc:
-                if exc.retryable and attempt < self._settings.max_retries:
-                    continue
-                raise SignalAdapterDependencyError(
-                    str(exc) or "signal receive unavailable"
-                ) from None
-            except HttpJsonDecodeError as exc:
-                raise SignalAdapterInternalError(
-                    f"signal receive response JSON invalid: {exc}"
-                ) from None
+                    while not self._stop_event.is_set():
+                        current_registration = self._get_registration()
+                        if current_registration != registration:
+                            return
+                        await asyncio.to_thread(
+                            self._flush_pending,
+                            registration=current_registration,
+                        )
+                        if self._stop_event.is_set():
+                            return
+                        try:
+                            message = await asyncio.wait_for(
+                                websocket.receive(),
+                                timeout=_RECEIVE_CHECK_INTERVAL_SECONDS,
+                            )
+                        except asyncio.TimeoutError:
+                            continue
+                        if message.type in (
+                            aiohttp.WSMsgType.CLOSED,
+                            aiohttp.WSMsgType.CLOSE,
+                            aiohttp.WSMsgType.CLOSING,
+                        ):
+                            raise SignalAdapterDependencyError(
+                                "signal receive websocket closed"
+                            )
+                        if message.type == aiohttp.WSMsgType.ERROR:
+                            detail = str(websocket.exception() or "").strip()
+                            raise SignalAdapterDependencyError(
+                                detail or "signal receive websocket error"
+                            )
+                        if message.type in (
+                            aiohttp.WSMsgType.PING,
+                            aiohttp.WSMsgType.PONG,
+                        ):
+                            continue
+                        if message.type not in (
+                            aiohttp.WSMsgType.TEXT,
+                            aiohttp.WSMsgType.BINARY,
+                        ):
+                            continue
+                        raw_payload = message.data
+                        if isinstance(raw_payload, bytes):
+                            raw_payload = raw_payload.decode("utf-8")
+                        if not isinstance(raw_payload, str):
+                            raise SignalAdapterInternalError(
+                                "signal receive websocket payload must be text JSON"
+                            )
+                        await asyncio.to_thread(
+                            self._process_receive_payload,
+                            registration=current_registration,
+                            raw_payload_json=raw_payload,
+                        )
+        except aiohttp.WSServerHandshakeError as exc:
+            raise SignalAdapterDependencyError(
+                f"signal receive websocket handshake failed with status {exc.status}"
+            ) from None
+        except aiohttp.ClientError as exc:
+            raise SignalAdapterDependencyError(
+                str(exc) or "signal receive unavailable"
+            ) from None
+        except asyncio.TimeoutError:
+            raise SignalAdapterDependencyError("signal receive unavailable") from None
 
-        raise SignalAdapterDependencyError("signal receive unavailable")
+    def _process_receive_payload(
+        self,
+        *,
+        registration: _WebhookRegistration,
+        raw_payload_json: str,
+    ) -> None:
+        """Parse one websocket payload and forward its contained Signal items."""
+        messages = self._decode_receive_payload(raw_payload_json)
+        for message in messages:
+            self._pending_webhooks.append(json.dumps({"data": message}))
+        self._flush_pending(registration=registration)
+
+    def _decode_receive_payload(self, raw_payload_json: str) -> list[dict[str, object]]:
+        """Normalize one websocket payload into individual Signal items."""
+        try:
+            payload = json.loads(raw_payload_json)
+        except json.JSONDecodeError as exc:
+            raise SignalAdapterInternalError(
+                f"signal receive websocket payload JSON invalid: {exc}"
+            ) from None
+
+        if isinstance(payload, dict):
+            return [payload]
+        if isinstance(payload, list):
+            messages: list[dict[str, object]] = []
+            for item in payload:
+                if isinstance(item, dict):
+                    messages.append(item)
+            return messages
+        raise SignalAdapterInternalError(
+            "signal receive websocket payload must be a JSON object or array"
+        )
+
+    def _build_receive_websocket_url(self) -> str:
+        """Build websocket URL for Signal receive endpoint from configured base URL."""
+        parsed = urlparse(self._settings.base_url.rstrip("/"))
+        if parsed.scheme == "http":
+            scheme = "ws"
+        elif parsed.scheme == "https":
+            scheme = "wss"
+        elif parsed.scheme in {"ws", "wss"}:
+            scheme = parsed.scheme
+        else:
+            raise SignalAdapterInternalError(
+                f"unsupported signal base_url scheme: {parsed.scheme or '<empty>'}"
+            )
+        base_path = parsed.path.rstrip("/")
+        receive_path = (
+            f"{base_path}/v1/receive/{quote(self._settings.receive_e164, safe='')}"
+        )
+        return urlunparse(
+            (
+                scheme,
+                parsed.netloc,
+                receive_path,
+                "",
+                "",
+                "",
+            )
+        )
 
     def _flush_pending(self, *, registration: _WebhookRegistration) -> None:
         """Forward pending webhook bodies to Switchboard callback endpoint."""
@@ -403,7 +496,7 @@ class HttpSignalAdapter(SignalAdapter):
             "timestamp": callback_result.timestamp_ms,
         }
         try:
-            self._signal_send_client.post(path, json=payload)
+            self._signal_client.post(path, json=payload)
         except HttpStatusError as exc:
             _LOGGER.warning(
                 "signal adapter read receipt failed after successful callback: status %s",

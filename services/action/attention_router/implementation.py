@@ -26,10 +26,10 @@ from packages.brain_shared.errors import (
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.adapters.signal import (
-    HttpSignalAdapter,
     SignalAdapter,
     SignalAdapterDependencyError,
     SignalAdapterInternalError,
+    SignalRestApiAdapter,
     resolve_signal_adapter_settings,
 )
 from services.action.attention_router.component import SERVICE_COMPONENT_ID
@@ -84,7 +84,7 @@ class DefaultAttentionRouterService(AttentionRouterService):
         adapter_settings = resolve_signal_adapter_settings(settings)
         return cls(
             settings=service_settings,
-            signal_adapter=HttpSignalAdapter(settings=adapter_settings),
+            signal_adapter=SignalRestApiAdapter(settings=adapter_settings),
             operator_signal_contact_e164=settings.core.profile.operator.signal_contact_e164,
             signal_receive_e164=adapter_settings.receive_e164,
         )

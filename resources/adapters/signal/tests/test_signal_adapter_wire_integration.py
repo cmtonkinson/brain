@@ -6,8 +6,8 @@ import pytest
 
 from resources.adapters.signal.config import SignalAdapterSettings
 from resources.adapters.signal.signal_adapter import (
-    HttpSignalAdapter,
     SignalAdapterDependencyError,
+    SignalRestApiAdapter,
 )
 from tests.helpers.fake_signal_server import FakeSignalServer
 
@@ -15,7 +15,7 @@ from tests.helpers.fake_signal_server import FakeSignalServer
 def test_send_message_posts_exact_v2_send_wire_payload() -> None:
     """Signal adapter should emit the exact expected `/v2/send` JSON payload."""
     with FakeSignalServer(status_code=201) as server:
-        adapter = HttpSignalAdapter(
+        adapter = SignalRestApiAdapter(
             settings=SignalAdapterSettings(
                 base_url=server.base_url,
                 receive_e164="+17175371552",
@@ -46,7 +46,7 @@ def test_send_message_maps_400_status_to_dependency_error() -> None:
         status_code=400,
         response_json={"error": "bad request"},
     ) as server:
-        adapter = HttpSignalAdapter(
+        adapter = SignalRestApiAdapter(
             settings=SignalAdapterSettings(
                 base_url=server.base_url,
                 receive_e164="+17175371552",

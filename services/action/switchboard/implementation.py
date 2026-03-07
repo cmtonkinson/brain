@@ -29,10 +29,10 @@ from packages.brain_shared.errors import (
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.adapters.signal import (
-    HttpSignalAdapter,
     SignalAdapter,
     SignalAdapterDependencyError,
     SignalAdapterInternalError,
+    SignalRestApiAdapter,
     resolve_signal_adapter_settings,
 )
 from services.action.switchboard.component import SERVICE_COMPONENT_ID
@@ -94,7 +94,7 @@ class DefaultSwitchboardService(SwitchboardService):
         return cls(
             settings=service_settings,
             identity=identity,
-            adapter=HttpSignalAdapter(settings=adapter_settings),
+            adapter=SignalRestApiAdapter(settings=adapter_settings),
             cache_service=cache_service,
         )
 
