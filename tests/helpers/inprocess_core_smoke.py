@@ -14,10 +14,21 @@ from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
 from actors.agent import main as agent_main
-from packages.brain_sdk import BrainClient, BrainSdkConfig
+from packages.brain_sdk import (
+    BrainClient,
+    BrainSdkConfig,
+    CapabilityDescriptor,
+    CapabilitySearchHit,
+)
 from packages.brain_shared.config import ActorSettings
 from packages.brain_shared.config.models import ProfileSettings
-from packages.brain_shared.envelope import Envelope, EnvelopeKind, Payload, new_meta
+from packages.brain_shared.envelope import (
+    Envelope,
+    EnvelopeKind,
+    Payload,
+    new_meta,
+    success,
+)
 from resources.adapters.litellm import (
     AdapterChatResult,
     AdapterChatMessage,
@@ -43,6 +54,7 @@ from services.action.capability_engine.config import CapabilityEngineSettings
 from services.action.capability_engine.data.repository import (
     InMemoryCapabilityInvocationAuditRepository,
 )
+from services.action.capability_engine.domain import CapabilityInvokeResult
 from services.action.capability_engine.implementation import (
     DefaultCapabilityEngineService,
 )
@@ -80,6 +92,9 @@ from services.state.memory_authority.tests.test_memory_authority_service import 
 class _FakeLiteLlmAdapter(LiteLlmAdapter):
     """Deterministic LMS adapter fake for in-process smoke runs."""
 
+    def __init__(self) -> None:
+        self.tool_chat_tool_names: list[tuple[str, ...]] = []
+
     def chat(self, *, provider: str, model: str, prompt: str) -> AdapterChatResult:
         del provider, model, prompt
         return AdapterChatResult(
@@ -101,7 +116,8 @@ class _FakeLiteLlmAdapter(LiteLlmAdapter):
         tool_choice: str | dict[str, object] | None = None,
         parallel_tool_calls: bool | None = None,
     ) -> AdapterToolChatResult:
-        del provider, model, messages, tools, tool_choice, parallel_tool_calls
+        del provider, model, messages, tool_choice, parallel_tool_calls
+        self.tool_chat_tool_names.append(tuple(item.name for item in tools))
         return AdapterToolChatResult(
             text="assistant reply",
             tool_calls=(),
@@ -109,6 +125,61 @@ class _FakeLiteLlmAdapter(LiteLlmAdapter):
             model="test-model",
             finish_reason="stop",
         )
+
+    def embed(self, *, provider: str, model: str, text: str) -> AdapterEmbeddingResult:
+        del provider, model, text
+        return AdapterEmbeddingResult(values=(0.1, 0.2), provider="unit", model="embed")
+
+    def embed_batch(self, *, provider: str, model: str, texts):
+        raise NotImplementedError
+
+    def health(self) -> AdapterHealthResult:
+        return AdapterHealthResult(adapter_ready=True, detail="ok")
+
+
+class _ScriptedLiteLlmAdapter(LiteLlmAdapter):
+    """Scripted LMS adapter fake for multi-round in-process smoke runs."""
+
+    def __init__(
+        self,
+        *,
+        tool_chat_results: tuple[AdapterToolChatResult, ...],
+    ) -> None:
+        self._tool_chat_results = list(tool_chat_results)
+        self.tool_chat_tool_names: list[tuple[str, ...]] = []
+
+    def chat(self, *, provider: str, model: str, prompt: str) -> AdapterChatResult:
+        del provider, model, prompt
+        return AdapterChatResult(
+            text="assistant reply",
+            provider="unit",
+            model="test-model",
+        )
+
+    def chat_batch(self, *, provider: str, model: str, prompts):
+        raise NotImplementedError
+
+    def chat_with_tools(
+        self,
+        *,
+        provider: str,
+        model: str,
+        messages: tuple[AdapterChatMessage, ...],
+        tools: tuple[AdapterChatToolDefinition, ...],
+        tool_choice: str | dict[str, object] | None = None,
+        parallel_tool_calls: bool | None = None,
+    ) -> AdapterToolChatResult:
+        del provider, model, messages, tool_choice, parallel_tool_calls
+        self.tool_chat_tool_names.append(tuple(item.name for item in tools))
+        if len(self._tool_chat_results) == 0:
+            return AdapterToolChatResult(
+                text="assistant reply",
+                tool_calls=(),
+                provider="unit",
+                model="test-model",
+                finish_reason="stop",
+            )
+        return self._tool_chat_results.pop(0)
 
     def embed(self, *, provider: str, model: str, text: str) -> AdapterEmbeddingResult:
         del provider, model, text
@@ -263,11 +334,27 @@ class AgentE2ESmokeResult:
     inbound_body: dict[str, object]
     response_text: str
     outbound_signal_messages: tuple[dict[str, str], ...]
+    tool_request_tool_names: tuple[tuple[str, ...], ...] = ()
 
 
-def run_agent_e2e_smoke(*, tmp_path: Path) -> AgentE2ESmokeResult:
+def run_agent_e2e_smoke(
+    *,
+    tmp_path: Path,
+    tool_chat_results: tuple[AdapterToolChatResult, ...] = (),
+    capability_search_results: tuple[CapabilitySearchHit, ...] = (),
+    described_capabilities: tuple[CapabilityDescriptor, ...] = (),
+    extra_capability_paths: tuple[Path, ...] = (),
+    capability_invoke_outputs: dict[str, dict[str, object] | None] | None = None,
+) -> AgentE2ESmokeResult:
     """Run one inbound webhook -> poll -> agent turn -> outbound send cycle."""
-    app, signal = _build_core_app(tmp_path=tmp_path)
+    app, signal, lms = _build_core_app(
+        tmp_path=tmp_path,
+        tool_chat_results=tool_chat_results,
+        capability_search_results=capability_search_results,
+        described_capabilities=described_capabilities,
+        extra_capability_paths=extra_capability_paths,
+        capability_invoke_outputs=capability_invoke_outputs or {},
+    )
     test_client = TestClient(app)
 
     body = json.dumps(
@@ -323,15 +410,26 @@ def run_agent_e2e_smoke(*, tmp_path: Path) -> AgentE2ESmokeResult:
         inbound_body=inbound.json(),
         response_text=response_text,
         outbound_signal_messages=tuple(signal.send_calls),
+        tool_request_tool_names=tuple(lms.tool_chat_tool_names),
     )
 
 
-def _build_core_app(*, tmp_path: Path):
+def _build_core_app(
+    *,
+    tmp_path: Path,
+    tool_chat_results: tuple[AdapterToolChatResult, ...] = (),
+    capability_search_results: tuple[CapabilitySearchHit, ...] = (),
+    described_capabilities: tuple[CapabilityDescriptor, ...] = (),
+    extra_capability_paths: tuple[Path, ...] = (),
+    capability_invoke_outputs: dict[str, dict[str, object] | None] | None = None,
+):
     discovery_root = tmp_path / "capabilities"
     shutil.copytree(
         Path("capabilities/attention/attention-notify"),
         discovery_root / "attention-notify",
     )
+    for capability_path in extra_capability_paths:
+        shutil.copytree(capability_path, discovery_root / capability_path.name)
 
     signal = _FakeSignalAdapter()
     cache = _SmokeCacheService()
@@ -349,6 +447,11 @@ def _build_core_app(*, tmp_path: Path):
         adapter=signal,
         cache_service=cache,
     )
+    adapter: LiteLlmAdapter = (
+        _ScriptedLiteLlmAdapter(tool_chat_results=tool_chat_results)
+        if len(tool_chat_results) > 0
+        else _FakeLiteLlmAdapter()
+    )
     lms = DefaultLanguageModelService(
         settings=LanguageModelServiceSettings(
             document_embedding=LanguageModelProfileSettings(
@@ -361,7 +464,7 @@ def _build_core_app(*, tmp_path: Path):
             standard=LanguageModelProfileSettings(provider="unit", model="standard"),
             deep=LanguageModelProfileSettings(provider="unit", model="deep"),
         ),
-        adapter=_FakeLiteLlmAdapter(),
+        adapter=adapter,
     )
     memory = DefaultMemoryAuthorityService(
         settings=MemoryAuthoritySettings(),
@@ -391,6 +494,51 @@ def _build_core_app(*, tmp_path: Path):
         registry=CapabilityRegistry(),
         audit_repository=InMemoryCapabilityInvocationAuditRepository(),
     )
+    if len(capability_search_results) > 0:
+        capability_engine.search_capabilities = lambda *, meta, query, limit=None: (
+            success(  # type: ignore[method-assign]
+                meta=meta,
+                payload=tuple(capability_search_results),
+            )
+        )
+    if len(described_capabilities) > 0:
+        descriptor_by_id = {item.capability_id: item for item in described_capabilities}
+        capability_engine.describe_capabilities = lambda *, meta: success(  # type: ignore[method-assign]
+            meta=meta,
+            payload=tuple(described_capabilities),
+        )
+        capability_engine.describe_capability = lambda *, meta, capability_id: success(  # type: ignore[method-assign]
+            meta=meta,
+            payload=descriptor_by_id[capability_id],
+        )
+    invoke_outputs = capability_invoke_outputs or {}
+    if len(invoke_outputs) > 0:
+        real_invoke_capability = capability_engine.invoke_capability
+
+        def _invoke_capability(*, meta, capability_id, input_payload, invocation):
+            if capability_id in invoke_outputs:
+                return success(
+                    meta=meta,
+                    payload=CapabilityInvokeResult(
+                        capability_id=capability_id,
+                        capability_version="1.0.0",
+                        output=invoke_outputs[capability_id],
+                        policy_decision_id="decision-smoke",
+                        policy_regime_id="regime-smoke",
+                        policy_allowed=True,
+                        policy_reason_codes=(),
+                        policy_obligations=(),
+                        proposal_token="",
+                    ),
+                )
+            return real_invoke_capability(
+                meta=meta,
+                capability_id=capability_id,
+                input_payload=input_payload,
+                invocation=invocation,
+            )
+
+        capability_engine.invoke_capability = _invoke_capability  # type: ignore[method-assign]
     ces_after_boot(
         settings=_settings(),
         components={
@@ -408,7 +556,7 @@ def _build_core_app(*, tmp_path: Path):
     register_lms_routes(router=router, service=lms)
     register_ces_routes(router=router, service=capability_engine)
     app.include_router(router)
-    return app, signal
+    return app, signal, adapter
 
 
 def _signature(secret: str, timestamp: int, body: str) -> str:

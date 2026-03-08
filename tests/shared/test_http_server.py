@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
+import packages.brain_shared.http.server as server_module
 from packages.brain_shared.http import (
     InvalidBodyError,
     InvalidJsonBodyError,
@@ -66,7 +67,7 @@ def test_create_app_returns_fastapi_app() -> None:
     assert app.version == "1.2.3"
 
 
-def test_create_app_can_log_request_summaries(caplog: pytest.LogCaptureFixture) -> None:
+def test_create_app_can_log_request_summaries() -> None:
     """create_app should optionally emit one concise log per handled request."""
     app = create_app(log_requests=True)
 
@@ -75,18 +76,23 @@ def test_create_app_can_log_request_summaries(caplog: pytest.LogCaptureFixture) 
         return {"ok": True}
 
     client = TestClient(app)
-    with caplog.at_level(logging.DEBUG):
+    debug_log = MagicMock()
+    original = server_module._LOGGER.debug
+    server_module._LOGGER.debug = debug_log
+    try:
         response = client.get("/ping")
+    finally:
+        server_module._LOGGER.debug = original
 
     assert response.status_code == 200
-    assert any(
-        record.name == "packages.brain_shared.http.server"
-        and record.message == "HTTP request handled"
-        and getattr(record, "http_method", "") == "GET"
-        and getattr(record, "http_path", "") == "/ping"
-        and getattr(record, "http_status", None) == 200
-        for record in caplog.records
-    )
+    debug_log.assert_called_once()
+    assert debug_log.call_args.args[0] == "HTTP request handled"
+    assert debug_log.call_args.kwargs["extra"] == {
+        "http_method": "GET",
+        "http_path": "/ping",
+        "http_status": 200,
+        "duration_ms": debug_log.call_args.kwargs["extra"]["duration_ms"],
+    }
 
 
 def test_get_header_returns_trimmed_value() -> None:

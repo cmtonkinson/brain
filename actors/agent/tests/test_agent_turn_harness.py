@@ -5,6 +5,12 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from actors.agent import main as agent_main
+from packages.brain_sdk import (
+    CapabilityDescriptor,
+    CapabilitySearchHit,
+    LmsChatToolCall,
+    LmsToolChatResult,
+)
 from tests.helpers.agent_turn_harness import AgentTurnScenario, run_agent_turn_scenario
 
 
@@ -35,15 +41,17 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
 def test_agent_turn_harness_logs_notify_failures_without_failing_turn() -> None:
     """Outbound notify failures should be logged while preserving turn completion."""
     scenario = AgentTurnScenario(
-        capability_invoke_errors=[
-            {
-                "code": "dependency_unavailable",
-                "message": "signal send failed with status 400",
-                "category": "dependency",
-                "retryable": True,
-                "metadata": {"adapter": "adapter_signal"},
-            }
-        ]
+        capability_invoke_errors={
+            "attention-notify": [
+                {
+                    "code": "dependency_unavailable",
+                    "message": "signal send failed with status 400",
+                    "category": "dependency",
+                    "retryable": True,
+                    "metadata": {"adapter": "adapter_signal"},
+                }
+            ]
+        }
     )
     exception_log = MagicMock()
     original = agent_main._LOGGER.exception
@@ -57,3 +65,210 @@ def test_agent_turn_harness_logs_notify_failures_without_failing_turn() -> None:
     assert result.response_text == "assistant reply"
     exception_log.assert_called_once()
     assert exception_log.call_args.args[0] == "brain agent outbound notify failed"
+
+
+def test_agent_turn_harness_runs_discovery_activate_and_tool_use_flow() -> None:
+    """One turn should discover a tool, expose it next round, then invoke it."""
+    vault_search = CapabilityDescriptor(
+        capability_id="vault-search-files",
+        kind="native_op",
+        version="1.0.0",
+        summary="Search markdown files.",
+        input_schema={
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        output_schema={"type": "object"},
+        autonomy=0,
+        requires_approval=False,
+        side_effects=(),
+        required_capabilities=(),
+    )
+    vault_get = CapabilityDescriptor(
+        capability_id="vault-get-file",
+        kind="native_op",
+        version="1.0.0",
+        summary="Read one markdown file by path.",
+        input_schema={
+            "type": "object",
+            "properties": {"file_path": {"type": "string"}},
+            "required": ["file_path"],
+            "additionalProperties": False,
+        },
+        output_schema={"type": "object"},
+        autonomy=0,
+        requires_approval=False,
+        side_effects=(),
+        required_capabilities=(),
+    )
+    scenario = AgentTurnScenario(
+        capabilities=(vault_search, vault_get),
+        always_on_capabilities=(vault_search,),
+        search_results=(
+            CapabilitySearchHit(
+                capability_id="vault-get-file",
+                required_params=("file_path",),
+                summary="Read one markdown file by path.",
+            ),
+        ),
+        described_capabilities={"vault-get-file": vault_get},
+        chat_results=(
+            LmsToolChatResult(
+                provider="unit",
+                model="test-model",
+                finish_reason="tool_call",
+                text=None,
+                tool_calls=(
+                    LmsChatToolCall(
+                        tool_name="discover_capabilities",
+                        args_json='{"query":"find the resume file","limit":5}',
+                        tool_call_id="call-discover",
+                    ),
+                ),
+            ),
+            LmsToolChatResult(
+                provider="unit",
+                model="test-model",
+                finish_reason="tool_call",
+                text=None,
+                tool_calls=(
+                    LmsChatToolCall(
+                        tool_name="vault-get-file",
+                        args_json='{"file_path":"professional/resume.md"}',
+                        tool_call_id="call-read",
+                    ),
+                ),
+            ),
+            LmsToolChatResult(
+                provider="unit",
+                model="test-model",
+                finish_reason="stop",
+                text="assistant reply",
+                tool_calls=(),
+            ),
+        ),
+        capability_invoke_outputs={
+            "vault-get-file": {"content": "# Resume"},
+            "attention-notify": {"decision": "sent"},
+        },
+    )
+
+    result = run_agent_turn_scenario(scenario)
+
+    assert result.response_text == "assistant reply"
+    assert [call.path for call in result.calls] == [
+        "/memory/get_latest_or_create_session",
+        "/capabilities/describe",
+        "/capabilities/always-on",
+        "/memory/assemble_context",
+        "/lms/chat-with-tools",
+        "/capabilities/search",
+        "/lms/chat-with-tools",
+        "/capabilities/invoke",
+        "/lms/chat-with-tools",
+        "/memory/record_response",
+        "/capabilities/invoke",
+    ]
+    first_lms_call = result.calls[4]
+    second_lms_call = result.calls[6]
+    third_lms_call = result.calls[8]
+    assert [tool["name"] for tool in first_lms_call.body["tools"]] == [
+        "vault-search-files",
+        "discover_capabilities",
+        "describe_capability",
+    ]
+    assert [tool["name"] for tool in second_lms_call.body["tools"]] == [
+        "vault-search-files",
+        "vault-get-file",
+        "discover_capabilities",
+        "describe_capability",
+    ]
+    assert [tool["name"] for tool in third_lms_call.body["tools"]] == [
+        "vault-search-files",
+        "vault-get-file",
+        "discover_capabilities",
+        "describe_capability",
+    ]
+    assert result.calls[7].body["capability_id"] == "vault-get-file"
+    assert result.calls[7].body["input_payload"] == {
+        "file_path": "professional/resume.md"
+    }
+
+
+def test_agent_turn_harness_keeps_deny_listed_capabilities_out_of_next_round_tools() -> (
+    None
+):
+    """Discovery results should not cause deny-listed capabilities to become callable."""
+    vault_search = CapabilityDescriptor(
+        capability_id="vault-search-files",
+        kind="native_op",
+        version="1.0.0",
+        summary="Search markdown files.",
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+        autonomy=0,
+        requires_approval=False,
+        side_effects=(),
+        required_capabilities=(),
+    )
+    vault_get = CapabilityDescriptor(
+        capability_id="vault-get-file",
+        kind="native_op",
+        version="1.0.0",
+        summary="Read one markdown file by path.",
+        input_schema={"type": "object"},
+        output_schema={"type": "object"},
+        autonomy=0,
+        requires_approval=False,
+        side_effects=(),
+        required_capabilities=(),
+    )
+    scenario = AgentTurnScenario(
+        capabilities=(vault_search, vault_get),
+        always_on_capabilities=(vault_search,),
+        search_results=(
+            CapabilitySearchHit(
+                capability_id="attention-notify",
+                required_params=("message",),
+                summary="Route one outbound notification.",
+            ),
+            CapabilitySearchHit(
+                capability_id="vault-get-file",
+                required_params=("file_path",),
+                summary="Read one markdown file by path.",
+            ),
+        ),
+        described_capabilities={"vault-get-file": vault_get},
+        chat_results=(
+            LmsToolChatResult(
+                provider="unit",
+                model="test-model",
+                finish_reason="tool_call",
+                text=None,
+                tool_calls=(
+                    LmsChatToolCall(
+                        tool_name="discover_capabilities",
+                        args_json='{"query":"send signal message","limit":5}',
+                        tool_call_id="call-discover",
+                    ),
+                ),
+            ),
+            LmsToolChatResult(
+                provider="unit",
+                model="test-model",
+                finish_reason="stop",
+                text="assistant reply",
+                tool_calls=(),
+            ),
+        ),
+    )
+
+    result = run_agent_turn_scenario(scenario)
+
+    assert result.response_text == "assistant reply"
+    second_lms_call = result.calls[6]
+    tool_names = [tool["name"] for tool in second_lms_call.body["tools"]]
+    assert "attention-notify" not in tool_names
+    assert "vault-get-file" in tool_names

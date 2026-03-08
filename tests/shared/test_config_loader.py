@@ -237,6 +237,38 @@ def test_resolve_component_settings_deep_merges_component_model_defaults() -> No
     assert resolved.providers["anthropic"].api_key == "secret-key"
 
 
+def test_load_actor_settings_deep_merges_agent_defaults_with_secrets_yaml(
+    tmp_path: Path,
+) -> None:
+    """Actor config overrides should preserve default deny-list entries."""
+    actors_file = tmp_path / "actors.yaml"
+    actors_file.write_text(
+        "\n".join(
+            [
+                "agent:",
+                "  principal: assistant",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    secrets_file = tmp_path / "secrets.yaml"
+    secrets_file.write_text(
+        "\n".join(
+            [
+                "agent:",
+                "  source: test-agent",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    actors = load_actor_settings(config_path=actors_file, environ={})
+
+    assert actors.agent.principal == "assistant"
+    assert actors.agent.source == "test-agent"
+    assert actors.agent.capability_discovery_deny_list == ("attention-notify",)
+
+
 def test_core_runtime_settings_exposes_profile_via_core() -> None:
     """CoreRuntimeSettings must access profile via .core.profile, not .profile."""
     runtime_settings = load_core_runtime_settings()

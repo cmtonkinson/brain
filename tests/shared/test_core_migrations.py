@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from packages.brain_core.migrations import (
     MigrationExecutionError,
@@ -148,3 +149,17 @@ def test_run_startup_migrations_raises_on_upgrade_failure(
                 RuntimeError("boom")
             ),
         )
+
+
+def test_all_checked_in_alembic_configs_resolve_real_script_directories() -> None:
+    """Every real service alembic.ini should resolve to a valid migration environment."""
+    repo_root = Path(__file__).resolve().parents[2]
+
+    configs = discover_service_migration_configs(repo_root=repo_root)
+
+    assert configs, "expected at least one registered service migration config"
+    for config_path in configs:
+        assert config_path.exists()
+        assert config_path.parent.joinpath("env.py").exists()
+        script = ScriptDirectory.from_config(Config(str(config_path)))
+        assert Path(script.dir).resolve() == config_path.parent.resolve()

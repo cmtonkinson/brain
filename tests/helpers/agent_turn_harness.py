@@ -14,6 +14,7 @@ from packages.brain_sdk import (
     BrainClient,
     BrainSdkConfig,
     CapabilityDescriptor,
+    CapabilitySearchHit,
     LmsToolChatResult,
     MemoryContextBlock,
     MemoryDialogueTurn,
@@ -40,6 +41,11 @@ class AgentTurnScenario:
 
     session_id: str = field(default_factory=generate_ulid_str)
     capabilities: tuple[CapabilityDescriptor, ...] = ()
+    always_on_capabilities: tuple[CapabilityDescriptor, ...] = ()
+    search_results: tuple[CapabilitySearchHit, ...] = ()
+    described_capabilities: dict[str, CapabilityDescriptor] = field(
+        default_factory=dict
+    )
     instruction: SwitchboardOperatorInstruction = field(
         default_factory=lambda: SwitchboardOperatorInstruction(
             sender_e164="+12025550100",
@@ -79,10 +85,13 @@ class AgentTurnScenario:
             tool_calls=(),
         )
     )
-    capability_invoke_output: dict[str, Any] | None = field(
-        default_factory=lambda: {"decision": "sent"}
+    chat_results: tuple[LmsToolChatResult, ...] = ()
+    capability_invoke_outputs: dict[str, dict[str, Any] | None] = field(
+        default_factory=lambda: {"attention-notify": {"decision": "sent"}}
     )
-    capability_invoke_errors: list[dict[str, Any]] = field(default_factory=list)
+    capability_invoke_errors: dict[str, list[dict[str, Any]]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +105,7 @@ class AgentTurnRunResult:
 def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
     """Run one full agent turn against a mock Core HTTP transport."""
     calls: list[MockCoreCall] = []
+    remaining_chat_results = list(scenario.chat_results)
 
     def _response_for(request: httpx.Request) -> httpx.Response:
         body = _decode_request_json(request)
@@ -141,7 +151,21 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
             return _json_response(
                 request,
                 {
-                    "capabilities": [],
+                    "capabilities": [
+                        {
+                            "capability_id": item.capability_id,
+                            "kind": item.kind,
+                            "version": item.version,
+                            "summary": item.summary,
+                            "input_schema": item.input_schema,
+                            "output_schema": item.output_schema,
+                            "autonomy": item.autonomy,
+                            "requires_approval": item.requires_approval,
+                            "side_effects": list(item.side_effects),
+                            "required_capabilities": list(item.required_capabilities),
+                        }
+                        for item in scenario.always_on_capabilities
+                    ],
                     "errors": [],
                 },
             )
@@ -149,15 +173,41 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
             return _json_response(
                 request,
                 {
-                    "results": [],
+                    "results": [
+                        {
+                            "capability_id": item.capability_id,
+                            "required_params": list(item.required_params),
+                            "summary": item.summary,
+                        }
+                        for item in scenario.search_results
+                    ],
                     "errors": [],
                 },
             )
         if path == "/capabilities/describe-one":
+            capability_id = str(body.get("capability_id", "")).strip()
+            descriptor = scenario.described_capabilities.get(capability_id)
             return _json_response(
                 request,
                 {
-                    "capability": None,
+                    "capability": (
+                        None
+                        if descriptor is None
+                        else {
+                            "capability_id": descriptor.capability_id,
+                            "kind": descriptor.kind,
+                            "version": descriptor.version,
+                            "summary": descriptor.summary,
+                            "input_schema": descriptor.input_schema,
+                            "output_schema": descriptor.output_schema,
+                            "autonomy": descriptor.autonomy,
+                            "requires_approval": descriptor.requires_approval,
+                            "side_effects": list(descriptor.side_effects),
+                            "required_capabilities": list(
+                                descriptor.required_capabilities
+                            ),
+                        }
+                    ),
                     "errors": [],
                 },
             )
@@ -186,21 +236,26 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                 },
             )
         if path == "/lms/chat-with-tools":
+            chat_result = (
+                remaining_chat_results.pop(0)
+                if len(remaining_chat_results) > 0
+                else scenario.chat_result
+            )
             return _json_response(
                 request,
                 {
                     "payload": {
-                        "provider": scenario.chat_result.provider,
-                        "model": scenario.chat_result.model,
-                        "finish_reason": scenario.chat_result.finish_reason,
-                        "text": scenario.chat_result.text,
+                        "provider": chat_result.provider,
+                        "model": chat_result.model,
+                        "finish_reason": chat_result.finish_reason,
+                        "text": chat_result.text,
                         "tool_calls": [
                             {
                                 "tool_name": item.tool_name,
                                 "args_json": item.args_json,
                                 "tool_call_id": item.tool_call_id,
                             }
-                            for item in scenario.chat_result.tool_calls
+                            for item in chat_result.tool_calls
                         ],
                     },
                     "errors": [],
@@ -209,22 +264,21 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
         if path == "/memory/record_response":
             return _json_response(request, {"payload": True, "errors": []})
         if path == "/capabilities/invoke":
+            capability_id = str(body.get("capability_id", "")).strip()
+            output = scenario.capability_invoke_outputs.get(capability_id)
+            errors = scenario.capability_invoke_errors.get(capability_id, [])
             return _json_response(
                 request,
                 {
-                    "output_json": (
-                        ""
-                        if scenario.capability_invoke_output is None
-                        else json.dumps(scenario.capability_invoke_output)
-                    ),
+                    "output_json": ("" if output is None else json.dumps(output)),
                     "policy": {
                         "decision_id": generate_ulid_str(),
-                        "allowed": len(scenario.capability_invoke_errors) == 0,
+                        "allowed": len(errors) == 0,
                         "reason_codes": [],
                         "obligations": [],
                         "proposal_id": "",
                     },
-                    "errors": scenario.capability_invoke_errors,
+                    "errors": errors,
                 },
             )
         raise AssertionError(f"unexpected request path: {path}")
