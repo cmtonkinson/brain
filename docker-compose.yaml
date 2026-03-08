@@ -10,8 +10,6 @@ services:
     user: "0:0"
     environment:
       BRAIN_CORE_HTTP__SOCKET_PATH: /run/brain/brain.sock
-    ports:
-      - "8091:8091"
     volumes:
       - ${HOME}/.config/brain:/app/config:ro
       - ${HOME}/.config/brain/generated:/app/config/generated:rw
@@ -51,8 +49,6 @@ services:
       MODE: ${SIGNAL_CLI_REST_API_MODE:-json-rpc}
       JSON_RPC_IGNORE_ATTACHMENTS: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_ATTACHMENTS:-true}
       JSON_RPC_IGNORE_STORIES: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_STORIES:-true}
-    ports:
-      - "${SIGNAL_CLI_REST_API_PORT:-8080}:8080"
     volumes:
       - ${SIGNAL_CLI_CONFIG_DIR:-./data/signal-cli}:/home/.local/share/signal-cli
 
@@ -60,8 +56,6 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "6379:6379"
     volumes:
       - ./data/redis:/data
     healthcheck:
@@ -73,9 +67,6 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.17
     restart: unless-stopped
-    ports:
-      - "6333:6333"
-      - "6334:6334"
     volumes:
       - ./data/qdrant:/qdrant/storage
 
@@ -86,8 +77,6 @@ services:
       POSTGRES_DB: brain
       POSTGRES_USER: brain
       POSTGRES_PASSWORD: brain
-    ports:
-      - "5432:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
