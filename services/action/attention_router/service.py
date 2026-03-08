@@ -27,8 +27,6 @@ class AttentionRouterService(ABC):
         channel: str = "",
         title: str = "",
         message: str,
-        recipient_e164: str = "",
-        sender_e164: str = "",
         dedupe_key: str = "",
         batch_key: str = "",
         force: bool = False,

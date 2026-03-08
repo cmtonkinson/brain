@@ -1,6 +1,9 @@
 /health: full-system diagnostic health check
+/capabilities/always-on: return full descriptors for the configured always-on capabilities
 /capabilities/describe: enumerate all active Capabilities
+/capabilities/describe-one: return one full Capability descriptor by capability_id
 /capabilities/invoke: execute tool calls
+/capabilities/search: semantically search the enabled Capability catalog and return compact matches
 /lms/chat: direct access to model inference without CES/PS overhead
 /lms/chat-with-tools: direct access to tool-capable model inference without CES/PS overhead
 /memory/create_session: create one new MAS session for the agent

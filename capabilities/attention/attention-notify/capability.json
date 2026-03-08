@@ -12,8 +12,6 @@
     "channel": "string | optional | Channel identifier. Defaults to service routing default.",
     "title": "string | optional | Optional title rendered above message content.",
     "message": "string | The notification body to route.",
-    "recipient_e164": "string | optional | Explicit recipient E.164 override.",
-    "sender_e164": "string | optional | Explicit sender E.164 override.",
     "dedupe_key": "string | optional | Suppress duplicate sends within configured dedupe window.",
     "batch_key": "string | optional | Queue into batch instead of immediate send.",
     "force": "boolean | optional | Bypass dedupe, batch, and rate-limit suppression checks. Defaults to false."

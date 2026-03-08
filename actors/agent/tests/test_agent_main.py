@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from packages.brain_shared.config import ActorSettings
 from packages.brain_sdk import (
     BrainDependencyError,
     CapabilityDescriptor,
+    CapabilitySearchHit,
     LmsChatMessage,
     LmsChatToolCall,
     LmsChatToolDefinition,
@@ -438,7 +440,6 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
                 "actor": "operator",
                 "channel": "signal",
                 "message": "assistant reply",
-                "recipient_e164": "+12025550100",
             },
             "operator",
             "signal",
@@ -562,7 +563,6 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
                 "actor": "operator",
                 "channel": "signal",
                 "message": main._LMS_THROTTLE_RESPONSE,
-                "recipient_e164": "+12025550100",
             },
             "operator",
             "signal",
@@ -578,6 +578,7 @@ def test_create_runtime_creates_session_and_registers_tools() -> None:
         def __init__(self) -> None:
             self.created = 0
             self.described = 0
+            self.always_on = 0
 
         def memory_get_latest_or_create_session(self) -> MemorySessionRef:
             self.created += 1
@@ -600,8 +601,166 @@ def test_create_runtime_creates_session_and_registers_tools() -> None:
                 ),
             )
 
-    runtime = main._create_runtime(client=_FakeClient())  # type: ignore[arg-type]
+        def list_always_on_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
+            self.always_on += 1
+            return ()
+
+    runtime = main._create_runtime(
+        client=_FakeClient(),  # type: ignore[arg-type]
+        settings=ActorSettings(),
+    )
 
     assert runtime.session_id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
     assert isinstance(runtime.model, main._BrainSdkToolModel)
-    assert len(runtime.agent._function_toolset.tools) == 1
+    assert len(runtime.agent._function_toolset.tools) == 3
+    assert "attention-notify" not in runtime.turn_state.active_tool_names
+
+
+def test_runtime_discovery_tools_activate_capabilities_for_prepare_tools() -> None:
+    """Discovery should activate matched capabilities for the next prepare_tools call."""
+    from actors.agent import main
+    from pydantic_ai.tools import ToolDefinition
+
+    class _FakeClient:
+        def search_capabilities(
+            self, *, query: str, limit: int | None = None
+        ) -> tuple[CapabilitySearchHit, ...]:
+            assert query == "find vault read tools"
+            assert limit == 5
+            return (
+                CapabilitySearchHit(
+                    capability_id="vault-get-file",
+                    required_params=("file_path",),
+                    summary="Read one markdown file by path.",
+                ),
+            )
+
+        def describe_capability(self, *, capability_id: str) -> CapabilityDescriptor:
+            assert capability_id == "vault-get-file"
+            return CapabilityDescriptor(
+                capability_id="vault-get-file",
+                kind="native_op",
+                version="1.0.0",
+                summary="Read one markdown file by path.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"file_path": {"type": "string"}},
+                    "required": ["file_path"],
+                    "additionalProperties": False,
+                },
+                output_schema={"type": "object"},
+                autonomy=0,
+                requires_approval=False,
+                side_effects=(),
+                required_capabilities=(),
+            )
+
+    turn_state = main._TurnState(
+        always_on_capability_ids=frozenset({"vault-search-files"})
+    )
+    turn_state.reset_active_tools()
+    runtime_tools = main._build_runtime_tools(
+        client=_FakeClient(),  # type: ignore[arg-type]
+        turn_state=turn_state,
+    )
+
+    discover_result = runtime_tools[0].function(
+        query="find vault read tools",
+        limit=5,
+    )
+    assert discover_result == [
+        {
+            "capability_id": "vault-get-file",
+            "required_params": ["file_path"],
+            "summary": "Read one markdown file by path.",
+        }
+    ]
+    assert "vault-get-file" in turn_state.active_tool_names
+
+    prepare_tools = main._build_prepare_tools(turn_state=turn_state)
+    prepared = asyncio.run(
+        prepare_tools(
+            None,
+            [
+                ToolDefinition(name="vault-search-files"),
+                ToolDefinition(name="vault-get-file"),
+                ToolDefinition(name="attention-notify"),
+                ToolDefinition(name=main._DISCOVER_CAPABILITIES_TOOL_NAME),
+            ],
+        )
+    )
+    assert [item.name for item in prepared] == [
+        "vault-search-files",
+        "vault-get-file",
+        main._DISCOVER_CAPABILITIES_TOOL_NAME,
+    ]
+
+
+def test_runtime_discovery_tools_filter_denied_capabilities() -> None:
+    """Discovery and describe should not activate deny-listed capabilities."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def search_capabilities(
+            self, *, query: str, limit: int | None = None
+        ) -> tuple[CapabilitySearchHit, ...]:
+            assert query == "send signal message"
+            assert limit == 5
+            return (
+                CapabilitySearchHit(
+                    capability_id="attention-notify",
+                    required_params=("message",),
+                    summary="Route one outbound notification.",
+                ),
+                CapabilitySearchHit(
+                    capability_id="vault-get-file",
+                    required_params=("file_path",),
+                    summary="Read one markdown file by path.",
+                ),
+            )
+
+        def describe_capability(self, *, capability_id: str) -> CapabilityDescriptor:
+            assert capability_id == "vault-get-file"
+            return CapabilityDescriptor(
+                capability_id="vault-get-file",
+                kind="native_op",
+                version="1.0.0",
+                summary="Read one markdown file by path.",
+                input_schema={"type": "object"},
+                output_schema={"type": "object"},
+                autonomy=0,
+                requires_approval=False,
+                side_effects=(),
+                required_capabilities=(),
+            )
+
+    turn_state = main._TurnState(
+        always_on_capability_ids=frozenset({"vault-search-files"}),
+        denied_capability_ids=frozenset({"attention-notify"}),
+    )
+    turn_state.reset_active_tools()
+    runtime_tools = main._build_runtime_tools(
+        client=_FakeClient(),  # type: ignore[arg-type]
+        turn_state=turn_state,
+    )
+
+    discover_result = runtime_tools[0].function(
+        query="send signal message",
+        limit=5,
+    )
+    assert discover_result == [
+        {
+            "capability_id": "vault-get-file",
+            "required_params": ["file_path"],
+            "summary": "Read one markdown file by path.",
+        }
+    ]
+    assert "attention-notify" not in turn_state.active_tool_names
+
+    describe_result = runtime_tools[1].function(capability_id="attention-notify")
+    assert describe_result == {
+        "capability_id": "attention-notify",
+        "available": False,
+        "reason": "capability is denied for this agent",
+    }
+    assert "attention-notify" not in turn_state.active_tool_names

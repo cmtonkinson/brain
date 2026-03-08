@@ -7,7 +7,11 @@ from pydantic import BaseModel, ConfigDict
 from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.action.language_model.component import SERVICE_COMPONENT_ID
 
-DEFAULT_EMBEDDING_PROFILE = {
+DEFAULT_DOCUMENT_EMBEDDING_PROFILE = {
+    "provider": "ollama",
+    "model": "mxbai-embed-large",
+}
+DEFAULT_CAPABILITY_EMBEDDING_PROFILE = {
     "provider": "ollama",
     "model": "mxbai-embed-large",
 }
@@ -40,8 +44,11 @@ class LanguageModelServiceSettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
-        **DEFAULT_EMBEDDING_PROFILE
+    document_embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
+        **DEFAULT_DOCUMENT_EMBEDDING_PROFILE
+    )
+    capability_embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
+        **DEFAULT_CAPABILITY_EMBEDDING_PROFILE
     )
     quick: LanguageModelProfileSettings
     standard: LanguageModelProfileSettings = LanguageModelProfileSettings(
@@ -55,8 +62,11 @@ class _LanguageModelServiceSettingsInput(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
-        **DEFAULT_EMBEDDING_PROFILE
+    document_embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
+        **DEFAULT_DOCUMENT_EMBEDDING_PROFILE
+    )
+    capability_embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
+        **DEFAULT_CAPABILITY_EMBEDDING_PROFILE
     )
     quick: LanguageModelOptionalProfileSettings = LanguageModelOptionalProfileSettings()
     standard: LanguageModelProfileSettings = LanguageModelProfileSettings(
@@ -75,7 +85,8 @@ def resolve_language_model_service_settings(
         model=_LanguageModelServiceSettingsInput,
     )
     return LanguageModelServiceSettings(
-        embedding=raw.embedding,
+        document_embedding=raw.document_embedding,
+        capability_embedding=raw.capability_embedding,
         quick=_resolve_chat_fallback(
             candidate=raw.quick,
             fallback=raw.standard,

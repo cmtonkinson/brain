@@ -15,6 +15,7 @@ from services.action.capability_engine.domain import (
     CapabilityEngineHealthStatus,
     CapabilityExecutionResponse,
     CapabilityInvocationMetadata,
+    CapabilitySearchHit,
     OpCapabilityManifest,
     SkillCapabilityManifest,
 )
@@ -658,6 +659,112 @@ def test_describe_capabilities_descriptors_are_stable_sorted() -> None:
     assert result.payload is not None
     ids = [d.capability_id for d in result.payload.value]
     assert ids == sorted(ids)
+
+
+def test_list_always_on_capabilities_returns_only_configured_subset() -> None:
+    """Always-on descriptor listing should return only configured capability ids."""
+    registry = CapabilityRegistry()
+    for capability_id in (
+        "vault-search-files",
+        "attention-notify",
+        "vault-get-file",
+    ):
+        registry.register_manifest(
+            manifest=OpCapabilityManifest(
+                capability_id=capability_id,
+                kind="native_op",
+                version="1.0.0",
+                summary=capability_id,
+                call_target="state.x",
+            )
+        )
+
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(
+            always_on_capability_ids=("vault-search-files", "attention-notify")
+        ),
+        policy_service=_FakePolicyService(),
+        registry=registry,
+    )
+
+    result = service.list_always_on_capabilities(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="agent", principal="operator")
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert [item.capability_id for item in result.payload.value] == [
+        "vault-search-files",
+        "attention-notify",
+    ]
+
+
+def test_describe_capability_returns_one_descriptor_by_id() -> None:
+    """Targeted descriptor lookup should return exactly one matching capability."""
+    registry = CapabilityRegistry()
+    registry.register_manifest(
+        manifest=OpCapabilityManifest(
+            capability_id="vault-get-file",
+            kind="native_op",
+            version="1.0.0",
+            summary="Read a file.",
+            call_target="vault.read",
+            input_schema={"file_path": "string"},
+            output_schema={"content": "string"},
+        )
+    )
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(),
+        policy_service=_FakePolicyService(),
+        registry=registry,
+    )
+
+    result = service.describe_capability(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="agent", principal="operator"),
+        capability_id="vault-get-file",
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value.capability_id == "vault-get-file"
+    assert result.payload.value.input_schema is not None
+
+
+def test_search_capabilities_returns_compact_hits_from_internal_search() -> None:
+    """Semantic search should return compact hits produced by the internal search path."""
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(),
+        policy_service=_FakePolicyService(),
+        language_model_service=object(),  # type: ignore[arg-type]
+        embedding_authority_service=object(),  # type: ignore[arg-type]
+        registry=CapabilityRegistry(),
+    )
+    service._sync_capability_discovery_index = lambda *, meta: None  # type: ignore[method-assign]
+    service._search_capabilities_internal = (  # type: ignore[method-assign]
+        lambda *, meta, query, limit: [
+            CapabilitySearchHit(
+                capability_id="vault-get-file",
+                required_params=("file_path",),
+                summary="Read a file.",
+            )
+        ]
+    )
+
+    result = service.search_capabilities(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="agent", principal="operator"),
+        query="read a markdown file",
+        limit=5,
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value == (
+        CapabilitySearchHit(
+            capability_id="vault-get-file",
+            required_params=("file_path",),
+            summary="Read a file.",
+        ),
+    )
 
 
 def test_ces_health_does_not_depend_on_policy_service_health() -> None:

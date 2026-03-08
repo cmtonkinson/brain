@@ -105,6 +105,106 @@ def test_call_capabilities_describe_success() -> None:
     assert result[0].kind == "logic_skill"
 
 
+def test_call_capabilities_list_always_on_success() -> None:
+    """Always-on capability wrapper should return typed descriptors."""
+    from packages.brain_sdk.calls import call_capabilities_list_always_on
+
+    http = _fake_http(
+        {
+            "capabilities": [
+                {
+                    "capability_id": "vault-search-files",
+                    "kind": "native_op",
+                    "version": "1.0.0",
+                    "summary": "Search files.",
+                    "input_schema": {"query": "string"},
+                    "output_schema": {"results": "array[string]"},
+                    "autonomy": 0,
+                    "requires_approval": False,
+                    "side_effects": [],
+                    "required_capabilities": [],
+                }
+            ],
+            "errors": [],
+        }
+    )
+
+    result = call_capabilities_list_always_on(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+    )
+
+    assert len(result) == 1
+    assert result[0].capability_id == "vault-search-files"
+
+
+def test_call_capabilities_search_success() -> None:
+    """Capability-search wrapper should return compact typed hits."""
+    from packages.brain_sdk.calls import call_capabilities_search
+
+    http = _fake_http(
+        {
+            "results": [
+                {
+                    "capability_id": "vault-get-file",
+                    "required_params": ["file_path"],
+                    "summary": "Read a file.",
+                }
+            ],
+            "errors": [],
+        }
+    )
+
+    result = call_capabilities_search(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+        query="read a markdown file",
+        limit=5,
+    )
+
+    assert result == (
+        type(result[0])(
+            capability_id="vault-get-file",
+            required_params=("file_path",),
+            summary="Read a file.",
+        ),
+    )
+
+
+def test_call_capability_describe_success() -> None:
+    """Capability-describe-one wrapper should return a single typed descriptor."""
+    from packages.brain_sdk.calls import call_capability_describe
+
+    http = _fake_http(
+        {
+            "capability": {
+                "capability_id": "vault-get-file",
+                "kind": "native_op",
+                "version": "1.0.0",
+                "summary": "Read a file.",
+                "input_schema": {"file_path": "string"},
+                "output_schema": {"content": "string"},
+                "autonomy": 0,
+                "requires_approval": False,
+                "side_effects": [],
+                "required_capabilities": [],
+            },
+            "errors": [],
+        }
+    )
+
+    result = call_capability_describe(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+        capability_id="vault-get-file",
+    )
+
+    assert result.capability_id == "vault-get-file"
+
+
 def test_call_capability_invoke_success() -> None:
     """Capability-invoke wrapper should decode output JSON and policy."""
     from packages.brain_sdk.calls import call_capability_invoke

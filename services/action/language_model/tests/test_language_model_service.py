@@ -196,7 +196,12 @@ class _FakeAdapter(LiteLlmAdapter):
 def _settings() -> LanguageModelServiceSettings:
     """Build deterministic service settings for tests."""
     return LanguageModelServiceSettings(
-        embedding=LanguageModelProfileSettings(provider="ollama", model="embed-a"),
+        document_embedding=LanguageModelProfileSettings(
+            provider="ollama", model="embed-a"
+        ),
+        capability_embedding=LanguageModelProfileSettings(
+            provider="ollama", model="embed-cap"
+        ),
         quick=LanguageModelProfileSettings(provider="openai", model="chat-q"),
         standard=LanguageModelProfileSettings(provider="ollama", model="chat-a"),
         deep=LanguageModelProfileSettings(provider="openai", model="chat-d"),
@@ -359,7 +364,10 @@ def test_embed_rejects_non_embedding_profile() -> None:
 
     assert result.ok is False
     assert len(result.errors) == 1
-    assert result.errors[0].message == "profile: Input should be 'embedding'"
+    assert (
+        result.errors[0].message
+        == "profile: Input should be 'document_embedding' or 'capability_embedding'"
+    )
     assert adapter.embed_calls == []
 
 
@@ -371,7 +379,7 @@ def test_chat_rejects_embedding_profile() -> None:
     result = service.chat(
         meta=_meta(),
         prompt="hello",
-        profile=EmbeddingProfile.EMBEDDING,  # type: ignore[arg-type]
+        profile=EmbeddingProfile.DOCUMENT_EMBEDDING,  # type: ignore[arg-type]
     )
 
     assert result.ok is False
@@ -390,7 +398,14 @@ def test_resolve_settings_quick_falls_back_to_standard_when_unset() -> None:
             {
                 "service": {
                     "language_model": {
-                        "embedding": {"provider": "ollama", "model": "embed-a"},
+                        "document_embedding": {
+                            "provider": "ollama",
+                            "model": "embed-a",
+                        },
+                        "capability_embedding": {
+                            "provider": "ollama",
+                            "model": "embed-cap",
+                        },
                         "standard": {"provider": "ollama", "model": "chat-a"},
                         "quick": {"provider": "", "model": ""},
                     }
@@ -413,7 +428,14 @@ def test_resolve_settings_deep_falls_back_to_standard_when_unset() -> None:
             {
                 "service": {
                     "language_model": {
-                        "embedding": {"provider": "ollama", "model": "embed-a"},
+                        "document_embedding": {
+                            "provider": "ollama",
+                            "model": "embed-a",
+                        },
+                        "capability_embedding": {
+                            "provider": "ollama",
+                            "model": "embed-cap",
+                        },
                         "standard": {"provider": "ollama", "model": "chat-a"},
                         "deep": {"provider": "", "model": ""},
                     }
@@ -436,7 +458,14 @@ def test_resolve_settings_defaults_standard_profile_when_missing() -> None:
             {
                 "service": {
                     "language_model": {
-                        "embedding": {"provider": "ollama", "model": "embed-a"},
+                        "document_embedding": {
+                            "provider": "ollama",
+                            "model": "embed-a",
+                        },
+                        "capability_embedding": {
+                            "provider": "ollama",
+                            "model": "embed-cap",
+                        },
                     }
                 }
             }

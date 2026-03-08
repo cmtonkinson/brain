@@ -1,5 +1,8 @@
 logging:
   level: INFO
+  json_output: true
+  service: brain
+  environment: dev
 
 core:
   # Path to the Brain Core Unix socket. On the host this is typically under
@@ -14,6 +17,8 @@ cli:
 agent:
   principal: agent
   source: agent
+  capability_discovery_deny_list:
+    - attention-notify
 
 beat:
   principal: operator

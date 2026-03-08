@@ -16,6 +16,7 @@ from services.action.capability_engine.domain import (
     CapabilityDescriptor,
     CapabilityInvocationMetadata,
     CapabilityInvokeResult,
+    CapabilitySearchHit,
 )
 from services.action.capability_engine.service import CapabilityEngineService
 
@@ -51,6 +52,41 @@ class _ErrorOut(BaseModel):
 
 class _DescribeResponse(BaseModel):
     capabilities: list[_CapabilityDescriptorOut]
+    errors: list[_ErrorOut]
+
+
+class _SearchRequest(BaseModel):
+    source: str = "unknown"
+    principal: str = "unknown"
+    trace_id: str | None = None
+    envelope_id: str | None = None
+    parent_id: str = ""
+    query: str
+    limit: int | None = None
+
+
+class _DescribeOneRequest(BaseModel):
+    source: str = "unknown"
+    principal: str = "unknown"
+    trace_id: str | None = None
+    envelope_id: str | None = None
+    parent_id: str = ""
+    capability_id: str
+
+
+class _CapabilitySearchHitOut(BaseModel):
+    capability_id: str
+    required_params: list[str]
+    summary: str
+
+
+class _SearchResponse(BaseModel):
+    results: list[_CapabilitySearchHitOut]
+    errors: list[_ErrorOut]
+
+
+class _DescribeOneResponse(BaseModel):
+    capability: _CapabilityDescriptorOut | None
     errors: list[_ErrorOut]
 
 
@@ -102,6 +138,67 @@ def register_routes(*, router: APIRouter, service: CapabilityEngineService) -> N
         )
         return _DescribeResponse(
             capabilities=capabilities,
+            errors=[_error_out(e) for e in result.errors],
+        )
+
+    @router.post("/capabilities/always-on", response_model=_DescribeResponse)
+    async def list_always_on_capabilities(request: Request) -> _DescribeResponse:
+        body = await read_json_body(request)
+        req = _DescribeRequest.model_validate(body)
+        meta = _meta_from_request(
+            req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
+        )
+        result = await run_in_threadpool(service.list_always_on_capabilities, meta=meta)
+        capabilities = (
+            []
+            if result.payload is None
+            else [_descriptor_out(item) for item in result.payload.value]
+        )
+        return _DescribeResponse(
+            capabilities=capabilities,
+            errors=[_error_out(e) for e in result.errors],
+        )
+
+    @router.post("/capabilities/search", response_model=_SearchResponse)
+    async def search_capabilities(request: Request) -> _SearchResponse:
+        body = await read_json_body(request)
+        req = _SearchRequest.model_validate(body)
+        meta = _meta_from_request(
+            req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
+        )
+        result = await run_in_threadpool(
+            service.search_capabilities,
+            meta=meta,
+            query=req.query,
+            limit=req.limit,
+        )
+        hits = (
+            []
+            if result.payload is None
+            else [_search_hit_out(item) for item in result.payload.value]
+        )
+        return _SearchResponse(
+            results=hits,
+            errors=[_error_out(e) for e in result.errors],
+        )
+
+    @router.post("/capabilities/describe-one", response_model=_DescribeOneResponse)
+    async def describe_capability(request: Request) -> _DescribeOneResponse:
+        body = await read_json_body(request)
+        req = _DescribeOneRequest.model_validate(body)
+        meta = _meta_from_request(
+            req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
+        )
+        result = await run_in_threadpool(
+            service.describe_capability,
+            meta=meta,
+            capability_id=req.capability_id,
+        )
+        capability = (
+            None if result.payload is None else _descriptor_out(result.payload.value)
+        )
+        return _DescribeOneResponse(
+            capability=capability,
             errors=[_error_out(e) for e in result.errors],
         )
 
@@ -172,6 +269,14 @@ def _descriptor_out(d: CapabilityDescriptor) -> _CapabilityDescriptorOut:
         requires_approval=d.requires_approval,
         side_effects=d.side_effects,
         required_capabilities=d.required_capabilities,
+    )
+
+
+def _search_hit_out(value: CapabilitySearchHit) -> _CapabilitySearchHitOut:
+    return _CapabilitySearchHitOut(
+        capability_id=value.capability_id,
+        required_params=list(value.required_params),
+        summary=value.summary,
     )
 
 

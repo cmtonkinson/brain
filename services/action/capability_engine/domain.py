@@ -199,6 +199,26 @@ class CapabilityDescriptor(BaseModel):
     required_capabilities: tuple[str, ...]
 
 
+class CapabilitySearchHit(BaseModel):
+    """Compact discovery result for one semantically matched capability."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    capability_id: str
+    required_params: tuple[str, ...]
+    summary: str
+
+
+class CapabilityDiscoveryStateRow(BaseModel):
+    """Durable CES-owned state for one indexed capability discovery document."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    capability_id: str
+    content_digest: str
+    chunk_ordinal: int
+
+
 class CapabilityInvocationAuditRow(BaseModel):
     """Append-only invocation audit record owned by Capability Engine Service."""
 

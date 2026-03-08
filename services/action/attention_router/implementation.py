@@ -101,8 +101,6 @@ class DefaultAttentionRouterService(AttentionRouterService):
         channel: str = "",
         title: str = "",
         message: str,
-        recipient_e164: str = "",
-        sender_e164: str = "",
         dedupe_key: str = "",
         batch_key: str = "",
         force: bool = False,
@@ -116,8 +114,6 @@ class DefaultAttentionRouterService(AttentionRouterService):
                 "channel": channel,
                 "title": title,
                 "message": message,
-                "recipient_e164": recipient_e164,
-                "sender_e164": sender_e164,
                 "dedupe_key": dedupe_key,
                 "batch_key": batch_key,
                 "force": force,
@@ -276,8 +272,6 @@ class DefaultAttentionRouterService(AttentionRouterService):
             channel=request.channel,
             title=request.title or f"Batch: {request.batch_key}",
             message=rendered,
-            recipient_e164=request.recipient_e164,
-            sender_e164=request.sender_e164,
             dedupe_key=f"batch:{request.batch_key}:{len(items)}",
             force=True,
         )
@@ -363,12 +357,14 @@ class DefaultAttentionRouterService(AttentionRouterService):
         return success(meta=meta, payload=normalized)
 
     def _resolve_notification(
-        self, *, request: RouteNotificationRequest
+        self,
+        *,
+        request: RouteNotificationRequest,
     ) -> RoutedNotification:
         """Resolve defaults and clamp message payload before delivery."""
         resolved_channel = request.channel or self._settings.default_channel
-        recipient = request.recipient_e164 or self._operator_signal_contact_e164
-        sender = request.sender_e164 or self._signal_receive_e164
+        recipient = self._operator_signal_contact_e164
+        sender = self._signal_receive_e164
 
         message = request.message.strip()
         if len(message) > self._settings.max_message_chars:

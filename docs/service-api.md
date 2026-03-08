@@ -18,7 +18,7 @@ _Route one token-only Policy->Attention approval notification._
 `flush_batch(*, meta: EnvelopeMeta, batch_key: str, actor: str = 'operator', channel: str = '', recipient_e164: str = '', sender_e164: str = '', title: str = '') -> Envelope[RouteNotificationResult]`  
 _Flush one pending batch by key and deliver consolidated summary._
 
-`route_notification(*, meta: EnvelopeMeta, actor: str = 'operator', channel: str = '', title: str = '', message: str, recipient_e164: str = '', sender_e164: str = '', dedupe_key: str = '', batch_key: str = '', force: bool = False) -> Envelope[RouteNotificationResult]`  
+`route_notification(*, meta: EnvelopeMeta, actor: str = 'operator', channel: str = '', title: str = '', message: str, dedupe_key: str = '', batch_key: str = '', force: bool = False) -> Envelope[RouteNotificationResult]`  
 _Route one outbound notification and decide suppress/send/batch._
 
 ------------------------------------------------------------------------
@@ -29,8 +29,17 @@ _Route one outbound notification and decide suppress/send/batch._
 `health(*, meta: EnvelopeMeta) -> Envelope[CapabilityEngineHealthStatus]`  
 _Return CES readiness, registry counts, and invocation-audit counters._
 
+`list_always_on_capabilities(*, meta: EnvelopeMeta) -> Envelope[tuple[CapabilityDescriptor, ...]]`  
+_Return full descriptors for only the configured always-on capabilities._
+
+`search_capabilities(*, meta: EnvelopeMeta, query: str, limit: int | None = None) -> Envelope[tuple[CapabilitySearchHit, ...]]`  
+_Return compact top-k semantic matches from the capability catalog._
+
 `describe_capabilities(*, meta: EnvelopeMeta) -> Envelope[tuple[CapabilityDescriptor, ...]]`  
 _Return descriptors for all registered capabilities._
+
+`describe_capability(*, meta: EnvelopeMeta, capability_id: str) -> Envelope[CapabilityDescriptor]`  
+_Return the full descriptor for one registered capability._
 
 `invoke_capability(*, meta: EnvelopeMeta, capability_id: str, input_payload: dict[str, object], invocation: CapabilityInvocationMetadata) -> Envelope[CapabilityInvokeResult]`  
 _Invoke by package ``capability_id`` (no version arg) and return normalized policy fields._
@@ -43,7 +52,7 @@ _Invoke by package ``capability_id`` (no version arg) and return normalized poli
 `chat(*, meta: EnvelopeMeta, prompt: str, profile: ReasoningLevel = ReasoningLevel.STANDARD) -> Envelope[ChatResponse]`  
 _Generate one chat completion._
 
-`embed(*, meta: EnvelopeMeta, text: str, profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING) -> Envelope[EmbeddingVector]`  
+`embed(*, meta: EnvelopeMeta, text: str, profile: EmbeddingProfile = EmbeddingProfile.DOCUMENT_EMBEDDING) -> Envelope[EmbeddingVector]`  
 _Generate one embedding vector._
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
@@ -52,7 +61,7 @@ _Return LMS and adapter health state._
 `chat_batch(*, meta: EnvelopeMeta, prompts: Sequence[str], profile: ReasoningLevel = ReasoningLevel.STANDARD) -> Envelope[list[ChatResponse]]`  
 _Generate a batch of chat completions._
 
-`embed_batch(*, meta: EnvelopeMeta, texts: Sequence[str], profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING) -> Envelope[list[EmbeddingVector]]`  
+`embed_batch(*, meta: EnvelopeMeta, texts: Sequence[str], profile: EmbeddingProfile = EmbeddingProfile.DOCUMENT_EMBEDDING) -> Envelope[list[EmbeddingVector]]`  
 _Generate a batch of embedding vectors._
 
 `chat_with_tools(*, meta: EnvelopeMeta, messages: Sequence[ChatMessage], tools: Sequence[ChatToolDefinition] = (), tool_choice: str | dict[str, object] | None = None, parallel_tool_calls: bool | None = None, allow_text_output: bool = True, profile: ReasoningLevel = ReasoningLevel.STANDARD) -> Envelope[ChatWithToolsResponse]`  

@@ -5,10 +5,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from packages.brain_shared.config import (
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+    load_actor_settings,
     load_core_runtime_settings,
     load_core_settings,
+    load_resources_settings,
     resolve_component_settings,
 )
+from resources.adapters.litellm.config import resolve_litellm_adapter_settings
 from resources.substrates.postgres.config import PostgresSettings
 from services.state.embedding_authority.component import SERVICE_COMPONENT_ID
 from services.state.embedding_authority.config import EmbeddingServiceSettings
@@ -161,6 +167,76 @@ def test_load_core_settings_ignores_secrets_yaml_when_missing(tmp_path: Path) ->
     assert settings.profile.webhook_shared_secret == "public-secret"
 
 
+def test_load_resources_settings_deep_merges_yaml_mappings(tmp_path: Path) -> None:
+    """resources.yaml and secrets.yaml should deep-merge nested dict settings."""
+    resources_file = tmp_path / "resources.yaml"
+    resources_file.write_text(
+        "\n".join(
+            [
+                "adapter:",
+                "  litellm:",
+                "    providers:",
+                "      ollama:",
+                "        api_base: http://host.docker.internal:11434",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    secrets_file = tmp_path / "secrets.yaml"
+    secrets_file.write_text(
+        "\n".join(
+            [
+                "adapter:",
+                "  litellm:",
+                "    providers:",
+                "      anthropic:",
+                "        api_key: secret-key",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    resources = load_resources_settings(config_path=resources_file, environ={})
+    runtime = load_core_runtime_settings(
+        core_config_path=tmp_path / "core.yaml",
+        resources_config_path=resources_file,
+        environ={},
+    )
+
+    assert resources.adapter.model_dump(mode="python")["litellm"]["providers"] == {
+        "ollama": {"api_base": "http://host.docker.internal:11434"},
+        "anthropic": {"api_key": "secret-key"},
+    }
+    resolved = resolve_litellm_adapter_settings(runtime)
+    assert set(resolved.providers) == {"ollama", "anthropic"}
+
+
+def test_resolve_component_settings_deep_merges_component_model_defaults() -> None:
+    """Component resolution should preserve nested model defaults under overrides."""
+    runtime = CoreRuntimeSettings(
+        core=CoreSettings.model_validate({}),
+        resources=ResourcesSettings.model_validate(
+            {
+                "adapter": {
+                    "litellm": {
+                        "providers": {
+                            "anthropic": {
+                                "api_key": "secret-key",
+                            }
+                        }
+                    }
+                }
+            }
+        ),
+    )
+
+    resolved = resolve_litellm_adapter_settings(runtime)
+
+    assert set(resolved.providers) == {"ollama", "anthropic"}
+    assert resolved.providers["ollama"].api_base == "http://host.docker.internal:11434"
+    assert resolved.providers["anthropic"].api_key == "secret-key"
+
+
 def test_core_runtime_settings_exposes_profile_via_core() -> None:
     """CoreRuntimeSettings must access profile via .core.profile, not .profile."""
     runtime_settings = load_core_runtime_settings()
@@ -176,3 +252,43 @@ def test_core_runtime_settings_exposes_profile_via_core() -> None:
     assert profile.operator.signal_contact_e164
     assert profile.default_dial_code
     assert profile.webhook_shared_secret
+
+
+def test_sample_config_files_load_cleanly(tmp_path: Path) -> None:
+    """Checked-in sample config files should validate against current settings models."""
+    repo_root = Path(__file__).resolve().parents[2]
+    sample_dir = repo_root / "config"
+
+    (tmp_path / "core.yaml").write_text(
+        (sample_dir / "core.yaml.sample").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (tmp_path / "resources.yaml").write_text(
+        (sample_dir / "resources.yaml.sample").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (tmp_path / "actors.yaml").write_text(
+        (sample_dir / "actors.yaml.sample").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (tmp_path / "secrets.yaml").write_text(
+        (sample_dir / "secrets.yaml.sample").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    core = load_core_settings(config_path=tmp_path / "core.yaml", environ={})
+    runtime = load_core_runtime_settings(
+        core_config_path=tmp_path / "core.yaml",
+        resources_config_path=tmp_path / "resources.yaml",
+        environ={},
+    )
+    actors = load_actor_settings(config_path=tmp_path / "actors.yaml", environ={})
+
+    assert core.http.socket_path == "/tmp/brain.sock"
+    assert (
+        runtime.resources.substrate.model_dump(mode="python")["obsidian"][
+            "timeout_seconds"
+        ]
+        == 10.0
+    )
+    assert actors.logging.json_output is True

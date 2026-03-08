@@ -51,6 +51,15 @@ class CapabilityDescriptor:
 
 
 @dataclass(frozen=True, slots=True)
+class CapabilitySearchHit:
+    """Compact semantic capability-search result returned by CES."""
+
+    capability_id: str
+    required_params: tuple[str, ...]
+    summary: str
+
+
+@dataclass(frozen=True, slots=True)
 class PolicyDecision:
     """Policy decision metadata returned from capability invocation."""
 
@@ -222,6 +231,78 @@ def call_capabilities_describe(
         errors=_errors_from_data(data),
     )
     return tuple(_capability_descriptor(item) for item in data.get("capabilities", ()))
+
+
+def call_capabilities_list_always_on(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+) -> tuple[CapabilityDescriptor, ...]:
+    """Return full descriptors for configured always-on capabilities."""
+    data = _post_json(
+        operation="capabilities.list_always_on",
+        http=http,
+        url="/capabilities/always-on",
+        body=metadata,
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="capabilities.list_always_on",
+        errors=_errors_from_data(data),
+    )
+    return tuple(_capability_descriptor(item) for item in data.get("capabilities", ()))
+
+
+def call_capabilities_search(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    query: str,
+    limit: int | None = None,
+) -> tuple[CapabilitySearchHit, ...]:
+    """Search the CES capability catalog."""
+    data = _post_json(
+        operation="capabilities.search",
+        http=http,
+        url="/capabilities/search",
+        body={**metadata, "query": query, "limit": limit},
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="capabilities.search",
+        errors=_errors_from_data(data),
+    )
+    return tuple(_capability_search_hit(item) for item in data.get("results", ()))
+
+
+def call_capability_describe(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    capability_id: str,
+) -> CapabilityDescriptor:
+    """Describe one capability through the CES HTTP surface."""
+    data = _post_json(
+        operation="capabilities.describe_one",
+        http=http,
+        url="/capabilities/describe-one",
+        body={**metadata, "capability_id": capability_id},
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="capabilities.describe_one",
+        errors=_errors_from_data(data),
+    )
+    capability = data.get("capability")
+    if not isinstance(capability, dict):
+        raise BrainDomainError(
+            message="capabilities.describe_one domain failure: missing capability",
+            operation="capabilities.describe_one",
+        )
+    return _capability_descriptor(capability)
 
 
 def call_capability_invoke(
@@ -566,6 +647,18 @@ def _capability_descriptor(value: object) -> CapabilityDescriptor:
     )
 
 
+def _capability_search_hit(value: object) -> CapabilitySearchHit:
+    """Map one raw capability search hit payload into the SDK dataclass."""
+    item = value if isinstance(value, dict) else {}
+    required_params = item.get("required_params", ())
+    required_items = required_params if isinstance(required_params, list) else ()
+    return CapabilitySearchHit(
+        capability_id=str(item.get("capability_id", "")),
+        required_params=tuple(str(entry) for entry in required_items),
+        summary=str(item.get("summary", "")),
+    )
+
+
 def _schema(value: object) -> dict[str, Any] | None:
     """Return one schema payload when it is object-shaped."""
     if not isinstance(value, dict):
@@ -739,6 +832,69 @@ def describe_capabilities(
             trace_id=trace_id,
             parent_id=parent_id,
         )
+    )
+
+
+def list_always_on_capabilities(
+    *,
+    client: object,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> tuple[CapabilityDescriptor, ...]:
+    """High-level SDK wrapper for always-on CES capability descriptors."""
+    return client.list_always_on_capabilities(  # type: ignore[union-attr]
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        )
+    )
+
+
+def search_capabilities(
+    *,
+    client: object,
+    query: str,
+    limit: int | None = None,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> tuple[CapabilitySearchHit, ...]:
+    """High-level SDK wrapper for CES semantic capability search."""
+    return client.search_capabilities(  # type: ignore[union-attr]
+        query=query,
+        limit=limit,
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        ),
+    )
+
+
+def describe_capability(
+    *,
+    client: object,
+    capability_id: str,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> CapabilityDescriptor:
+    """High-level SDK wrapper for one CES capability descriptor lookup."""
+    return client.describe_capability(  # type: ignore[union-attr]
+        capability_id=capability_id,
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        ),
     )
 
 

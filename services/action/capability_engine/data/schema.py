@@ -1,13 +1,25 @@
-"""Table models for Capability Engine invocation audits."""
+"""Table models for Capability Engine state and invocation audits."""
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, DateTime, MetaData, String, Table, func
+from sqlalchemy import Boolean, Column, DateTime, Integer, MetaData, String, Table, func
 
 from packages.brain_shared.ids import ulid_primary_key_column
 from services.action.capability_engine.component import SERVICE_COMPONENT_ID
 
 metadata = MetaData()
+
+capability_discovery_state = Table(
+    "capability_discovery_state",
+    metadata,
+    ulid_primary_key_column("id", schema_name=str(SERVICE_COMPONENT_ID)),
+    Column("capability_id", String(128), nullable=False, unique=True),
+    Column("content_digest", String(64), nullable=False),
+    Column("chunk_ordinal", Integer, nullable=False),
+    Column(
+        "updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()
+    ),
+)
 
 invocation_audits = Table(
     "invocation_audits",

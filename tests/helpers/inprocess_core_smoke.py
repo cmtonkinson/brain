@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from actors.agent import main as agent_main
 from packages.brain_sdk import BrainClient, BrainSdkConfig
+from packages.brain_shared.config import ActorSettings
 from packages.brain_shared.config.models import ProfileSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeKind, Payload, new_meta
 from resources.adapters.litellm import (
@@ -301,7 +302,10 @@ def run_agent_e2e_smoke(*, tmp_path: Path) -> AgentE2ESmokeResult:
         config=BrainSdkConfig(source="agent", principal="operator"),
         http=_TestClientHttpAdapter(test_client),
     )
-    runtime = agent_main._create_runtime(client=sdk_client)
+    runtime = agent_main._create_runtime(
+        client=sdk_client,
+        settings=ActorSettings(),
+    )
     instruction = runtime.client.switchboard_poll_operator_instruction(
         wait_timeout_seconds=0.0
     )
@@ -347,7 +351,12 @@ def _build_core_app(*, tmp_path: Path):
     )
     lms = DefaultLanguageModelService(
         settings=LanguageModelServiceSettings(
-            embedding=LanguageModelProfileSettings(provider="unit", model="embed"),
+            document_embedding=LanguageModelProfileSettings(
+                provider="unit", model="embed"
+            ),
+            capability_embedding=LanguageModelProfileSettings(
+                provider="unit", model="embed-capability"
+            ),
             quick=LanguageModelProfileSettings(provider="unit", model="quick"),
             standard=LanguageModelProfileSettings(provider="unit", model="standard"),
             deep=LanguageModelProfileSettings(provider="unit", model="deep"),

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar, Literal, TypeVar
+from typing import Any, ClassVar, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic.fields import PydanticUndefined
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -115,6 +116,20 @@ def _yaml_source_if_exists(
     )
 
 
+def _merged_yaml_source(
+    settings_cls: type[BaseSettings],
+    *,
+    config_path: Path,
+) -> YamlConfigSettingsSource:
+    """Return one deep-merged YAML source over config + optional secrets."""
+    return YamlConfigSettingsSource(
+        settings_cls,
+        yaml_file=[config_path, config_path.parent / SECRETS_CONFIG_FILENAME],
+        yaml_file_encoding="utf-8",
+        deep_merge=True,
+    )
+
+
 class CoreSettings(BaseSettings):
     """Core service runtime settings — loaded from core.yaml."""
 
@@ -148,18 +163,11 @@ class CoreSettings(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Apply Core precedence: init > env > secrets.yaml > core.yaml > defaults."""
         config_path = cls._config_path
-        secrets_path = config_path.parent / SECRETS_CONFIG_FILENAME
-
-        sources: list[PydanticBaseSettingsSource] = [init_settings, env_settings]
-        secrets_source = _yaml_source_if_exists(settings_cls, secrets_path)
-        if secrets_source is not None:
-            sources.append(secrets_source)
-        sources.append(
-            YamlConfigSettingsSource(
-                settings_cls, yaml_file=config_path, yaml_file_encoding="utf-8"
-            )
+        return (
+            init_settings,
+            env_settings,
+            _merged_yaml_source(settings_cls, config_path=config_path),
         )
-        return tuple(sources)
 
 
 class ResourcesSettings(BaseSettings):
@@ -192,18 +200,11 @@ class ResourcesSettings(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Apply Resources precedence: init > env > secrets.yaml > resources.yaml > defaults."""
         config_path = cls._config_path
-        secrets_path = config_path.parent / SECRETS_CONFIG_FILENAME
-
-        sources: list[PydanticBaseSettingsSource] = [init_settings, env_settings]
-        secrets_source = _yaml_source_if_exists(settings_cls, secrets_path)
-        if secrets_source is not None:
-            sources.append(secrets_source)
-        sources.append(
-            YamlConfigSettingsSource(
-                settings_cls, yaml_file=config_path, yaml_file_encoding="utf-8"
-            )
+        return (
+            init_settings,
+            env_settings,
+            _merged_yaml_source(settings_cls, config_path=config_path),
         )
-        return tuple(sources)
 
 
 class ActorCoreConnectionSettings(BaseModel):
@@ -230,6 +231,13 @@ class CliActorSettings(ActorNamespaceSettings):
     source: str = "cli"
 
 
+class AgentActorSettings(ActorNamespaceSettings):
+    """Agent-specific settings for tool exposure and runtime identity."""
+
+    source: str = "agent"
+    capability_discovery_deny_list: tuple[str, ...] = ("attention-notify",)
+
+
 class ActorSettings(BaseSettings):
     """Actor runtime settings — loaded from actors.yaml."""
 
@@ -245,9 +253,7 @@ class ActorSettings(BaseSettings):
         default_factory=ActorCoreConnectionSettings
     )
     cli: CliActorSettings = Field(default_factory=CliActorSettings)
-    agent: ActorNamespaceSettings = Field(
-        default_factory=lambda: ActorNamespaceSettings(source="agent")
-    )
+    agent: AgentActorSettings = Field(default_factory=AgentActorSettings)
     beat: ActorNamespaceSettings = Field(
         default_factory=lambda: ActorNamespaceSettings(source="beat")
     )
@@ -268,18 +274,11 @@ class ActorSettings(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Apply Actors precedence: init > env > secrets.yaml > actors.yaml > defaults."""
         config_path = cls._config_path
-        secrets_path = config_path.parent / SECRETS_CONFIG_FILENAME
-
-        sources: list[PydanticBaseSettingsSource] = [init_settings, env_settings]
-        secrets_source = _yaml_source_if_exists(settings_cls, secrets_path)
-        if secrets_source is not None:
-            sources.append(secrets_source)
-        sources.append(
-            YamlConfigSettingsSource(
-                settings_cls, yaml_file=config_path, yaml_file_encoding="utf-8"
-            )
+        return (
+            init_settings,
+            env_settings,
+            _merged_yaml_source(settings_cls, config_path=config_path),
         )
-        return tuple(sources)
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,6 +290,40 @@ class CoreRuntimeSettings:
 
 
 TComponentSettings = TypeVar("TComponentSettings", bound=BaseModel)
+
+
+def _deep_merge_mappings(
+    base: dict[str, Any],
+    override: dict[str, Any],
+) -> dict[str, Any]:
+    """Recursively merge mapping values, replacing non-mapping leaves."""
+    merged = dict(base)
+    for key, override_value in override.items():
+        base_value = merged.get(key)
+        if isinstance(base_value, dict) and isinstance(override_value, dict):
+            merged[key] = _deep_merge_mappings(base_value, override_value)
+        else:
+            merged[key] = override_value
+    return merged
+
+
+def _field_default_value(
+    model: type[BaseModel],
+    *,
+    field_name: str,
+) -> Any:
+    """Return one field default when it can be materialized safely."""
+    field = model.model_fields.get(field_name)
+    if field is None:
+        return PydanticUndefined
+    if field.default is not PydanticUndefined:
+        return field.default
+    if field.default_factory is None:
+        return PydanticUndefined
+    try:
+        return field.get_default(call_default_factory=True, validated_data={})
+    except Exception:  # noqa: BLE001
+        return PydanticUndefined
 
 
 def resolve_component_settings(
@@ -325,4 +358,14 @@ def resolve_component_settings(
     resolved = namespace.get(name, {})
     if not isinstance(resolved, dict):
         raise TypeError(f"{namespace_path}.{name} must resolve to an object mapping")
-    return model.model_validate(resolved)
+    merged = dict(resolved)
+    for key, override_value in resolved.items():
+        if not isinstance(override_value, dict):
+            continue
+        default_value = _field_default_value(model, field_name=key)
+        if isinstance(default_value, BaseModel):
+            default_value = default_value.model_dump(mode="python")
+        if not isinstance(default_value, dict):
+            continue
+        merged[key] = _deep_merge_mappings(default_value, override_value)
+    return model.model_validate(merged)

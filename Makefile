@@ -33,7 +33,7 @@ ifeq ($(INTEGRATION),1)
 PYTEST_INTEGRATION_ENV := BRAIN_RUN_INTEGRATION_REAL=1
 endif
 
-.PHONY: all deps deps-upgrade clean check format test docs up down integration outline smoke smoke-e2e
+.PHONY: all deps deps-upgrade clean check format test test-all docs up down integration outline smoke smoke-e2e
 
 all: deps clean
 	$(MAKE) test integration
@@ -64,6 +64,12 @@ format:
 
 test: check
 	$(PYTEST_INTEGRATION_ENV) $(PY) -m pytest --quiet tests resources services actors
+
+test-all:
+	$(MAKE) check
+	$(MAKE) test integration
+	$(MAKE) smoke
+	$(MAKE) smoke-e2e
 
 integration:
 	:

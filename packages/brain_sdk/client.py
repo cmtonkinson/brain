@@ -7,6 +7,7 @@ import httpx
 from packages.brain_sdk.calls import (
     CapabilityDescriptor,
     CapabilityInvokeResult,
+    CapabilitySearchHit,
     CoreHealthResult,
     LmsChatResult,
     LmsChatMessage,
@@ -16,6 +17,9 @@ from packages.brain_sdk.calls import (
     MemorySessionRef,
     SwitchboardOperatorInstruction,
     call_capabilities_describe,
+    call_capabilities_list_always_on,
+    call_capabilities_search,
+    call_capability_describe,
     call_capability_invoke,
     call_core_health,
     call_lms_chat,
@@ -78,6 +82,46 @@ class BrainClient:
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
+        )
+
+    def list_always_on_capabilities(
+        self, *, meta: MetaOverrides | None = None
+    ) -> tuple[CapabilityDescriptor, ...]:
+        """Return full descriptors for configured always-on capabilities."""
+        return call_capabilities_list_always_on(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+        )
+
+    def search_capabilities(
+        self,
+        *,
+        query: str,
+        limit: int | None = None,
+        meta: MetaOverrides | None = None,
+    ) -> tuple[CapabilitySearchHit, ...]:
+        """Search the CES capability catalog."""
+        return call_capabilities_search(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            query=query,
+            limit=limit,
+        )
+
+    def describe_capability(
+        self,
+        *,
+        capability_id: str,
+        meta: MetaOverrides | None = None,
+    ) -> CapabilityDescriptor:
+        """Return one full capability descriptor by id."""
+        return call_capability_describe(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            capability_id=capability_id,
         )
 
     def invoke_capability(

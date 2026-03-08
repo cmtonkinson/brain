@@ -7,8 +7,9 @@ import json
 import logging
 import os
 import signal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from pydantic_ai import Agent, Tool
 from pydantic_ai.messages import (
@@ -36,7 +37,7 @@ from packages.brain_sdk import (
     MemoryContextBlock,
     SwitchboardOperatorInstruction,
 )
-from packages.brain_shared.config import load_actor_settings
+from packages.brain_shared.config import ActorSettings, load_actor_settings
 
 _LOGGER = logging.getLogger(__name__)
 _RUNNING = True
@@ -48,6 +49,8 @@ _LMS_THROTTLE_RESPONSE = (
 )
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 _SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "system.txt"
+_DISCOVER_CAPABILITIES_TOOL_NAME = "discover_capabilities"
+_DESCRIBE_CAPABILITY_TOOL_NAME = "describe_capability"
 
 
 @dataclass(slots=True)
@@ -56,6 +59,21 @@ class _TurnState:
 
     actor: str = "operator"
     channel: str = ""
+    always_on_capability_ids: frozenset[str] = frozenset()
+    denied_capability_ids: frozenset[str] = frozenset()
+    active_tool_names: set[str] = field(default_factory=set)
+
+    def reset_active_tools(self) -> None:
+        """Reset the active tool set to the always-on CES tools plus runtime tools."""
+        self.active_tool_names = {
+            *(
+                capability_id
+                for capability_id in self.always_on_capability_ids
+                if capability_id not in self.denied_capability_ids
+            ),
+            _DISCOVER_CAPABILITIES_TOOL_NAME,
+            _DESCRIBE_CAPABILITY_TOOL_NAME,
+        }
 
 
 @dataclass(slots=True)
@@ -317,7 +335,103 @@ def _build_capability_tools(
     return tools
 
 
-def _brain_sdk_config_from_settings(settings: object) -> BrainSdkConfig:
+def _build_runtime_tools(
+    *,
+    client: BrainClient,
+    turn_state: _TurnState,
+) -> list[Tool[None]]:
+    """Create hardcoded runtime discovery tools for dynamic capability exposure."""
+
+    def _discover_capabilities(
+        query: str, limit: int | None = None
+    ) -> list[dict[str, object]]:
+        results = client.search_capabilities(query=query, limit=limit)
+        visible_results = [
+            item
+            for item in results
+            if item.capability_id not in turn_state.denied_capability_ids
+        ]
+        for item in visible_results:
+            turn_state.active_tool_names.add(item.capability_id)
+        return [
+            {
+                "capability_id": item.capability_id,
+                "required_params": list(item.required_params),
+                "summary": item.summary,
+            }
+            for item in visible_results
+        ]
+
+    def _describe_capability(capability_id: str) -> dict[str, object]:
+        if capability_id in turn_state.denied_capability_ids:
+            return {
+                "capability_id": capability_id,
+                "available": False,
+                "reason": "capability is denied for this agent",
+            }
+        descriptor = client.describe_capability(capability_id=capability_id)
+        turn_state.active_tool_names.add(descriptor.capability_id)
+        return {
+            "capability_id": descriptor.capability_id,
+            "available": True,
+            "kind": descriptor.kind,
+            "version": descriptor.version,
+            "summary": descriptor.summary,
+            "input_schema": descriptor.input_schema,
+            "output_schema": descriptor.output_schema,
+            "autonomy": descriptor.autonomy,
+            "requires_approval": descriptor.requires_approval,
+            "side_effects": list(descriptor.side_effects),
+            "required_capabilities": list(descriptor.required_capabilities),
+        }
+
+    return [
+        Tool.from_schema(
+            _discover_capabilities,
+            name=_DISCOVER_CAPABILITIES_TOOL_NAME,
+            description=(
+                "Search the capability catalog semantically and activate matching "
+                "capability tools for the next model step."
+            ),
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer"},
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        ),
+        Tool.from_schema(
+            _describe_capability,
+            name=_DESCRIBE_CAPABILITY_TOOL_NAME,
+            description=(
+                "Return the full descriptor for one capability id and activate "
+                "that tool for the next model step."
+            ),
+            json_schema={
+                "type": "object",
+                "properties": {"capability_id": {"type": "string"}},
+                "required": ["capability_id"],
+                "additionalProperties": False,
+            },
+        ),
+    ]
+
+
+def _build_prepare_tools(*, turn_state: _TurnState):
+    """Return the supported PydanticAI prepare_tools hook for dynamic exposure."""
+
+    async def _prepare_tools(
+        _ctx: Any, tool_defs: list[ToolDefinition]
+    ) -> list[ToolDefinition]:
+        return [item for item in tool_defs if item.name in turn_state.active_tool_names]
+
+    return _prepare_tools
+
+
+def _brain_sdk_config_from_settings(settings: ActorSettings) -> BrainSdkConfig:
     """Project actor settings into the SDK client configuration model."""
     return BrainSdkConfig(
         socket_path=str(settings.core.socket_path),
@@ -327,22 +441,39 @@ def _brain_sdk_config_from_settings(settings: object) -> BrainSdkConfig:
     )
 
 
-def _create_runtime(*, client: BrainClient) -> _AgentRuntime:
+def _create_runtime(*, client: BrainClient, settings: ActorSettings) -> _AgentRuntime:
     """Create one fully wired agent runtime from the published Core surface."""
     session = client.memory_get_latest_or_create_session()
     capabilities = client.describe_capabilities()
-    turn_state = _TurnState()
+    always_on_capabilities = client.list_always_on_capabilities()
+    denied_capability_ids = frozenset(
+        item.strip()
+        for item in settings.agent.capability_discovery_deny_list
+        if item.strip() != ""
+    )
+    turn_state = _TurnState(
+        always_on_capability_ids=frozenset(
+            item.capability_id
+            for item in always_on_capabilities
+            if item.capability_id not in denied_capability_ids
+        ),
+        denied_capability_ids=denied_capability_ids,
+    )
+    turn_state.reset_active_tools()
     model = _BrainSdkToolModel(client=client)
+    capability_tools = _build_capability_tools(
+        client=client,
+        capabilities=capabilities,
+        turn_state=turn_state,
+    )
+    runtime_tools = _build_runtime_tools(client=client, turn_state=turn_state)
     agent = Agent(
         model,
         system_prompt=_load_system_prompt(),
         retries=3,
         max_concurrency=1,
-        tools=_build_capability_tools(
-            client=client,
-            capabilities=capabilities,
-            turn_state=turn_state,
-        ),
+        tools=[*capability_tools, *runtime_tools],
+        prepare_tools=_build_prepare_tools(turn_state=turn_state),
     )
     return _AgentRuntime(
         client=client,
@@ -419,6 +550,7 @@ async def _process_instruction(
     )
     runtime.turn_state.actor = "operator"
     runtime.turn_state.channel = instruction.source
+    runtime.turn_state.reset_active_tools()
     runtime.model.last_result = None
     try:
         result = await runtime.agent.run(
@@ -465,9 +597,6 @@ async def _route_outbound_response(
         "channel": instruction.source,
         "message": response_text,
     }
-    recipient = instruction.sender_e164.strip()
-    if recipient != "":
-        payload["recipient_e164"] = recipient
     try:
         await asyncio.to_thread(
             runtime.client.invoke_capability,
@@ -482,7 +611,7 @@ async def _route_outbound_response(
             extra={
                 "capability_id": "attention-notify",
                 "channel": instruction.source,
-                "recipient_e164": instruction.sender_e164,
+                "actor": "operator",
             },
         )
 
@@ -500,7 +629,7 @@ async def _run_main() -> None:
 
     client = BrainClient(config=_brain_sdk_config_from_settings(settings))
     try:
-        runtime = _create_runtime(client=client)
+        runtime = _create_runtime(client=client, settings=settings)
         _LOGGER.info(
             "brain agent started",
             extra={

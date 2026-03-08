@@ -20,6 +20,7 @@ from packages.brain_sdk import (
     MemoryProfileContext,
     SwitchboardOperatorInstruction,
 )
+from packages.brain_shared.config import ActorSettings
 from packages.brain_shared.http.client import HttpClient
 from packages.brain_shared.ids import generate_ulid_str
 
@@ -136,6 +137,30 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                     "errors": [],
                 },
             )
+        if path == "/capabilities/always-on":
+            return _json_response(
+                request,
+                {
+                    "capabilities": [],
+                    "errors": [],
+                },
+            )
+        if path == "/capabilities/search":
+            return _json_response(
+                request,
+                {
+                    "results": [],
+                    "errors": [],
+                },
+            )
+        if path == "/capabilities/describe-one":
+            return _json_response(
+                request,
+                {
+                    "capability": None,
+                    "errors": [],
+                },
+            )
         if path == "/memory/assemble_context":
             return _json_response(
                 request,
@@ -210,7 +235,7 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
         config=BrainSdkConfig(source="agent", principal="operator"),
         http=http,
     )
-    runtime = agent_main._create_runtime(client=client)
+    runtime = agent_main._create_runtime(client=client, settings=ActorSettings())
     response_text = asyncio.run(
         agent_main._process_instruction(
             runtime=runtime,

@@ -32,8 +32,6 @@ Native Op over `Attention Router Service route_notification()`
 - `channel` _(string, optional)_ Channel identifier. Defaults to service routing default.
 - `title` _(string, optional)_ Optional title rendered above message content.
 - `message` _(string)_ The notification body to route.
-- `recipient_e164` _(string, optional)_ Explicit recipient E.164 override.
-- `sender_e164` _(string, optional)_ Explicit sender E.164 override.
 - `dedupe_key` _(string, optional)_ Suppress duplicate sends within configured dedupe window.
 - `batch_key` _(string, optional)_ Queue into batch instead of immediate send.
 - `force` _(boolean, optional)_ Bypass dedupe, batch, and rate-limit suppression checks. Defaults to false.

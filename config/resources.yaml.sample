@@ -7,7 +7,7 @@ substrate:
   obsidian:
     base_url: http://host.docker.internal:27123
     api_key: ""
-    timeout_seconds: 20.0
+    timeout_seconds: 10.0
     max_retries: 2
   postgres:
     url: postgresql+psycopg://brain:brain@postgres:5432/brain

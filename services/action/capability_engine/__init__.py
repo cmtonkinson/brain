@@ -8,20 +8,25 @@ from services.action.capability_engine.config import (
     resolve_capability_engine_settings,
 )
 from services.action.capability_engine.domain import (
+    CapabilityDiscoveryStateRow,
     CapabilityEngineHealthStatus,
     CapabilityInvocationMetadata,
     CapabilityInvokeResult,
+    CapabilitySearchHit,
     OpCapabilityManifest,
     SkillCapabilityManifest,
 )
 from services.action.capability_engine.interfaces import (
+    CapabilityDiscoveryStateRepository,
     CapabilityInvocationAuditRepository,
 )
 from services.action.capability_engine.implementation import (
     DefaultCapabilityEngineService,
 )
 from services.action.capability_engine.data.repository import (
+    InMemoryCapabilityDiscoveryStateRepository,
     InMemoryCapabilityInvocationAuditRepository,
+    PostgresCapabilityDiscoveryStateRepository,
     PostgresCapabilityInvocationAuditRepository,
 )
 from services.action.capability_engine.data.runtime import (
@@ -31,16 +36,21 @@ from services.action.capability_engine.registry import CapabilityRegistry
 from services.action.capability_engine.service import CapabilityEngineService
 
 __all__ = [
+    "CapabilityDiscoveryStateRepository",
+    "CapabilityDiscoveryStateRow",
     "CapabilityEngineHealthStatus",
     "CapabilityEngineService",
     "CapabilityEngineSettings",
     "CapabilityInvocationAuditRepository",
     "CapabilityInvocationMetadata",
     "CapabilityInvokeResult",
+    "CapabilitySearchHit",
     "CapabilityRegistry",
     "DefaultCapabilityEngineService",
     "CapabilityEnginePostgresRuntime",
+    "InMemoryCapabilityDiscoveryStateRepository",
     "InMemoryCapabilityInvocationAuditRepository",
+    "PostgresCapabilityDiscoveryStateRepository",
     "PostgresCapabilityInvocationAuditRepository",
     "Envelope",
     "EnvelopeKind",

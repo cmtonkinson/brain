@@ -458,7 +458,7 @@ class DefaultLanguageModelService(LanguageModelService):
         *,
         meta: EnvelopeMeta,
         text: str,
-        profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING,
+        profile: EmbeddingProfile = EmbeddingProfile.DOCUMENT_EMBEDDING,
     ) -> Envelope[EmbeddingVector]:
         """Generate one embedding vector using embedding profile."""
         request, errors = self._validate_request(
@@ -550,7 +550,7 @@ class DefaultLanguageModelService(LanguageModelService):
         *,
         meta: EnvelopeMeta,
         texts: Sequence[str],
-        profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING,
+        profile: EmbeddingProfile = EmbeddingProfile.DOCUMENT_EMBEDDING,
     ) -> Envelope[list[EmbeddingVector]]:
         """Generate a batch of embedding vectors."""
         request, errors = self._validate_request(
@@ -671,8 +671,9 @@ class DefaultLanguageModelService(LanguageModelService):
 
     def _resolve_embed_profile(self, *, profile: EmbeddingProfile) -> _ResolvedProfile:
         """Resolve embedding profile to concrete provider/model settings."""
-        del profile
-        return _from_settings(self._settings.embedding)
+        if profile is EmbeddingProfile.CAPABILITY_EMBEDDING:
+            return _from_settings(self._settings.capability_embedding)
+        return _from_settings(self._settings.document_embedding)
 
     def _validate_request(
         self,

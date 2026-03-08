@@ -6,6 +6,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from http import HTTPStatus
 from time import perf_counter
 from typing import Any, Mapping, Sequence
 
@@ -195,6 +196,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
     ) -> tuple[object, AdapterProviderCallAudit | None]:
         """Invoke `litellm.completion` with resolved provider settings."""
         litellm = _load_litellm_module()
+        _enable_raw_request_capture(litellm)
         resolved = self._resolve_provider_settings(provider=provider)
         raw_call = _RawCallCapture()
         kwargs = self._request_kwargs(provider=provider, model=model, resolved=resolved)
@@ -225,7 +227,14 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         try:
             response = litellm.completion(**kwargs)
         except Exception as exc:
-            self._raise_mapped_exception(exc, raw_call=raw_call.to_model())
+            self._raise_mapped_exception(
+                exc,
+                raw_call=_finalize_exception_raw_call(
+                    exc,
+                    capture=raw_call,
+                    fallback_request=_fallback_request_audit(kwargs=kwargs),
+                ),
+            )
         _LOGGER.debug(
             "LiteLLM provider request completed",
             extra={
@@ -246,6 +255,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
     ) -> tuple[object, AdapterProviderCallAudit | None]:
         """Invoke `litellm.embedding` with resolved provider settings."""
         litellm = _load_litellm_module()
+        _enable_raw_request_capture(litellm)
         resolved = self._resolve_provider_settings(provider=provider)
         raw_call = _RawCallCapture()
         kwargs = self._request_kwargs(provider=provider, model=model, resolved=resolved)
@@ -271,7 +281,14 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         try:
             response = litellm.embedding(**kwargs)
         except Exception as exc:
-            self._raise_mapped_exception(exc, raw_call=raw_call.to_model())
+            self._raise_mapped_exception(
+                exc,
+                raw_call=_finalize_exception_raw_call(
+                    exc,
+                    capture=raw_call,
+                    fallback_request=_fallback_request_audit(kwargs=kwargs),
+                ),
+            )
         _LOGGER.debug(
             "LiteLLM provider request completed",
             extra={
@@ -369,6 +386,11 @@ def _load_litellm_module() -> Any:
     return litellm
 
 
+def _enable_raw_request_capture(litellm_module: Any) -> None:
+    """Enable LiteLLM's internal raw request capture path for this process."""
+    setattr(litellm_module, "log_raw_request_response", True)
+
+
 def _provider_raw_json_logger(
     *,
     logger: Any,
@@ -462,6 +484,101 @@ def _coerce_json_object(value: object) -> dict[str, object]:
     if isinstance(value, Mapping):
         return {str(key): _json_safe_value(item) for key, item in value.items()}
     return {}
+
+
+def _fallback_request_audit(*, kwargs: Mapping[str, Any]) -> AdapterProviderCallAudit:
+    """Build one sanitized fallback request audit from adapter call kwargs."""
+    api_base = kwargs.get("api_base")
+    headers = kwargs.get("headers")
+    excluded_body_keys = {"api_base", "api_key", "logger_fn", "num_retries", "timeout"}
+    request_body = {
+        key: _json_safe_value(value)
+        for key, value in kwargs.items()
+        if key not in excluded_body_keys
+    }
+    return AdapterProviderCallAudit(
+        request_api_base="" if not isinstance(api_base, str) else api_base,
+        request_headers=_coerce_json_object(headers),
+        request_body=request_body,
+        response_body=None,
+    )
+
+
+def _finalize_exception_raw_call(
+    exc: Exception,
+    *,
+    capture: "_RawCallCapture",
+    fallback_request: AdapterProviderCallAudit,
+) -> AdapterProviderCallAudit:
+    """Return the richest raw-call audit available for one failed provider call."""
+    request_api_base = capture.request_api_base or fallback_request.request_api_base
+    request_headers = (
+        fallback_request.request_headers
+        if capture.request_headers is None
+        else capture.request_headers
+    )
+    request_body = (
+        fallback_request.request_body
+        if capture.request_body is None
+        else capture.request_body
+    )
+    response_body = capture.response_body
+    if response_body is None:
+        response_body = _response_body_from_exception(exc)
+    return AdapterProviderCallAudit(
+        request_api_base=request_api_base,
+        request_headers=request_headers,
+        request_body=request_body,
+        response_body=response_body,
+    )
+
+
+def _response_body_from_exception(exc: Exception) -> object | None:
+    """Extract one JSON-safe upstream error payload from a LiteLLM exception."""
+    body = _json_safe_value(getattr(exc, "body", None))
+    if body is not None:
+        return body
+    response = getattr(exc, "response", None)
+    payload = _response_payload_from_httpx(response)
+    if payload is not None:
+        return payload
+    debug_info = getattr(exc, "litellm_debug_info", None)
+    if isinstance(debug_info, str) and debug_info.strip() != "":
+        return {"litellm_debug_info": debug_info}
+    return {"error": str(exc) or exc.__class__.__name__}
+
+
+def _response_payload_from_httpx(response: object) -> object | None:
+    """Extract one JSON-safe payload from a response-like object when possible."""
+    if response is None:
+        return None
+    json_method = getattr(response, "json", None)
+    if callable(json_method):
+        try:
+            return _json_safe_value(json_method())
+        except Exception:
+            pass
+    text = getattr(response, "text", None)
+    if isinstance(text, str) and text.strip() != "":
+        try:
+            return json.loads(text)
+        except Exception:
+            return {"text": text}
+    status_code = getattr(response, "status_code", None)
+    headers = _coerce_json_object(getattr(response, "headers", None))
+    if status_code is None and not headers:
+        return None
+    reason = ""
+    if isinstance(status_code, int):
+        try:
+            reason = HTTPStatus(status_code).phrase
+        except ValueError:
+            reason = ""
+    return {
+        "status_code": _json_safe_value(status_code),
+        "reason": reason,
+        "headers": headers,
+    }
 
 
 @dataclass

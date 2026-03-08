@@ -27,7 +27,7 @@ def test_resolve_litellm_adapter_settings_defaults() -> None:
 
 
 def test_resolve_litellm_adapter_settings_component_override() -> None:
-    """Resolver should hydrate adapter settings from component subtree."""
+    """Resolver should deep-merge component overrides onto model defaults."""
     settings = CoreRuntimeSettings(
         core=CoreSettings.model_validate({}),
         resources=ResourcesSettings.model_validate(
@@ -54,9 +54,10 @@ def test_resolve_litellm_adapter_settings_component_override() -> None:
     assert resolved.timeout_seconds == 5.5
     assert resolved.max_retries == 1
     assert resolved.providers == {
+        "ollama": LiteLlmProviderSettings(api_base="http://host.docker.internal:11434"),
         "openai": LiteLlmProviderSettings(
             api_key_env="OPENAI_API_KEY",
             timeout_seconds=7.5,
             max_retries=4,
-        )
+        ),
     }

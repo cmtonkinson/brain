@@ -25,7 +25,8 @@ class ReasoningLevel(StrEnum):
 class EmbeddingProfile(StrEnum):
     """Supported embedding profile selectors."""
 
-    EMBEDDING = "embedding"
+    DOCUMENT_EMBEDDING = "document_embedding"
+    CAPABILITY_EMBEDDING = "capability_embedding"
 
 
 class _ValidationModel(BaseModel):
@@ -197,9 +198,14 @@ class EmbedRequest(_ValidationModel):
     @field_validator("profile")
     @classmethod
     def _validate_profile(cls, value: EmbeddingProfile) -> EmbeddingProfile:
-        """Restrict single embed operation to embedding profile."""
-        if value is not EmbeddingProfile.EMBEDDING:
-            raise ValueError("profile must be embedding")
+        """Restrict single embed operation to supported embedding profiles."""
+        if value not in {
+            EmbeddingProfile.DOCUMENT_EMBEDDING,
+            EmbeddingProfile.CAPABILITY_EMBEDDING,
+        }:
+            raise ValueError(
+                "profile must be document_embedding or capability_embedding"
+            )
         return value
 
 
@@ -220,7 +226,12 @@ class EmbedBatchRequest(_ValidationModel):
     @field_validator("profile")
     @classmethod
     def _validate_profile(cls, value: EmbeddingProfile) -> EmbeddingProfile:
-        """Restrict batch embed operation to embedding profile."""
-        if value is not EmbeddingProfile.EMBEDDING:
-            raise ValueError("profile must be embedding")
+        """Restrict batch embed operation to supported embedding profiles."""
+        if value not in {
+            EmbeddingProfile.DOCUMENT_EMBEDDING,
+            EmbeddingProfile.CAPABILITY_EMBEDDING,
+        }:
+            raise ValueError(
+                "profile must be document_embedding or capability_embedding"
+            )
         return value

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+import litellm
 import pytest
 from unittest.mock import MagicMock
 
@@ -85,6 +87,7 @@ def test_chat_calls_litellm_completion_with_resolved_provider_settings(
     assert fake_module.completion_calls[0]["num_retries"] == 2
     assert fake_module.completion_calls[0]["temperature"] == 0.0
     assert callable(fake_module.completion_calls[0]["logger_fn"])
+    assert fake_module.log_raw_request_response is True
 
 
 def test_chat_with_tools_passes_tools_and_maps_tool_calls(
@@ -265,6 +268,63 @@ def test_chat_raises_dependency_error_for_timeout_exception(
 
     with pytest.raises(AdapterDependencyError, match="timed out"):
         adapter.chat(provider="ollama", model="gpt-oss", prompt="hi")
+
+
+def test_chat_with_tools_preserves_request_and_error_payload_on_rate_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rate-limit failures should still produce one non-empty raw call audit."""
+    fake_module = _FakeLiteLlmModule(
+        completion_exception=litellm.RateLimitError(
+            message="too many tokens",
+            llm_provider="anthropic",
+            model="claude-sonnet-4-6",
+            response=httpx.Response(
+                status_code=429,
+                headers={"retry-after": "60"},
+                request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+            ),
+        )
+    )
+    monkeypatch.setattr(adapter_module, "_load_litellm_module", lambda: fake_module)
+    adapter = LiteLlmLibraryAdapter(settings=_settings())
+
+    with pytest.raises(AdapterDependencyError) as exc_info:
+        adapter.chat_with_tools(
+            provider="ollama",
+            model="gpt-oss",
+            messages=(AdapterChatMessage(role="user", content="hello"),),
+            tools=(
+                AdapterChatToolDefinition(
+                    name="demo-tool",
+                    description="Do a thing.",
+                    parameters_json_schema={"type": "object"},
+                ),
+            ),
+        )
+
+    raw_call = exc_info.value.raw_call
+    assert raw_call is not None
+    assert raw_call.request_body == {
+        "model": "ollama/gpt-oss",
+        "temperature": 0.0,
+        "messages": [{"role": "user", "content": "hello"}],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "demo-tool",
+                    "description": "Do a thing.",
+                    "parameters": {"type": "object"},
+                },
+            }
+        ],
+    }
+    assert raw_call.response_body == {
+        "status_code": 429,
+        "reason": "Too Many Requests",
+        "headers": {"retry-after": "60"},
+    }
 
 
 def test_embed_raises_internal_error_for_non_dependency_exception(

@@ -62,7 +62,7 @@ class LanguageModelService(ABC):
         *,
         meta: EnvelopeMeta,
         text: str,
-        profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING,
+        profile: EmbeddingProfile = EmbeddingProfile.DOCUMENT_EMBEDDING,
     ) -> Envelope[EmbeddingVector]:
         """Generate one embedding vector."""
 
@@ -72,7 +72,7 @@ class LanguageModelService(ABC):
         *,
         meta: EnvelopeMeta,
         texts: Sequence[str],
-        profile: EmbeddingProfile = EmbeddingProfile.EMBEDDING,
+        profile: EmbeddingProfile = EmbeddingProfile.DOCUMENT_EMBEDDING,
     ) -> Envelope[list[EmbeddingVector]]:
         """Generate a batch of embedding vectors."""
 

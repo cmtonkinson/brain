@@ -9,14 +9,29 @@ _Response: `_HealthResponse`_
 
 ------------------------------------------------------------------------
 ## `services/action/capability_engine/api.py`
+`POST /capabilities/always-on` &mdash; return full descriptors for the configured always-on capabilities  
+_Handler: `list_always_on_capabilities`_
+_Response: `_DescribeResponse`_
+
+
 `POST /capabilities/describe` &mdash; enumerate all active Capabilities  
 _Handler: `describe_capabilities`_
 _Response: `_DescribeResponse`_
 
 
+`POST /capabilities/describe-one` &mdash; return one full Capability descriptor by capability_id  
+_Handler: `describe_capability`_
+_Response: `_DescribeOneResponse`_
+
+
 `POST /capabilities/invoke` &mdash; execute tool calls  
 _Handler: `invoke_capability`_
 _Response: `_InvokeResponse`_
+
+
+`POST /capabilities/search` &mdash; semantically search the enabled Capability catalog and return compact matches  
+_Handler: `search_capabilities`_
+_Response: `_SearchResponse`_
 
 ------------------------------------------------------------------------
 ## `services/action/language_model/api.py`

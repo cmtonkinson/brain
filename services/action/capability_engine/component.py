@@ -37,15 +37,25 @@ def build_component(
     from services.action.capability_engine.service import (
         build_capability_engine_service,
     )
+    from services.action.language_model.service import LanguageModelService
     from services.action.policy_service.service import PolicyService
+    from services.state.embedding_authority.service import EmbeddingAuthorityService
 
     policy_service = components.get("service_policy_service")
     if not isinstance(policy_service, PolicyService):
         raise KeyError("service_policy_service")
+    language_model_service = components.get("service_language_model")
+    if not isinstance(language_model_service, LanguageModelService):
+        raise KeyError("service_language_model")
+    embedding_authority_service = components.get("service_embedding_authority")
+    if not isinstance(embedding_authority_service, EmbeddingAuthorityService):
+        raise KeyError("service_embedding_authority")
 
     return build_capability_engine_service(
         settings=settings,
         policy_service=policy_service,
+        language_model_service=language_model_service,
+        embedding_authority_service=embedding_authority_service,
         code_mode_adapter=components.get("adapter_utcp_code_mode"),
     )
 

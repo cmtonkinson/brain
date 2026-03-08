@@ -16,6 +16,7 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
     assert [call.path for call in result.calls] == [
         "/memory/get_latest_or_create_session",
         "/capabilities/describe",
+        "/capabilities/always-on",
         "/memory/assemble_context",
         "/lms/chat-with-tools",
         "/memory/record_response",
@@ -27,7 +28,6 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
         "actor": "operator",
         "channel": "signal",
         "message": "assistant reply",
-        "recipient_e164": "+12025550100",
     }
     assert invoke_call.body["invocation_id"] != ""
 

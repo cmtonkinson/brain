@@ -178,6 +178,35 @@ def test_attention_notify_api_smoke_returns_dependency_error_on_signal_failure(
     assert "signal send failed with status 400" in body["errors"][0]["message"]
 
 
+def test_attention_notify_api_smoke_rejects_transport_identity_overrides(
+    tmp_path,
+) -> None:
+    """Capability invoke HTTP should reject sender/recipient override fields."""
+    client, _signal = _client(tmp_path)
+
+    response = client.post(
+        "/capabilities/invoke",
+        json={
+            "source": "agent",
+            "principal": "operator",
+            "capability_id": "attention-notify",
+            "input_payload": {
+                "message": "assistant reply",
+                "sender_e164": "+17175371552",
+                "recipient_e164": "+16104257807",
+            },
+            "actor": "operator",
+            "channel": "signal",
+            "invocation_id": generate_ulid_str(),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["errors"][0]["category"] == "validation"
+    assert "unknown input keys" in body["errors"][0]["message"]
+
+
 def _settings():
     """Return minimum inert settings object for CES after_boot wiring."""
     from packages.brain_shared.config import (

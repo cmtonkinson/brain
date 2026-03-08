@@ -21,8 +21,6 @@ class RouteNotificationRequest(BaseModel):
     channel: str = Field(default="", min_length=0)
     title: str = Field(default="", min_length=0)
     message: str = Field(min_length=1)
-    recipient_e164: str = Field(default="", min_length=0)
-    sender_e164: str = Field(default="", min_length=0)
     dedupe_key: str = Field(default="", min_length=0)
     batch_key: str = Field(default="", min_length=0)
     force: bool = False
@@ -32,8 +30,6 @@ class RouteNotificationRequest(BaseModel):
         "channel",
         "title",
         "message",
-        "recipient_e164",
-        "sender_e164",
         "dedupe_key",
         "batch_key",
         mode="before",
