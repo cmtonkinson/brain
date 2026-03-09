@@ -34,6 +34,7 @@ class _FakeSubstrate(ObsidianSubstrate):
     def __init__(self) -> None:
         self.entries: list[ObsidianEntry] = []
         self.files: dict[str, ObsidianFileRecord] = {}
+        self.edit_calls: list[list[FileEditOperation]] = []
         self.search_calls: list[_SearchCall] = []
         self.raise_on_update: Exception | None = None
         self.raise_on_get: Exception | None = None
@@ -119,6 +120,7 @@ class _FakeSubstrate(ObsidianSubstrate):
         if_revision: str,
         force: bool,
     ) -> ObsidianFileRecord:
+        self.edit_calls.append(list(edits))
         return ObsidianFileRecord(
             path=file_path, content=f"edited:{len(edits)}", revision="r4"
         )
@@ -318,6 +320,22 @@ def test_edit_file_maps_edit_operations_and_returns_payload() -> None:
     assert result.ok is True
     assert result.payload is not None
     assert result.payload.value.content == "edited:1"
+
+
+def test_edit_file_accepts_dict_edit_payloads_from_capability_invocation() -> None:
+    """Edit should accept dict-shaped edits passed through CES/agent tool payloads."""
+    service, substrate = _service()
+
+    result = service.edit_file(
+        meta=_meta(),
+        file_path="notes/todo.md",
+        edits=[{"start_line": 2, "end_line": 3, "content": "patched"}],
+    )
+
+    assert result.ok is True
+    assert substrate.edit_calls == [
+        [FileEditOperation(start_line=2, end_line=3, content="patched")]
+    ]
 
 
 def test_move_path_allows_directory_names_with_dots() -> None:

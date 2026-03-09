@@ -28,6 +28,7 @@ from pydantic_ai.tools import ToolDefinition
 from packages.brain_sdk import (
     BrainClient,
     BrainDependencyError,
+    BrainPolicyError,
     BrainSdkConfig,
     CapabilityDescriptor,
     LmsChatMessage,
@@ -314,14 +315,33 @@ def _build_capability_tools(
 
         def _invoke(
             _capability_id: str = descriptor.capability_id,
+            _requires_approval: bool = descriptor.requires_approval,
             **input_payload: object,
         ) -> object:
-            result = client.invoke_capability(
-                capability_id=_capability_id,
-                input_payload=input_payload,
-                actor=turn_state.actor,
-                channel=turn_state.channel,
-            )
+            try:
+                result = client.invoke_capability(
+                    capability_id=_capability_id,
+                    input_payload=input_payload,
+                    actor=turn_state.actor,
+                    channel=turn_state.channel,
+                )
+            except BrainPolicyError as exc:
+                metadata = (
+                    {} if len(exc.details) == 0 else dict(exc.details[0].metadata)
+                )
+                reason_codes = [
+                    item
+                    for item in metadata.get("reason_codes", "").split(",")
+                    if item != ""
+                ]
+                return {
+                    "error": "policy_denied",
+                    "message": str(exc),
+                    "capability_id": _capability_id,
+                    "requires_approval": _requires_approval,
+                    "proposal_token": metadata.get("proposal_token", ""),
+                    "reason_codes": reason_codes,
+                }
             return result.output
 
         tools.append(

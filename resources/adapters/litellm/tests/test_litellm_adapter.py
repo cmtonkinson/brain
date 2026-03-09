@@ -90,6 +90,30 @@ def test_chat_calls_litellm_completion_with_resolved_provider_settings(
     assert fake_module.log_raw_request_response is True
 
 
+def test_chat_success_audit_falls_back_to_local_request_and_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Successful chat should audit sanitized request/response without hook payloads."""
+    fake_module = _FakeLiteLlmModule(
+        completion_response={"choices": [{"message": {"content": "hello"}}]}
+    )
+    monkeypatch.setattr(adapter_module, "_load_litellm_module", lambda: fake_module)
+    adapter = LiteLlmLibraryAdapter(settings=_settings())
+
+    result = adapter.chat(provider="ollama", model="gpt-oss", prompt="hi")
+
+    assert result.raw_call == AdapterProviderCallAudit(
+        request_api_base="http://localhost:11434",
+        request_headers={},
+        request_body={
+            "model": "ollama/gpt-oss",
+            "temperature": 0.0,
+            "messages": [{"role": "user", "content": "hi"}],
+        },
+        response_body={"choices": [{"message": {"content": "hello"}}]},
+    )
+
+
 def test_chat_with_tools_passes_tools_and_maps_tool_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -150,6 +174,47 @@ def test_chat_with_tools_passes_tools_and_maps_tool_calls(
             },
         }
     ]
+    assert result.raw_call == AdapterProviderCallAudit(
+        request_api_base="http://localhost:11434",
+        request_headers={},
+        request_body={
+            "model": "ollama/gpt-oss",
+            "temperature": 0.0,
+            "messages": [{"role": "user", "content": "hello"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "demo-tool",
+                        "description": "Do a thing.",
+                        "parameters": {"type": "object"},
+                        "strict": True,
+                    },
+                }
+            ],
+            "tool_choice": "auto",
+            "parallel_tool_calls": True,
+        },
+        response_body={
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call-1",
+                                "function": {
+                                    "name": "demo-tool",
+                                    "arguments": '{"value":"x"}',
+                                },
+                            }
+                        ],
+                    },
+                }
+            ]
+        },
+    )
 
 
 def test_embed_batch_maps_vectors_from_litellm_response(
@@ -176,6 +241,21 @@ def test_embed_batch_maps_vectors_from_litellm_response(
     assert len(result) == 2
     assert result[0].values == (0.1, 0.2)
     assert result[1].values == (0.3, 0.4)
+    assert result[0].raw_call == AdapterProviderCallAudit(
+        request_api_base="http://localhost:11434",
+        request_headers={},
+        request_body={
+            "model": "ollama/mxbai-embed-large",
+            "temperature": 0.0,
+            "input": ["a", "b"],
+        },
+        response_body={
+            "data": [
+                {"embedding": [0.1, 0.2]},
+                {"embedding": [0.3, 0.4]},
+            ]
+        },
+    )
     assert fake_module.embedding_calls[0]["model"] == "ollama/mxbai-embed-large"
     assert callable(fake_module.embedding_calls[0]["logger_fn"])
 

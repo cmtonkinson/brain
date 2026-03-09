@@ -24,6 +24,21 @@ DIAGRAM_PNGS    := \
 	img/c4-component.png \
 	img/boundaries-and-responsibilities.png
 INTEGRATION     ?= 0
+GATE_WIDTH      ?= 72
+
+ifdef TERM
+GATE_RESET      := \033[0m
+GATE_INFO       := \033[1;36m
+GATE_PASS       := \033[1;32m
+GATE_FAIL       := \033[1;31m
+GATE_WARN       := \033[1;33m
+else
+GATE_RESET      :=
+GATE_INFO       :=
+GATE_PASS       :=
+GATE_FAIL       :=
+GATE_WARN       :=
+endif
 
 ifneq (,$(filter integration,$(MAKECMDGOALS)))
 INTEGRATION := 1
@@ -34,6 +49,26 @@ PYTEST_INTEGRATION_ENV := BRAIN_RUN_INTEGRATION_REAL=1
 endif
 
 .PHONY: all deps deps-upgrade clean check format test test-all docs up down integration outline smoke smoke-e2e smoke-docker
+
+define run_gate
+	@set +e; \
+	rule=$$(printf '=%.0s' $$(seq 1 $(GATE_WIDTH))); \
+	start_ns=$$($(PY) -c 'import time; print(time.perf_counter_ns())'); \
+	printf "\n%b\n" "$(GATE_INFO)$${rule}$(GATE_RESET)"; \
+	printf "%b\n" "$(GATE_INFO)$(1)$(GATE_RESET)"; \
+	$(2); \
+	status=$$?; \
+	end_ns=$$($(PY) -c 'import time; print(time.perf_counter_ns())'); \
+	elapsed_centis=$$(((end_ns - start_ns + 5000000) / 10000000)); \
+	elapsed_major=$$((elapsed_centis / 100)); \
+	elapsed_minor=$$((elapsed_centis % 100)); \
+	if [ $$status -eq 0 ]; then \
+		printf "%b\n\n" "$(GATE_PASS)[PASS] $(1) in $${elapsed_major}.$$(printf '%02d' $$elapsed_minor)s$(GATE_RESET)"; \
+	else \
+		printf "%b\n\n" "$(GATE_FAIL)[FAIL] $(1) (exit $$status)$(GATE_RESET)"; \
+	fi; \
+	exit $$status
+endef
 
 all: deps clean
 	$(MAKE) test integration
@@ -56,14 +91,14 @@ clean:
 	find . -type d -name '__pycache__' -prune -exec rm -rf {} +
 
 check:
-	$(PY) -m ruff check .
-	$(PY) -m ruff format --check .
+	$(call run_gate,Ruff Check,$(PY) -m ruff check .)
+	$(call run_gate,Ruff Format Check,$(PY) -m ruff format --check .)
 
 format:
 	$(PY) -m ruff format .
 
 test: check
-	$(PYTEST_INTEGRATION_ENV) $(PY) -m pytest --quiet tests resources services actors
+	$(call run_gate,$(if $(filter 1,$(INTEGRATION)),Pytest (unit + integration),Pytest (unit)),$(PYTEST_INTEGRATION_ENV) $(PY) -m pytest --quiet tests resources services actors)
 
 test-all:
 	$(MAKE) check
@@ -73,20 +108,25 @@ test-all:
 	$(MAKE) smoke-docker
 
 integration:
-	:
+	@set +e; \
+	if [ "$(filter test,$(MAKECMDGOALS))" = "test" ]; then \
+		:; \
+	else \
+		printf "\n%b\n" "$(GATE_WARN)[WARN] integration is a selector target; run 'make test integration' to include integration tests.$(GATE_RESET)"; \
+	fi
 
 smoke-e2e:
-	$(PY) scripts/smoke_agent_e2e.py
+	$(call run_gate,Smoke E2E,$(PY) scripts/smoke_agent_e2e.py)
 
 smoke-docker:
-	$(PY) scripts/smoke_docker_turn.py
+	$(call run_gate,Smoke Docker,$(PY) scripts/smoke_docker_turn.py)
 
 smoke: check
-	$(PY) -m pytest --quiet \
+	$(call run_gate,Pytest Smoke,$(PY) -m pytest --quiet \
 		actors/agent/tests/test_agent_turn_harness.py \
 		tests/integration/test_attention_notify_api_smoke.py \
 		resources/adapters/signal/tests/test_signal_adapter_wire_integration.py \
-		tests/integration/test_agent_e2e_smoke.py
+		tests/integration/test_agent_e2e_smoke.py)
 
 docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(HTTP_API_DOC) $(CAPABILITY_DOC) $(DIAGRAM_PNGS)
 

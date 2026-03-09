@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any, Sequence
 
@@ -393,7 +394,14 @@ class DefaultVaultAuthorityService(VaultAuthorityService):
             model=EditFileRequest,
             payload={
                 "file_path": file_path,
-                "edits": [item.model_dump(mode="python") for item in edits],
+                "edits": [
+                    item.model_dump(mode="python")
+                    if isinstance(item, FileEdit)
+                    else dict(item)
+                    if isinstance(item, Mapping)
+                    else item
+                    for item in edits
+                ],
                 "if_revision": if_revision,
                 "force": force,
             },

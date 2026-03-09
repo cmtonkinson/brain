@@ -235,6 +235,11 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
                     fallback_request=_fallback_request_audit(kwargs=kwargs),
                 ),
             )
+        audit = _finalize_success_raw_call(
+            response=response,
+            capture=raw_call,
+            fallback_request=_fallback_request_audit(kwargs=kwargs),
+        )
         _LOGGER.debug(
             "LiteLLM provider request completed",
             extra={
@@ -244,7 +249,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
                 "duration_ms": round((perf_counter() - started_at) * 1000, 3),
             },
         )
-        return response, raw_call.to_model()
+        return response, audit
 
     def _call_embedding(
         self,
@@ -289,6 +294,11 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
                     fallback_request=_fallback_request_audit(kwargs=kwargs),
                 ),
             )
+        audit = _finalize_success_raw_call(
+            response=response,
+            capture=raw_call,
+            fallback_request=_fallback_request_audit(kwargs=kwargs),
+        )
         _LOGGER.debug(
             "LiteLLM provider request completed",
             extra={
@@ -299,7 +309,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
                 "duration_ms": round((perf_counter() - started_at) * 1000, 3),
             },
         )
-        return response, raw_call.to_model()
+        return response, audit
 
     def _resolve_provider_settings(self, *, provider: str) -> _ResolvedProviderSettings:
         """Resolve provider-specific settings and enforce configuration validity."""
@@ -531,6 +541,55 @@ def _finalize_exception_raw_call(
         request_body=request_body,
         response_body=response_body,
     )
+
+
+def _finalize_success_raw_call(
+    *,
+    response: object,
+    capture: "_RawCallCapture",
+    fallback_request: AdapterProviderCallAudit,
+) -> AdapterProviderCallAudit:
+    """Return one normalized success audit using local request kwargs as baseline."""
+    request_api_base = capture.request_api_base or fallback_request.request_api_base
+    request_headers = _prefer_nonempty_mapping(
+        capture.request_headers,
+        fallback_request.request_headers,
+    )
+    request_body = _prefer_nonempty_value(
+        capture.request_body,
+        fallback_request.request_body,
+    )
+    response_body = _prefer_nonempty_value(
+        capture.response_body,
+        _json_safe_value(response),
+    )
+    return AdapterProviderCallAudit(
+        request_api_base=request_api_base,
+        request_headers=request_headers,
+        request_body=request_body,
+        response_body=response_body,
+    )
+
+
+def _prefer_nonempty_mapping(
+    primary: dict[str, object] | None,
+    fallback: dict[str, object],
+) -> dict[str, object]:
+    """Prefer one mapping when it carries any keys, else return the fallback."""
+    if primary:
+        return primary
+    return fallback
+
+
+def _prefer_nonempty_value(
+    primary: object | None, fallback: object | None
+) -> object | None:
+    """Prefer one value when it is meaningfully populated, else return fallback."""
+    if primary is None:
+        return fallback
+    if isinstance(primary, (dict, list, tuple, str)) and len(primary) == 0:
+        return fallback
+    return primary
 
 
 def _response_body_from_exception(exc: Exception) -> object | None:

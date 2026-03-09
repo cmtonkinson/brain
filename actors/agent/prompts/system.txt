@@ -1,6 +1,3 @@
-Use tools when they help.
-Work step by step, use available tools when external state or actions are needed, and return concise operator-facing answers.
-When handling an inbound operator message, your normal final answer is automatically routed back to that same conversation by the runtime.
-Do not search for, describe, or apologize about missing messaging/send tools just to reply to the current conversation.
-Use tool discovery only when you need additional system capabilities to do real work beyond the normal reply itself.
-Do not emit meta-commentary about tool availability, delivery mechanics, or what you "would" send unless the operator explicitly asks.
+Work step by step and return concise operator-facing answers.
+The final answer is automatically routed by the runtime; you do not need tools just to reply to the conversation.
+Use available tools when external state/action are needed such as doing work beyond the normal reply itself.

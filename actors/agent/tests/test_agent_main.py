@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 from packages.brain_shared.config import ActorSettings
 from packages.brain_sdk import (
     BrainDependencyError,
+    BrainPolicyError,
     CapabilityDescriptor,
     CapabilitySearchHit,
     LmsChatMessage,
@@ -210,6 +211,75 @@ def test_build_capability_tools_uses_descriptor_input_schema() -> None:
         "properties": {"file_path": {"type": "string"}},
         "required": ["file_path"],
         "additionalProperties": False,
+    }
+
+
+def test_build_capability_tools_returns_policy_denial_payload() -> None:
+    """Approval-gated denials should return tool data instead of aborting the turn."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+        ):
+            del capability_id, input_payload, actor, channel
+            raise BrainPolicyError(
+                message=(
+                    "capabilities.invoke domain failure: "
+                    "policy denied capability invocation"
+                ),
+                operation="capabilities.invoke",
+                details=(
+                    SdkErrorDetail(
+                        code="permission_denied",
+                        message="policy denied capability invocation",
+                        category="policy",
+                        metadata={
+                            "proposal_token": "tok-123",
+                            "reason_codes": "approval_required",
+                        },
+                    ),
+                ),
+            )
+
+    tools = main._build_capability_tools(
+        client=_FakeClient(),  # type: ignore[arg-type]
+        capabilities=(
+            CapabilityDescriptor(
+                capability_id="vault-move-path",
+                kind="native_op",
+                version="1.0.0",
+                summary="Move one file or directory path.",
+                input_schema={"type": "object"},
+                output_schema={"type": "object"},
+                autonomy=0,
+                requires_approval=True,
+                side_effects=("writes_vault",),
+                required_capabilities=(),
+            ),
+        ),
+        turn_state=main._TurnState(actor="operator", channel="signal"),
+    )
+
+    result = tools[0].function(
+        source_path="notes/old.md",
+        target_path="notes/new.md",
+    )
+
+    assert result == {
+        "error": "policy_denied",
+        "message": (
+            "capabilities.invoke domain failure: policy denied capability invocation"
+        ),
+        "capability_id": "vault-move-path",
+        "requires_approval": True,
+        "proposal_token": "tok-123",
+        "reason_codes": ["approval_required"],
     }
 
 
