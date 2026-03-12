@@ -41,21 +41,22 @@ def run_app(
     app: FastAPI,
     *,
     host: str = "127.0.0.1",
-    port: int = 8000,
+    port: int = 8898,
     log_level: str = "info",
 ) -> None:
     """Run one FastAPI app through uvicorn."""
     uvicorn.run(app, host=host, port=port, log_level=log_level)
 
 
-def run_app_uds(
+def create_server(
     app: FastAPI,
     *,
-    socket_path: str,
+    host: str = "127.0.0.1",
+    port: int = 8898,
     log_level: str = "warning",
 ) -> uvicorn.Server:
-    """Create a uvicorn Server serving app over a Unix Domain Socket."""
-    config = uvicorn.Config(app, uds=socket_path, log_level=log_level)
+    """Create a uvicorn Server serving app over TCP."""
+    config = uvicorn.Config(app, host=host, port=port, log_level=log_level)
     return uvicorn.Server(config)
 
 

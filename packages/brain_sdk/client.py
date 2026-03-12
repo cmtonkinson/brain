@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import httpx
-
 from packages.brain_sdk.calls import (
     CapabilityDescriptor,
     CapabilityInvokeResult,
@@ -32,7 +30,8 @@ from packages.brain_sdk.calls import (
 )
 from packages.brain_sdk.config import (
     BrainSdkConfig,
-    resolve_socket_path,
+    resolve_host,
+    resolve_port,
     resolve_timeout_seconds,
 )
 from packages.brain_sdk.meta import MetaOverrides, build_envelope_meta
@@ -285,49 +284,35 @@ class BrainClient:
         )
 
     def _new_http_client(self) -> HttpClient:
-        """Create one HttpClient over UDS from SDK runtime configuration."""
-        transport = httpx.HTTPTransport(
-            uds=resolve_socket_path(self._config.socket_path)
-        )
+        """Create one HttpClient over TCP from SDK runtime configuration."""
         return HttpClient(
-            base_url="http://brain-core",
+            base_url=f"http://{self._config.host}:{self._config.port}",
             timeout_seconds=self._config.timeout_seconds,
-            transport=transport,
         )
 
 
 class BrainSdkClient(BrainClient):
-    """CLI-friendly SDK client with constructor aliases for socket/timeout args."""
+    """CLI-friendly SDK client with constructor aliases for host/port args."""
 
     def __init__(
         self,
-        socket: str | None = None,
+        host: str | None = None,
+        port: int | None = None,
         timeout: float | None = None,
         *,
-        socket_path: str | None = None,
-        target: str | None = None,
-        address: str | None = None,
         timeout_seconds: float | None = None,
         source: str = "cli",
         principal: str = "operator",
         http: HttpClient | None = None,
     ) -> None:
         """Create one SDK client from direct constructor fields."""
-        resolved_socket = (
-            socket
-            if socket is not None
-            else socket_path
-            if socket_path is not None
-            else target
-            if target is not None
-            else address
-        )
         resolved_timeout = resolve_timeout_seconds(
             timeout if timeout is not None else timeout_seconds
         )
         super().__init__(
             config=BrainSdkConfig(
-                socket_path=resolve_socket_path(resolved_socket),
+                host=resolve_host(host),
+                port=resolve_port(port),
                 timeout_seconds=resolved_timeout,
                 source=source,
                 principal=principal,

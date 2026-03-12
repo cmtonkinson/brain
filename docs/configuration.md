@@ -44,7 +44,8 @@ BRAIN_CORE__PROFILE__OPERATOR__SIGNAL_CONTACT_E164=+12025550100
 BRAIN_CORE__PROFILE__DEFAULT_DIAL_CODE=+1
 BRAIN_CORE__PROFILE__WEBHOOK_SHARED_SECRET=replace-me
 BRAIN_CORE__BOOT__BOOT_RETRY_ATTEMPTS=5
-BRAIN_CORE__HTTP__SOCKET_PATH=/app/config/generated/brain.sock
+BRAIN_CORE__HTTP__HOST=0.0.0.0
+BRAIN_CORE__HTTP__PORT=8898
 BRAIN_CORE__HEALTH__MAX_TIMEOUT_SECONDS=1.0
 BRAIN_RESOURCES__SUBSTRATE__POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
 BRAIN_RESOURCES__SUBSTRATE__POSTGRES__POOL_SIZE=10
@@ -52,7 +53,8 @@ BRAIN_RESOURCES__SUBSTRATE__QDRANT__URL=http://qdrant:6333
 BRAIN_RESOURCES__SUBSTRATE__REDIS__URL=redis://redis:6379/0
 BRAIN_RESOURCES__ADAPTER__LITELLM__BASE_URL=http://litellm:4000
 BRAIN_RESOURCES_ADAPTER__SIGNAL__BASE_URL=http://signal-api:8080
-BRAIN_ACTORS__CORE__SOCKET_PATH=/Users/chris/.config/brain/generated/brain.sock
+BRAIN_ACTORS__CORE__HOST=127.0.0.1
+BRAIN_ACTORS__CORE__PORT=8898
 BRAIN_ACTORS__CORE__TIMEOUT_SECONDS=10.0
 BRAIN_ACTORS__CLI__PRINCIPAL=operator
 ```
@@ -103,7 +105,8 @@ Core HTTP runtime settings.
 
 | Key | Default | Description |
 |---|---|---|
-| `socket_path` | `/app/config/generated/brain.sock` | Unix domain socket path for the Brain Core FastAPI runtime. The `brain_sdk` client connects over this socket. |
+| `host` | `0.0.0.0` | Host interface for the Brain Core FastAPI runtime. |
+| `port` | `8898` | TCP port for the Brain Core FastAPI runtime. |
 
 ### `core.health`
 Core aggregate health policy settings.

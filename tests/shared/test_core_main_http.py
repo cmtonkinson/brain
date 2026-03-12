@@ -38,7 +38,7 @@ class _Registry:
 def test_start_http_runtime_registers_routes_and_starts() -> None:
     """HTTP runtime should register available routes and start server thread."""
     settings = CoreRuntimeSettings(
-        core=CoreSettings(http=CoreHttpSettings(socket_path="/tmp/test-brain.sock")),
+        core=CoreSettings(http=CoreHttpSettings(host="127.0.0.1", port=8123)),
         resources=ResourcesSettings(),
     )
     registry = _Registry(
@@ -61,7 +61,7 @@ def test_start_http_runtime_registers_routes_and_starts() -> None:
             "packages.brain_core.main._resolve_service_http_registrar",
             side_effect=_resolver,
         ),
-        patch("packages.brain_core.main.run_app_uds", return_value=fake_server),
+        patch("packages.brain_core.main.create_server", return_value=fake_server),
         patch("packages.brain_core.main.create_app") as mock_create_app,
         patch("packages.brain_core.main.register_routes"),
     ):

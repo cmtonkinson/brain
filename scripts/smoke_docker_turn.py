@@ -205,7 +205,6 @@ def _write_override_file(
                 "volumes": [
                     f"{config_dir}:/app/config:ro",
                     f"{generated_dir}:/app/config/generated:rw",
-                    "brain-socket:/run/brain",
                 ],
                 "depends_on": {
                     "postgres": {"condition": "service_healthy"},
@@ -221,7 +220,6 @@ def _write_override_file(
                 "volumes": [
                     f"{config_dir}:/app/config:ro",
                     f"{generated_dir}:/app/config/generated:rw",
-                    "brain-socket:/run/brain",
                 ],
             },
             "postgres": {
@@ -322,7 +320,7 @@ def _write_override_file(
 
 
 def _wait_for_core_health(*, env: dict[str, str], override_file: Path) -> None:
-    """Wait until Core health succeeds over the shared unix socket."""
+    """Wait until Core health succeeds over the published TCP endpoint."""
     deadline = time.monotonic() + 120.0
     while time.monotonic() < deadline:
         result = _compose(
@@ -334,9 +332,7 @@ def _wait_for_core_health(*, env: dict[str, str], override_file: Path) -> None:
             "curl",
             "--silent",
             "--fail",
-            "--unix-socket",
-            "/run/brain/brain.sock",
-            "http://localhost/health",
+            "http://127.0.0.1:8898/health",
             check=False,
         )
         if result.returncode == 0:

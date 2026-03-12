@@ -26,6 +26,6 @@ RUN addgroup --system brain && adduser --system --ingroup brain brain && \
 USER brain
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=3 \
-  CMD curl --silent --fail --unix-socket /run/brain/brain.sock http://localhost/health || exit 1
+  CMD curl --silent --fail http://127.0.0.1:8898/health || exit 1
 
 ENTRYPOINT ["python", "-m", "packages.brain_core.main"]

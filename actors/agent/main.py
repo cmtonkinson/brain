@@ -454,7 +454,8 @@ def _build_prepare_tools(*, turn_state: _TurnState):
 def _brain_sdk_config_from_settings(settings: ActorSettings) -> BrainSdkConfig:
     """Project actor settings into the SDK client configuration model."""
     return BrainSdkConfig(
-        socket_path=str(settings.core.socket_path),
+        host=str(settings.core.host),
+        port=int(settings.core.port),
         timeout_seconds=float(settings.core.timeout_seconds),
         source=str(settings.agent.source),
         principal=str(settings.agent.principal),
@@ -653,7 +654,8 @@ async def _run_main() -> None:
         _LOGGER.info(
             "brain agent started",
             extra={
-                "socket_path": settings.core.socket_path,
+                "core_host": settings.core.host,
+                "core_port": settings.core.port,
                 "timeout_seconds": settings.core.timeout_seconds,
                 "source": settings.agent.source,
                 "principal": settings.agent.principal,

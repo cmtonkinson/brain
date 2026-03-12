@@ -7,7 +7,6 @@ import json
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
@@ -17,37 +16,45 @@ from packages.brain_sdk import (
     DomainError,
     TransportError,
     core_health,
-    lms_chat,
-    vault_get,
-    vault_list,
-    vault_search,
+    describe_capability,
+    describe_capabilities,
+    invoke_capability,
 )
 from packages.brain_shared.config import load_actor_settings
 
 SUCCESS_EXIT_CODE = 0
 DOMAIN_ERROR_EXIT_CODE = 3
 TRANSPORT_ERROR_EXIT_CODE = 4
-
-
-class ReasoningProfile(str, Enum):
-    """Supported LMS reasoning profiles for chat."""
-
-    QUICK = "quick"
-    STANDARD = "standard"
-    DEEP = "deep"
+KNOWN_SERVICE_PREFIXES = frozenset(
+    {
+        "attention",
+        "cache",
+        "embedding",
+        "memory",
+        "object",
+        "utility",
+        "vault",
+    }
+)
+_DYNAMIC_COMMAND_CONTEXT_SETTINGS = {
+    "allow_extra_args": True,
+    "ignore_unknown_options": True,
+}
 
 
 @dataclass(frozen=True)
 class CliConfig:
     """Global CLI runtime options propagated to SDK calls."""
 
-    socket: str
+    host: str
+    port: int
     principal: str
     source: str
     timeout: float
     as_json: bool
     trace_id: str | None
     parent_id: str | None
+    capabilities: tuple[Any, ...]
 
 
 def _serialize(value: Any) -> Any:
@@ -105,15 +112,6 @@ def _render_human(data: Any) -> str | None:
     if isinstance(data, dict):
         if _looks_like_core_health(data):
             return _render_core_health(data)
-        if _looks_like_lms_chat(data):
-            return _render_lms_chat(data)
-        if _looks_like_vault_file(data):
-            return _render_vault_file(data)
-    if isinstance(data, list):
-        if _looks_like_vault_search(data):
-            return _render_vault_search(data)
-        if _looks_like_vault_list(data):
-            return _render_vault_list(data)
     if isinstance(data, (dict, list)):
         return json.dumps(data, indent=2, sort_keys=True)
     return None
@@ -125,30 +123,6 @@ def _looks_like_core_health(value: dict[str, Any]) -> bool:
         isinstance(value.get("ready"), bool)
         and isinstance(value.get("services"), dict)
         and isinstance(value.get("resources"), dict)
-    )
-
-
-def _looks_like_lms_chat(value: dict[str, Any]) -> bool:
-    """Return True for LMS chat payloads."""
-    return "text" in value or "reply" in value
-
-
-def _looks_like_vault_file(value: dict[str, Any]) -> bool:
-    """Return True for vault get payloads."""
-    return "path" in value and "content" in value
-
-
-def _looks_like_vault_search(items: list[Any]) -> bool:
-    """Return True for vault search payloads."""
-    return len(items) == 0 or all(
-        isinstance(item, dict) and "path" in item and "score" in item for item in items
-    )
-
-
-def _looks_like_vault_list(items: list[Any]) -> bool:
-    """Return True for vault list payloads."""
-    return len(items) == 0 or all(
-        isinstance(item, (str, dict)) and not isinstance(item, bool) for item in items
     )
 
 
@@ -214,71 +188,11 @@ def _humanize_component_name(name: str) -> str:
     return normalized.replace("_", " ").title()
 
 
-def _render_lms_chat(data: dict[str, Any]) -> str:
-    """Render LMS chat result."""
-    text = str(data.get("text", data.get("reply", ""))).strip()
-    provider = str(data.get("provider", "")).strip()
-    model = str(data.get("model", "")).strip()
-    lines = [text]
-    if provider != "" or model != "":
-        lines.append(f"[{provider}:{model}]".strip(":"))
-    return "\n".join(line for line in lines if line != "")
-
-
-def _render_vault_file(data: dict[str, Any]) -> str:
-    """Render vault file payload."""
-    path = str(data.get("path", "")).strip()
-    content = str(data.get("content", ""))
-    heading = f"File: {path}" if path != "" else "File"
-    return f"{heading}\n\n{content}".rstrip()
-
-
-def _render_vault_list(items: list[Any]) -> str:
-    """Render vault list payload."""
-    if len(items) == 0:
-        return "No entries found."
-    lines: list[str] = []
-    for item in items:
-        if isinstance(item, str):
-            lines.append(f"- {item}")
-            continue
-        if isinstance(item, dict):
-            path = str(item.get("path", item.get("name", ""))).strip()
-            entry_type = str(item.get("entry_type", "")).strip()
-            if path == "":
-                path = "<unknown>"
-            if entry_type != "":
-                lines.append(f"- {path} ({entry_type})")
-            else:
-                lines.append(f"- {path}")
-    return "\n".join(lines)
-
-
-def _render_vault_search(items: list[Any]) -> str:
-    """Render vault search payload."""
-    if len(items) == 0:
-        return "No matches found."
-    lines: list[str] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        path = str(item.get("path", "<unknown>"))
-        score = item.get("score")
-        snippets = item.get("snippets", [])
-        line = f"- {path}"
-        if isinstance(score, (int, float)):
-            line = f"{line} (score: {score:.3f})"
-        lines.append(line)
-        if isinstance(snippets, list):
-            for snippet in snippets[:2]:
-                lines.append(f"  {snippet}")
-    return "\n".join(lines)
-
-
 def _with_client(cfg: CliConfig) -> BrainSdkClient:
     """Return one SDK client built from global CLI settings."""
     return BrainSdkClient(
-        socket=cfg.socket,
+        host=cfg.host,
+        port=cfg.port,
         timeout=cfg.timeout,
         source=cfg.source,
         principal=cfg.principal,
@@ -301,6 +215,26 @@ def _run_command(cfg: CliConfig, invoke: Callable[[BrainSdkClient], Any]) -> Non
     raise typer.Exit(code=SUCCESS_EXIT_CODE)
 
 
+def _load_capabilities(cfg: CliConfig) -> tuple[Any, ...]:
+    """Load the published CES capability list during CLI startup."""
+    try:
+        with _with_client(cfg) as client:
+            capabilities = describe_capabilities(
+                client=client,
+                source=cfg.source,
+                principal=cfg.principal,
+                trace_id=cfg.trace_id,
+                parent_id=cfg.parent_id,
+            )
+    except DomainError as exc:
+        _emit_error(exc, cfg.as_json)
+        raise typer.Exit(code=DOMAIN_ERROR_EXIT_CODE) from exc
+    except TransportError as exc:
+        _emit_error(exc, cfg.as_json)
+        raise typer.Exit(code=TRANSPORT_ERROR_EXIT_CODE) from exc
+    return tuple(capabilities)
+
+
 def _require_config(ctx: typer.Context) -> CliConfig:
     """Return required CLI config from Typer context."""
 
@@ -310,19 +244,267 @@ def _require_config(ctx: typer.Context) -> CliConfig:
     return config
 
 
+def _capability_field(descriptor: Any, field_name: str, default: Any = None) -> Any:
+    """Read one capability descriptor field from dicts or typed objects."""
+    if isinstance(descriptor, dict):
+        return descriptor.get(field_name, default)
+    return getattr(descriptor, field_name, default)
+
+
+def _capability_id(descriptor: Any) -> str:
+    """Return the canonical capability identifier for one descriptor."""
+    return str(_capability_field(descriptor, "capability_id", "")).strip()
+
+
+def _capability_summary(descriptor: Any) -> str:
+    """Return the summary text for one descriptor."""
+    return str(_capability_field(descriptor, "summary", "")).strip()
+
+
+def _capability_input_schema(descriptor: Any) -> dict[str, Any] | None:
+    """Return the input schema object for one descriptor when available."""
+    value = _capability_field(descriptor, "input_schema")
+    return dict(value) if isinstance(value, dict) else None
+
+
+def _capability_command_path(capability_id: str) -> tuple[str, ...]:
+    """Split one capability id only when it uses a known service prefix."""
+    prefix, separator, remainder = capability_id.partition("-")
+    if separator != "" and prefix in KNOWN_SERVICE_PREFIXES:
+        return prefix, remainder
+    return (capability_id,)
+
+
+def _capability_lookup(cfg: CliConfig) -> dict[str, Any]:
+    """Index loaded capability descriptors by canonical identifier."""
+    return {_capability_id(item): item for item in cfg.capabilities}
+
+
+def _require_capability(cfg: CliConfig, capability_id: str) -> Any:
+    """Return one loaded capability descriptor or raise a usage error."""
+    descriptor = _capability_lookup(cfg).get(capability_id)
+    if descriptor is None:
+        raise typer.BadParameter(f"unknown capability: {capability_id}")
+    return descriptor
+
+
+def _command_label_for_capability(capability_id: str) -> str:
+    """Return the user-facing CLI command form for one capability id."""
+    path = _capability_command_path(capability_id)
+    if len(path) == 2:
+        return " ".join(path)
+    return f"capability invoke {capability_id}"
+
+
+def _json_object(text: str) -> dict[str, Any]:
+    """Parse one JSON object payload from CLI text."""
+    try:
+        payload = json.loads(text)
+    except ValueError as exc:
+        raise typer.BadParameter("`--input-json` must be valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise typer.BadParameter("`--input-json` must decode to a JSON object")
+    return payload
+
+
+def _coerce_capability_value(name: str, schema: dict[str, Any], value: str) -> Any:
+    """Coerce one CLI token into the JSON-schema-declared scalar type."""
+    schema_type = schema.get("type")
+    if schema_type == "string":
+        return value
+    if schema_type == "integer":
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise typer.BadParameter(f"`{name}` must be an integer") from exc
+    if schema_type == "number":
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise typer.BadParameter(f"`{name}` must be a number") from exc
+    if schema_type == "boolean":
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        raise typer.BadParameter(f"`{name}` must be a boolean")
+    raise typer.BadParameter(
+        f"`{name}` uses an unsupported schema shape; pass it via `--input-json`"
+    )
+
+
+def _coerce_capability_option(
+    name: str, schema: dict[str, Any], values: list[str]
+) -> Any:
+    """Coerce one parsed option according to one property schema."""
+    schema_type = schema.get("type")
+    if schema_type == "array":
+        items = schema.get("items")
+        if not isinstance(items, dict):
+            raise typer.BadParameter(
+                f"`{name}` uses an unsupported array schema; pass it via `--input-json`"
+            )
+        return [_coerce_capability_value(name, items, item) for item in values]
+    if len(values) != 1:
+        raise typer.BadParameter(f"`{name}` does not accept multiple values")
+    return _coerce_capability_value(name, schema, values[0])
+
+
+def _parse_capability_cli_args(
+    *, descriptor: Any, args: list[str], input_json: str | None
+) -> dict[str, Any]:
+    """Parse extra CLI args into one CES capability input payload."""
+    payload = {} if input_json is None else _json_object(input_json)
+    schema = _capability_input_schema(descriptor)
+    if schema is None:
+        if len(args) != 0:
+            raise typer.BadParameter(
+                "this capability does not expose CLI flags; use `--input-json`"
+            )
+        return payload
+    if schema.get("type") not in (None, "object"):
+        if len(args) != 0:
+            raise typer.BadParameter(
+                "this capability requires `--input-json` because its input is not a flat object"
+            )
+        return payload
+
+    properties = schema.get("properties", {})
+    property_map = properties if isinstance(properties, dict) else {}
+    required_raw = schema.get("required", ())
+    required = {str(item) for item in required_raw if isinstance(item, str)}
+    parsed_values: dict[str, list[str]] = {}
+
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if not token.startswith("--"):
+            raise typer.BadParameter(
+                f"unexpected argument `{token}`; use named options or `--input-json`"
+            )
+
+        if token.startswith("--no-"):
+            option_name = token[5:].replace("-", "_")
+            option_schema = property_map.get(option_name)
+            if (
+                not isinstance(option_schema, dict)
+                or option_schema.get("type") != "boolean"
+            ):
+                raise typer.BadParameter(f"unknown option `{token}`")
+            parsed_values[option_name] = ["false"]
+            index += 1
+            continue
+
+        if "=" in token:
+            option_token, attached_value = token.split("=", 1)
+        else:
+            option_token = token
+            attached_value = None
+
+        option_name = option_token[2:].replace("-", "_")
+        option_schema = property_map.get(option_name)
+        if not isinstance(option_schema, dict):
+            raise typer.BadParameter(f"unknown option `{option_token}`")
+
+        values = parsed_values.setdefault(option_name, [])
+        if attached_value is not None:
+            values.append(attached_value)
+            index += 1
+            continue
+
+        if option_schema.get("type") == "boolean":
+            next_token = args[index + 1] if index + 1 < len(args) else None
+            if next_token is None or next_token.startswith("--"):
+                values.append("true")
+                index += 1
+                continue
+
+        if index + 1 >= len(args):
+            raise typer.BadParameter(f"missing value for `{option_token}`")
+        values.append(args[index + 1])
+        index += 2
+
+    for name, values in parsed_values.items():
+        option_schema = property_map.get(name)
+        if not isinstance(option_schema, dict):
+            continue
+        payload[name] = _coerce_capability_option(name, option_schema, values)
+
+    missing = sorted(name for name in required if name not in payload)
+    if len(missing) != 0:
+        formatted = ", ".join(f"`--{name.replace('_', '-')}`" for name in missing)
+        raise typer.BadParameter(f"missing required options: {formatted}")
+
+    return payload
+
+
+def _invoke_capability_result(
+    *,
+    client: BrainSdkClient,
+    cfg: CliConfig,
+    capability_id: str,
+    input_payload: dict[str, Any],
+) -> Any:
+    """Invoke one CES capability and return its output payload."""
+    result = invoke_capability(
+        client=client,
+        capability_id=capability_id,
+        input_payload=input_payload,
+        actor=cfg.principal,
+        channel=cfg.source,
+        principal=cfg.principal,
+        source=cfg.source,
+        trace_id=cfg.trace_id,
+        parent_id=cfg.parent_id,
+    )
+    return result.output
+
+
+def _invoke_loaded_capability(
+    *,
+    ctx: typer.Context,
+    capability_id: str,
+    input_json: str | None,
+) -> None:
+    """Resolve one loaded descriptor, parse CLI args, and invoke it."""
+    cfg = _require_config(ctx)
+    descriptor = _require_capability(cfg, capability_id)
+    input_payload = _parse_capability_cli_args(
+        descriptor=descriptor,
+        args=list(ctx.args),
+        input_json=input_json,
+    )
+    _run_command(
+        cfg,
+        lambda client: _invoke_capability_result(
+            client=client,
+            cfg=cfg,
+            capability_id=capability_id,
+            input_payload=input_payload,
+        ),
+    )
+
+
 app = typer.Typer(no_args_is_help=True, help="Brain command-line interface")
 health_app = typer.Typer(help="Core domain commands")
-lms_app = typer.Typer(help="Language model service commands")
-vault_app = typer.Typer(help="Vault authority commands")
+capability_app = typer.Typer(help="Capability discovery and invocation commands")
 
 
 @app.callback()
 def main(
     ctx: typer.Context,
-    socket: str | None = typer.Option(
+    host: str | None = typer.Option(
         None,
-        envvar="BRAIN_ACTORS_CORE__SOCKET_PATH",
-        help="Brain Core Unix socket path",
+        envvar="BRAIN_ACTORS_CORE__HOST",
+        help="Brain Core host",
+    ),
+    port: int | None = typer.Option(
+        None,
+        envvar="BRAIN_ACTORS_CORE__PORT",
+        min=1,
+        max=65535,
+        help="Brain Core TCP port",
     ),
     principal: str | None = typer.Option(None, help="Envelope principal"),
     source: str | None = typer.Option(None, help="Envelope source"),
@@ -338,14 +520,20 @@ def main(
     """Store global options for all domain/action commands."""
     actor_settings = load_actor_settings()
 
-    ctx.obj = CliConfig(
-        socket=socket if socket is not None else actor_settings.core.socket_path,
+    base_config = CliConfig(
+        host=host if host is not None else actor_settings.core.host,
+        port=port if port is not None else actor_settings.core.port,
         principal=principal if principal is not None else actor_settings.cli.principal,
         source=source if source is not None else actor_settings.cli.source,
         timeout=timeout if timeout is not None else actor_settings.core.timeout_seconds,
         as_json=as_json,
         trace_id=trace_id,
         parent_id=parent_id,
+        capabilities=(),
+    )
+    ctx.obj = dataclasses.replace(
+        base_config,
+        capabilities=_load_capabilities(base_config),
     )
 
 
@@ -365,93 +553,93 @@ def health_core(ctx: typer.Context) -> None:
     )
 
 
-@lms_app.command("chat")
-def lms_chat_command(
+@capability_app.command("list")
+def capability_list(ctx: typer.Context) -> None:
+    """List discovered CES capabilities and their CLI command forms."""
+    cfg = _require_config(ctx)
+    _emit_output(
+        [
+            {
+                "capability_id": _capability_id(item),
+                "command": _command_label_for_capability(_capability_id(item)),
+                "summary": _capability_summary(item),
+            }
+            for item in cfg.capabilities
+        ],
+        cfg.as_json,
+    )
+    raise typer.Exit(code=SUCCESS_EXIT_CODE)
+
+
+@capability_app.command("describe")
+def capability_describe(ctx: typer.Context, capability_id: str) -> None:
+    """Describe one discovered capability through CES."""
+    cfg = _require_config(ctx)
+    _run_command(
+        cfg,
+        lambda client: describe_capability(
+            client=client,
+            capability_id=capability_id,
+            principal=cfg.principal,
+            source=cfg.source,
+            trace_id=cfg.trace_id,
+            parent_id=cfg.parent_id,
+        ),
+    )
+
+
+@capability_app.command(
+    "invoke",
+    context_settings=_DYNAMIC_COMMAND_CONTEXT_SETTINGS,
+)
+def capability_invoke(
     ctx: typer.Context,
-    prompt: str = typer.Argument(..., help="Chat prompt"),
-    profile: ReasoningProfile = typer.Option(
-        ReasoningProfile.STANDARD,
-        help="Reasoning profile",
-        case_sensitive=False,
-        show_choices=True,
+    capability_id: str = typer.Argument(..., help="Capability identifier"),
+    input_json: str | None = typer.Option(
+        None,
+        "--input-json",
+        help="Raw JSON object payload for complex capability inputs",
     ),
 ) -> None:
-    """Call LMS chat."""
-    cfg = _require_config(ctx)
-    _run_command(
-        cfg,
-        lambda client: lms_chat(
-            client=client,
-            prompt=prompt,
-            profile=profile.value,
-            source=cfg.source,
-            principal=cfg.principal,
-            trace_id=cfg.trace_id,
-            parent_id=cfg.parent_id,
-        ),
+    """Invoke one discovered capability by id."""
+    _invoke_loaded_capability(
+        ctx=ctx,
+        capability_id=capability_id,
+        input_json=input_json,
     )
 
 
-@vault_app.command("get")
-def vault_get_command(
-    ctx: typer.Context, path: str = typer.Argument(..., help="Vault file path")
-) -> None:
-    """Call vault get."""
-    cfg = _require_config(ctx)
-    _run_command(
-        cfg,
-        lambda client: vault_get(
-            client=client,
-            file_path=path,
-            trace_id=cfg.trace_id,
-            parent_id=cfg.parent_id,
+def _build_service_command(prefix: str) -> Callable[..., None]:
+    """Create one known-prefix CLI command backed by CES capability lookup."""
+
+    def _service_command(
+        ctx: typer.Context,
+        operation: str = typer.Argument(..., help=f"{prefix} capability operation"),
+        input_json: str | None = typer.Option(
+            None,
+            "--input-json",
+            help="Raw JSON object payload for complex capability inputs",
         ),
-    )
+    ) -> None:
+        _invoke_loaded_capability(
+            ctx=ctx,
+            capability_id=f"{prefix}-{operation}",
+            input_json=input_json,
+        )
 
-
-@vault_app.command("list")
-def vault_list_command(
-    ctx: typer.Context,
-    path: str = typer.Argument("", help="Vault directory path"),
-) -> None:
-    """Call vault list."""
-    cfg = _require_config(ctx)
-    _run_command(
-        cfg,
-        lambda client: vault_list(
-            client=client,
-            directory_path=path,
-            trace_id=cfg.trace_id,
-            parent_id=cfg.parent_id,
-        ),
-    )
-
-
-@vault_app.command("search")
-def vault_search_command(
-    ctx: typer.Context,
-    query: str = typer.Argument(..., help="Vault search query"),
-    directory_scope: str = typer.Option("", help="Optional directory scope"),
-    limit: int = typer.Option(20, min=1, help="Maximum number of search results"),
-) -> None:
-    """Call vault search."""
-    cfg = _require_config(ctx)
-    _run_command(
-        cfg,
-        lambda client: vault_search(
-            client=client,
-            query=query,
-            directory_scope=directory_scope,
-            limit=limit,
-            trace_id=cfg.trace_id,
-            parent_id=cfg.parent_id,
-        ),
-    )
+    _service_command.__name__ = f"{prefix}_command"
+    _service_command.__doc__ = f"Invoke `{prefix}-*` CES capabilities."
+    return _service_command
 
 
 app.add_typer(health_app, name="health")
-app.add_typer(lms_app, name="lms")
-app.add_typer(vault_app, name="vault")
+app.add_typer(capability_app, name="capability")
+
+for _prefix in sorted(KNOWN_SERVICE_PREFIXES):
+    app.command(
+        _prefix,
+        context_settings=_DYNAMIC_COMMAND_CONTEXT_SETTINGS,
+    )(_build_service_command(_prefix))
 
 
 if __name__ == "__main__":

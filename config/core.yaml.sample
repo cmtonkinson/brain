@@ -31,7 +31,8 @@ boot:
   boot_timeout_seconds: 30.0
 
 http:
-  socket_path: /tmp/brain.sock
+  host: 0.0.0.0
+  port: 8898
 
 health:
   max_timeout_seconds: 1.0

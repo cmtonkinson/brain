@@ -40,14 +40,16 @@ def test_load_core_settings_uses_brain_precedence_cascade(tmp_path: Path) -> Non
         environ={
             "BRAIN_CORE_LOGGING__LEVEL": "ERROR",
             "BRAIN_CORE_BOOT__BOOT_RETRY_ATTEMPTS": "4",
-            "BRAIN_CORE_HTTP__SOCKET_PATH": "/tmp/test.sock",
+            "BRAIN_CORE_HTTP__HOST": "127.0.0.9",
+            "BRAIN_CORE_HTTP__PORT": "8123",
         },
         config_path=config_file,
     )
 
     assert settings.logging.level == "DEBUG"
     assert settings.boot.boot_retry_attempts == 4
-    assert settings.http.socket_path == "/tmp/test.sock"
+    assert settings.http.host == "127.0.0.9"
+    assert settings.http.port == 8123
 
 
 def test_load_core_runtime_settings_resolves_substrate_component(
@@ -115,7 +117,8 @@ def test_load_core_settings_uses_model_defaults_when_sources_missing(
     assert settings.logging.service == "brain"
     assert settings.logging.level == "INFO"
     assert settings.boot.boot_retry_attempts == 3
-    assert settings.http.socket_path == "/tmp/brain.sock"
+    assert settings.http.host == "0.0.0.0"
+    assert settings.http.port == 8898
 
 
 def test_load_core_settings_applies_secrets_yaml_over_core_yaml(tmp_path: Path) -> None:
@@ -316,7 +319,8 @@ def test_sample_config_files_load_cleanly(tmp_path: Path) -> None:
     )
     actors = load_actor_settings(config_path=tmp_path / "actors.yaml", environ={})
 
-    assert core.http.socket_path == "/tmp/brain.sock"
+    assert core.http.host == "0.0.0.0"
+    assert core.http.port == 8898
     assert (
         runtime.resources.substrate.model_dump(mode="python")["obsidian"][
             "timeout_seconds"

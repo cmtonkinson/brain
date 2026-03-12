@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from types import ModuleType
 from typing import Any
 
@@ -32,12 +33,14 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
 
         def __init__(
             self,
-            socket: str,
+            host: str,
+            port: int,
             timeout: float,
             source: str = "cli",
             principal: str = "operator",
         ) -> None:
-            self.socket = socket
+            self.host = host
+            self.port = port
             self.timeout = timeout
             self.source = source
             self.principal = principal
@@ -59,7 +62,8 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
         module.calls.append(
             (
                 "core_health",
-                client.socket,
+                client.host,
+                client.port,
                 client.timeout,
                 principal,
                 source,
@@ -78,72 +82,133 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
             },
         }
 
-    def lms_chat(
+    def describe_capabilities(
         *,
         client: BrainSdkClient,
-        prompt: str,
         principal: str,
         source: str,
-        profile: str = "standard",
         trace_id: str | None = None,
         parent_id: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], ...]:
         module.calls.append(
             (
-                "lms_chat",
-                client.socket,
-                prompt,
-                profile,
+                "describe_capabilities",
+                client.host,
+                client.port,
                 principal,
                 source,
                 trace_id,
                 parent_id,
             )
         )
-        return {"reply": f"echo:{prompt}"}
+        return (
+            {
+                "capability_id": "vault-get-file",
+                "summary": "Read one vault file.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string"},
+                        "include_metadata": {"type": "boolean"},
+                    },
+                    "required": ["file_path"],
+                },
+            },
+            {
+                "capability_id": "podcast-update",
+                "summary": "Update one podcast record.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "feed_url": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["feed_url"],
+                },
+            },
+        )
 
-    def vault_get(
+    def describe_capability(
         *,
         client: BrainSdkClient,
-        file_path: str,
+        capability_id: str,
+        principal: str,
+        source: str,
         trace_id: str | None = None,
         parent_id: str | None = None,
     ) -> dict[str, Any]:
-        module.calls.append(("vault_get", client.socket, file_path))
-        return {"path": file_path, "content": "hello"}
-
-    def vault_list(
-        *,
-        client: BrainSdkClient,
-        directory_path: str,
-        trace_id: str | None = None,
-        parent_id: str | None = None,
-    ) -> list[str]:
-        module.calls.append(("vault_list", client.socket, directory_path))
-        return ["a.md", "b.md"]
-
-    def vault_search(
-        *,
-        client: BrainSdkClient,
-        query: str,
-        directory_scope: str = "",
-        limit: int = 20,
-        trace_id: str | None = None,
-        parent_id: str | None = None,
-    ) -> list[dict[str, Any]]:
         module.calls.append(
-            ("vault_search", client.socket, query, directory_scope, limit)
+            (
+                "describe_capability",
+                client.host,
+                client.port,
+                capability_id,
+                principal,
+                source,
+                trace_id,
+                parent_id,
+            )
         )
-        return [{"path": "notes/a.md", "score": 0.9}]
+        return next(
+            item
+            for item in describe_capabilities(
+                client=client,
+                principal=principal,
+                source=source,
+                trace_id=trace_id,
+                parent_id=parent_id,
+            )
+            if item["capability_id"] == capability_id
+        )
+
+    class CapabilityInvokeResult:
+        """Fake invoke result carrying a decoded output payload."""
+
+        def __init__(self, output: Any) -> None:
+            self.output = output
+
+    def invoke_capability(
+        *,
+        client: BrainSdkClient,
+        capability_id: str,
+        input_payload: dict[str, Any] | None = None,
+        actor: str = "",
+        channel: str = "",
+        principal: str = "",
+        source: str = "",
+        trace_id: str | None = None,
+        parent_id: str | None = None,
+        **_: Any,
+    ) -> CapabilityInvokeResult:
+        module.calls.append(
+            (
+                "invoke_capability",
+                client.host,
+                client.port,
+                capability_id,
+                input_payload,
+                actor,
+                channel,
+                principal,
+                source,
+                trace_id,
+                parent_id,
+            )
+        )
+        return CapabilityInvokeResult(
+            {
+                "capability_id": capability_id,
+                "input_payload": input_payload or {},
+            }
+        )
 
     module.BrainSdkClient = BrainSdkClient
     module.DomainError = DomainError
     module.TransportError = TransportError
     module.core_health = core_health
-    module.lms_chat = lms_chat
-    module.vault_get = vault_get
-    module.vault_list = vault_list
-    module.vault_search = vault_search
+    module.describe_capabilities = describe_capabilities
+    module.describe_capability = describe_capability
+    module.invoke_capability = invoke_capability
 
     config_module = ModuleType("packages.brain_sdk.config")
     config_module.resolve_timeout_seconds = lambda value=None: (
@@ -163,6 +228,14 @@ def _load_cli_app(monkeypatch: Any) -> tuple[Any, ModuleType, Any]:
         del sys.modules["actors.cli.main"]
     cli_module = importlib.import_module("actors.cli.main")
     cli_module = importlib.reload(cli_module)
+    monkeypatch.setattr(
+        cli_module,
+        "load_actor_settings",
+        lambda: SimpleNamespace(
+            core=SimpleNamespace(host="127.0.0.1", port=8898, timeout_seconds=1.5),
+            cli=SimpleNamespace(principal="operator", source="cli"),
+        ),
+    )
     return cli_module.app, sdk_module, cli_module
 
 
@@ -170,8 +243,10 @@ def _base_args() -> list[str]:
     """Return required global flag arguments."""
 
     return [
-        "--socket",
-        "/tmp/brain.sock",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8898",
         "--timeout",
         "1.5",
     ]
@@ -195,32 +270,8 @@ def test_cli_parses_domain_action_and_executes(monkeypatch: Any) -> None:
     assert "Attention Router: ✅ healthy" in result.stdout
     assert "Vault Authority: ⚠️ degraded" in result.stdout
     assert "Resources:" in result.stdout
-    assert sdk.calls[0][0] == "core_health"
-
-
-def test_cli_human_output_for_success(monkeypatch: Any) -> None:
-    """Successful non-JSON output should be human readable."""
-
-    app, _, _ = _load_cli_app(monkeypatch)
-    runner = CliRunner()
-
-    result = runner.invoke(app, [*_base_args(), "vault", "get", "notes/today.md"])
-
-    assert result.exit_code == 0
-    assert "notes/today.md" in result.stdout
-    assert "hello" in result.stdout
-
-
-def test_cli_json_output_for_success(monkeypatch: Any) -> None:
-    """`--json` should emit compact JSON output."""
-
-    app, _, _ = _load_cli_app(monkeypatch)
-    runner = CliRunner()
-
-    result = runner.invoke(app, [*_base_args(), "--json", "lms", "chat", "hello"])
-
-    assert result.exit_code == 0
-    assert json.loads(result.stdout) == {"reply": "echo:hello"}
+    assert sdk.calls[0][0] == "describe_capabilities"
+    assert sdk.calls[1][0] == "core_health"
 
 
 def test_domain_error_maps_to_exit_code_3(monkeypatch: Any) -> None:
@@ -248,8 +299,8 @@ def test_transport_error_maps_to_exit_code_4(monkeypatch: Any) -> None:
     def fail_transport(*, client: Any, **_: Any) -> Any:
         raise sdk.TransportError("transport failed")
 
-    monkeypatch.setattr(cli_module, "vault_search", fail_transport)
-    result = runner.invoke(app, [*_base_args(), "vault", "search", "topic"])
+    monkeypatch.setattr(cli_module, "describe_capabilities", fail_transport)
+    result = runner.invoke(app, [*_base_args(), "health", "core"])
 
     assert result.exit_code == 4
     assert "transport failed" in result.stderr
@@ -261,10 +312,21 @@ def test_typer_usage_errors_are_unchanged(monkeypatch: Any) -> None:
     app, _, _ = _load_cli_app(monkeypatch)
     runner = CliRunner()
 
-    result = runner.invoke(app, [*_base_args(), "vault", "get"])
+    result = runner.invoke(app, [*_base_args(), "health"])
 
     assert result.exit_code == 2
-    assert "Missing argument" in result.stderr
+    assert "No such command" in result.stderr or "Missing command" in result.stderr
+
+
+def test_known_service_prefix_split_helper(monkeypatch: Any) -> None:
+    """Known service prefixes split once; unknown prefixes remain unsplit."""
+    _, _, cli_module = _load_cli_app(monkeypatch)
+
+    assert cli_module._capability_command_path("vault-get-file") == (
+        "vault",
+        "get-file",
+    )
+    assert cli_module._capability_command_path("podcast-update") == ("podcast-update",)
 
 
 # ---------------------------------------------------------------------------
@@ -379,116 +441,9 @@ def test_humanize_component_name(monkeypatch: Any) -> None:
     assert m._humanize_component_name("plain_name") == "Plain Name"
 
 
-def test_render_lms_chat_with_provider(monkeypatch: Any) -> None:
-    """Provider and model are appended in brackets."""
-    m = _get_render_helpers(monkeypatch)
-    data = {"text": "Hello!", "provider": "openai", "model": "gpt-4"}
-    output = m._render_lms_chat(data)
-    assert "Hello!" in output
-    assert "[openai:gpt-4]" in output
-
-
-def test_render_lms_chat_text_only(monkeypatch: Any) -> None:
-    """No provider/model bracket when both are absent."""
-    m = _get_render_helpers(monkeypatch)
-    data = {"reply": "Just a reply"}
-    output = m._render_lms_chat(data)
-    assert "Just a reply" in output
-    assert "[" not in output
-
-
-def test_render_vault_file(monkeypatch: Any) -> None:
-    """Path heading and content are both present in output."""
-    m = _get_render_helpers(monkeypatch)
-    data = {"path": "notes/ideas.md", "content": "Some content here."}
-    output = m._render_vault_file(data)
-    assert "File: notes/ideas.md" in output
-    assert "Some content here." in output
-
-
-def test_render_vault_list_empty(monkeypatch: Any) -> None:
-    """Empty list renders 'No entries found.'"""
-    m = _get_render_helpers(monkeypatch)
-    assert m._render_vault_list([]) == "No entries found."
-
-
-def test_render_vault_list_items(monkeypatch: Any) -> None:
-    """String items are prefixed with dashes."""
-    m = _get_render_helpers(monkeypatch)
-    output = m._render_vault_list(["a.md", "b.md"])
-    assert "- a.md" in output
-    assert "- b.md" in output
-
-
-def test_render_vault_search_empty(monkeypatch: Any) -> None:
-    """Empty list renders 'No matches found.'"""
-    m = _get_render_helpers(monkeypatch)
-    assert m._render_vault_search([]) == "No matches found."
-
-
-def test_render_vault_search_with_score(monkeypatch: Any) -> None:
-    """Score is formatted to 3 decimal places."""
-    m = _get_render_helpers(monkeypatch)
-    items = [{"path": "notes/a.md", "score": 0.9123456}]
-    output = m._render_vault_search(items)
-    assert "notes/a.md" in output
-    assert "0.912" in output
-
-
 # ---------------------------------------------------------------------------
 # Additional command coverage via CliRunner
 # ---------------------------------------------------------------------------
-
-
-def test_lms_chat_with_profile_option(monkeypatch: Any) -> None:
-    """`--profile deep` is propagated to the SDK call."""
-    app, sdk, _ = _load_cli_app(monkeypatch)
-    runner = CliRunner()
-
-    result = runner.invoke(
-        app, [*_base_args(), "lms", "chat", "--profile", "deep", "my question"]
-    )
-
-    assert result.exit_code == 0
-    call = next(c for c in sdk.calls if c[0] == "lms_chat")
-    assert call[3] == "deep"
-
-
-def test_vault_list_with_path(monkeypatch: Any) -> None:
-    """Non-empty directory_path argument is forwarded to the SDK."""
-    app, sdk, _ = _load_cli_app(monkeypatch)
-    runner = CliRunner()
-
-    result = runner.invoke(app, [*_base_args(), "vault", "list", "notes/"])
-
-    assert result.exit_code == 0
-    call = next(c for c in sdk.calls if c[0] == "vault_list")
-    assert call[2] == "notes/"
-
-
-def test_vault_search_with_scope_and_limit(monkeypatch: Any) -> None:
-    """`--directory-scope` and `--limit` are forwarded to the SDK."""
-    app, sdk, _ = _load_cli_app(monkeypatch)
-    runner = CliRunner()
-
-    result = runner.invoke(
-        app,
-        [
-            *_base_args(),
-            "vault",
-            "search",
-            "--directory-scope",
-            "notes/",
-            "--limit",
-            "5",
-            "query text",
-        ],
-    )
-
-    assert result.exit_code == 0
-    call = next(c for c in sdk.calls if c[0] == "vault_search")
-    assert call[3] == "notes/"
-    assert call[4] == 5
 
 
 def test_json_output_for_domain_error(monkeypatch: Any) -> None:
@@ -505,6 +460,100 @@ def test_json_output_for_domain_error(monkeypatch: Any) -> None:
     assert result.exit_code == 3
     error_payload = json.loads(result.stderr)
     assert error_payload["error"] == "json domain error"
+
+
+def test_capability_list_shows_command_paths(monkeypatch: Any) -> None:
+    """Capability list should expose the resolved CLI command form."""
+    app, _, _ = _load_cli_app(monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(app, [*_base_args(), "capability", "list"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload[0]["command"] == "vault get-file"
+    assert payload[1]["command"] == "capability invoke podcast-update"
+
+
+def test_capability_describe_calls_sdk(monkeypatch: Any) -> None:
+    """Capability describe should call the CES SDK describe wrapper."""
+    app, sdk, _ = _load_cli_app(monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [*_base_args(), "--json", "capability", "describe", "vault-get-file"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["capability_id"] == "vault-get-file"
+    call = next(c for c in sdk.calls if c[0] == "describe_capability")
+    assert call[3] == "vault-get-file"
+
+
+def test_service_command_invokes_capability_with_parsed_flags(monkeypatch: Any) -> None:
+    """Known service command should resolve and invoke the matching capability."""
+    app, sdk, _ = _load_cli_app(monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            *_base_args(),
+            "--json",
+            "vault",
+            "get-file",
+            "--file-path",
+            "notes/today.md",
+            "--include-metadata",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["capability_id"] == "vault-get-file"
+    assert payload["input_payload"] == {
+        "file_path": "notes/today.md",
+        "include_metadata": True,
+    }
+    call = next(c for c in sdk.calls if c[0] == "invoke_capability")
+    assert call[3] == "vault-get-file"
+    assert call[4] == {
+        "file_path": "notes/today.md",
+        "include_metadata": True,
+    }
+
+
+def test_capability_invoke_supports_unknown_prefix_capability(monkeypatch: Any) -> None:
+    """Unknown prefixes stay on the generic invoke path instead of being split."""
+    app, sdk, _ = _load_cli_app(monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            *_base_args(),
+            "--json",
+            "capability",
+            "invoke",
+            "podcast-update",
+            "--feed-url",
+            "https://example.com/feed.xml",
+            "--limit",
+            "3",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["capability_id"] == "podcast-update"
+    assert payload["input_payload"] == {
+        "feed_url": "https://example.com/feed.xml",
+        "limit": 3,
+    }
+    call = next(c for c in sdk.calls if c[0] == "invoke_capability")
+    assert call[3] == "podcast-update"
 
 
 def test_trace_and_parent_ids_propagated(monkeypatch: Any) -> None:
@@ -527,39 +576,26 @@ def test_trace_and_parent_ids_propagated(monkeypatch: Any) -> None:
 
     assert result.exit_code == 0
     call = next(c for c in sdk.calls if c[0] == "core_health")
-    assert call[5] == "trace-abc"
-    assert call[6] == "parent-xyz"
+    assert call[6] == "trace-abc"
+    assert call[7] == "parent-xyz"
 
 
-def test_vault_list_empty_result_human(monkeypatch: Any) -> None:
-    """Empty vault list falls through _looks_like_vault_search and renders 'No matches found.'"""
-    app, sdk, cli_module = _load_cli_app(monkeypatch)
-    runner = CliRunner()
+def test_startup_capabilities_cached_on_context(monkeypatch: Any) -> None:
+    """CLI startup should cache the published CES capability list on config."""
+    _, _, cli_module = _load_cli_app(monkeypatch)
+    cfg = cli_module.CliConfig(
+        host="127.0.0.1",
+        port=8898,
+        principal="operator",
+        source="cli",
+        timeout=1.5,
+        as_json=False,
+        trace_id=None,
+        parent_id=None,
+        capabilities=(),
+    )
 
-    def empty_vault_list(*, client: Any, **_: Any) -> list[Any]:
-        sdk.calls.append(("vault_list", client.socket, ""))
-        return []
+    capabilities = cli_module._load_capabilities(cfg)
 
-    monkeypatch.setattr(cli_module, "vault_list", empty_vault_list)
-    result = runner.invoke(app, [*_base_args(), "vault", "list"])
-
-    assert result.exit_code == 0
-    # Empty list satisfies _looks_like_vault_search (checked first), so renders
-    # "No matches found." rather than "No entries found."
-    assert "No matches found." in result.stdout
-
-
-def test_vault_search_empty_result_human(monkeypatch: Any) -> None:
-    """Empty vault search renders 'No matches found.' in human mode."""
-    app, sdk, cli_module = _load_cli_app(monkeypatch)
-    runner = CliRunner()
-
-    def empty_vault_search(*, client: Any, **_: Any) -> list[Any]:
-        sdk.calls.append(("vault_search", client.socket, ""))
-        return []
-
-    monkeypatch.setattr(cli_module, "vault_search", empty_vault_search)
-    result = runner.invoke(app, [*_base_args(), "vault", "search", "nothing"])
-
-    assert result.exit_code == 0
-    assert "No matches found." in result.stdout
+    assert len(capabilities) == 2
+    assert capabilities[0]["capability_id"] == "vault-get-file"

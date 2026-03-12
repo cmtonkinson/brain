@@ -90,7 +90,8 @@ class CoreBootSettings(BaseModel):
 class CoreHttpSettings(BaseModel):
     """Core HTTP runtime settings under ``http``."""
 
-    socket_path: str = "/tmp/brain.sock"
+    host: str = "0.0.0.0"
+    port: int = Field(default=8898, ge=1, le=65535)
 
 
 class CoreHealthSettings(BaseModel):
@@ -208,11 +209,10 @@ class ResourcesSettings(BaseSettings):
 
 
 class ActorCoreConnectionSettings(BaseModel):
-    """How actors connect to Core — path to the Core Unix socket."""
+    """How actors connect to Core over TCP."""
 
-    socket_path: str = str(
-        Path.home() / ".config" / "brain" / "generated" / "brain.sock"
-    )
+    host: str = "127.0.0.1"
+    port: int = Field(default=8898, ge=1, le=65535)
     timeout_seconds: float = 30.0
 
 

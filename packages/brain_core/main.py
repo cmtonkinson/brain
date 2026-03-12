@@ -20,7 +20,7 @@ from packages.brain_shared.component_loader import (
 )
 from packages.brain_shared.config import CoreRuntimeSettings, load_core_runtime_settings
 from packages.brain_shared.logging import configure_logging, get_logger
-from packages.brain_shared.http.server import create_app, run_app_uds
+from packages.brain_shared.http.server import create_app, create_server
 from packages.brain_shared.manifest import ComponentManifest, get_registry
 
 _LOGGER = get_logger(__name__)
@@ -154,15 +154,18 @@ def _start_http_runtime(
         registered_services.append(str(manifest.id))
 
     app.include_router(router)
-    socket_path = settings.core.http.socket_path
-    os.makedirs(os.path.dirname(socket_path), exist_ok=True)
-    server = run_app_uds(app, socket_path=socket_path)
+    server = create_server(
+        app,
+        host=settings.core.http.host,
+        port=settings.core.http.port,
+    )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
     _LOGGER.info(
         "core HTTP runtime started",
         extra={
-            "socket_path": socket_path,
+            "host": settings.core.http.host,
+            "port": settings.core.http.port,
             "registered_services": registered_services,
         },
     )

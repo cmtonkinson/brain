@@ -9,3 +9,4 @@ logs/
 
 # gRPC/protobuf
 generated/
+.gitnexus
