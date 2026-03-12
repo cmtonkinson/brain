@@ -586,7 +586,11 @@ class DefaultPolicyService(PolicyService):
         channel: str,
     ) -> list[PolicyApprovalProposalRow]:
         return list(
-            self._persistence.list_pending_proposals(actor=actor, channel=channel)
+            self._persistence.list_pending_proposals(
+                actor=actor,
+                channel=channel,
+                now=utc_now(),
+            )
         )
 
     def _mark_proposal_approved(self, *, token: str) -> None:

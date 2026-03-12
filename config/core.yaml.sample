@@ -1,5 +1,8 @@
 logging:
   level: INFO
+  file_capture_enabled: false
+  file_capture_level: VERBOSE
+  file_capture_directory: logs
   json_output: true
   service: brain
   environment: dev
@@ -21,6 +24,7 @@ profile:
   operator_name: Operator
   brain_name: Brain
   brain_verbosity: normal
+  system_prompt_append: null
 
 boot:
   run_migrations_on_startup: true
@@ -76,7 +80,14 @@ service:
       policy_id: default
       policy_version: "1"
       rules:
-        "*": {}
+        "*":
+          enabled: true
+          autonomy_ceiling: null
+          actors_allow: []
+          actors_deny: []
+          channels_allow: []
+          channels_deny: []
+          require_approval: null
     overlays: []
   vault_authority:
     max_list_limit: 500
@@ -89,14 +100,14 @@ service:
       provider: ollama
       model: mxbai-embed-large
     quick:
-      provider: ""
-      model: ""
+      provider: ollama
+      model: gpt-oss:20b
     standard:
       provider: ollama
       model: gpt-oss:20b
     deep:
-      provider: ""
-      model: ""
+      provider: ollama
+      model: gpt-oss:20b
   switchboard:
     queue_name: signal_inbound
     signature_tolerance_seconds: 300

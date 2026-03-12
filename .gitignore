@@ -1,12 +1,7 @@
 # Secrets
-config/brain.yml
 .env
 
 # General files
 /data/
-/deprecated/data/
-logs/
+/logs/
 
-# gRPC/protobuf
-generated/
-.gitnexus

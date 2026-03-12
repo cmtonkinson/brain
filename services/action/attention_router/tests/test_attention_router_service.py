@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
+from packages.brain_shared.errors import dependency_error
 from resources.adapters.signal import (
     SignalAdapter,
     SignalAdapterDependencyError,
@@ -18,6 +19,8 @@ from services.action.attention_router.domain import ApprovalNotificationPayload
 from services.action.attention_router.implementation import (
     DefaultAttentionRouterService,
 )
+from services.state.cache_authority.domain import CacheEntry
+from services.state.cache_authority.service import CacheAuthorityService
 
 
 @dataclass(frozen=True)
@@ -83,6 +86,64 @@ class _FakeSignalAdapter(SignalAdapter):
         raise NotImplementedError
 
 
+class _FakeCacheAuthorityService(CacheAuthorityService):
+    """In-memory CAS fake for approval correlation persistence tests."""
+
+    def __init__(self) -> None:
+        self.values: dict[tuple[str, str], object] = {}
+        self.fail_set = False
+        self.fail_get = False
+
+    def set_value(self, *, meta, component_id: str, key: str, value, ttl_seconds=None):
+        del meta
+        if self.fail_set:
+            return failure(meta=_meta(), errors=[dependency_error("cache unavailable")])
+        self.values[(component_id, key)] = value
+        return success(
+            meta=_meta(),
+            payload=CacheEntry(
+                component_id=component_id,
+                key=key,
+                value=value,
+                ttl_seconds=ttl_seconds,
+            ),
+        )
+
+    def get_value(self, *, meta, component_id: str, key: str):
+        del meta
+        if self.fail_get:
+            return failure(meta=_meta(), errors=[dependency_error("cache unavailable")])
+        value = self.values.get((component_id, key))
+        if value is None:
+            return success(meta=_meta(), payload=None)
+        return success(
+            meta=_meta(),
+            payload=CacheEntry(
+                component_id=component_id,
+                key=key,
+                value=value,
+                ttl_seconds=None,
+            ),
+        )
+
+    def delete_value(self, *, meta, component_id: str, key: str):
+        del meta
+        self.values.pop((component_id, key), None)
+        return success(meta=_meta(), payload=True)
+
+    def push_queue(self, *, meta, component_id: str, queue: str, value):
+        raise NotImplementedError
+
+    def pop_queue(self, *, meta, component_id: str, queue: str):
+        raise NotImplementedError
+
+    def peek_queue(self, *, meta, component_id: str, queue: str):
+        raise NotImplementedError
+
+    def health(self, *, meta):
+        raise NotImplementedError
+
+
 def _meta():
     """Build valid envelope metadata for Attention Router tests."""
     return new_meta(
@@ -90,9 +151,12 @@ def _meta():
     )
 
 
-def _service() -> tuple[DefaultAttentionRouterService, _FakeSignalAdapter]:
+def _service() -> tuple[
+    DefaultAttentionRouterService, _FakeSignalAdapter, _FakeCacheAuthorityService
+]:
     """Build Attention Router with in-memory dependencies for tests."""
     adapter = _FakeSignalAdapter()
+    cache = _FakeCacheAuthorityService()
     service = DefaultAttentionRouterService(
         settings=AttentionRouterServiceSettings(
             default_channel="signal",
@@ -104,13 +168,14 @@ def _service() -> tuple[DefaultAttentionRouterService, _FakeSignalAdapter]:
         signal_adapter=adapter,
         operator_signal_contact_e164="+12025550100",
         signal_receive_e164="+12025550101",
+        cache_authority_service=cache,
     )
-    return service, adapter
+    return service, adapter, cache
 
 
 def test_route_notification_delivers_signal_message() -> None:
     """Signal notification should be delivered with resolved defaults."""
-    service, adapter = _service()
+    service, adapter, _cache = _service()
 
     result = service.route_notification(meta=_meta(), message="hello")
 
@@ -124,7 +189,7 @@ def test_route_notification_delivers_signal_message() -> None:
 
 def test_route_notification_suppresses_recent_dedupe_key() -> None:
     """Same dedupe key within configured window should be suppressed."""
-    service, adapter = _service()
+    service, adapter, _cache = _service()
 
     first = service.route_notification(
         meta=_meta(),
@@ -147,7 +212,7 @@ def test_route_notification_suppresses_recent_dedupe_key() -> None:
 
 def test_route_notification_batches_when_batch_key_present() -> None:
     """Batch-keyed notifications should queue until explicitly flushed."""
-    service, adapter = _service()
+    service, adapter, _cache = _service()
 
     queued = service.route_notification(
         meta=_meta(),
@@ -164,7 +229,7 @@ def test_route_notification_batches_when_batch_key_present() -> None:
 
 def test_flush_batch_delivers_consolidated_summary() -> None:
     """Flushing a pending batch should deliver one summary notification."""
-    service, adapter = _service()
+    service, adapter, _cache = _service()
     service.route_notification(meta=_meta(), message="first", batch_key="digest")
     service.route_notification(meta=_meta(), message="second", batch_key="digest")
     service.route_notification(meta=_meta(), message="third", batch_key="digest")
@@ -180,7 +245,7 @@ def test_flush_batch_delivers_consolidated_summary() -> None:
 
 def test_route_notification_propagates_signal_dependency_errors() -> None:
     """Signal dependency errors should map to dependency envelope failures."""
-    service, adapter = _service()
+    service, adapter, _cache = _service()
     adapter.raise_send = SignalAdapterDependencyError("signal unavailable")
 
     result = service.route_notification(meta=_meta(), message="hello")
@@ -191,7 +256,7 @@ def test_route_notification_propagates_signal_dependency_errors() -> None:
 
 def test_route_notification_suppresses_when_rate_limited() -> None:
     """Exceeding channel/recipient send window should suppress delivery."""
-    service, adapter = _service()
+    service, adapter, _cache = _service()
 
     service.route_notification(meta=_meta(), message="one")
     service.route_notification(meta=_meta(), message="two")
@@ -206,7 +271,7 @@ def test_route_notification_suppresses_when_rate_limited() -> None:
 
 def test_route_approval_notification_formats_policy_payload() -> None:
     """Approval payload routing should emit policy token details via Signal."""
-    service, adapter = _service()
+    service, adapter, cache = _service()
 
     result = service.route_approval_notification(
         meta=_meta(),
@@ -226,11 +291,20 @@ def test_route_approval_notification_formats_policy_payload() -> None:
     assert result.ok is True
     assert len(adapter.send_calls) == 1
     assert "Token: tok-123" in adapter.send_calls[0].message
+    resolved = service.resolve_approval_notification_proposal_token(
+        meta=_meta(),
+        channel="signal",
+        target_timestamp_ms=123,
+    )
+    assert resolved.ok is True
+    assert resolved.payload is not None
+    assert resolved.payload.value == "tok-123"
+    assert len(cache.values) == 1
 
 
 def test_health_reports_self_readiness_without_adapter_probe() -> None:
     """Health should report self-readiness without external adapter probing."""
-    service, adapter = _service()
+    service, adapter, _cache = _service()
     result = service.health(meta=_meta())
 
     assert result.ok is True
@@ -242,7 +316,7 @@ def test_health_reports_self_readiness_without_adapter_probe() -> None:
 
 def test_correlate_approval_response_returns_normalized_payload() -> None:
     """Correlation API should normalize and return approval-correlation payload."""
-    service, _adapter = _service()
+    service, _adapter, _cache = _service()
 
     result = service.correlate_approval_response(
         meta=_meta(),
@@ -262,7 +336,46 @@ def test_correlate_approval_response_returns_normalized_payload() -> None:
 
 def test_correlate_approval_response_requires_correlator_or_message() -> None:
     """Correlation API should reject empty payloads without deterministic keys."""
-    service, _adapter = _service()
+    service, _adapter, _cache = _service()
+
+
+def test_route_approval_notification_fails_when_correlation_persistence_fails() -> None:
+    """Approval notification should fail loudly when correlation persistence fails."""
+    service, _adapter, cache = _service()
+    cache.fail_set = True
+
+    result = service.route_approval_notification(
+        meta=_meta(),
+        approval=ApprovalNotificationPayload(
+            proposal_token="tok-123",
+            capability_id="cap.demo",
+            capability_version="1.0.0",
+            summary="Need approval",
+            actor="operator",
+            channel="signal",
+            trace_id="trace-1",
+            invocation_id="inv-1",
+            expires_at=datetime(2026, 2, 25, 12, 0, 0, tzinfo=UTC),
+        ),
+    )
+
+    assert result.ok is False
+    assert result.errors[0].category.value == "dependency"
+
+
+def test_resolve_approval_notification_token_fails_when_cache_lookup_fails() -> None:
+    """Token lookup should surface dependency failure when CAS lookup fails."""
+    service, _adapter, cache = _service()
+    cache.fail_get = True
+
+    result = service.resolve_approval_notification_proposal_token(
+        meta=_meta(),
+        channel="signal",
+        target_timestamp_ms=123,
+    )
+
+    assert result.ok is False
+    assert result.errors[0].category.value == "dependency"
 
     result = service.correlate_approval_response(
         meta=_meta(),

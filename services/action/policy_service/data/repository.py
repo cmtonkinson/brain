@@ -83,7 +83,7 @@ class InMemoryPolicyPersistenceRepository(PolicyPersistenceRepository):
         return None
 
     def list_pending_proposals(
-        self, *, actor: str, channel: str
+        self, *, actor: str, channel: str, now
     ) -> tuple[PolicyApprovalProposalRow, ...]:
         return tuple(
             row
@@ -91,6 +91,7 @@ class InMemoryPolicyPersistenceRepository(PolicyPersistenceRepository):
             if row.status == "pending"
             and row.proposal.actor == actor
             and row.proposal.channel == channel
+            and row.proposal.expires_at > now
         )
 
     def mark_proposal_status(self, *, token: str, status: str) -> None:
@@ -298,7 +299,7 @@ class PostgresPolicyPersistenceRepository(PolicyPersistenceRepository):
             return None if row is None else _to_proposal(row)
 
     def list_pending_proposals(
-        self, *, actor: str, channel: str
+        self, *, actor: str, channel: str, now
     ) -> tuple[PolicyApprovalProposalRow, ...]:
         with self._sessions.session() as session:
             rows = (
@@ -307,6 +308,7 @@ class PostgresPolicyPersistenceRepository(PolicyPersistenceRepository):
                     .where(approvals.c.status == "pending")
                     .where(approvals.c.actor == actor)
                     .where(approvals.c.channel == channel)
+                    .where(approvals.c.expires_at > now)
                     .order_by(approvals.c.created_at.asc(), approvals.c.id.asc())
                 )
                 .mappings()

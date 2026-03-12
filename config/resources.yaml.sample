@@ -6,7 +6,6 @@ substrate:
     default_extension: blob
   obsidian:
     base_url: http://host.docker.internal:27123
-    api_key: ""
     timeout_seconds: 10.0
     max_retries: 2
   postgres:
@@ -18,6 +17,11 @@ substrate:
     connect_timeout_seconds: 10.0
     health_timeout_seconds: 1.0
     sslmode: prefer
+    host: postgres
+    port: 5432
+    database: brain
+    user: brain
+    password: brain
   qdrant:
     url: http://qdrant:6333
     request_timeout_seconds: 10.0
@@ -43,13 +47,11 @@ adapter:
     providers:
       ollama:
         api_base: http://host.docker.internal:11434
-      openai:
-        api_key_env: OPENAI_API_KEY
-      anthropic:
-        api_key_env: ANTHROPIC_API_KEY
+        timeout_seconds: null
+        max_retries: null
+        options: {}
   signal:
     base_url: http://signal-api:8080
-    receive_e164: +13333333333
     health_timeout_seconds: 0.5
     receive_connect_timeout_seconds: 10.0
     receive_heartbeat_seconds: 30.0

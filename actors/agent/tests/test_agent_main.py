@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from packages.brain_shared.config import ActorSettings
+from packages.brain_shared.config import ActorSettings, CoreSettings
 from packages.brain_sdk import (
     BrainDependencyError,
     BrainPolicyError,
@@ -45,6 +45,15 @@ def test_load_system_prompt_reads_colocated_prompt_file() -> None:
     assert prompt != ""
     assert "tool" in prompt.lower()
     assert "Respond with JSON only." not in prompt
+
+
+def test_load_system_prompt_appends_profile_extension_when_present() -> None:
+    """System prompt loader should append operator-supplied prompt text verbatim."""
+    from actors.agent import main
+
+    prompt = main._load_system_prompt(system_prompt_append="Extra operator prompt.")
+
+    assert prompt.endswith("Extra operator prompt.")
 
 
 def test_configure_logging_uses_configured_level(monkeypatch) -> None:
@@ -119,6 +128,34 @@ def test_to_sdk_messages_translates_tool_loop_history() -> None:
             tool_call_id="call-1",
         ),
     ]
+
+
+def test_create_runtime_uses_core_profile_system_prompt_append() -> None:
+    """Runtime creation should append core profile prompt text to the base prompt."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def memory_get_latest_or_create_session(self):
+            return MemorySessionRef(session_id="session-1")
+
+        def describe_capabilities(self):
+            return ()
+
+        def list_always_on_capabilities(self):
+            return ()
+
+    runtime = main._create_runtime(
+        client=_FakeClient(),
+        settings=ActorSettings(),
+        core_settings=CoreSettings(
+            profile={"system_prompt_append": "Extra operator prompt."}
+        ),
+    )
+
+    assert any(
+        "Extra operator prompt." in str(item)
+        for item in runtime.agent._system_prompts  # pyright: ignore[reportPrivateUsage]
+    )
 
 
 def test_build_capability_tools_invokes_sdk_client() -> None:
@@ -1055,6 +1092,7 @@ def test_create_runtime_creates_session_and_registers_tools() -> None:
     runtime = main._create_runtime(
         client=_FakeClient(),  # type: ignore[arg-type]
         settings=ActorSettings(),
+        core_settings=CoreSettings(),
     )
 
     assert runtime.session_id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"

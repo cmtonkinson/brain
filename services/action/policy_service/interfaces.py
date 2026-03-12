@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 
 from services.action.policy_service.domain import (
@@ -46,7 +47,7 @@ class PolicyPersistenceRepository(Protocol):
         """Resolve one pending proposal by token."""
 
     def list_pending_proposals(
-        self, *, actor: str, channel: str
+        self, *, actor: str, channel: str, now: datetime
     ) -> tuple[PolicyApprovalProposalRow, ...]:
         """List pending proposals for one actor/channel pair."""
 

@@ -13,6 +13,7 @@ from services.action.attention_router.domain import (
     HealthStatus,
     RouteNotificationResult,
 )
+from services.state.cache_authority.service import CacheAuthorityService
 
 
 class AttentionRouterService(ABC):
@@ -89,6 +90,7 @@ def build_attention_router_service(
     *,
     settings: CoreRuntimeSettings,
     signal_adapter: SignalAdapter | None = None,
+    cache_authority_service: CacheAuthorityService | None = None,
 ) -> AttentionRouterService:
     """Build default Attention Router implementation from typed settings."""
     from resources.adapters.signal import (
@@ -109,4 +111,5 @@ def build_attention_router_service(
         signal_adapter=signal_adapter
         or SignalRestApiAdapter(settings=adapter_settings),
         signal_receive_e164=adapter_settings.receive_e164,
+        cache_authority_service=cache_authority_service,
     )

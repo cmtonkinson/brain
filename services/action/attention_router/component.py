@@ -40,4 +40,5 @@ def build_component(
     return build_attention_router_service(
         settings=settings,
         signal_adapter=components.get("adapter_signal"),
+        cache_authority_service=components.get("service_cache_authority"),
     )

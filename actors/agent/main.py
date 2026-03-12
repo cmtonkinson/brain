@@ -39,7 +39,12 @@ from packages.brain_sdk import (
     MemoryContextBlock,
     SwitchboardOperatorInstruction,
 )
-from packages.brain_shared.config import ActorSettings, load_actor_settings
+from packages.brain_shared.config import (
+    ActorSettings,
+    CoreSettings,
+    load_actor_settings,
+    load_core_settings,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _RUNNING = True
@@ -219,9 +224,13 @@ def _resolve_config_path() -> Path | None:
     return Path(value)
 
 
-def _load_system_prompt() -> str:
-    """Load the agent system prompt from the colocated prompt file."""
-    return _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
+def _load_system_prompt(*, system_prompt_append: str | None = None) -> str:
+    """Load the effective agent system prompt from disk plus profile append."""
+    prompt = _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
+    appended = "" if system_prompt_append is None else system_prompt_append.strip()
+    if appended == "":
+        return prompt
+    return f"{prompt}\n\n{appended}"
 
 
 def _configure_logging(*, level: str) -> None:
@@ -617,8 +626,14 @@ def _brain_sdk_config_from_settings(settings: ActorSettings) -> BrainSdkConfig:
     )
 
 
-def _create_runtime(*, client: BrainClient, settings: ActorSettings) -> _AgentRuntime:
+def _create_runtime(
+    *,
+    client: BrainClient,
+    settings: ActorSettings,
+    core_settings: CoreSettings | None = None,
+) -> _AgentRuntime:
     """Create one fully wired agent runtime from the published Core surface."""
+    effective_core_settings = CoreSettings() if core_settings is None else core_settings
     session = client.memory_get_latest_or_create_session()
     capabilities = client.describe_capabilities()
     always_on_capabilities = client.list_always_on_capabilities()
@@ -645,7 +660,9 @@ def _create_runtime(*, client: BrainClient, settings: ActorSettings) -> _AgentRu
     runtime_tools = _build_runtime_tools(client=client, turn_state=turn_state)
     agent = Agent(
         model,
-        system_prompt=_load_system_prompt(),
+        system_prompt=_load_system_prompt(
+            system_prompt_append=effective_core_settings.profile.system_prompt_append
+        ),
         retries=3,
         max_concurrency=1,
         tools=[*capability_tools, *runtime_tools],
@@ -829,6 +846,7 @@ async def _run_main() -> None:
     _RUNNING = True
 
     settings = load_actor_settings(config_path=_resolve_config_path())
+    core_settings = load_core_settings()
     _configure_logging(level=str(settings.logging.level))
 
     signal.signal(signal.SIGINT, _handle_shutdown)
@@ -836,7 +854,11 @@ async def _run_main() -> None:
 
     client = BrainClient(config=_brain_sdk_config_from_settings(settings))
     try:
-        runtime = _create_runtime(client=client, settings=settings)
+        runtime = _create_runtime(
+            client=client,
+            settings=settings,
+            core_settings=core_settings,
+        )
         _LOGGER.info(
             "brain agent started",
             extra={

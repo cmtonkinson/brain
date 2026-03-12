@@ -4,9 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from packages.brain_shared.config import (
+    ActorCoreConnectionSettings,
+    ActorNamespaceSettings,
     CoreRuntimeSettings,
     CoreSettings,
+    CoreBootSettings,
+    CoreHealthSettings,
+    CoreHttpSettings,
+    LoggingSettings,
+    ObservabilitySettings,
+    ProfileSettings,
     ResourcesSettings,
     load_actor_settings,
     load_core_runtime_settings,
@@ -14,10 +24,25 @@ from packages.brain_shared.config import (
     load_resources_settings,
     resolve_component_settings,
 )
+from packages.brain_shared.config.models import AgentActorSettings, CliActorSettings
 from resources.adapters.litellm.config import resolve_litellm_adapter_settings
+from resources.adapters.litellm.config import LiteLlmAdapterSettings
+from resources.adapters.signal.config import SignalAdapterSettings
+from resources.substrates.filesystem.config import FilesystemSubstrateSettings
+from resources.substrates.obsidian.config import ObsidianSubstrateSettings
 from resources.substrates.postgres.config import PostgresSettings
+from resources.substrates.qdrant.config import QdrantSettings
+from resources.substrates.redis.config import RedisSettings
+from services.action.attention_router.config import AttentionRouterServiceSettings
+from services.action.capability_engine.config import CapabilityEngineSettings
+from services.action.language_model.config import LanguageModelServiceSettings
+from services.action.policy_service.config import PolicyServiceSettings
+from services.state.cache_authority.config import CacheAuthoritySettings
 from services.state.embedding_authority.component import SERVICE_COMPONENT_ID
 from services.state.embedding_authority.config import EmbeddingServiceSettings
+from services.state.memory_authority.config import MemoryAuthoritySettings
+from services.state.object_authority.config import ObjectAuthoritySettings
+from services.state.vault_authority.config import VaultAuthoritySettings
 
 
 def test_load_core_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
@@ -122,6 +147,29 @@ def test_load_core_settings_uses_model_defaults_when_sources_missing(
     assert settings.boot.boot_retry_attempts == 3
     assert settings.http.host == "0.0.0.0"
     assert settings.http.port == 8898
+    assert settings.profile.system_prompt_append is None
+
+
+def test_load_core_settings_reads_profile_system_prompt_append(tmp_path: Path) -> None:
+    """core.yaml should support an optional profile.system_prompt_append block."""
+    config_file = tmp_path / "core.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "profile:",
+                "  system_prompt_append: |",
+                "    Extra operator prompt.",
+                "    Keep this appended.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_core_settings(config_path=config_file, environ={})
+
+    assert settings.profile.system_prompt_append == (
+        "Extra operator prompt.\nKeep this appended."
+    )
 
 
 def test_load_core_settings_applies_secrets_yaml_over_core_yaml(tmp_path: Path) -> None:
@@ -331,3 +379,146 @@ def test_sample_config_files_load_cleanly(tmp_path: Path) -> None:
         == 10.0
     )
     assert actors.logging.json_output is True
+
+
+def test_sample_config_files_match_current_schema_exactly() -> None:
+    """Checked-in sample configs should stay in sync with current settings shapes."""
+    repo_root = Path(__file__).resolve().parents[2]
+    sample_dir = repo_root / "config"
+
+    assert yaml.safe_load(
+        (sample_dir / "core.yaml.sample").read_text(encoding="utf-8")
+    ) == {
+        "logging": LoggingSettings().model_dump(mode="json"),
+        "observability": ObservabilitySettings().model_dump(mode="json"),
+        "profile": {
+            "default_dial_code": ProfileSettings().default_dial_code,
+            "operator_name": ProfileSettings().operator_name,
+            "brain_name": ProfileSettings().brain_name,
+            "brain_verbosity": ProfileSettings().brain_verbosity,
+            "system_prompt_append": ProfileSettings().system_prompt_append,
+        },
+        "boot": CoreBootSettings().model_dump(mode="json"),
+        "http": CoreHttpSettings().model_dump(mode="json"),
+        "health": CoreHealthSettings().model_dump(mode="json"),
+        "service": {
+            "attention_router": AttentionRouterServiceSettings().model_dump(
+                mode="json"
+            ),
+            "capability_engine": CapabilityEngineSettings().model_dump(mode="json"),
+            "embedding_authority": EmbeddingServiceSettings().model_dump(mode="json"),
+            "cache_authority": CacheAuthoritySettings().model_dump(mode="json"),
+            "memory_authority": MemoryAuthoritySettings().model_dump(mode="json"),
+            "object_authority": ObjectAuthoritySettings().model_dump(mode="json"),
+            "policy_service": PolicyServiceSettings().model_dump(mode="json"),
+            "vault_authority": VaultAuthoritySettings().model_dump(mode="json"),
+            "language_model": LanguageModelServiceSettings(
+                quick=LanguageModelServiceSettings.model_fields["standard"].default,
+                deep=LanguageModelServiceSettings.model_fields["standard"].default,
+            ).model_dump(mode="json"),
+            "switchboard": {
+                "queue_name": "signal_inbound",
+                "signature_tolerance_seconds": 300,
+                "webhook_bind_host": "0.0.0.0",
+                "webhook_bind_port": 8091,
+                "webhook_path": "/v1/inbound/signal/webhook",
+                "webhook_public_base_url": "http://127.0.0.1:8091",
+                "webhook_register_max_retries": 8,
+                "webhook_register_retry_delay_seconds": 2.0,
+            },
+        },
+    }
+
+    assert yaml.safe_load(
+        (sample_dir / "resources.yaml.sample").read_text(encoding="utf-8")
+    ) == {
+        "substrate": {
+            "filesystem": FilesystemSubstrateSettings().model_dump(mode="json"),
+            "obsidian": {
+                "base_url": ObsidianSubstrateSettings().base_url,
+                "timeout_seconds": ObsidianSubstrateSettings().timeout_seconds,
+                "max_retries": ObsidianSubstrateSettings().max_retries,
+            },
+            "postgres": PostgresSettings().model_dump(mode="json"),
+            "qdrant": QdrantSettings().model_dump(mode="json"),
+            "redis": RedisSettings().model_dump(mode="json"),
+        },
+        "adapter": {
+            "litellm": {
+                "timeout_seconds": LiteLlmAdapterSettings().timeout_seconds,
+                "max_retries": LiteLlmAdapterSettings().max_retries,
+                "providers": {
+                    "ollama": {
+                        "api_base": LiteLlmAdapterSettings()
+                        .providers["ollama"]
+                        .api_base,
+                        "timeout_seconds": LiteLlmAdapterSettings()
+                        .providers["ollama"]
+                        .timeout_seconds,
+                        "max_retries": LiteLlmAdapterSettings()
+                        .providers["ollama"]
+                        .max_retries,
+                        "options": LiteLlmAdapterSettings().providers["ollama"].options,
+                    }
+                },
+            },
+            "signal": {
+                "base_url": SignalAdapterSettings().base_url,
+                "health_timeout_seconds": SignalAdapterSettings().health_timeout_seconds,
+                "receive_connect_timeout_seconds": SignalAdapterSettings().receive_connect_timeout_seconds,
+                "receive_heartbeat_seconds": SignalAdapterSettings().receive_heartbeat_seconds,
+                "send_timeout_seconds": SignalAdapterSettings().send_timeout_seconds,
+                "callback_timeout_seconds": SignalAdapterSettings().callback_timeout_seconds,
+                "max_retries": SignalAdapterSettings().max_retries,
+                "failure_backoff_initial_seconds": SignalAdapterSettings().failure_backoff_initial_seconds,
+                "failure_backoff_max_seconds": SignalAdapterSettings().failure_backoff_max_seconds,
+                "failure_backoff_multiplier": SignalAdapterSettings().failure_backoff_multiplier,
+                "failure_backoff_jitter_ratio": SignalAdapterSettings().failure_backoff_jitter_ratio,
+            },
+            "utcp_code_mode": {
+                "code_mode": {
+                    "defaults": {"call_template_type": "mcp"},
+                    "servers": {
+                        "filesystem": {
+                            "command": "npx",
+                            "args": [
+                                "-y",
+                                "@modelcontextprotocol/server-filesystem",
+                                "/tmp",
+                            ],
+                        }
+                    },
+                }
+            },
+        },
+    }
+
+    assert yaml.safe_load(
+        (sample_dir / "actors.yaml.sample").read_text(encoding="utf-8")
+    ) == {
+        "logging": LoggingSettings().model_dump(mode="json"),
+        "core": ActorCoreConnectionSettings().model_dump(mode="json"),
+        "cli": CliActorSettings().model_dump(mode="json"),
+        "agent": AgentActorSettings().model_dump(mode="json"),
+        "beat": ActorNamespaceSettings(source="beat").model_dump(mode="json"),
+        "worker": ActorNamespaceSettings(source="worker").model_dump(mode="json"),
+    }
+
+    assert yaml.safe_load(
+        (sample_dir / "secrets.yaml.sample").read_text(encoding="utf-8")
+    ) == {
+        "profile": {
+            "webhook_shared_secret": "replace-me",
+            "operator": {"signal_contact_e164": "+12222222222"},
+        },
+        "substrate": {"obsidian": {"api_key": "replace-me"}},
+        "adapter": {
+            "signal": {"receive_e164": "+13333333333"},
+            "litellm": {
+                "providers": {
+                    "openai": {"api_key": "replace-me"},
+                    "anthropic": {"api_key": "replace-me"},
+                }
+            },
+        },
+    }

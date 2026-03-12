@@ -14,6 +14,7 @@ from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
     failure,
+    new_meta,
     success,
     validate_meta,
 )
@@ -46,6 +47,7 @@ from services.action.attention_router.domain import (
     RoutedNotification,
 )
 from services.action.attention_router.service import AttentionRouterService
+from services.state.cache_authority.service import CacheAuthorityService
 from services.action.attention_router.validation import (
     CorrelateApprovalRequest,
     FlushBatchRequest,
@@ -65,17 +67,18 @@ class DefaultAttentionRouterService(AttentionRouterService):
         signal_adapter: SignalAdapter,
         operator_signal_contact_e164: str,
         signal_receive_e164: str,
+        cache_authority_service: CacheAuthorityService | None = None,
     ) -> None:
         self._settings = settings
         self._signal_adapter = signal_adapter
         self._operator_signal_contact_e164 = operator_signal_contact_e164.strip()
         self._signal_receive_e164 = signal_receive_e164.strip()
+        self._cache_authority_service = cache_authority_service
         self._recent_dedupe: dict[str, datetime] = {}
         self._recent_by_channel_recipient: dict[tuple[str, str], deque[datetime]] = (
             defaultdict(deque)
         )
         self._batched_messages: dict[str, list[str]] = defaultdict(list)
-        self._approval_timestamps: dict[tuple[str, int], str] = {}
 
     @classmethod
     def from_settings(
@@ -228,9 +231,13 @@ class DefaultAttentionRouterService(AttentionRouterService):
             and result.payload is not None
             and result.payload.value.delivery_timestamp_ms is not None
         ):
-            self._approval_timestamps[
-                (approval.channel, result.payload.value.delivery_timestamp_ms)
-            ] = approval.proposal_token
+            persist_error = self._persist_approval_timestamp_correlation(
+                meta=meta,
+                approval=approval,
+                delivery_timestamp_ms=result.payload.value.delivery_timestamp_ms,
+            )
+            if persist_error is not None:
+                return failure(meta=meta, errors=[persist_error])
         return result
 
     @public_api_instrumented(
@@ -397,12 +404,21 @@ class DefaultAttentionRouterService(AttentionRouterService):
                 ],
             )
 
-        return success(
-            meta=meta,
-            payload=self._approval_timestamps.get(
-                (resolved_channel, target_timestamp_ms)
-            ),
+        lookup_meta = new_meta(
+            kind=meta.kind,
+            source=str(SERVICE_COMPONENT_ID),
+            principal=meta.principal,
+            trace_id=meta.trace_id,
+            parent_id=meta.envelope_id,
         )
+        token = self._load_approval_timestamp_correlation(
+            meta=lookup_meta,
+            channel=resolved_channel,
+            target_timestamp_ms=target_timestamp_ms,
+        )
+        if isinstance(token, ErrorDetail):
+            return failure(meta=meta, errors=[token])
+        return success(meta=meta, payload=token)
 
     def _resolve_notification(
         self,
@@ -428,6 +444,82 @@ class DefaultAttentionRouterService(AttentionRouterService):
             dedupe_key=request.dedupe_key,
             batch_key=request.batch_key,
         )
+
+    def _persist_approval_timestamp_correlation(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        approval: ApprovalNotificationPayload,
+        delivery_timestamp_ms: int,
+    ) -> ErrorDetail | None:
+        """Persist one delivery timestamp -> proposal token mapping with approval TTL."""
+        if self._cache_authority_service is None:
+            return None
+
+        ttl_seconds = max(
+            1,
+            int((approval.expires_at - datetime.now(UTC)).total_seconds()),
+        )
+        result = self._cache_authority_service.set_value(
+            meta=meta,
+            component_id=str(SERVICE_COMPONENT_ID),
+            key=self._approval_timestamp_cache_key(
+                channel=approval.channel,
+                timestamp_ms=delivery_timestamp_ms,
+            ),
+            value={"proposal_token": approval.proposal_token},
+            ttl_seconds=ttl_seconds,
+        )
+        if result.ok:
+            return None
+        return dependency_error(
+            "approval timestamp correlation persistence failed",
+            metadata={
+                "channel": approval.channel,
+                "proposal_token": approval.proposal_token,
+                "timestamp_ms": str(delivery_timestamp_ms),
+            },
+        )
+
+    def _load_approval_timestamp_correlation(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        channel: str,
+        target_timestamp_ms: int,
+    ) -> str | None | ErrorDetail:
+        """Load one persisted delivery timestamp -> proposal token mapping."""
+        if self._cache_authority_service is None:
+            return None
+
+        result = self._cache_authority_service.get_value(
+            meta=meta,
+            component_id=str(SERVICE_COMPONENT_ID),
+            key=self._approval_timestamp_cache_key(
+                channel=channel,
+                timestamp_ms=target_timestamp_ms,
+            ),
+        )
+        if not result.ok:
+            return dependency_error(
+                "approval timestamp correlation lookup failed",
+                metadata={
+                    "channel": channel,
+                    "timestamp_ms": str(target_timestamp_ms),
+                },
+            )
+        if result.payload is None:
+            return None
+        value = result.payload.value.value
+        if not isinstance(value, Mapping):
+            return None
+        token = str(value.get("proposal_token", "")).strip()
+        return token or None
+
+    @staticmethod
+    def _approval_timestamp_cache_key(*, channel: str, timestamp_ms: int) -> str:
+        """Return the component-local cache key for one approval delivery timestamp."""
+        return f"approval-timestamp:{channel}:{timestamp_ms}"
 
     def _should_suppress_dedupe(self, *, dedupe_key: str, now: datetime) -> bool:
         """Return True when dedupe key was recently delivered within window."""

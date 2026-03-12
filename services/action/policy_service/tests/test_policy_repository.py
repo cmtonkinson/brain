@@ -65,6 +65,27 @@ def test_policy_repository_tracks_pending_proposals_and_status() -> None:
     assert repo.find_pending_proposal(token="token-1") is None
 
 
+def test_policy_repository_list_pending_proposals_excludes_expired_rows() -> None:
+    repo = InMemoryPolicyPersistenceRepository()
+    now = utc_now()
+    expired = _proposal("expired").model_copy(
+        update={"expires_at": now - timedelta(seconds=1)}
+    )
+    active = _proposal("active").model_copy(
+        update={"expires_at": now + timedelta(minutes=5)}
+    )
+    repo.append_proposal(
+        row=PolicyApprovalProposalRow(proposal=expired, status="pending")
+    )
+    repo.append_proposal(
+        row=PolicyApprovalProposalRow(proposal=active, status="pending")
+    )
+
+    rows = repo.list_pending_proposals(actor="operator", channel="signal", now=now)
+
+    assert [row.proposal.proposal_token for row in rows] == ["active"]
+
+
 def test_policy_repository_retention_trims_rows() -> None:
     repo = InMemoryPolicyPersistenceRepository()
     meta = new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator")

@@ -347,6 +347,62 @@ def test_approval_notification_failure_is_reflected_in_reason_codes() -> None:
     assert "approval_notification_failed" in result.decision.reason_codes
 
 
+def test_text_approval_ignores_expired_pending_proposals() -> None:
+    service = DefaultPolicyService(
+        settings=_settings_for_rule(PolicyRule(require_approval=True))
+    )
+    expired = service.authorize_and_execute(
+        request=_request(
+            envelope_id="env-expired",
+            requires_approval=True,
+            capability_id="demo-ping",
+        ),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert expired.proposal is not None
+    service._persistence.mark_proposal_status(  # type: ignore[attr-defined]
+        token=expired.proposal.proposal_token,
+        status="expired",
+    )
+
+    pending = service.authorize_and_execute(
+        request=_request(
+            envelope_id="env-pending",
+            requires_approval=True,
+            capability_id="demo-ping",
+        ),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert pending.proposal is not None
+
+    approved = service.authorize_and_execute(
+        request=_request(
+            envelope_id="env-approved",
+            requires_approval=True,
+            capability_id="demo-ping",
+            message_text="approve",
+        ),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert approved.allowed is True
+
+
 def test_valid_approval_token_allows_execution() -> None:
     service = DefaultPolicyService(settings=PolicyServiceSettings())
     base = _request(requires_approval=True)

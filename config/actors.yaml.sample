@@ -1,5 +1,8 @@
 logging:
   level: INFO
+  file_capture_enabled: false
+  file_capture_level: VERBOSE
+  file_capture_directory: logs
   json_output: true
   service: brain
   environment: dev
@@ -14,7 +17,7 @@ cli:
   source: cli
 
 agent:
-  principal: agent
+  principal: operator
   source: agent
   capability_discovery_deny_list:
     - attention-notify
