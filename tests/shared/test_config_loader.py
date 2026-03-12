@@ -116,6 +116,9 @@ def test_load_core_settings_uses_model_defaults_when_sources_missing(
 
     assert settings.logging.service == "brain"
     assert settings.logging.level == "INFO"
+    assert settings.logging.file_capture_enabled is False
+    assert settings.logging.file_capture_level == "VERBOSE"
+    assert settings.logging.file_capture_directory == "logs"
     assert settings.boot.boot_retry_attempts == 3
     assert settings.http.host == "0.0.0.0"
     assert settings.http.port == 8898

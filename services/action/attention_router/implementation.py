@@ -29,6 +29,7 @@ from resources.adapters.signal import (
     SignalAdapter,
     SignalAdapterDependencyError,
     SignalAdapterInternalError,
+    SignalSendMessageResult,
     SignalRestApiAdapter,
     resolve_signal_adapter_settings,
 )
@@ -74,6 +75,7 @@ class DefaultAttentionRouterService(AttentionRouterService):
             defaultdict(deque)
         )
         self._batched_messages: dict[str, list[str]] = defaultdict(list)
+        self._approval_timestamps: dict[tuple[str, int], str] = {}
 
     @classmethod
     def from_settings(
@@ -172,8 +174,8 @@ class DefaultAttentionRouterService(AttentionRouterService):
                 ),
             )
 
-        delivered, delivery_error = self._deliver_signal(notification=resolved)
-        if not delivered:
+        delivery, delivery_error = self._deliver_signal(notification=resolved)
+        if delivery is None:
             assert delivery_error is not None
             return failure(meta=meta, errors=[delivery_error])
 
@@ -189,6 +191,7 @@ class DefaultAttentionRouterService(AttentionRouterService):
                 decision="sent",
                 delivered=True,
                 detail="delivered",
+                delivery_timestamp_ms=delivery.sent_timestamp_ms,
                 notification=resolved,
             ),
         )
@@ -212,7 +215,7 @@ class DefaultAttentionRouterService(AttentionRouterService):
             f"Invocation: {approval.invocation_id}",
             f"Expires: {approval.expires_at.isoformat()}",
         ]
-        return self.route_notification(
+        result = self.route_notification(
             meta=meta,
             actor=approval.actor,
             channel=approval.channel,
@@ -220,6 +223,15 @@ class DefaultAttentionRouterService(AttentionRouterService):
             message="\n".join(lines),
             dedupe_key=f"approval:{approval.proposal_token}",
         )
+        if (
+            result.ok
+            and result.payload is not None
+            and result.payload.value.delivery_timestamp_ms is not None
+        ):
+            self._approval_timestamps[
+                (approval.channel, result.payload.value.delivery_timestamp_ms)
+            ] = approval.proposal_token
+        return result
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -356,6 +368,42 @@ class DefaultAttentionRouterService(AttentionRouterService):
             )
         return success(meta=meta, payload=normalized)
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
+    def resolve_approval_notification_proposal_token(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        channel: str,
+        target_timestamp_ms: int,
+    ) -> Envelope[str | None]:
+        """Resolve one approval-notification Signal timestamp to a proposal token."""
+        try:
+            validate_meta(meta)
+        except ValueError as exc:
+            return failure(
+                meta=meta,
+                errors=[validation_error(str(exc), code=codes.INVALID_ARGUMENT)],
+            )
+
+        resolved_channel = channel.strip()
+        if resolved_channel == "":
+            return failure(
+                meta=meta,
+                errors=[
+                    validation_error("channel is required", code=codes.INVALID_ARGUMENT)
+                ],
+            )
+
+        return success(
+            meta=meta,
+            payload=self._approval_timestamps.get(
+                (resolved_channel, target_timestamp_ms)
+            ),
+        )
+
     def _resolve_notification(
         self,
         *,
@@ -426,33 +474,33 @@ class DefaultAttentionRouterService(AttentionRouterService):
         self,
         *,
         notification: RoutedNotification,
-    ) -> tuple[bool, ErrorDetail | None]:
+    ) -> tuple[SignalSendMessageResult | None, ErrorDetail | None]:
         """Deliver one normalized notification over Signal adapter."""
         if notification.channel != "signal":
-            return False, validation_error(
+            return None, validation_error(
                 f"unsupported channel: {notification.channel}",
                 code=codes.INVALID_ARGUMENT,
             )
 
         try:
-            self._signal_adapter.send_message(
+            delivery = self._signal_adapter.send_message(
                 sender_e164=notification.sender,
                 recipient_e164=notification.recipient,
                 message=self._render_message(notification),
             )
         except SignalAdapterDependencyError as exc:
-            return False, dependency_error(
+            return None, dependency_error(
                 str(exc) or "signal adapter unavailable",
                 code=codes.DEPENDENCY_UNAVAILABLE,
                 metadata={"adapter": "adapter_signal"},
             )
         except SignalAdapterInternalError as exc:
-            return False, internal_error(
+            return None, internal_error(
                 str(exc) or "signal adapter internal failure",
                 metadata={"adapter": "adapter_signal"},
             )
 
-        return True, None
+        return delivery, None
 
     def _render_message(self, notification: RoutedNotification) -> str:
         """Render title/body into final outbound message text payload."""

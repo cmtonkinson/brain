@@ -1,7 +1,8 @@
-"""Minimal stdout logging configuration for Brain services.
+"""Minimal logging configuration for Brain services.
 
 Design goals:
 - Always emit logs to stdout for Docker/Compose log collection.
+- Optionally emit a lower-threshold local file capture alongside stdout.
 - Provide structured fields suitable for future OpenTelemetry correlation.
 - Keep API simple while allowing later extension without breaking callers.
 """
@@ -12,6 +13,7 @@ import json
 import logging
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from .context import get_context
@@ -95,11 +97,14 @@ class PlainFormatter(logging.Formatter):
 def configure_logging(
     *,
     level: str = "INFO",
+    file_capture_enabled: bool = False,
+    file_capture_level: str = "VERBOSE",
+    file_capture_directory: str = "logs",
     json_output: bool = True,
     service: str | None = None,
     environment: str | None = None,
 ) -> None:
-    """Configure root logging with a single stdout handler.
+    """Configure root logging with stdout and optional local file capture.
 
     This function is idempotent for handler setup: existing root handlers are
     replaced to avoid duplicate emissions when called multiple times.
@@ -107,14 +112,28 @@ def configure_logging(
     _register_verbose_level()
     root = logging.getLogger()
     root.handlers.clear()
-    root.setLevel(level.upper())
+    stream_level = _resolve_level(level)
+    handlers: list[logging.Handler] = []
 
-    handler = logging.StreamHandler(stream=sys.stdout)
-    handler.setLevel(level.upper())
-    handler.addFilter(ContextFilter())
-    handler.setFormatter(JsonFormatter() if json_output else PlainFormatter())
+    stream_handler = logging.StreamHandler(stream=sys.stdout)
+    stream_handler.setLevel(stream_level)
+    stream_handler.addFilter(ContextFilter())
+    stream_handler.setFormatter(JsonFormatter() if json_output else PlainFormatter())
+    handlers.append(stream_handler)
 
-    root.addHandler(handler)
+    if file_capture_enabled:
+        file_level = _resolve_level(file_capture_level)
+        file_handler = _build_file_handler(
+            directory=file_capture_directory,
+            json_output=json_output,
+        )
+        file_handler.setLevel(file_level)
+        file_handler.addFilter(ContextFilter())
+        handlers.append(file_handler)
+
+    root.setLevel(min(handler.level for handler in handlers))
+    for handler in handlers:
+        root.addHandler(handler)
     root.propagate = False
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
@@ -133,3 +152,27 @@ def get_logger(name: str | None = None) -> logging.Logger:
     """Return a logger using Python's standard logging hierarchy."""
     _register_verbose_level()
     return logging.getLogger(name)
+
+
+def _resolve_level(level: str) -> int:
+    """Resolve one configured logging level name into a numeric value."""
+    parsed = logging.getLevelName(level.upper())
+    if isinstance(parsed, int):
+        return parsed
+    raise ValueError(f"unsupported log level: {level}")
+
+
+def _build_file_handler(
+    *,
+    directory: str,
+    json_output: bool,
+) -> logging.Handler:
+    """Build one local file capture handler, creating its directory on demand."""
+    log_directory = Path(directory)
+    log_directory.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(
+        filename=log_directory / "brain.log",
+        encoding="utf-8",
+    )
+    handler.setFormatter(JsonFormatter() if json_output else PlainFormatter())
+    return handler

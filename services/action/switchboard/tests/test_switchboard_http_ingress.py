@@ -39,6 +39,8 @@ class _FakeSwitchboardService(SwitchboardService):
                     timestamp_ms=1,
                     source_device="1",
                     source="+12025550100",
+                    reaction_emoji=None,
+                    approval_intent=None,
                 ),
             ),
         )

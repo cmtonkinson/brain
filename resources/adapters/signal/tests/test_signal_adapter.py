@@ -4,20 +4,31 @@ from __future__ import annotations
 
 import asyncio
 import json
+from unittest.mock import patch
 
 import aiohttp
 import pytest
 
 from packages.brain_shared.http import HttpRequestError
 from resources.adapters.signal.adapter import SignalAdapterDependencyError
+from resources.adapters.signal import signal_adapter as signal_adapter_module
 from resources.adapters.signal.config import SignalAdapterSettings
 from resources.adapters.signal.signal_adapter import SignalRestApiAdapter
+
+
+class _FakeHttpResponse:
+    def __init__(self, payload: object) -> None:
+        self._payload = payload
+
+    def json(self) -> object:
+        return self._payload
 
 
 class _FakeSignalClient:
     def __init__(self) -> None:
         self.raise_send: Exception | None = None
         self.posts: list[tuple[str, object]] = []
+        self.response_payload: object = {}
 
     def get(self, _url: str, **_kwargs):
         return object()
@@ -26,7 +37,7 @@ class _FakeSignalClient:
         if self.raise_send is not None:
             raise self.raise_send
         self.posts.append((url, kwargs.get("json")))
-        return object()
+        return _FakeHttpResponse(self.response_payload)
 
 
 class _FakeCallbackClient:
@@ -344,3 +355,67 @@ def test_send_message_posts_expected_payload() -> None:
         "number": "+12025550101",
         "recipients": ["+12025550100"],
     }
+
+
+def test_send_message_extracts_timestamp_and_emits_verbose_log() -> None:
+    adapter = _adapter()
+    signal = adapter._signal_client
+    signal.response_payload = {"timestamp": 1730000000123}
+
+    with patch.object(signal_adapter_module._LOGGER, "verbose") as verbose_log:
+        result = adapter.send_message(
+            sender_e164="+12025550101",
+            recipient_e164="+12025550100",
+            message="hello",
+        )
+
+    assert result.sent_timestamp_ms == 1730000000123
+    verbose_log.assert_called_once()
+    assert verbose_log.call_args.args == (
+        "signal adapter send_message response captured",
+    )
+    assert verbose_log.call_args.kwargs["extra"]["sent_timestamp_ms"] == 1730000000123
+
+
+def test_process_receive_payload_emits_verbose_raw_boundary_logs() -> None:
+    adapter = _adapter()
+    callback = adapter._callback_client
+    adapter.register_webhook(
+        callback_url="http://switchboard:8091/v1/inbound/signal/webhook",
+        shared_secret="secret",
+    )
+    registration = adapter._get_registration()
+    assert registration is not None
+
+    raw_payload_json = json.dumps(
+        {
+            "account": "+12025550100",
+            "envelope": {
+                "source": "+12025550100",
+                "timestamp": 1730000000000,
+                "dataMessage": {
+                    "message": "approved",
+                    "quote": {"timestamp": 1730000000999},
+                    "reaction": {"emoji": "👍", "targetSentTimestamp": 1730000000888},
+                },
+            },
+        }
+    )
+
+    with patch.object(signal_adapter_module._LOGGER, "verbose") as verbose_log:
+        adapter._process_receive_payload(
+            registration=registration,
+            raw_payload_json=raw_payload_json,
+        )
+
+    assert len(callback.posts) == 1
+    assert verbose_log.call_count == 2
+    assert verbose_log.call_args_list[0].args == (
+        "signal adapter received websocket payload",
+    )
+    assert verbose_log.call_args_list[0].kwargs["extra"]["contains_quote"] is True
+    assert verbose_log.call_args_list[0].kwargs["extra"]["contains_reaction"] is True
+    assert verbose_log.call_args_list[1].args == (
+        "signal adapter queued callback payload",
+    )
+    assert verbose_log.call_args_list[1].kwargs["extra"]["raw_body_json"].strip() != ""

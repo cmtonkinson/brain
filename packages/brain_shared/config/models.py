@@ -25,6 +25,11 @@ class LoggingSettings(BaseModel):
     """Structured logging configuration shared by Brain components."""
 
     level: Literal["VERBOSE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    file_capture_enabled: bool = False
+    file_capture_level: Literal[
+        "VERBOSE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
+    ] = "VERBOSE"
+    file_capture_directory: str = "logs"
     json_output: bool = True
     service: str = "brain"
     environment: str = "dev"

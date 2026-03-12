@@ -270,6 +270,41 @@ def test_call_capability_invoke_autogenerates_invocation_id() -> None:
     assert len(body["invocation_id"]) == 26
 
 
+def test_call_capability_invoke_includes_reply_and_reaction_proposal_tokens() -> None:
+    """Capability invoke should pass structured approval correlators through CES."""
+    from packages.brain_sdk.calls import call_capability_invoke
+
+    http = _fake_http(
+        {
+            "output_json": "{}",
+            "policy": {
+                "decision_id": "dec-1",
+                "allowed": True,
+                "reason_codes": [],
+                "obligations": [],
+                "proposal_id": "",
+            },
+            "errors": [],
+        }
+    )
+
+    call_capability_invoke(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+        capability_id="vault-move-path",
+        input_payload={"source_path": "a", "target_path": "b"},
+        actor="operator",
+        channel="signal",
+        reply_to_proposal_token="tok-quote",
+        reaction_to_proposal_token="tok-react",
+    )
+
+    body = http.post_json.call_args.kwargs["json"]
+    assert body["reply_to_proposal_token"] == "tok-quote"
+    assert body["reaction_to_proposal_token"] == "tok-react"
+
+
 def test_call_lms_chat_success() -> None:
     """LMS chat wrapper should return the typed chat payload."""
     from packages.brain_sdk.calls import call_lms_chat
@@ -482,6 +517,10 @@ def test_call_switchboard_poll_operator_instruction_success() -> None:
                 "group_id": None,
                 "quote_target_timestamp_ms": None,
                 "reaction_target_timestamp_ms": None,
+                "reaction_emoji": "👍",
+                "approval_intent": "approve",
+                "reply_to_proposal_token": "tok-quote",
+                "reaction_to_proposal_token": "tok-react",
             },
             "errors": [],
         }
@@ -497,3 +536,7 @@ def test_call_switchboard_poll_operator_instruction_success() -> None:
     assert result is not None
     assert result.message_text == "hello"
     assert result.sender_e164 == "+12025550100"
+    assert result.reaction_emoji == "👍"
+    assert result.approval_intent == "approve"
+    assert result.reply_to_proposal_token == "tok-quote"
+    assert result.reaction_to_proposal_token == "tok-react"

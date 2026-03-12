@@ -31,6 +31,7 @@ def build_component(
 ) -> object:
     """Build concrete runtime instance for this registered service component."""
     from resources.adapters.signal.adapter import SignalAdapter
+    from services.action.attention_router.service import AttentionRouterService
     from services.action.switchboard.service import build_switchboard_service
     from services.state.cache_authority.service import CacheAuthorityService
 
@@ -42,8 +43,15 @@ def build_component(
     if signal_adapter is not None and not isinstance(signal_adapter, SignalAdapter):
         raise TypeError("adapter_signal")
 
+    attention_router = components.get("service_attention_router")
+    if attention_router is not None and not isinstance(
+        attention_router, AttentionRouterService
+    ):
+        raise TypeError("service_attention_router")
+
     return build_switchboard_service(
         settings=settings,
         cache_service=cache_service,
         signal_adapter=signal_adapter,
+        attention_router_service=attention_router,
     )

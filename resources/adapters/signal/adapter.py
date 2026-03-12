@@ -46,6 +46,7 @@ class SignalSendMessageResult(BaseModel):
     recipient_e164: str
     sender_e164: str
     detail: str
+    sent_timestamp_ms: int | None = None
 
 
 @runtime_checkable

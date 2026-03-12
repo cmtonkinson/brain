@@ -173,6 +173,10 @@ def test_ingest_signal_webhook_enqueues_operator_message() -> None:
         "group_id": "group-123",
         "quote_target_timestamp_ms": None,
         "reaction_target_timestamp_ms": None,
+        "reaction_emoji": None,
+        "approval_intent": None,
+        "reply_to_proposal_token": None,
+        "reaction_to_proposal_token": None,
     }
 
 

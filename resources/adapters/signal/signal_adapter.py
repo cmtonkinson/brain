@@ -152,7 +152,7 @@ class SignalRestApiAdapter(SignalAdapter):
             "recipients": [recipient],
         }
         try:
-            self._signal_client.post("/v2/send", json=payload)
+            response = self._signal_client.post("/v2/send", json=payload)
         except HttpStatusError as exc:
             raise SignalAdapterDependencyError(
                 f"signal send failed with status {exc.status_code}"
@@ -162,11 +162,25 @@ class SignalRestApiAdapter(SignalAdapter):
                 str(exc) or "signal send unavailable"
             ) from None
 
+        response_payload, sent_timestamp_ms = _response_payload_and_timestamp_ms(
+            response
+        )
+        _LOGGER.verbose(
+            "signal adapter send_message response captured",
+            extra={
+                "sender_e164": sender,
+                "recipient_e164": recipient,
+                "signal_response_payload": response_payload,
+                "sent_timestamp_ms": sent_timestamp_ms,
+            },
+        )
+
         return SignalSendMessageResult(
             delivered=True,
             recipient_e164=recipient,
             sender_e164=sender,
             detail="delivered",
+            sent_timestamp_ms=sent_timestamp_ms,
         )
 
     def _run_loop(self) -> None:
@@ -301,9 +315,24 @@ class SignalRestApiAdapter(SignalAdapter):
         raw_payload_json: str,
     ) -> None:
         """Parse one websocket payload and forward its contained Signal items."""
+        _LOGGER.verbose(
+            "signal adapter received websocket payload",
+            extra={
+                "raw_payload_json": raw_payload_json,
+                **_summarize_signal_receive_payload(raw_payload_json),
+            },
+        )
         messages = self._decode_receive_payload(raw_payload_json)
         for message in messages:
-            self._pending_webhooks.append(json.dumps({"data": message}))
+            wrapped_body = json.dumps({"data": message})
+            _LOGGER.verbose(
+                "signal adapter queued callback payload",
+                extra={
+                    "raw_body_json": wrapped_body,
+                    **_summarize_signal_payload(wrapped_body),
+                },
+            )
+            self._pending_webhooks.append(wrapped_body)
         self._flush_pending(registration=registration)
 
     def _decode_receive_payload(self, raw_payload_json: str) -> list[dict[str, object]]:
@@ -536,6 +565,46 @@ class SignalRestApiAdapter(SignalAdapter):
         return delay
 
 
+def _response_timestamp_ms(response: object) -> int | None:
+    """Extract one outbound send timestamp from a Signal API response when present."""
+    _payload, timestamp_ms = _response_payload_and_timestamp_ms(response)
+    return timestamp_ms
+
+
+def _response_payload_and_timestamp_ms(
+    response: object,
+) -> tuple[object | None, int | None]:
+    """Extract one outbound send response payload plus its timestamp when present."""
+    try:
+        payload = response.json()
+    except Exception:
+        return None, None
+
+    if isinstance(payload, dict):
+        candidate = payload.get("timestamp") or payload.get("timestamp_ms")
+        return payload, _optional_int(candidate)
+    if isinstance(payload, list):
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            candidate = item.get("timestamp") or item.get("timestamp_ms")
+            parsed = _optional_int(candidate)
+            if parsed is not None:
+                return payload, parsed
+        return payload, None
+    return payload, None
+
+
+def _optional_int(value: object) -> int | None:
+    """Parse one optional integer value when present."""
+    if value is None:
+        return None
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return None
+
+
 def _summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
     """Summarize one raw Signal receive item for diagnostic logging."""
     try:
@@ -578,3 +647,56 @@ def _summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
             envelope.get("timestamp") or candidate.get("timestamp") or ""
         ).strip(),
     }
+
+
+def _summarize_signal_receive_payload(raw_payload_json: str) -> dict[str, object]:
+    """Summarize one raw Signal websocket payload before callback wrapping."""
+    try:
+        payload = json.loads(raw_payload_json)
+    except json.JSONDecodeError:
+        return {"payload_json_valid": False}
+
+    if isinstance(payload, list):
+        return {
+            "payload_json_valid": True,
+            "payload_type": "list",
+            "item_count": len(payload),
+            "contains_quote": any(_payload_contains_quote(item) for item in payload),
+            "contains_reaction": any(
+                _payload_contains_reaction(item) for item in payload
+            ),
+        }
+    if isinstance(payload, dict):
+        return {
+            "payload_json_valid": True,
+            "payload_type": "dict",
+            "contains_quote": _payload_contains_quote(payload),
+            "contains_reaction": _payload_contains_reaction(payload),
+        }
+    return {"payload_json_valid": True, "payload_type": type(payload).__name__}
+
+
+def _payload_contains_quote(payload: object) -> bool:
+    """Return whether one raw Signal payload contains quoted-reply metadata."""
+    if not isinstance(payload, dict):
+        return False
+    envelope = payload.get("envelope")
+    if not isinstance(envelope, dict):
+        return False
+    data_message = envelope.get("dataMessage")
+    if not isinstance(data_message, dict):
+        return False
+    return isinstance(data_message.get("quote"), dict)
+
+
+def _payload_contains_reaction(payload: object) -> bool:
+    """Return whether one raw Signal payload contains reaction metadata."""
+    if not isinstance(payload, dict):
+        return False
+    envelope = payload.get("envelope")
+    if not isinstance(envelope, dict):
+        return False
+    data_message = envelope.get("dataMessage")
+    if not isinstance(data_message, dict):
+        return False
+    return isinstance(data_message.get("reaction"), dict)

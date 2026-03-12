@@ -56,6 +56,8 @@ class AgentTurnScenario:
             group_id=None,
             quote_target_timestamp_ms=None,
             reaction_target_timestamp_ms=None,
+            reaction_emoji=None,
+            approval_intent=None,
         )
     )
     context: MemoryContextBlock = field(

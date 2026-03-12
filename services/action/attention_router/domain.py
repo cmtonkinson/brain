@@ -32,6 +32,7 @@ class RouteNotificationResult(BaseModel):
     detail: str
     suppressed_reason: str = ""
     batched_count: int = 0
+    delivery_timestamp_ms: int | None = None
     notification: RoutedNotification | None = None
 
 

@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from resources.adapters.signal.adapter import SignalAdapter
+from services.action.attention_router.service import AttentionRouterService
 from services.state.cache_authority.service import CacheAuthorityService
 from services.action.switchboard.domain import (
     HealthStatus,
@@ -58,6 +59,7 @@ def build_switchboard_service(
     settings: CoreRuntimeSettings,
     cache_service: CacheAuthorityService,
     signal_adapter: SignalAdapter | None = None,
+    attention_router_service: AttentionRouterService | None = None,
 ) -> SwitchboardService:
     """Build default Switchboard implementation from typed settings."""
     from resources.adapters.signal import (
@@ -76,6 +78,7 @@ def build_switchboard_service(
         adapter=signal_adapter
         or SignalRestApiAdapter(settings=resolve_signal_adapter_settings(settings)),
         cache_service=cache_service,
+        attention_router_service=attention_router_service,
     )
 
 
@@ -83,9 +86,11 @@ def build_switchboard_service_from_settings(
     *,
     settings: CoreRuntimeSettings,
     cache_service: CacheAuthorityService,
+    attention_router_service: AttentionRouterService | None = None,
 ) -> SwitchboardService:
     """Backward-compatible helper retaining previous from-settings behavior."""
     return build_switchboard_service(
         settings=settings,
         cache_service=cache_service,
+        attention_router_service=attention_router_service,
     )

@@ -69,7 +69,18 @@ class _FakeSignalAdapter(SignalAdapter):
             recipient_e164=recipient_e164,
             sender_e164=sender_e164,
             detail="sent",
+            sent_timestamp_ms=123,
         )
+
+    def resolve_approval_notification_proposal_token(
+        self,
+        *,
+        meta,
+        channel: str,
+        target_timestamp_ms: int,
+    ):
+        del meta, channel, target_timestamp_ms
+        raise NotImplementedError
 
 
 def _meta():

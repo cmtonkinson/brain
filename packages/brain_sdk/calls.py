@@ -176,6 +176,10 @@ class SwitchboardOperatorInstruction:
     group_id: str | None
     quote_target_timestamp_ms: int | None
     reaction_target_timestamp_ms: int | None
+    reaction_emoji: str | None = None
+    approval_intent: str | None = None
+    reply_to_proposal_token: str | None = None
+    reaction_to_proposal_token: str | None = None
 
 
 def call_core_health(
@@ -318,6 +322,8 @@ def call_capability_invoke(
     parent_invocation_id: str = "",
     confirmed: bool = False,
     approval_token: str = "",
+    reply_to_proposal_token: str = "",
+    reaction_to_proposal_token: str = "",
 ) -> CapabilityInvokeResult:
     """Invoke one Capability through the CES HTTP surface."""
     resolved_invocation_id = invocation_id.strip() or generate_ulid_str()
@@ -335,6 +341,8 @@ def call_capability_invoke(
             "parent_invocation_id": parent_invocation_id,
             "confirmed": confirmed,
             "approval_token": approval_token,
+            "reply_to_proposal_token": reply_to_proposal_token,
+            "reaction_to_proposal_token": reaction_to_proposal_token,
         },
         timeout_seconds=timeout_seconds,
     )
@@ -784,6 +792,26 @@ def _switchboard_operator_instruction(
         reaction_target_timestamp_ms=_optional_int(
             value.get("reaction_target_timestamp_ms")
         ),
+        reaction_emoji=(
+            None
+            if value.get("reaction_emoji") is None
+            else str(value.get("reaction_emoji"))
+        ),
+        approval_intent=(
+            None
+            if value.get("approval_intent") is None
+            else str(value.get("approval_intent"))
+        ),
+        reply_to_proposal_token=(
+            None
+            if value.get("reply_to_proposal_token") is None
+            else str(value.get("reply_to_proposal_token"))
+        ),
+        reaction_to_proposal_token=(
+            None
+            if value.get("reaction_to_proposal_token") is None
+            else str(value.get("reaction_to_proposal_token"))
+        ),
     )
 
 
@@ -909,6 +937,8 @@ def invoke_capability(
     parent_invocation_id: str = "",
     confirmed: bool = False,
     approval_token: str = "",
+    reply_to_proposal_token: str = "",
+    reaction_to_proposal_token: str = "",
     principal: str = "",
     source: str = "",
     trace_id: str | None = None,
@@ -924,6 +954,8 @@ def invoke_capability(
         parent_invocation_id=parent_invocation_id,
         confirmed=confirmed,
         approval_token=approval_token,
+        reply_to_proposal_token=reply_to_proposal_token,
+        reaction_to_proposal_token=reaction_to_proposal_token,
         meta=_meta_overrides(
             principal=principal,
             source=source,

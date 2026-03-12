@@ -112,6 +112,8 @@ class _InvokeRequest(BaseModel):
     parent_invocation_id: str = ""
     confirmed: bool = False
     approval_token: str = ""
+    reply_to_proposal_token: str = ""
+    reaction_to_proposal_token: str = ""
 
 
 class _InvokeResponse(BaseModel):
@@ -217,6 +219,8 @@ def register_routes(*, router: APIRouter, service: CapabilityEngineService) -> N
             parent_invocation_id=req.parent_invocation_id,
             confirmed=req.confirmed,
             approval_token=req.approval_token,
+            reply_to_proposal_token=req.reply_to_proposal_token,
+            reaction_to_proposal_token=req.reaction_to_proposal_token,
         )
         result = await run_in_threadpool(
             service.invoke_capability,

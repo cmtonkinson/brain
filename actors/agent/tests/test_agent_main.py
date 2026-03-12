@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -126,7 +127,7 @@ def test_build_capability_tools_invokes_sdk_client() -> None:
 
     class _FakeClient:
         def __init__(self) -> None:
-            self.calls: list[tuple[str, dict[str, object], str, str]] = []
+            self.calls: list[tuple[str, dict[str, object], str, str, str, str]] = []
 
         def invoke_capability(
             self,
@@ -135,8 +136,19 @@ def test_build_capability_tools_invokes_sdk_client() -> None:
             input_payload: dict[str, object],
             actor: str,
             channel: str,
+            reply_to_proposal_token: str = "",
+            reaction_to_proposal_token: str = "",
         ):
-            self.calls.append((capability_id, input_payload, actor, channel))
+            self.calls.append(
+                (
+                    capability_id,
+                    input_payload,
+                    actor,
+                    channel,
+                    reply_to_proposal_token,
+                    reaction_to_proposal_token,
+                )
+            )
             return type("InvokeResult", (), {"output": {"ok": True}})()
 
     client = _FakeClient()
@@ -163,7 +175,7 @@ def test_build_capability_tools_invokes_sdk_client() -> None:
     result = tools[0].function(value="x")
 
     assert result == {"ok": True}
-    assert client.calls == [("demo-tool", {"value": "x"}, "operator", "signal")]
+    assert client.calls == [("demo-tool", {"value": "x"}, "operator", "signal", "", "")]
 
 
 def test_build_capability_tools_uses_descriptor_input_schema() -> None:
@@ -178,8 +190,17 @@ def test_build_capability_tools_uses_descriptor_input_schema() -> None:
             input_payload: dict[str, object],
             actor: str,
             channel: str,
+            reply_to_proposal_token: str = "",
+            reaction_to_proposal_token: str = "",
         ):
-            del capability_id, input_payload, actor, channel
+            del (
+                capability_id,
+                input_payload,
+                actor,
+                channel,
+                reply_to_proposal_token,
+                reaction_to_proposal_token,
+            )
             return type("InvokeResult", (), {"output": {"ok": True}})()
 
     tools = main._build_capability_tools(
@@ -226,8 +247,17 @@ def test_build_capability_tools_returns_policy_denial_payload() -> None:
             input_payload: dict[str, object],
             actor: str,
             channel: str,
+            reply_to_proposal_token: str = "",
+            reaction_to_proposal_token: str = "",
         ):
-            del capability_id, input_payload, actor, channel
+            del (
+                capability_id,
+                input_payload,
+                actor,
+                channel,
+                reply_to_proposal_token,
+                reaction_to_proposal_token,
+            )
             raise BrainPolicyError(
                 message=(
                     "capabilities.invoke domain failure: "
@@ -279,8 +309,351 @@ def test_build_capability_tools_returns_policy_denial_payload() -> None:
         "capability_id": "vault-move-path",
         "requires_approval": True,
         "proposal_token": "tok-123",
+        "proposal_expires_at": "",
         "reason_codes": ["approval_required"],
     }
+
+
+def test_instruction_context_message_uses_reaction_approval_when_text_missing() -> None:
+    """Reaction-only approvals should still produce a usable MAS context message."""
+    from actors.agent import main
+
+    assert (
+        main._instruction_context_message(
+            SwitchboardOperatorInstruction(
+                sender_e164="+12025550100",
+                message_text="",
+                timestamp_ms=1,
+                source_device="1",
+                source="signal",
+                group_id=None,
+                quote_target_timestamp_ms=None,
+                reaction_target_timestamp_ms=123,
+                reaction_emoji="👍",
+                approval_intent="approve",
+            )
+        )
+        == "[signal reaction approval:approve emoji:👍]"
+    )
+
+
+def test_build_capability_tools_remembers_pending_invocation_with_expiry() -> None:
+    """Approval denials should populate the short-lived pending invocation store."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+            reply_to_proposal_token: str = "",
+            reaction_to_proposal_token: str = "",
+        ):
+            del (
+                capability_id,
+                input_payload,
+                actor,
+                channel,
+                reply_to_proposal_token,
+                reaction_to_proposal_token,
+            )
+            raise BrainPolicyError(
+                message=(
+                    "capabilities.invoke domain failure: "
+                    "policy denied capability invocation"
+                ),
+                operation="capabilities.invoke",
+                details=(
+                    SdkErrorDetail(
+                        code="permission_denied",
+                        message="policy denied capability invocation",
+                        category="policy",
+                        metadata={
+                            "proposal_token": "tok-expiring",
+                            "reason_codes": "approval_required",
+                            "expires_at": "2026-03-13T14:15:16Z",
+                        },
+                    ),
+                ),
+            )
+
+    turn_state = main._TurnState(actor="operator", channel="signal")
+    tools = main._build_capability_tools(
+        client=_FakeClient(),  # type: ignore[arg-type]
+        capabilities=(
+            CapabilityDescriptor(
+                capability_id="vault-move-path",
+                kind="native_op",
+                version="1.0.0",
+                summary="Move one file or directory path.",
+                input_schema={"type": "object"},
+                output_schema={"type": "object"},
+                autonomy=0,
+                requires_approval=True,
+                side_effects=("writes_vault",),
+                required_capabilities=(),
+            ),
+        ),
+        turn_state=turn_state,
+    )
+
+    result = tools[0].function(
+        source_path="notes/old.md",
+        target_path="notes/new.md",
+    )
+
+    assert result["proposal_expires_at"] == "2026-03-13T14:15:16+00:00"
+    assert turn_state.pending_invocations["tok-expiring"] == main._PendingInvocation(
+        proposal_token="tok-expiring",
+        capability_id="vault-move-path",
+        input_payload={
+            "source_path": "notes/old.md",
+            "target_path": "notes/new.md",
+        },
+        actor="operator",
+        channel="signal",
+        requires_approval=True,
+        reason_codes=("approval_required",),
+        created_at=turn_state.pending_invocations["tok-expiring"].created_at,
+        expires_at=datetime(2026, 3, 13, 14, 15, 16, tzinfo=UTC),
+    )
+
+
+def test_build_capability_tools_forwards_matching_proposal_correlators() -> None:
+    """Retries should forward correlators only when they match stored blocked work."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.reply_to_proposal_token = ""
+            self.reaction_to_proposal_token = ""
+
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+            reply_to_proposal_token: str = "",
+            reaction_to_proposal_token: str = "",
+        ):
+            del capability_id, input_payload, actor, channel
+            self.reply_to_proposal_token = reply_to_proposal_token
+            self.reaction_to_proposal_token = reaction_to_proposal_token
+            return type("InvokeResult", (), {"output": {"ok": True}})()
+
+    client = _FakeClient()
+    turn_state = main._TurnState(
+        actor="operator",
+        channel="signal",
+        reply_to_proposal_token="tok-quote",
+        reaction_to_proposal_token="tok-react",
+        pending_invocations={
+            "tok-quote": main._PendingInvocation(
+                proposal_token="tok-quote",
+                capability_id="vault-move-path",
+                input_payload={
+                    "source_path": "notes/old.md",
+                    "target_path": "notes/new.md",
+                },
+                actor="operator",
+                channel="signal",
+                requires_approval=True,
+                reason_codes=("approval_required",),
+                created_at=datetime(2026, 3, 12, 12, 0, 0, tzinfo=UTC),
+            ),
+            "tok-react": main._PendingInvocation(
+                proposal_token="tok-react",
+                capability_id="vault-move-path",
+                input_payload={
+                    "source_path": "notes/old.md",
+                    "target_path": "notes/new.md",
+                },
+                actor="operator",
+                channel="signal",
+                requires_approval=True,
+                reason_codes=("approval_required",),
+                created_at=datetime(2026, 3, 12, 12, 0, 1, tzinfo=UTC),
+            ),
+        },
+    )
+    tools = main._build_capability_tools(
+        client=client,  # type: ignore[arg-type]
+        capabilities=(
+            CapabilityDescriptor(
+                capability_id="vault-move-path",
+                kind="native_op",
+                version="1.0.0",
+                summary="Move one file or directory path.",
+                input_schema={"type": "object"},
+                output_schema={"type": "object"},
+                autonomy=0,
+                requires_approval=True,
+                side_effects=("writes_vault",),
+                required_capabilities=(),
+            ),
+        ),
+        turn_state=turn_state,
+    )
+
+    tools[0].function(
+        source_path="notes/old.md",
+        target_path="notes/new.md",
+    )
+
+    assert client.reply_to_proposal_token == "tok-quote"
+    assert client.reaction_to_proposal_token == "tok-react"
+
+
+def test_build_capability_tools_does_not_forward_mismatched_proposal_correlators() -> (
+    None
+):
+    """Correlators should be withheld when the retry does not match stored blocked work."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.reply_to_proposal_token = ""
+            self.reaction_to_proposal_token = ""
+
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+            reply_to_proposal_token: str = "",
+            reaction_to_proposal_token: str = "",
+        ):
+            del capability_id, input_payload, actor, channel
+            self.reply_to_proposal_token = reply_to_proposal_token
+            self.reaction_to_proposal_token = reaction_to_proposal_token
+            return type("InvokeResult", (), {"output": {"ok": True}})()
+
+    client = _FakeClient()
+    turn_state = main._TurnState(
+        actor="operator",
+        channel="signal",
+        reply_to_proposal_token="tok-quote",
+        reaction_to_proposal_token="tok-react",
+        pending_invocations={
+            "tok-quote": main._PendingInvocation(
+                proposal_token="tok-quote",
+                capability_id="vault-move-path",
+                input_payload={
+                    "source_path": "notes/old.md",
+                    "target_path": "notes/new.md",
+                },
+                actor="operator",
+                channel="signal",
+                requires_approval=True,
+                reason_codes=("approval_required",),
+                created_at=datetime(2026, 3, 12, 12, 0, 0, tzinfo=UTC),
+            ),
+            "tok-react": main._PendingInvocation(
+                proposal_token="tok-react",
+                capability_id="vault-move-path",
+                input_payload={
+                    "source_path": "notes/old.md",
+                    "target_path": "notes/new.md",
+                },
+                actor="operator",
+                channel="signal",
+                requires_approval=True,
+                reason_codes=("approval_required",),
+                created_at=datetime(2026, 3, 12, 12, 0, 1, tzinfo=UTC),
+            ),
+        },
+    )
+    tools = main._build_capability_tools(
+        client=client,  # type: ignore[arg-type]
+        capabilities=(
+            CapabilityDescriptor(
+                capability_id="vault-move-path",
+                kind="native_op",
+                version="1.0.0",
+                summary="Move one file or directory path.",
+                input_schema={"type": "object"},
+                output_schema={"type": "object"},
+                autonomy=0,
+                requires_approval=True,
+                side_effects=("writes_vault",),
+                required_capabilities=(),
+            ),
+        ),
+        turn_state=turn_state,
+    )
+
+    tools[0].function(
+        source_path="notes/other.md",
+        target_path="notes/new.md",
+    )
+
+    assert client.reply_to_proposal_token == ""
+    assert client.reaction_to_proposal_token == ""
+
+
+def test_turn_state_prunes_expired_pending_invocations() -> None:
+    """Expired pending approval records should be evicted eagerly."""
+    from actors.agent import main
+
+    now = datetime(2026, 3, 11, 12, 0, 0, tzinfo=UTC)
+    turn_state = main._TurnState()
+    turn_state.pending_invocations = {
+        "expired": main._PendingInvocation(
+            proposal_token="expired",
+            capability_id="vault-move-path",
+            input_payload={},
+            actor="operator",
+            channel="signal",
+            requires_approval=True,
+            reason_codes=("approval_required",),
+            created_at=now - timedelta(minutes=5),
+            expires_at=now - timedelta(seconds=1),
+        ),
+        "active": main._PendingInvocation(
+            proposal_token="active",
+            capability_id="vault-move-path",
+            input_payload={},
+            actor="operator",
+            channel="signal",
+            requires_approval=True,
+            reason_codes=("approval_required",),
+            created_at=now - timedelta(minutes=1),
+            expires_at=now + timedelta(minutes=5),
+        ),
+    }
+
+    turn_state.prune_pending_invocations(now=now)
+
+    assert set(turn_state.pending_invocations) == {"active"}
+
+
+def test_turn_state_remember_pending_invocation_evicts_oldest_over_limit() -> None:
+    """Pending approval records should remain bounded even without expiry data."""
+    from actors.agent import main
+
+    base = datetime(2026, 3, 11, 12, 0, 0, tzinfo=UTC)
+    turn_state = main._TurnState(actor="operator", channel="signal")
+
+    for index in range(main._MAX_PENDING_INVOCATIONS + 1):
+        turn_state.remember_pending_invocation(
+            proposal_token=f"tok-{index}",
+            capability_id="vault-move-path",
+            input_payload={"index": index},
+            requires_approval=True,
+            reason_codes=("approval_required",),
+            now=base + timedelta(seconds=index),
+        )
+
+    assert len(turn_state.pending_invocations) == main._MAX_PENDING_INVOCATIONS
+    assert "tok-0" not in turn_state.pending_invocations
+    assert f"tok-{main._MAX_PENDING_INVOCATIONS}" in turn_state.pending_invocations
 
 
 def test_tool_model_requests_lms_chat_with_tools() -> None:
@@ -487,6 +860,8 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
                 group_id=None,
                 quote_target_timestamp_ms=None,
                 reaction_target_timestamp_ms=None,
+                reaction_emoji=None,
+                approval_intent=None,
             ),
         )
     )
@@ -611,6 +986,8 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
                 group_id=None,
                 quote_target_timestamp_ms=None,
                 reaction_target_timestamp_ms=None,
+                reaction_emoji=None,
+                approval_intent=None,
             ),
         )
     )

@@ -307,6 +307,21 @@ def test_search_limit_is_capped_by_service_settings() -> None:
     assert substrate.search_calls[-1].limit == 10
 
 
+def test_search_normalizes_directory_scope_trailing_slash() -> None:
+    """Search should accept directory scopes with a trailing slash."""
+    service, substrate = _service()
+
+    result = service.search_files(
+        meta=_meta(),
+        query="alpha",
+        directory_scope="professional/",
+        limit=5,
+    )
+
+    assert result.ok is True
+    assert substrate.search_calls[-1].directory_scope == "professional"
+
+
 def test_edit_file_maps_edit_operations_and_returns_payload() -> None:
     """Edit should pass validated operations to substrate and map payload."""
     service, _substrate = _service()

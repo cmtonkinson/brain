@@ -322,6 +322,7 @@ class DefaultPolicyService(PolicyService):
                     row=PolicyApprovalProposalRow(proposal=proposal, status="pending")
                 )
                 policy_metadata["proposal_token"] = proposal.proposal_token
+                policy_metadata["expires_at"] = proposal.expires_at.isoformat()
                 if not self._notify_attention_router(
                     request=request, proposal=proposal
                 ):
@@ -468,6 +469,9 @@ class DefaultPolicyService(PolicyService):
         proposal_token = decision.policy_metadata.get("proposal_token", "")
         if proposal_token:
             metadata["proposal_token"] = proposal_token
+        expires_at = decision.policy_metadata.get("expires_at", "")
+        if expires_at:
+            metadata["expires_at"] = expires_at
 
         return PolicyExecutionResult(
             allowed=False,

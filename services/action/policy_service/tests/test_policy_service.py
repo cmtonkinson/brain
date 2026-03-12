@@ -123,6 +123,19 @@ class _FakeAttentionRouterService(AttentionRouterService):
             ),
         )
 
+    def resolve_approval_notification_proposal_token(
+        self,
+        *,
+        meta,
+        channel: str,
+        target_timestamp_ms: int,
+    ):
+        del meta, channel, target_timestamp_ms
+        return success(
+            meta=new_meta(kind=EnvelopeKind.EVENT, source="test", principal="operator"),
+            payload=None,
+        )
+
 
 def _request(
     *,
@@ -279,6 +292,11 @@ def test_approval_required_emits_proposal_and_denies() -> None:
     assert result.allowed is False
     assert result.proposal is not None
     assert "approval_required" in result.decision.reason_codes
+    assert result.errors[0].metadata["proposal_token"] == result.proposal.proposal_token
+    assert (
+        result.errors[0].metadata["expires_at"]
+        == result.proposal.expires_at.isoformat()
+    )
 
 
 def test_approval_required_routes_proposal_via_attention_router() -> None:

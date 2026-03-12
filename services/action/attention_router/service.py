@@ -74,6 +74,16 @@ class AttentionRouterService(ABC):
     ) -> Envelope[ApprovalCorrelationPayload]:
         """Normalize inbound approval-correlation fields for Policy Service."""
 
+    @abstractmethod
+    def resolve_approval_notification_proposal_token(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        channel: str,
+        target_timestamp_ms: int,
+    ) -> Envelope[str | None]:
+        """Resolve one outbound approval notification timestamp to a proposal token."""
+
 
 def build_attention_router_service(
     *,

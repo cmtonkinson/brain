@@ -24,8 +24,10 @@ def normalize_vault_relative_path(value: str, *, allow_root: bool) -> str:
 
 def normalize_vault_directory_path(value: str, *, allow_root: bool = False) -> str:
     """Normalize one vault directory path, preserving empty root when allowed."""
-    normalized = normalize_vault_relative_path(value, allow_root=allow_root)
-    return normalized.rstrip("/")
+    path = value.strip().replace("\\", "/")
+    if path.endswith("/") and path != "/":
+        path = path.rstrip("/")
+    return normalize_vault_relative_path(path, allow_root=allow_root)
 
 
 def normalize_vault_file_path(value: str, *, suffix: str = ".md") -> str:

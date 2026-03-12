@@ -206,6 +206,7 @@ def _write_override_file(
                     f"{config_dir}:/app/config:ro",
                     f"{generated_dir}:/app/config/generated:rw",
                 ],
+                "ports": ["127.0.0.1::8898"],
                 "depends_on": {
                     "postgres": {"condition": "service_healthy"},
                     "redis": {"condition": "service_healthy"},

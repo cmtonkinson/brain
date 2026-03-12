@@ -134,6 +134,8 @@ class BrainClient:
         parent_invocation_id: str = "",
         confirmed: bool = False,
         approval_token: str = "",
+        reply_to_proposal_token: str = "",
+        reaction_to_proposal_token: str = "",
         meta: MetaOverrides | None = None,
     ) -> CapabilityInvokeResult:
         """Invoke one Capability via the CES route surface."""
@@ -149,6 +151,8 @@ class BrainClient:
             parent_invocation_id=parent_invocation_id,
             confirmed=confirmed,
             approval_token=approval_token,
+            reply_to_proposal_token=reply_to_proposal_token,
+            reaction_to_proposal_token=reaction_to_proposal_token,
         )
 
     def lms_chat(

@@ -18,6 +18,10 @@ class NormalizedSignalMessage(BaseModel):
     group_id: str | None = None
     quote_target_timestamp_ms: int | None = None
     reaction_target_timestamp_ms: int | None = None
+    reaction_emoji: str | None = None
+    approval_intent: str | None = None
+    reply_to_proposal_token: str | None = None
+    reaction_to_proposal_token: str | None = None
 
 
 class IngestResult(BaseModel):

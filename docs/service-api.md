@@ -12,6 +12,9 @@ _Return Attention Router and adapter health state._
 `correlate_approval_response(*, meta: EnvelopeMeta, actor: str, channel: str, message_text: str = '', approval_token: str = '', reply_to_proposal_token: str = '', reaction_to_proposal_token: str = '') -> Envelope[ApprovalCorrelationPayload]`  
 _Normalize inbound approval-correlation fields for Policy Service._
 
+`resolve_approval_notification_proposal_token(*, meta: EnvelopeMeta, channel: str, target_timestamp_ms: int) -> Envelope[str | None]`  
+_Resolve one outbound approval notification timestamp to a proposal token._
+
 `route_approval_notification(*, meta: EnvelopeMeta, approval: ApprovalNotificationPayload) -> Envelope[RouteNotificationResult]`  
 _Route one token-only Policy->Attention approval notification._
 

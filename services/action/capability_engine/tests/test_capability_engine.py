@@ -36,6 +36,8 @@ from services.action.policy_service.domain import (
     PolicyHealthStatus,
     utc_now,
 )
+from services.action.policy_service.implementation import DefaultPolicyService
+from services.action.policy_service.config import PolicyServiceSettings
 from services.action.policy_service.service import PolicyExecuteCallback, PolicyService
 
 
@@ -480,6 +482,42 @@ def test_policy_denial_propagates_reason_codes() -> None:
     assert result.ok is False
     assert result.errors[0].metadata is not None
     assert "actor_denied" in result.errors[0].metadata["reason_codes"]
+
+
+def test_policy_denial_propagates_rich_approval_metadata() -> None:
+    registry = CapabilityRegistry()
+    spec = OpCapabilityManifest(
+        capability_id="demo-approval-denied",
+        kind="native_op",
+        version="1.0.0",
+        summary="Approval denied until confirmed",
+        call_target="state.denied",
+        requires_approval=True,
+    )
+    registry.register_manifest(manifest=spec)
+    registry.register_handler(
+        capability_id=spec.capability_id,
+        handler=lambda request, runtime: CapabilityExecutionResponse(
+            output={"ok": True}
+        ),
+    )
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(),
+        policy_service=DefaultPolicyService(settings=PolicyServiceSettings()),
+        registry=registry,
+    )
+
+    result = service.invoke_capability(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator"),
+        capability_id="demo-approval-denied",
+        input_payload={"path": "notes/test.md"},
+        invocation=_invocation(),
+    )
+
+    assert result.ok is False
+    assert result.errors[0].metadata is not None
+    assert result.errors[0].metadata["proposal_token"] != ""
+    assert result.errors[0].metadata["expires_at"] != ""
 
 
 def test_invocation_audit_rows_capture_lineage_and_policy_fields() -> None:

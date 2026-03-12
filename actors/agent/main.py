@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 import json
 import logging
 import os
@@ -52,6 +53,22 @@ _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 _SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "system.txt"
 _DISCOVER_CAPABILITIES_TOOL_NAME = "discover_capabilities"
 _DESCRIBE_CAPABILITY_TOOL_NAME = "describe_capability"
+_MAX_PENDING_INVOCATIONS = 128
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingInvocation:
+    """Short-lived record for one approval-gated capability attempt."""
+
+    proposal_token: str
+    capability_id: str
+    input_payload: dict[str, object]
+    actor: str
+    channel: str
+    requires_approval: bool
+    reason_codes: tuple[str, ...]
+    created_at: datetime
+    expires_at: datetime | None = None
 
 
 @dataclass(slots=True)
@@ -63,6 +80,9 @@ class _TurnState:
     always_on_capability_ids: frozenset[str] = frozenset()
     denied_capability_ids: frozenset[str] = frozenset()
     active_tool_names: set[str] = field(default_factory=set)
+    pending_invocations: dict[str, _PendingInvocation] = field(default_factory=dict)
+    reply_to_proposal_token: str = ""
+    reaction_to_proposal_token: str = ""
 
     def reset_active_tools(self) -> None:
         """Reset the active tool set to the always-on CES tools plus runtime tools."""
@@ -75,6 +95,103 @@ class _TurnState:
             _DISCOVER_CAPABILITIES_TOOL_NAME,
             _DESCRIBE_CAPABILITY_TOOL_NAME,
         }
+
+    def prune_pending_invocations(self, *, now: datetime | None = None) -> None:
+        """Evict expired and oldest pending approval records."""
+        effective_now = now or datetime.now(UTC)
+        expired_tokens = [
+            token
+            for token, pending in self.pending_invocations.items()
+            if pending.expires_at is not None and pending.expires_at <= effective_now
+        ]
+        for token in expired_tokens:
+            self.pending_invocations.pop(token, None)
+
+        overflow = len(self.pending_invocations) - _MAX_PENDING_INVOCATIONS
+        if overflow <= 0:
+            return
+
+        oldest_tokens = [
+            token
+            for token, _pending in sorted(
+                self.pending_invocations.items(),
+                key=lambda item: item[1].created_at,
+            )[:overflow]
+        ]
+        for token in oldest_tokens:
+            self.pending_invocations.pop(token, None)
+
+    def remember_pending_invocation(
+        self,
+        *,
+        proposal_token: str,
+        capability_id: str,
+        input_payload: dict[str, object],
+        requires_approval: bool,
+        reason_codes: tuple[str, ...],
+        expires_at: datetime | None = None,
+        now: datetime | None = None,
+    ) -> None:
+        """Persist one short-lived approval-gated invocation attempt."""
+        token = proposal_token.strip()
+        if token == "":
+            return
+
+        effective_now = now or datetime.now(UTC)
+        self.prune_pending_invocations(now=effective_now)
+        self.pending_invocations[token] = _PendingInvocation(
+            proposal_token=token,
+            capability_id=capability_id,
+            input_payload=dict(input_payload),
+            actor=self.actor,
+            channel=self.channel,
+            requires_approval=requires_approval,
+            reason_codes=reason_codes,
+            created_at=effective_now,
+            expires_at=expires_at,
+        )
+        self.prune_pending_invocations(now=effective_now)
+
+    def proposal_token_for_retry(
+        self,
+        *,
+        capability_id: str,
+        input_payload: dict[str, object],
+    ) -> tuple[str, str]:
+        """Return matched reply/reaction proposal correlators for one safe retry."""
+        reply_token = self.reply_to_proposal_token.strip()
+        reaction_token = self.reaction_to_proposal_token.strip()
+        matched_reply = self._matching_pending_token(
+            proposal_token=reply_token,
+            capability_id=capability_id,
+            input_payload=input_payload,
+        )
+        matched_reaction = self._matching_pending_token(
+            proposal_token=reaction_token,
+            capability_id=capability_id,
+            input_payload=input_payload,
+        )
+        return matched_reply, matched_reaction
+
+    def _matching_pending_token(
+        self,
+        *,
+        proposal_token: str,
+        capability_id: str,
+        input_payload: dict[str, object],
+    ) -> str:
+        """Return one proposal token only when it matches a stored blocked invocation."""
+        token = proposal_token.strip()
+        if token == "":
+            return ""
+        pending = self.pending_invocations.get(token)
+        if pending is None:
+            return ""
+        if pending.capability_id != capability_id:
+            return ""
+        if pending.input_payload != input_payload:
+            return ""
+        return token
 
 
 @dataclass(slots=True)
@@ -296,6 +413,24 @@ def _normalize_finish_reason(value: str) -> str | None:
     return None
 
 
+def _parse_optional_iso_datetime(value: object) -> datetime | None:
+    """Parse one optional ISO-8601 datetime string from policy metadata."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if normalized == "":
+        return None
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 def _build_capability_tools(
     *,
     client: BrainClient,
@@ -318,12 +453,18 @@ def _build_capability_tools(
             _requires_approval: bool = descriptor.requires_approval,
             **input_payload: object,
         ) -> object:
+            reply_token, reaction_token = turn_state.proposal_token_for_retry(
+                capability_id=_capability_id,
+                input_payload=input_payload,
+            )
             try:
                 result = client.invoke_capability(
                     capability_id=_capability_id,
                     input_payload=input_payload,
                     actor=turn_state.actor,
                     channel=turn_state.channel,
+                    reply_to_proposal_token=reply_token,
+                    reaction_to_proposal_token=reaction_token,
                 )
             except BrainPolicyError as exc:
                 metadata = (
@@ -334,12 +475,26 @@ def _build_capability_tools(
                     for item in metadata.get("reason_codes", "").split(",")
                     if item != ""
                 ]
+                proposal_token = str(metadata.get("proposal_token", "")).strip()
+                expires_at = _parse_optional_iso_datetime(metadata.get("expires_at"))
+                if proposal_token != "":
+                    turn_state.remember_pending_invocation(
+                        proposal_token=proposal_token,
+                        capability_id=_capability_id,
+                        input_payload=input_payload,
+                        requires_approval=_requires_approval,
+                        reason_codes=tuple(reason_codes),
+                        expires_at=expires_at,
+                    )
                 return {
                     "error": "policy_denied",
                     "message": str(exc),
                     "capability_id": _capability_id,
                     "requires_approval": _requires_approval,
-                    "proposal_token": metadata.get("proposal_token", ""),
+                    "proposal_token": proposal_token,
+                    "proposal_expires_at": (
+                        "" if expires_at is None else expires_at.isoformat()
+                    ),
                     "reason_codes": reason_codes,
                 }
             return result.output
@@ -524,6 +679,12 @@ def _format_user_prompt(
             f"channel: {instruction.source}",
             f"sender: {instruction.sender_e164}",
             f"message: {instruction.message_text}",
+            f"approval_intent: {'' if instruction.approval_intent is None else instruction.approval_intent}",
+            f"reaction_emoji: {'' if instruction.reaction_emoji is None else instruction.reaction_emoji}",
+            f"quote_target_timestamp_ms: {'' if instruction.quote_target_timestamp_ms is None else instruction.quote_target_timestamp_ms}",
+            f"reaction_target_timestamp_ms: {'' if instruction.reaction_target_timestamp_ms is None else instruction.reaction_target_timestamp_ms}",
+            f"reply_to_proposal_token: {'' if instruction.reply_to_proposal_token is None else instruction.reply_to_proposal_token}",
+            f"reaction_to_proposal_token: {'' if instruction.reaction_to_proposal_token is None else instruction.reaction_to_proposal_token}",
             "",
             "MAS Context",
             f"operator_name: {context.profile.operator_name}",
@@ -547,6 +708,20 @@ def _estimate_token_count(text: str) -> int:
     return (estimated + 1) // 2
 
 
+def _instruction_context_message(instruction: SwitchboardOperatorInstruction) -> str:
+    """Return the best available text surrogate for one inbound operator instruction."""
+    message_text = instruction.message_text.strip()
+    if message_text != "":
+        return message_text
+    if instruction.approval_intent is not None:
+        if instruction.reaction_emoji is not None and instruction.reaction_emoji != "":
+            return f"[signal reaction approval:{instruction.approval_intent} emoji:{instruction.reaction_emoji}]"
+        return f"[signal approval:{instruction.approval_intent}]"
+    if instruction.reaction_emoji is not None and instruction.reaction_emoji != "":
+        return f"[signal reaction emoji:{instruction.reaction_emoji}]"
+    return "[signal message]"
+
+
 def _is_retryable_lms_throttle(exc: BrainDependencyError) -> bool:
     """Return True when one LMS dependency failure represents provider throttling."""
     if exc.operation not in {"lms.chat", "lms.chat_with_tools"}:
@@ -564,13 +739,24 @@ async def _process_instruction(
     instruction: SwitchboardOperatorInstruction,
 ) -> str:
     """Handle one inbound operator instruction end-to-end."""
+    runtime.turn_state.prune_pending_invocations()
     context = await asyncio.to_thread(
         runtime.client.memory_assemble_context,
         session_id=runtime.session_id,
-        message=instruction.message_text,
+        message=_instruction_context_message(instruction),
     )
     runtime.turn_state.actor = "operator"
     runtime.turn_state.channel = instruction.source
+    runtime.turn_state.reply_to_proposal_token = (
+        ""
+        if instruction.reply_to_proposal_token is None
+        else instruction.reply_to_proposal_token
+    )
+    runtime.turn_state.reaction_to_proposal_token = (
+        ""
+        if instruction.reaction_to_proposal_token is None
+        else instruction.reaction_to_proposal_token
+    )
     runtime.turn_state.reset_active_tools()
     runtime.model.last_result = None
     try:

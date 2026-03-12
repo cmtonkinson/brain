@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
-from packages.brain_shared.logging.config import JsonFormatter, VERBOSE, get_logger
+from packages.brain_shared.logging.config import (
+    JsonFormatter,
+    VERBOSE,
+    configure_logging,
+    get_logger,
+)
 
 
 def test_verbose_level_is_registered() -> None:
@@ -48,3 +54,31 @@ def test_json_formatter_outputs_verbose_level_name() -> None:
 
     assert payload["level"] == "VERBOSE"
     assert payload["message"] == "payload"
+
+
+def test_configure_logging_supports_split_stdout_and_file_levels(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    """Stdout and file capture should honor independent thresholds."""
+    configure_logging(
+        level="WARNING",
+        file_capture_enabled=True,
+        file_capture_level="VERBOSE",
+        file_capture_directory=str(tmp_path / "logs"),
+        json_output=False,
+    )
+    logger = get_logger("tests.shared.logging.split")
+
+    logger.verbose("verbose detail")  # type: ignore[attr-defined]
+    logger.warning("warning detail")
+
+    stdout = capsys.readouterr().out
+    assert "warning detail" in stdout
+    assert "verbose detail" not in stdout
+
+    log_file = tmp_path / "logs" / "brain.log"
+    assert log_file.exists()
+    contents = log_file.read_text(encoding="utf-8")
+    assert "verbose detail" in contents
+    assert "warning detail" in contents

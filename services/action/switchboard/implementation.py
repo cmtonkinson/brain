@@ -15,6 +15,7 @@ from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
     failure,
+    new_meta,
     success,
     utc_now,
     validate_meta,
@@ -35,6 +36,7 @@ from resources.adapters.signal import (
     SignalRestApiAdapter,
     resolve_signal_adapter_settings,
 )
+from services.action.attention_router.service import AttentionRouterService
 from services.action.switchboard.component import SERVICE_COMPONENT_ID
 from services.action.switchboard.config import (
     SwitchboardIdentitySettings,
@@ -70,11 +72,13 @@ class DefaultSwitchboardService(SwitchboardService):
         identity: SwitchboardIdentitySettings,
         adapter: SignalAdapter,
         cache_service: CacheAuthorityService,
+        attention_router_service: AttentionRouterService | None = None,
     ) -> None:
         self._settings = settings
         self._identity = identity
         self._adapter = adapter
         self._cache_service = cache_service
+        self._attention_router_service = attention_router_service
         self._operator_e164 = _normalize_e164(
             raw=identity.operator_signal_contact_e164,
             default_dial_code=identity.default_dial_code,
@@ -144,7 +148,19 @@ class DefaultSwitchboardService(SwitchboardService):
             )
             return failure(meta=meta, errors=[verification_error])
 
+        _LOGGER.verbose(
+            "switchboard received verified signal webhook payload",
+            extra={
+                "raw_body_json": request.raw_body_json,
+                "payload_sha256": hashlib.sha256(
+                    request.raw_body_json.encode("utf-8")
+                ).hexdigest(),
+                **_summarize_signal_payload(request.raw_body_json),
+            },
+        )
+
         message, parse_error = self._normalize_signal_message(
+            meta=meta,
             raw_body_json=request.raw_body_json,
         )
         if parse_error is not None:
@@ -214,6 +230,10 @@ class DefaultSwitchboardService(SwitchboardService):
             "group_id": message.group_id,
             "quote_target_timestamp_ms": message.quote_target_timestamp_ms,
             "reaction_target_timestamp_ms": message.reaction_target_timestamp_ms,
+            "reaction_emoji": message.reaction_emoji,
+            "approval_intent": message.approval_intent,
+            "reply_to_proposal_token": message.reply_to_proposal_token,
+            "reaction_to_proposal_token": message.reaction_to_proposal_token,
             # Explicitly no dedupe/idempotency marker in v1.
         }
         enqueued = self._cache_service.push_queue(
@@ -448,6 +468,7 @@ class DefaultSwitchboardService(SwitchboardService):
     def _normalize_signal_message(
         self,
         *,
+        meta: EnvelopeMeta,
         raw_body_json: str,
     ) -> tuple[NormalizedSignalMessage | None, ErrorDetail | None]:
         """Parse + normalize one webhook payload into a canonical message DTO."""
@@ -503,8 +524,6 @@ class DefaultSwitchboardService(SwitchboardService):
                 "text",
                 "body",
             )
-        if message_text == "":
-            return None, None
 
         timestamp_ms = _parse_timestamp_ms(
             envelope.get("timestamp_ms")
@@ -548,6 +567,37 @@ class DefaultSwitchboardService(SwitchboardService):
             or _extract_nested(message_payload, "reaction", "targetTimestamp")
             or candidate.get("reaction_target_timestamp_ms")
         )
+        reaction_emoji = _extract_reaction_emoji(message_payload) or _first_non_empty(
+            candidate,
+            "reaction_emoji",
+        )
+        _LOGGER.verbose(
+            "switchboard normalized signal approval evidence",
+            extra={
+                "sender_raw": sender_raw,
+                "timestamp_ms": timestamp_ms,
+                "message_text": message_text,
+                "group_id": group_id,
+                "quote_target_timestamp_ms": quote_target,
+                "reaction_target_timestamp_ms": reaction_target,
+                "reaction_emoji": reaction_emoji,
+                "contains_quote": isinstance(message_payload.get("quote"), dict),
+                "contains_reaction": isinstance(message_payload.get("reaction"), dict),
+                "payload_shape": _signal_payload_shape(candidate),
+            },
+        )
+        if message_text == "" and reaction_target is None and reaction_emoji == "":
+            return None, None
+        reply_to_proposal_token = self._resolve_proposal_token(
+            meta=meta,
+            channel="signal",
+            target_timestamp_ms=quote_target,
+        )
+        reaction_to_proposal_token = self._resolve_proposal_token(
+            meta=meta,
+            channel="signal",
+            target_timestamp_ms=reaction_target,
+        )
 
         source_device = str(
             envelope.get("sourceDevice")
@@ -568,6 +618,13 @@ class DefaultSwitchboardService(SwitchboardService):
                 group_id=group_id,
                 quote_target_timestamp_ms=quote_target,
                 reaction_target_timestamp_ms=reaction_target,
+                reaction_emoji=None if reaction_emoji == "" else reaction_emoji,
+                approval_intent=_approval_intent(
+                    message_text=message_text,
+                    reaction_emoji=reaction_emoji,
+                ),
+                reply_to_proposal_token=reply_to_proposal_token,
+                reaction_to_proposal_token=reaction_to_proposal_token,
             ),
             None,
         )
@@ -591,6 +648,65 @@ class DefaultSwitchboardService(SwitchboardService):
             return None, [_validation_error_from_pydantic(exc)]
 
         return request, []
+
+    def _resolve_proposal_token(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        channel: str,
+        target_timestamp_ms: int | None,
+    ) -> str | None:
+        """Resolve one quoted/reacted Signal timestamp to a proposal token."""
+        if self._attention_router_service is None or target_timestamp_ms is None:
+            _LOGGER.verbose(
+                "switchboard skipped proposal token resolution",
+                extra={
+                    "channel": channel,
+                    "target_timestamp_ms": target_timestamp_ms,
+                    "attention_router_configured": self._attention_router_service
+                    is not None,
+                },
+            )
+            return None
+
+        lookup_meta = new_meta(
+            kind=meta.kind,
+            source=str(SERVICE_COMPONENT_ID),
+            principal=meta.principal,
+            trace_id=meta.trace_id,
+            parent_id=meta.envelope_id,
+        )
+        result = (
+            self._attention_router_service.resolve_approval_notification_proposal_token(
+                meta=lookup_meta,
+                channel=channel,
+                target_timestamp_ms=target_timestamp_ms,
+            )
+        )
+        resolved_token: str | None = None
+        if not result.ok or result.payload is None:
+            _LOGGER.verbose(
+                "switchboard proposal token lookup failed",
+                extra={
+                    "channel": channel,
+                    "target_timestamp_ms": target_timestamp_ms,
+                    "lookup_ok": result.ok,
+                    "error_codes": [error.code for error in result.errors],
+                },
+            )
+            return None
+        token = result.payload.value
+        if token is not None and str(token).strip() != "":
+            resolved_token = str(token).strip()
+        _LOGGER.verbose(
+            "switchboard proposal token lookup completed",
+            extra={
+                "channel": channel,
+                "target_timestamp_ms": target_timestamp_ms,
+                "resolved_proposal_token": resolved_token,
+            },
+        )
+        return resolved_token
 
 
 def _validation_error_from_pydantic(exc: ValidationError) -> ErrorDetail:
@@ -623,6 +739,55 @@ def _extract_group_id(payload: dict[str, Any]) -> str | None:
         if isinstance(group_id, str) and group_id.strip() != "":
             return group_id
     return None
+
+
+def _extract_reaction_emoji(payload: dict[str, Any]) -> str:
+    """Extract one reaction emoji from common Signal payload shapes."""
+    reaction = payload.get("reaction")
+    if not isinstance(reaction, dict):
+        return ""
+    return _first_non_empty(
+        reaction,
+        "emoji",
+        "emojiShortName",
+        "emoji_short_name",
+    )
+
+
+def _approval_intent(*, message_text: str, reaction_emoji: str) -> str | None:
+    """Normalize one inbound approval signal into approve/reject when unambiguous."""
+    emoji = reaction_emoji.strip()
+    if emoji in {"👍", "✅", "👌"}:
+        return "approve"
+    if emoji in {"👎", "❌"}:
+        return "reject"
+
+    text = message_text.strip().lower()
+    if text == "":
+        return None
+
+    compact = " ".join(text.replace(",", " ").split())
+    if compact in {"approve", "approved", "yes", "ok", "okay", "ship it", "do it"}:
+        return "approve"
+    if compact.startswith("yes ") or " approved" in compact:
+        return "approve"
+    if compact in {"deny", "denied", "reject", "rejected", "no", "cancel"}:
+        return "reject"
+    if compact.startswith("no ") or compact.startswith("reject "):
+        return "reject"
+    return None
+
+
+def _signal_payload_shape(candidate: dict[str, Any]) -> str:
+    """Return a stable description of the normalized payload shape."""
+    envelope = candidate.get("envelope")
+    if not isinstance(envelope, dict):
+        return "candidate"
+    if isinstance(envelope.get("dataMessage"), dict):
+        return "envelope.dataMessage"
+    if isinstance(envelope.get("syncMessage"), dict):
+        return "envelope.syncMessage"
+    return "envelope"
 
 
 def _summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
