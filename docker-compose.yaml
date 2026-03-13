@@ -1,9 +1,8 @@
 services:
-
   brain-core:
     build:
       context: .
-      dockerfile: Dockerfile.core
+      dockerfile: Dockerfile
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.13}
     restart: unless-stopped
@@ -16,6 +15,7 @@ services:
       - ${HOME}/.config/brain/generated:/app/config/generated:rw
       - ./logs:/app/logs
       - ./data/object:/app/var/blobs
+      - ./scripts/healthcheck-core.sh:/usr/local/bin/brain-healthcheck:ro
     ports:
       - "8898:8898"
     depends_on:
@@ -27,11 +27,12 @@ services:
         condition: service_started
       signal-api:
         condition: service_started
+    command: ["python", "-m", "packages.brain_core.main"]
 
   brain-agent:
     build:
       context: .
-      dockerfile: Dockerfile.agent
+      dockerfile: Dockerfile
       args:
         PYTHON_VERSION: ${PYTHON_VERSION:-3.13}
     restart: unless-stopped
@@ -39,13 +40,17 @@ services:
     environment:
       BRAIN_ACTORS_CORE__HOST: brain-core
       BRAIN_ACTORS_CORE__PORT: 8898
+      BRAIN_AGENT_HEARTBEAT_FILE: /run/brain/agent-heartbeat
+      BRAIN_AGENT_HEARTBEAT_MAX_AGE_SECONDS: 90
     volumes:
       - ${HOME}/.config/brain:/app/config:ro
       - ${HOME}/.config/brain/generated:/app/config/generated:rw
       - ./logs:/app/logs
+      - ./scripts/healthcheck-agent.sh:/usr/local/bin/brain-healthcheck:ro
     depends_on:
       brain-core:
         condition: service_healthy
+    command: ["python", "-m", "actors.agent.main"]
 
   signal-api:
     image: ${SIGNAL_CLI_REST_API_IMAGE:-bbernhard/signal-cli-rest-api:latest}

@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 import json
 import logging
 import os
+from pathlib import Path
 import signal
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from pydantic_ai import Agent, Tool
@@ -59,6 +59,8 @@ _SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "system.txt"
 _DISCOVER_CAPABILITIES_TOOL_NAME = "discover_capabilities"
 _DESCRIBE_CAPABILITY_TOOL_NAME = "describe_capability"
 _MAX_PENDING_INVOCATIONS = 128
+_HEARTBEAT_FILE_ENV = "BRAIN_AGENT_HEARTBEAT_FILE"
+_HEARTBEAT_PATH = Path("/run/brain/agent-heartbeat")
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,6 +224,21 @@ def _resolve_config_path() -> Path | None:
     if value == "":
         return None
     return Path(value)
+
+
+def _resolve_heartbeat_path() -> Path:
+    """Return the heartbeat file path used by container health checks."""
+    value = os.getenv(_HEARTBEAT_FILE_ENV, "").strip()
+    if value == "":
+        return _HEARTBEAT_PATH
+    return Path(value)
+
+
+def _write_heartbeat(*, path: Path | None = None) -> None:
+    """Touch the heartbeat file to indicate the agent event loop is alive."""
+    heartbeat_path = _resolve_heartbeat_path() if path is None else path
+    heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+    heartbeat_path.touch()
 
 
 def _load_system_prompt(*, system_prompt_append: str | None = None) -> str:
@@ -854,6 +871,8 @@ async def _run_main() -> None:
     settings = load_actor_settings(config_path=_resolve_config_path())
     core_settings = load_core_settings()
     _configure_logging(settings=settings)
+    heartbeat_path = _resolve_heartbeat_path()
+    _write_heartbeat(path=heartbeat_path)
 
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGTERM, _handle_shutdown)
@@ -881,10 +900,12 @@ async def _run_main() -> None:
         )
         while _RUNNING:
             try:
+                _write_heartbeat(path=heartbeat_path)
                 instruction = await asyncio.to_thread(
                     runtime.client.switchboard_poll_operator_instruction,
                     wait_timeout_seconds=wait_timeout_seconds,
                 )
+                _write_heartbeat(path=heartbeat_path)
                 if instruction is None:
                     continue
                 _LOGGER.debug(
@@ -907,8 +928,10 @@ async def _run_main() -> None:
                         "response": response_text,
                     },
                 )
+                _write_heartbeat(path=heartbeat_path)
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("brain agent turn failed")
+                _write_heartbeat(path=heartbeat_path)
                 await asyncio.sleep(1.0)
     finally:
         client.close()

@@ -188,7 +188,7 @@ def _write_override_file(
 
     base_build = {
         "context": str(REPO_ROOT),
-        "dockerfile": "Dockerfile.core",
+        "dockerfile": "Dockerfile",
         "args": {"PYTHON_VERSION": PYTHON_VERSION},
     }
     fake_http_image = "brain-smoke-http-fake:latest"

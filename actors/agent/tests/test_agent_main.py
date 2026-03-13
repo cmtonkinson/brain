@@ -36,6 +36,35 @@ def test_resolve_config_path_uses_env_override(monkeypatch) -> None:
     assert main._resolve_config_path() == Path("/tmp/actors.yaml")
 
 
+def test_resolve_heartbeat_path_uses_default_when_env_missing(monkeypatch) -> None:
+    """Heartbeat-path helper should default to the runtime heartbeat path."""
+    from actors.agent import main
+
+    monkeypatch.delenv("BRAIN_AGENT_HEARTBEAT_FILE", raising=False)
+
+    assert main._resolve_heartbeat_path() == Path("/run/brain/agent-heartbeat")
+
+
+def test_resolve_heartbeat_path_uses_env_override(monkeypatch) -> None:
+    """Heartbeat-path helper should accept an explicit env override."""
+    from actors.agent import main
+
+    monkeypatch.setenv("BRAIN_AGENT_HEARTBEAT_FILE", "/tmp/agent-heartbeat")
+
+    assert main._resolve_heartbeat_path() == Path("/tmp/agent-heartbeat")
+
+
+def test_write_heartbeat_creates_parent_and_updates_file(tmp_path) -> None:
+    """Heartbeat writer should create missing parents and touch the target file."""
+    from actors.agent import main
+
+    heartbeat_path = tmp_path / "run" / "brain" / "agent-heartbeat"
+
+    main._write_heartbeat(path=heartbeat_path)
+
+    assert heartbeat_path.exists()
+
+
 def test_load_system_prompt_reads_colocated_prompt_file() -> None:
     """System prompt should load from the colocated prompt file on disk."""
     from actors.agent import main
