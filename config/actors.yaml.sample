@@ -4,7 +4,7 @@ logging:
   file_capture_level: VERBOSE
   file_capture_directory: logs
   json_output: true
-  service: brain
+  process_name: agent
   environment: dev
 
 core:

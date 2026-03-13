@@ -3,6 +3,7 @@
   "kind": "native_op",
   "version": "1.0.0",
   "summary": "Search markdown files lexically through Obsidian Local REST API.",
+  "simple_output_path": ".each.path",
   "enabled": true,
   "autonomy": 0,
   "requires_approval": false,

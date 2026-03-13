@@ -30,6 +30,8 @@ terms:
     definition: "The human user of the system. All personal-assistant work rolls up to the Operator as the accountable Principal."
   - term: Principal
     definition: "The accountable identity for a request, propagated unchanged across calls in Envelope metadata. Examples: `operator`, `core`, or a Service name."
+  - term: Provider
+    definition: "The concrete backing surface behind a Resource, such as a containerized system, a host process/file, or some third-party API. Resources are Brain-facing interfaces over Providers."
   - term: Skill
     definition: "A compound Capability implementing either a sequence of Ops or custom Python code."
   - term: Action System

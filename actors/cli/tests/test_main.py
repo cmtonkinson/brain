@@ -105,6 +105,7 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
             {
                 "capability_id": "vault-get-file",
                 "summary": "Read one vault file.",
+                "simple_output_path": ".content",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -195,12 +196,13 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
                 parent_id,
             )
         )
-        return CapabilityInvokeResult(
-            {
-                "capability_id": capability_id,
-                "input_payload": input_payload or {},
-            }
-        )
+        output = {
+            "capability_id": capability_id,
+            "input_payload": input_payload or {},
+        }
+        if capability_id == "vault-get-file":
+            output["content"] = "file body"
+        return CapabilityInvokeResult(output)
 
     module.BrainSdkClient = BrainSdkClient
     module.DomainError = DomainError
@@ -236,7 +238,8 @@ def _load_cli_app(monkeypatch: Any) -> tuple[Any, ModuleType, Any]:
             cli=SimpleNamespace(principal="operator", source="cli"),
         ),
     )
-    return cli_module.app, sdk_module, cli_module
+    sdk_module.calls.clear()
+    return cli_module.build_app(), sdk_module, cli_module
 
 
 def _base_args() -> list[str]:
@@ -299,7 +302,7 @@ def test_transport_error_maps_to_exit_code_4(monkeypatch: Any) -> None:
     def fail_transport(*, client: Any, **_: Any) -> Any:
         raise sdk.TransportError("transport failed")
 
-    monkeypatch.setattr(cli_module, "describe_capabilities", fail_transport)
+    monkeypatch.setattr(cli_module, "core_health", fail_transport)
     result = runner.invoke(app, [*_base_args(), "health", "core"])
 
     assert result.exit_code == 4
@@ -318,15 +321,18 @@ def test_typer_usage_errors_are_unchanged(monkeypatch: Any) -> None:
     assert "No such command" in result.stderr or "Missing command" in result.stderr
 
 
-def test_known_service_prefix_split_helper(monkeypatch: Any) -> None:
-    """Known service prefixes split once; unknown prefixes remain unsplit."""
+def test_capability_command_path_splits_first_hyphen(monkeypatch: Any) -> None:
+    """Capability ids map to CLI command groups by first-hyphen split."""
     _, _, cli_module = _load_cli_app(monkeypatch)
 
     assert cli_module._capability_command_path("vault-get-file") == (
         "vault",
         "get-file",
     )
-    assert cli_module._capability_command_path("podcast-update") == ("podcast-update",)
+    assert cli_module._capability_command_path("podcast-update") == (
+        "podcast",
+        "update",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -472,7 +478,7 @@ def test_capability_list_shows_command_paths(monkeypatch: Any) -> None:
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload[0]["command"] == "vault get-file"
-    assert payload[1]["command"] == "capability invoke podcast-update"
+    assert payload[1]["command"] == "podcast update"
 
 
 def test_capability_describe_calls_sdk(monkeypatch: Any) -> None:
@@ -523,6 +529,73 @@ def test_service_command_invokes_capability_with_parsed_flags(monkeypatch: Any) 
         "file_path": "notes/today.md",
         "include_metadata": True,
     }
+
+
+def test_generated_help_lists_live_capability_commands(monkeypatch: Any) -> None:
+    """Service-group help should list commands discovered from the live catalog."""
+    app, _, _ = _load_cli_app(monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(app, [*_base_args(), "vault", "--help"])
+
+    assert result.exit_code == 0
+    assert "Capability Metadata: live Core connection" in result.stdout
+    assert "get-file" in result.stdout
+
+
+def test_generated_help_lists_command_options(monkeypatch: Any) -> None:
+    """Capability-command help should render generated named options."""
+    app, _, _ = _load_cli_app(monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(app, [*_base_args(), "vault", "get-file", "--help"])
+
+    assert result.exit_code == 0
+    assert "--file-path" in result.stdout
+    assert "--include-metadata" in result.stdout
+
+
+def test_json_pretty_outputs_indented_json(monkeypatch: Any) -> None:
+    """`--json-pretty` should emit indented JSON output."""
+    app, _, _ = _load_cli_app(monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            *_base_args(),
+            "--json-pretty",
+            "vault",
+            "get-file",
+            "--file-path",
+            "notes/today.md",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert '"capability_id": "vault-get-file"' in result.stdout
+    assert "\n  " in result.stdout
+
+
+def test_simple_output_uses_configured_projection(monkeypatch: Any) -> None:
+    """`--simple` should emit the configured simple projection only."""
+    app, _, _ = _load_cli_app(monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            *_base_args(),
+            "--simple",
+            "vault",
+            "get-file",
+            "--file-path",
+            "notes/today.md",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "file body"
 
 
 def test_capability_invoke_supports_unknown_prefix_capability(monkeypatch: Any) -> None:
@@ -599,3 +672,42 @@ def test_startup_capabilities_cached_on_context(monkeypatch: Any) -> None:
 
     assert len(capabilities) == 2
     assert capabilities[0]["capability_id"] == "vault-get-file"
+
+
+def test_build_app_uses_cached_catalog_when_core_unavailable(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """Cached catalog should back generated help when live Core is unavailable."""
+    _, sdk_module, cli_module = _load_cli_app(monkeypatch)
+    cli_module._write_capability_cache(
+        tmp_path / "cli-capabilities.json",
+        capabilities=(
+            {
+                "capability_id": "vault-list-directory",
+                "summary": "List directory entries.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "directory_path": {
+                            "type": "string",
+                            "description": "Vault-relative directory path.",
+                        }
+                    },
+                    "required": ["directory_path"],
+                },
+            },
+        ),
+    )
+
+    def fail_transport(*, client: Any, **_: Any) -> Any:
+        raise sdk_module.TransportError("core down")
+
+    monkeypatch.setattr(cli_module, "describe_capabilities", fail_transport)
+    app = cli_module.build_app(tmp_path / "cli-capabilities.json")
+    runner = CliRunner()
+
+    result = runner.invoke(app, [*_base_args(), "vault", "--help"])
+
+    assert result.exit_code == 0
+    assert "Capability Metadata: cached catalog" in result.stdout
+    assert "list-directory" in result.stdout

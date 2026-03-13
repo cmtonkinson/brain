@@ -3,6 +3,7 @@
   "kind": "native_op",
   "version": "1.0.0",
   "summary": "Read one markdown file by path.",
+  "simple_output_path": ".content",
   "enabled": true,
   "autonomy": 0,
   "requires_approval": false,

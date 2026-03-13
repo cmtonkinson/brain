@@ -1,4 +1,4 @@
-"""Canonical logging field names for cross-service consistency.
+"""Canonical logging field names for cross-process consistency.
 
 These constants define a stable key set for structured logs and context
 propagation. Keeping names centralized prevents accidental drift between
@@ -36,6 +36,6 @@ CONCERN = "concern"
 OTEL_TRACE_ID = "otel_trace_id"
 OTEL_SPAN_ID = "otel_span_id"
 
-# Common service-level fields.
-SERVICE = "service"
+# Common process-level fields.
+PROCESS_NAME = "process_name"
 ENVIRONMENT = "environment"

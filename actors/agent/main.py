@@ -233,13 +233,19 @@ def _load_system_prompt(*, system_prompt_append: str | None = None) -> str:
     return f"{prompt}\n\n{appended}"
 
 
-def _configure_logging(*, level: str) -> None:
-    """Install a minimal process-local logging configuration."""
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+def _configure_logging(*, settings: ActorSettings) -> None:
+    """Install shared dual-path logging for the long-lived agent process."""
+    from packages.brain_shared.logging import configure_logging
+
+    configure_logging(
+        level=str(settings.logging.level),
+        file_capture_enabled=settings.logging.file_capture_enabled,
+        file_capture_level=str(settings.logging.file_capture_level),
+        file_capture_directory=settings.logging.file_capture_directory,
+        json_output=bool(settings.logging.json_output),
+        process_name=str(settings.logging.process_name),
+        environment=str(settings.logging.environment),
     )
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 class _BrainSdkToolModel(Model):
@@ -847,7 +853,7 @@ async def _run_main() -> None:
 
     settings = load_actor_settings(config_path=_resolve_config_path())
     core_settings = load_core_settings()
-    _configure_logging(level=str(settings.logging.level))
+    _configure_logging(settings=settings)
 
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGTERM, _handle_shutdown)

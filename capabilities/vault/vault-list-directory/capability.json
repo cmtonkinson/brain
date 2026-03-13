@@ -3,6 +3,7 @@
   "kind": "native_op",
   "version": "1.0.0",
   "summary": "List file and directory entries under one vault-relative path.",
+  "simple_output_path": ".each.path",
   "enabled": true,
   "autonomy": 0,
   "requires_approval": false,

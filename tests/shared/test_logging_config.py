@@ -67,6 +67,7 @@ def test_configure_logging_supports_split_stdout_and_file_levels(
         file_capture_level="VERBOSE",
         file_capture_directory=str(tmp_path / "logs"),
         json_output=False,
+        process_name="core",
     )
     logger = get_logger("tests.shared.logging.split")
 
@@ -77,8 +78,27 @@ def test_configure_logging_supports_split_stdout_and_file_levels(
     assert "warning detail" in stdout
     assert "verbose detail" not in stdout
 
-    log_file = tmp_path / "logs" / "brain.log"
+    log_file = tmp_path / "logs" / "core.log"
     assert log_file.exists()
     contents = log_file.read_text(encoding="utf-8")
     assert "verbose detail" in contents
     assert "warning detail" in contents
+
+
+def test_configure_logging_uses_process_name_for_file_capture(tmp_path: Path) -> None:
+    """File capture should isolate per-process sinks by configured process name."""
+    configure_logging(
+        level="INFO",
+        file_capture_enabled=True,
+        file_capture_level="INFO",
+        file_capture_directory=str(tmp_path / "logs"),
+        json_output=False,
+        process_name="agent",
+    )
+
+    logger = get_logger("tests.shared.logging.process_name")
+    logger.info("agent detail")
+
+    agent_log_file = tmp_path / "logs" / "agent.log"
+    assert agent_log_file.exists()
+    assert "agent detail" in agent_log_file.read_text(encoding="utf-8")

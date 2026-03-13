@@ -3,6 +3,7 @@
   "kind": "logic_skill",
   "version": "1.0.0",
   "summary": "Read one object and return metadata plus base64-encoded content.",
+  "simple_output_path": ".content_base64",
   "enabled": true,
   "autonomy": 0,
   "requires_approval": false,

@@ -17,6 +17,7 @@ _This document is generated from `docs/meta/glossary.yaml`. Do not edit by hand.
 - **Op &mdash;** A _Capability_ which wraps a _Resource_ API call. Ops are the foundational units of work exposed to Actors.
 - **Operator &mdash;** The human user of the _System_. All personal-assistant work rolls up to the _Operator_ as the accountable _Principal_.
 - **Principal &mdash;** The accountable identity for a request, propagated unchanged across calls in _Envelope_ metadata. Examples: `operator`, `core`, or a _Service_ name.
+- **Provider &mdash;** The concrete backing surface behind a _Resource_, such as a containerized _System_, a host process/file, or some third-party API. Resources are Brain-facing interfaces over Providers.
 - **Public API &mdash;** The internal, native, Python surface exported by a given _Service_. The _Public Api_ is the canonical interface for any _Service_.
 - **Resource &mdash;** Trustees of side effects. All real-world consequences are gated by a _Resource_ _Component_. Types are `Substrate` and `Adapter`.
 - **Service &mdash;** The primary carriers of business logic, responsible for coordinating _System_ state and behavior.

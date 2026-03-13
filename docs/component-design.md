@@ -33,7 +33,9 @@ self-register by calling `register_component()` from
 
 ------------------------------------------------------------------------
 ## L0 Resource Design
-An L0 _Resource_ is infrastructure with durable or real-world side effects.
+An L0 _Resource_ is Brain's interface to infrastructure with durable or
+real-world side effects. Each _Resource_ governs one underlying _Provider_
+surface.
 
 ### Model
 - Declared via `ResourceManifest`.
@@ -48,6 +50,8 @@ An L0 _Resource_ is infrastructure with durable or real-world side effects.
 ### Architectural expectations
 - L0 access is gated by owning L1 _Service(s)_, never by L2 directly.
 - _Resource_ ownership must be explicit and unambiguous.
+- _Resource_ contracts should remain implementation-agnostic with respect to
+  the underlying _Provider_ where practical.
 - If `owner_service_id` is set, it must resolve to a registered L1 _Service_.
 - _Resource_ IDs must match what owning _Services_ declare in `owns_resources`.
 

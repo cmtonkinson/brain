@@ -36,6 +36,7 @@ class _CapabilityDescriptorOut(BaseModel):
     summary: str
     input_schema: dict[str, Any] | None
     output_schema: dict[str, Any] | None
+    simple_output_path: str | None
     autonomy: int
     requires_approval: bool
     side_effects: tuple[str, ...]
@@ -269,6 +270,7 @@ def _descriptor_out(d: CapabilityDescriptor) -> _CapabilityDescriptorOut:
         summary=d.summary,
         input_schema=d.input_schema,
         output_schema=d.output_schema,
+        simple_output_path=d.simple_output_path,
         autonomy=d.autonomy,
         requires_approval=d.requires_approval,
         side_effects=d.side_effects,

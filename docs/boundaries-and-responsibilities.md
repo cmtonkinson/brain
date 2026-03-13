@@ -2,8 +2,8 @@
 This document defines the coarse boundaries of responsibility and ownership
 within Brain.
 
-> Check the [Glossary](glossary.md) for key terms such as _Layer_, _System_, _Resource_,
-> _Service_, et cetera.
+> Check the [Glossary](glossary.md) for key terms such as _Layer_, _System_,
+> _Service_, _Resource_, _Provider_, et cetera.
 
 ------------------------------------------------------------------------
 ## Layer Model
@@ -47,18 +47,23 @@ L0 contains persisted data and external integrations. Operations or changes at
 _Layer_ 0 either are by definition, or may cause, permanent real world side
 effects (sending a message, deleting a file, etc).
 
-Data storage _Resources_ are called _Substrates_. Examples include:
+_Resources_ are Brain-facing interfaces over lower-level _Providers_. A
+_Provider_ is the concrete backing surface a _Resource_ governs, such as an
+isolated Docker service/container, a host process, a host directory/file, or a
+third-party WAN API.
+
+**Storage** _Resources_ are called _Substrates_. Examples include:
 - Obsidian vault
 - Postgres
 
-Integration _Resources_ are called _Adapters_, and are assumed to interact with
-real-world external systems. Examples include:
+**Integration** _Resources_ are called _Adapters_, and are assumed to interact
+with real-world external systems. Examples include:
 - GitHub MCP Server
 - Signal CLI
 
 For clarity:
 - L0 _Resources_ are ONLY accessible by the appropriate L1 _Services_
-  - this is defined on a per _Resource_ basis
+  - this is defined on a per-_Resource_ basis
   - example: **only** the Vault Authority _Service_ can access Obsidian
   - example: **only** the Capability Engine can access MCP Servers
 - L2 has no direct access to L0 whatsoever.
@@ -71,8 +76,9 @@ of _Services_ which are the main coarse units of Brain logic and functionality.
 
 Within a given _System_, every _Service_ is responsible for:
 - Gating all _Resource_ access
-- Exposing a crisply defined _Public API_ which is implementation-agnostic with
-  respect to the underlying _Resource_
+- Exposing a crisply defined _Public API_ which is, where possible,
+  implementation-agnostic with respect to the underlying _Resource_ and
+  _Provider_
 - Defining invariants and access controls
 - Owning audit logs for state access & mutation
 

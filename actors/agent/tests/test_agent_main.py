@@ -56,17 +56,35 @@ def test_load_system_prompt_appends_profile_extension_when_present() -> None:
     assert prompt.endswith("Extra operator prompt.")
 
 
-def test_configure_logging_uses_configured_level(monkeypatch) -> None:
-    """Logging helper should honor the configured string log level."""
+def test_configure_logging_uses_shared_dual_path_settings(monkeypatch) -> None:
+    """Logging helper should delegate to shared logging with actor settings."""
     from actors.agent import main
 
-    basic_config = MagicMock()
-    monkeypatch.setattr(main.logging, "basicConfig", basic_config)
+    configure_logging = MagicMock()
+    monkeypatch.setattr(
+        "packages.brain_shared.logging.configure_logging", configure_logging
+    )
 
-    main._configure_logging(level="DEBUG")
+    settings = ActorSettings()
+    settings.logging.level = "DEBUG"
+    settings.logging.file_capture_enabled = True
+    settings.logging.file_capture_level = "VERBOSE"
+    settings.logging.file_capture_directory = "logs"
+    settings.logging.json_output = False
+    settings.logging.process_name = "brain-agent"
+    settings.logging.environment = "dev"
 
-    basic_config.assert_called_once()
-    assert basic_config.call_args.kwargs["level"] == main.logging.DEBUG
+    main._configure_logging(settings=settings)
+
+    configure_logging.assert_called_once_with(
+        level="DEBUG",
+        file_capture_enabled=True,
+        file_capture_level="VERBOSE",
+        file_capture_directory="logs",
+        json_output=False,
+        process_name="brain-agent",
+        environment="dev",
+    )
 
 
 def test_to_sdk_messages_translates_tool_loop_history() -> None:
@@ -411,7 +429,7 @@ def test_build_capability_tools_remembers_pending_invocation_with_expiry() -> No
                         metadata={
                             "proposal_token": "tok-expiring",
                             "reason_codes": "approval_required",
-                            "expires_at": "2026-03-13T14:15:16Z",
+                            "expires_at": "2099-03-13T14:15:16Z",
                         },
                     ),
                 ),
@@ -442,7 +460,7 @@ def test_build_capability_tools_remembers_pending_invocation_with_expiry() -> No
         target_path="notes/new.md",
     )
 
-    assert result["proposal_expires_at"] == "2026-03-13T14:15:16+00:00"
+    assert result["proposal_expires_at"] == "2099-03-13T14:15:16+00:00"
     assert turn_state.pending_invocations["tok-expiring"] == main._PendingInvocation(
         proposal_token="tok-expiring",
         capability_id="vault-move-path",
@@ -455,7 +473,7 @@ def test_build_capability_tools_remembers_pending_invocation_with_expiry() -> No
         requires_approval=True,
         reason_codes=("approval_required",),
         created_at=turn_state.pending_invocations["tok-expiring"].created_at,
-        expires_at=datetime(2026, 3, 13, 14, 15, 16, tzinfo=UTC),
+        expires_at=datetime(2099, 3, 13, 14, 15, 16, tzinfo=UTC),
     )
 
 

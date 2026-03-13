@@ -14,6 +14,8 @@ services:
     volumes:
       - ${HOME}/.config/brain:/app/config:ro
       - ${HOME}/.config/brain/generated:/app/config/generated:rw
+      - ./logs:/app/logs
+      - ./data/object:/app/var/blobs
     ports:
       - "8898:8898"
     depends_on:
@@ -40,6 +42,7 @@ services:
     volumes:
       - ${HOME}/.config/brain:/app/config:ro
       - ${HOME}/.config/brain/generated:/app/config/generated:rw
+      - ./logs:/app/logs
     depends_on:
       brain-core:
         condition: service_healthy

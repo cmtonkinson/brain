@@ -31,7 +31,7 @@ class LoggingSettings(BaseModel):
     ] = "VERBOSE"
     file_capture_directory: str = "logs"
     json_output: bool = True
-    service: str = "brain"
+    process_name: str = "core"
     environment: str = "dev"
 
 
@@ -285,6 +285,12 @@ class ActorSettings(BaseSettings):
             env_settings,
             _merged_yaml_source(settings_cls, config_path=config_path),
         )
+
+    def model_post_init(self, __context: Any) -> None:
+        """Default actor log process name to the agent process identity."""
+        del __context
+        if self.logging.process_name == "core":
+            self.logging.process_name = "agent"
 
 
 @dataclass(frozen=True, slots=True)

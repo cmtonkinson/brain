@@ -726,6 +726,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
             summary=manifest.summary,
             input_schema=manifest.input_schema,
             output_schema=manifest.output_schema,
+            simple_output_path=manifest.simple_output_path,
             autonomy=manifest.autonomy,
             requires_approval=manifest.requires_approval,
             side_effects=manifest.side_effects,

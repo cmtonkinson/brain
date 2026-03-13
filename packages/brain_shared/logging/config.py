@@ -45,7 +45,7 @@ _register_verbose_level()
 
 
 class ContextFilter(logging.Filter):
-    """Inject per-request/service context into each log record."""
+    """Inject per-request/process context into each log record."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         context = get_context()
@@ -101,7 +101,7 @@ def configure_logging(
     file_capture_level: str = "VERBOSE",
     file_capture_directory: str = "logs",
     json_output: bool = True,
-    service: str | None = None,
+    process_name: str | None = None,
     environment: str | None = None,
 ) -> None:
     """Configure root logging with stdout and optional local file capture.
@@ -125,6 +125,7 @@ def configure_logging(
         file_level = _resolve_level(file_capture_level)
         file_handler = _build_file_handler(
             directory=file_capture_directory,
+            process_name=process_name,
             json_output=json_output,
         )
         file_handler.setLevel(file_level)
@@ -138,8 +139,8 @@ def configure_logging(
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     seed_context: dict[str, str] = {}
-    if service:
-        seed_context[fields.SERVICE] = service
+    if process_name:
+        seed_context[fields.PROCESS_NAME] = process_name
     if environment:
         seed_context[fields.ENVIRONMENT] = environment
     if seed_context:
@@ -165,14 +166,29 @@ def _resolve_level(level: str) -> int:
 def _build_file_handler(
     *,
     directory: str,
+    process_name: str | None,
     json_output: bool,
 ) -> logging.Handler:
     """Build one local file capture handler, creating its directory on demand."""
     log_directory = Path(directory)
     log_directory.mkdir(parents=True, exist_ok=True)
+    resolved_process_name = _sanitize_process_name(process_name=process_name)
     handler = logging.FileHandler(
-        filename=log_directory / "brain.log",
+        filename=log_directory / f"{resolved_process_name}.log",
         encoding="utf-8",
     )
     handler.setFormatter(JsonFormatter() if json_output else PlainFormatter())
     return handler
+
+
+def _sanitize_process_name(*, process_name: str | None) -> str:
+    """Return one filesystem-safe process name for local capture filenames."""
+    candidate = "" if process_name is None else process_name.strip().lower()
+    if candidate == "":
+        return "brain"
+    sanitized = "".join(
+        character
+        for character in candidate
+        if character.isalnum() or character in {"-", "_"}
+    )
+    return sanitized or "brain"

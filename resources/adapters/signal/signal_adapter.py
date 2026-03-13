@@ -151,6 +151,14 @@ class SignalRestApiAdapter(SignalAdapter):
             "number": sender,
             "recipients": [recipient],
         }
+        _LOGGER.verbose(
+            "signal adapter send_message request captured",
+            extra={
+                "sender_e164": sender,
+                "recipient_e164": recipient,
+                "signal_request_payload": payload,
+            },
+        )
         try:
             response = self._signal_client.post("/v2/send", json=payload)
         except HttpStatusError as exc:
@@ -524,6 +532,14 @@ class SignalRestApiAdapter(SignalAdapter):
             "recipient": callback_result.sender_e164,
             "timestamp": callback_result.timestamp_ms,
         }
+        _LOGGER.verbose(
+            "signal adapter read receipt request captured",
+            extra={
+                "signal_request_payload": payload,
+                "sender_e164": self._settings.receive_e164,
+                "recipient_e164": callback_result.sender_e164,
+            },
+        )
         try:
             self._signal_client.post(path, json=payload)
         except HttpStatusError as exc:

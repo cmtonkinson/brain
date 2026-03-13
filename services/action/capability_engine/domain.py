@@ -113,6 +113,7 @@ class CapabilityManifestBase(BaseModel):
     required_capabilities: tuple[str, ...] = ()
     input_schema: dict[str, Any] | None = None
     output_schema: dict[str, Any] | None = None
+    simple_output_path: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -193,6 +194,7 @@ class CapabilityDescriptor(BaseModel):
     summary: str
     input_schema: dict[str, Any] | None
     output_schema: dict[str, Any] | None
+    simple_output_path: str | None
     autonomy: int
     requires_approval: bool
     side_effects: tuple[str, ...]

@@ -139,7 +139,7 @@ def test_load_core_settings_uses_model_defaults_when_sources_missing(
     """Settings should fall back to model defaults when env and YAML are absent."""
     settings = load_core_settings(config_path=tmp_path / "core.yaml", environ={})
 
-    assert settings.logging.service == "brain"
+    assert settings.logging.process_name == "core"
     assert settings.logging.level == "INFO"
     assert settings.logging.file_capture_enabled is False
     assert settings.logging.file_capture_level == "VERBOSE"
@@ -378,6 +378,8 @@ def test_sample_config_files_load_cleanly(tmp_path: Path) -> None:
         ]
         == 10.0
     )
+    assert core.logging.process_name == "core"
+    assert actors.logging.process_name == "agent"
     assert actors.logging.json_output is True
 
 
@@ -496,7 +498,10 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
     assert yaml.safe_load(
         (sample_dir / "actors.yaml.sample").read_text(encoding="utf-8")
     ) == {
-        "logging": LoggingSettings().model_dump(mode="json"),
+        "logging": {
+            **LoggingSettings().model_dump(mode="json"),
+            "process_name": "agent",
+        },
         "core": ActorCoreConnectionSettings().model_dump(mode="json"),
         "cli": CliActorSettings().model_dump(mode="json"),
         "agent": AgentActorSettings().model_dump(mode="json"),

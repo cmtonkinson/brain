@@ -3,6 +3,7 @@
   "kind": "native_op",
   "version": "1.0.0",
   "summary": "Read metadata for one persisted object by canonical object key.",
+  "simple_output_path": ".ref.object_key",
   "enabled": true,
   "autonomy": 0,
   "requires_approval": false,

@@ -48,6 +48,7 @@ class CapabilityDescriptor:
     requires_approval: bool
     side_effects: tuple[str, ...]
     required_capabilities: tuple[str, ...]
+    simple_output_path: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -646,6 +647,11 @@ def _capability_descriptor(value: object) -> CapabilityDescriptor:
         summary=str(item.get("summary", "")),
         input_schema=_schema(item.get("input_schema")),
         output_schema=_schema(item.get("output_schema")),
+        simple_output_path=(
+            None
+            if item.get("simple_output_path") is None
+            else str(item.get("simple_output_path"))
+        ),
         autonomy=int(item.get("autonomy", 0)),
         requires_approval=bool(item.get("requires_approval", False)),
         side_effects=tuple(str(entry) for entry in item.get("side_effects", ())),

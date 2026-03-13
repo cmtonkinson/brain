@@ -370,11 +370,48 @@ def test_send_message_extracts_timestamp_and_emits_verbose_log() -> None:
         )
 
     assert result.sent_timestamp_ms == 1730000000123
-    verbose_log.assert_called_once()
-    assert verbose_log.call_args.args == (
+    assert verbose_log.call_count == 2
+    assert verbose_log.call_args_list[0].args == (
+        "signal adapter send_message request captured",
+    )
+    assert verbose_log.call_args_list[0].kwargs["extra"]["signal_request_payload"] == {
+        "message": "hello",
+        "text_mode": "styled",
+        "number": "+12025550101",
+        "recipients": ["+12025550100"],
+    }
+    assert verbose_log.call_args_list[1].args == (
         "signal adapter send_message response captured",
     )
-    assert verbose_log.call_args.kwargs["extra"]["sent_timestamp_ms"] == 1730000000123
+    assert (
+        verbose_log.call_args_list[1].kwargs["extra"]["sent_timestamp_ms"]
+        == 1730000000123
+    )
+
+
+def test_send_read_receipt_emits_verbose_request_log() -> None:
+    adapter = _adapter()
+
+    with patch.object(signal_adapter_module._LOGGER, "verbose") as verbose_log:
+        adapter._send_read_receipt(  # type: ignore[attr-defined]
+            callback_result=signal_adapter_module._WebhookCallbackResult(
+                accepted=True,
+                queued=True,
+                reason="accepted",
+                sender_e164="+12025550100",
+                timestamp_ms=1730000000000,
+            )
+        )
+
+    assert verbose_log.call_count == 1
+    assert verbose_log.call_args.args == (
+        "signal adapter read receipt request captured",
+    )
+    assert verbose_log.call_args.kwargs["extra"]["signal_request_payload"] == {
+        "receipt_type": "read",
+        "recipient": "+12025550100",
+        "timestamp": 1730000000000,
+    }
 
 
 def test_process_receive_payload_emits_verbose_raw_boundary_logs() -> None:
@@ -409,7 +446,7 @@ def test_process_receive_payload_emits_verbose_raw_boundary_logs() -> None:
         )
 
     assert len(callback.posts) == 1
-    assert verbose_log.call_count == 2
+    assert verbose_log.call_count == 3
     assert verbose_log.call_args_list[0].args == (
         "signal adapter received websocket payload",
     )
@@ -419,3 +456,6 @@ def test_process_receive_payload_emits_verbose_raw_boundary_logs() -> None:
         "signal adapter queued callback payload",
     )
     assert verbose_log.call_args_list[1].kwargs["extra"]["raw_body_json"].strip() != ""
+    assert verbose_log.call_args_list[2].args == (
+        "signal adapter read receipt request captured",
+    )

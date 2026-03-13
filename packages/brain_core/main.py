@@ -188,7 +188,7 @@ def main() -> None:
         file_capture_level=settings.core.logging.file_capture_level,
         file_capture_directory=settings.core.logging.file_capture_directory,
         json_output=settings.core.logging.json_output,
-        service=settings.core.logging.service,
+        process_name=settings.core.logging.process_name,
         environment=settings.core.logging.environment,
     )
 
