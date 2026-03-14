@@ -205,8 +205,8 @@ def _write_override_file(
                 "volumes": [
                     f"{config_dir}:/app/config:ro",
                     f"{generated_dir}:/app/config/generated:rw",
+                    f"{REPO_ROOT / 'scripts' / 'healthcheck-core.sh'}:/usr/local/bin/brain-healthcheck:ro",
                 ],
-                "ports": ["127.0.0.1::8898"],
                 "depends_on": {
                     "postgres": {"condition": "service_healthy"},
                     "redis": {"condition": "service_healthy"},
@@ -221,6 +221,7 @@ def _write_override_file(
                 "volumes": [
                     f"{config_dir}:/app/config:ro",
                     f"{generated_dir}:/app/config/generated:rw",
+                    f"{REPO_ROOT / 'scripts' / 'healthcheck-agent.sh'}:/usr/local/bin/brain-healthcheck:ro",
                 ],
             },
             "postgres": {
@@ -534,6 +535,7 @@ def main() -> int:
 
         env = {
             **os.environ,
+            "BRAIN_CORE_PORT_BIND": "127.0.0.1::8898",
             "PYTHON_VERSION": PYTHON_VERSION.split(".")[0]
             + "."
             + PYTHON_VERSION.split(".")[1],

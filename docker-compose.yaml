@@ -17,7 +17,7 @@ services:
       - ./data/object:/app/var/blobs
       - ./scripts/healthcheck-core.sh:/usr/local/bin/brain-healthcheck:ro
     ports:
-      - "8898:8898"
+      - "${BRAIN_CORE_PORT_BIND:-8898:8898}"
     depends_on:
       postgres:
         condition: service_healthy

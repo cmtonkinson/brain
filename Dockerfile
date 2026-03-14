@@ -10,13 +10,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
   BRAIN_ACTORS_CONFIG_FILE=/app/config/actors.yaml
 
 WORKDIR /app
+COPY requirements.txt /app/requirements.txt
 
 RUN apt-get update && \
   apt-get install -y --no-install-recommends curl && \
-  rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip && \
+  rm -rf /var/lib/apt/lists/* && \
+  pip install --upgrade pip && \
   pip install --requirement /app/requirements.txt
 
 COPY . /app
@@ -32,3 +31,4 @@ USER brain
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=3 \
   CMD ["/usr/local/bin/brain-healthcheck"]
+
