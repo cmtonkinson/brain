@@ -377,6 +377,24 @@ def test_resolve_approval_notification_token_fails_when_cache_lookup_fails() -> 
     assert result.ok is False
     assert result.errors[0].category.value == "dependency"
 
+
+def test_resolve_approval_notification_token_returns_none_when_cache_value_missing() -> (
+    None
+):
+    """Token lookup should treat empty CAS payload values as a cache miss."""
+    service, _adapter, cache = _service()
+    cache.values[("attention-router", "approval-timestamp:signal:123")] = None
+
+    result = service.resolve_approval_notification_proposal_token(
+        meta=_meta(),
+        channel="signal",
+        target_timestamp_ms=123,
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value is None
+
     result = service.correlate_approval_response(
         meta=_meta(),
         actor="operator",

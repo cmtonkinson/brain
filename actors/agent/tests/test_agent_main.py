@@ -11,6 +11,8 @@ from unittest.mock import MagicMock
 from packages.brain_shared.config import ActorSettings, CoreSettings
 from packages.brain_sdk import (
     BrainDependencyError,
+    BrainInternalError,
+    BrainNotFoundError,
     BrainPolicyError,
     CapabilityDescriptor,
     CapabilitySearchHit,
@@ -395,6 +397,157 @@ def test_build_capability_tools_returns_policy_denial_payload() -> None:
         "proposal_token": "tok-123",
         "proposal_expires_at": "",
         "reason_codes": ["approval_required"],
+    }
+
+
+def test_build_capability_tools_returns_not_found_payload() -> None:
+    """Not-found domain failures should be returned as structured tool data."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+            reply_to_proposal_token: str = "",
+            reaction_to_proposal_token: str = "",
+        ):
+            del (
+                capability_id,
+                input_payload,
+                actor,
+                channel,
+                reply_to_proposal_token,
+                reaction_to_proposal_token,
+            )
+            raise BrainNotFoundError(
+                message="capabilities.invoke domain failure: Not Found",
+                operation="capabilities.invoke",
+                details=(
+                    SdkErrorDetail(
+                        code="NOT_FOUND",
+                        message="Not Found",
+                        category="not_found",
+                        metadata={"path": "notes/missing.md"},
+                    ),
+                ),
+            )
+
+    tools = main._build_capability_tools(
+        client=_FakeClient(),  # type: ignore[arg-type]
+        capabilities=(
+            CapabilityDescriptor(
+                capability_id="vault-rename-path",
+                kind="native_op",
+                version="1.0.0",
+                summary="Rename one vault path.",
+                input_schema={"type": "object"},
+                output_schema={"type": "object"},
+                autonomy=0,
+                requires_approval=False,
+                side_effects=("writes_vault",),
+                required_capabilities=(),
+            ),
+        ),
+        turn_state=main._TurnState(actor="operator", channel="signal"),
+    )
+
+    result = tools[0].function(
+        source_path="notes/missing.md",
+        target_path="notes/new.md",
+    )
+
+    assert result == {
+        "error": "not_found",
+        "message": "capabilities.invoke domain failure: Not Found",
+        "capability_id": "vault-rename-path",
+        "details": [
+            {
+                "code": "NOT_FOUND",
+                "message": "Not Found",
+                "category": "not_found",
+                "retryable": False,
+                "metadata": {"path": "notes/missing.md"},
+            }
+        ],
+    }
+
+
+def test_build_capability_tools_returns_internal_error_payload() -> None:
+    """Internal domain failures should be returned as structured tool data."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+            reply_to_proposal_token: str = "",
+            reaction_to_proposal_token: str = "",
+        ):
+            del (
+                capability_id,
+                input_payload,
+                actor,
+                channel,
+                reply_to_proposal_token,
+                reaction_to_proposal_token,
+            )
+            raise BrainInternalError(
+                message="capabilities.invoke domain failure: internal fault",
+                operation="capabilities.invoke",
+                details=(
+                    SdkErrorDetail(
+                        code="INTERNAL",
+                        message="internal fault",
+                        category="internal",
+                    ),
+                ),
+            )
+
+    tools = main._build_capability_tools(
+        client=_FakeClient(),  # type: ignore[arg-type]
+        capabilities=(
+            CapabilityDescriptor(
+                capability_id="vault-rename-path",
+                kind="native_op",
+                version="1.0.0",
+                summary="Rename one vault path.",
+                input_schema={"type": "object"},
+                output_schema={"type": "object"},
+                autonomy=0,
+                requires_approval=False,
+                side_effects=("writes_vault",),
+                required_capabilities=(),
+            ),
+        ),
+        turn_state=main._TurnState(actor="operator", channel="signal"),
+    )
+
+    result = tools[0].function(
+        source_path="notes/old.md",
+        target_path="notes/new.md",
+    )
+
+    assert result == {
+        "error": "internal_error",
+        "message": "capabilities.invoke domain failure: internal fault",
+        "capability_id": "vault-rename-path",
+        "details": [
+            {
+                "code": "INTERNAL",
+                "message": "internal fault",
+                "category": "internal",
+                "retryable": False,
+                "metadata": {},
+            }
+        ],
     }
 
 

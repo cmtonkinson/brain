@@ -510,7 +510,10 @@ class DefaultAttentionRouterService(AttentionRouterService):
             )
         if result.payload is None:
             return None
-        value = result.payload.value.value
+        payload_value = result.payload.value
+        if payload_value is None:
+            return None
+        value = payload_value.value
         if not isinstance(value, Mapping):
             return None
         token = str(value.get("proposal_token", "")).strip()

@@ -28,9 +28,14 @@ from pydantic_ai.tools import ToolDefinition
 
 from packages.brain_sdk import (
     BrainClient,
+    BrainConflictError,
     BrainDependencyError,
+    BrainDomainError,
+    BrainInternalError,
+    BrainNotFoundError,
     BrainPolicyError,
     BrainSdkConfig,
+    BrainValidationError,
     CapabilityDescriptor,
     LmsChatMessage,
     LmsChatToolCall,
@@ -529,6 +534,46 @@ def _build_capability_tools(
                     ),
                     "reason_codes": reason_codes,
                 }
+            except BrainValidationError as exc:
+                return _capability_error_payload(
+                    error="validation_error",
+                    capability_id=_capability_id,
+                    exc=exc,
+                )
+            except BrainConflictError as exc:
+                return _capability_error_payload(
+                    error="conflict_error",
+                    capability_id=_capability_id,
+                    exc=exc,
+                )
+            except BrainNotFoundError as exc:
+                return _capability_error_payload(
+                    error="not_found",
+                    capability_id=_capability_id,
+                    exc=exc,
+                )
+            except BrainDependencyError as exc:
+                return _capability_error_payload(
+                    error="dependency_error",
+                    capability_id=_capability_id,
+                    exc=exc,
+                )
+            except BrainInternalError as exc:
+                _LOGGER.error(
+                    "brain agent capability tool internal error",
+                    extra={"capability_id": _capability_id},
+                )
+                return _capability_error_payload(
+                    error="internal_error",
+                    capability_id=_capability_id,
+                    exc=exc,
+                )
+            except BrainDomainError as exc:
+                return _capability_error_payload(
+                    error="domain_error",
+                    capability_id=_capability_id,
+                    exc=exc,
+                )
             return result.output
 
         tools.append(
@@ -540,6 +585,30 @@ def _build_capability_tools(
             )
         )
     return tools
+
+
+def _capability_error_payload(
+    *,
+    error: str,
+    capability_id: str,
+    exc: BrainDomainError,
+) -> dict[str, object]:
+    """Return one stable tool error payload for SDK domain failures."""
+    return {
+        "error": error,
+        "message": str(exc),
+        "capability_id": capability_id,
+        "details": [
+            {
+                "code": item.code,
+                "message": item.message,
+                "category": item.category,
+                "retryable": item.retryable,
+                "metadata": dict(item.metadata),
+            }
+            for item in exc.details
+        ],
+    }
 
 
 def _build_runtime_tools(
