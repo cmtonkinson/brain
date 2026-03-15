@@ -79,6 +79,7 @@ def build_switchboard_service(
         or SignalRestApiAdapter(settings=resolve_signal_adapter_settings(settings)),
         cache_service=cache_service,
         attention_router_service=attention_router_service,
+        approval_response_settings=settings.core.profile.approval_responses,
     )
 
 

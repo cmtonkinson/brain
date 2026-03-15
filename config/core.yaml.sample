@@ -20,6 +20,21 @@ observability:
       metric_qdrant_op_duration_ms: brain_qdrant_op_duration_ms
 
 profile:
+  approval_responses:
+    approve_reaction_emojis:
+      - 👍
+      - ✅
+    reject_reaction_emojis:
+      - 👎
+      - ❌
+    approve_text_responses:
+      - "approve"
+      - "approved"
+      - "yes"
+    reject_text_responses:
+      - "deny"
+      - "denied"
+      - "no"
   default_dial_code: "+1"
   operator_name: Operator
   brain_name: Brain

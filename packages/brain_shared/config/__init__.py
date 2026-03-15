@@ -7,6 +7,7 @@ from .loader import (
     load_resources_settings,
 )
 from .models import (
+    ApprovalResponseSettings,
     ActorCoreConnectionSettings,
     ActorNamespaceSettings,
     ActorSettings,
@@ -31,6 +32,7 @@ __all__ = [
     "DEFAULT_ACTORS_CONFIG_PATH",
     "DEFAULT_CORE_CONFIG_PATH",
     "DEFAULT_RESOURCES_CONFIG_PATH",
+    "ApprovalResponseSettings",
     "ActorCoreConnectionSettings",
     "ActorNamespaceSettings",
     "ActorSettings",

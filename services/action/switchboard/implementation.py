@@ -10,7 +10,8 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from packages.brain_shared.config import CoreRuntimeSettings
+from packages.brain_shared.approval import normalize_approval_intent
+from packages.brain_shared.config import ApprovalResponseSettings, CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
@@ -73,12 +74,18 @@ class DefaultSwitchboardService(SwitchboardService):
         adapter: SignalAdapter,
         cache_service: CacheAuthorityService,
         attention_router_service: AttentionRouterService | None = None,
+        approval_response_settings: ApprovalResponseSettings | None = None,
     ) -> None:
         self._settings = settings
         self._identity = identity
         self._adapter = adapter
         self._cache_service = cache_service
         self._attention_router_service = attention_router_service
+        self._approval_response_settings = (
+            approval_response_settings
+            if approval_response_settings is not None
+            else ApprovalResponseSettings()
+        )
         self._operator_e164 = _normalize_e164(
             raw=identity.operator_signal_contact_e164,
             default_dial_code=identity.default_dial_code,
@@ -100,6 +107,7 @@ class DefaultSwitchboardService(SwitchboardService):
             identity=identity,
             adapter=SignalRestApiAdapter(settings=adapter_settings),
             cache_service=cache_service,
+            approval_response_settings=settings.core.profile.approval_responses,
         )
 
     @public_api_instrumented(
@@ -619,9 +627,10 @@ class DefaultSwitchboardService(SwitchboardService):
                 quote_target_timestamp_ms=quote_target,
                 reaction_target_timestamp_ms=reaction_target,
                 reaction_emoji=None if reaction_emoji == "" else reaction_emoji,
-                approval_intent=_approval_intent(
+                approval_intent=normalize_approval_intent(
                     message_text=message_text,
                     reaction_emoji=reaction_emoji,
+                    settings=self._approval_response_settings,
                 ),
                 reply_to_proposal_token=reply_to_proposal_token,
                 reaction_to_proposal_token=reaction_to_proposal_token,
@@ -752,30 +761,6 @@ def _extract_reaction_emoji(payload: dict[str, Any]) -> str:
         "emojiShortName",
         "emoji_short_name",
     )
-
-
-def _approval_intent(*, message_text: str, reaction_emoji: str) -> str | None:
-    """Normalize one inbound approval signal into approve/reject when unambiguous."""
-    emoji = reaction_emoji.strip()
-    if emoji in {"👍", "✅", "👌"}:
-        return "approve"
-    if emoji in {"👎", "❌"}:
-        return "reject"
-
-    text = message_text.strip().lower()
-    if text == "":
-        return None
-
-    compact = " ".join(text.replace(",", " ").split())
-    if compact in {"approve", "approved", "yes", "ok", "okay", "ship it", "do it"}:
-        return "approve"
-    if compact.startswith("yes ") or " approved" in compact:
-        return "approve"
-    if compact in {"deny", "denied", "reject", "rejected", "no", "cancel"}:
-        return "reject"
-    if compact.startswith("no ") or compact.startswith("reject "):
-        return "reject"
-    return None
 
 
 def _signal_payload_shape(candidate: dict[str, Any]) -> str:

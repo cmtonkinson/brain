@@ -70,10 +70,22 @@ class OperatorProfileSettings(BaseModel):
     signal_contact_e164: str = "+12222222222"
 
 
+class ApprovalResponseSettings(BaseModel):
+    """Operator approval-response vocabulary shared across action services."""
+
+    approve_reaction_emojis: tuple[str, ...] = tuple("👍,✅".split(","))
+    reject_reaction_emojis: tuple[str, ...] = tuple("👎,❌".split(","))
+    approve_text_responses: tuple[str, ...] = tuple("approve,approved,yes".split(","))
+    reject_text_responses: tuple[str, ...] = tuple("deny,denied,no".split(","))
+
+
 class ProfileSettings(BaseModel):
     """Root profile settings for operator identity and webhook verification."""
 
     operator: OperatorProfileSettings = Field(default_factory=OperatorProfileSettings)
+    approval_responses: ApprovalResponseSettings = Field(
+        default_factory=ApprovalResponseSettings
+    )
     default_dial_code: str = "+1"
     webhook_shared_secret: str = "replace-me"
     operator_name: str = "Operator"

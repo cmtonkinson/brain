@@ -593,6 +593,47 @@ def test_single_pending_proposal_approve_text_allows_execution() -> None:
     assert approved.output == {"ok": True}
 
 
+def test_single_pending_proposal_approved_text_allows_execution() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    pending = service.authorize_and_execute(
+        request=_request(requires_approval=True),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert pending.proposal is not None
+
+    approved = service.authorize_and_execute(
+        request=_request(
+            envelope_id="env-approved-text",
+            requires_approval=True,
+            message_text="approved",
+        ).model_copy(
+            update={
+                "invocation": InvocationPolicyInput(
+                    actor="operator",
+                    source="agent",
+                    channel="signal",
+                    invocation_id="inv-approved-text",
+                    message_text="approved",
+                )
+            }
+        ),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert approved.allowed is True
+    assert approved.output == {"ok": True}
+
+
 def test_low_confidence_disambiguation_requests_clarification() -> None:
     service = DefaultPolicyService(settings=PolicyServiceSettings())
     pending = service.authorize_and_execute(

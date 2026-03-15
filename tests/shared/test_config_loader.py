@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from packages.brain_shared.config import (
+    ApprovalResponseSettings,
     ActorCoreConnectionSettings,
     ActorNamespaceSettings,
     CoreRuntimeSettings,
@@ -394,6 +395,7 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
         "logging": LoggingSettings().model_dump(mode="json"),
         "observability": ObservabilitySettings().model_dump(mode="json"),
         "profile": {
+            "approval_responses": ApprovalResponseSettings().model_dump(mode="json"),
             "default_dial_code": ProfileSettings().default_dial_code,
             "operator_name": ProfileSettings().operator_name,
             "brain_name": ProfileSettings().brain_name,

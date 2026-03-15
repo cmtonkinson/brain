@@ -7,7 +7,8 @@ from hashlib import sha256
 import json
 from typing import Any
 
-from packages.brain_shared.config import CoreRuntimeSettings
+from packages.brain_shared.approval import normalize_approval_intent
+from packages.brain_shared.config import ApprovalResponseSettings, CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeKind,
@@ -84,10 +85,16 @@ class DefaultPolicyService(PolicyService):
         settings: PolicyServiceSettings,
         persistence: PolicyPersistenceRepository | None = None,
         attention_router_service: AttentionRouterService | None = None,
+        approval_response_settings: ApprovalResponseSettings | None = None,
     ) -> None:
         self._settings = settings
         self._persistence = persistence or InMemoryPolicyPersistenceRepository()
         self._attention_router_service = attention_router_service
+        self._approval_response_settings = (
+            approval_response_settings
+            if approval_response_settings is not None
+            else ApprovalResponseSettings()
+        )
         self._seen_envelopes: dict[str, datetime] = {}
         self._effective_policy = self._initialize_effective_policy()
 
@@ -105,6 +112,7 @@ class DefaultPolicyService(PolicyService):
             persistence=PostgresPolicyPersistenceRepository(runtime.schema_sessions),
             attention_router_service=attention_router_service
             or build_attention_router_service(settings=settings),
+            approval_response_settings=settings.core.profile.approval_responses,
         )
 
     @public_api_instrumented(
@@ -414,11 +422,13 @@ class DefaultPolicyService(PolicyService):
         if len(pending) != 1:
             return False, None, ""
 
-        affirmative = {"approve", "yes", "ok", "ship it", "do it"}
-        negative = {"deny", "no", "reject", "cancel"}
-        if text in affirmative:
+        intent = normalize_approval_intent(
+            message_text=text,
+            settings=self._approval_response_settings,
+        )
+        if intent == "approve":
             return True, None, pending[0].proposal.proposal_token
-        if text in negative:
+        if intent == "reject":
             self._mark_proposal_rejected(token=pending[0].proposal.proposal_token)
             return False, _REASON_APPROVAL_REQUIRED, ""
         return False, None, ""
