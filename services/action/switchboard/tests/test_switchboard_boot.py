@@ -37,6 +37,7 @@ class _FakeSwitchboardService(SwitchboardService):
         self.health_calls = 0
         self.ready_after = 0
         self.register_ok = True
+        self.adapter_ready = False
 
     def ingest_signal_message(
         self,
@@ -75,7 +76,7 @@ class _FakeSwitchboardService(SwitchboardService):
             meta=_meta(),
             payload=HealthStatus(
                 service_ready=ready,
-                adapter_ready=ready,
+                adapter_ready=self.adapter_ready,
                 cas_ready=ready,
                 detail="ok" if ready else "warming",
             ),
@@ -88,7 +89,7 @@ def _meta():
 
 
 def test_register_switchboard_callback_waits_for_health_and_registers() -> None:
-    """Boot hook should wait for dependency readiness before registration."""
+    """Boot hook should wait for Switchboard plus CAS readiness before registration."""
     service = _FakeSwitchboardService()
     service.ready_after = 2
     settings = SwitchboardServiceSettings(
@@ -106,7 +107,7 @@ def test_register_switchboard_callback_waits_for_health_and_registers() -> None:
 def test_register_switchboard_callback_returns_dependency_error_when_not_ready() -> (
     None
 ):
-    """Boot hook should fail when dependencies never become healthy."""
+    """Boot hook should fail when Switchboard plus CAS never become healthy."""
     service = _FakeSwitchboardService()
     service.ready_after = 99
     settings = SwitchboardServiceSettings(
@@ -122,7 +123,7 @@ def test_register_switchboard_callback_returns_dependency_error_when_not_ready()
 
 
 def test_boot_registers_signal_callback_once_ready() -> None:
-    """Switchboard boot should register the Signal callback once dependencies are ready."""
+    """Switchboard boot should register even when adapter health remains false."""
     service = _FakeSwitchboardService()
     ctx = BootContext(
         settings=CoreRuntimeSettings(

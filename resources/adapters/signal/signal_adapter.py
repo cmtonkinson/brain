@@ -14,7 +14,6 @@ import aiohttp
 
 from packages.brain_shared.http import (
     HttpClient,
-    HttpJsonDecodeError,
     HttpRequestError,
     HttpStatusError,
 )
@@ -32,7 +31,6 @@ from resources.adapters.signal.adapter import (
 )
 from resources.adapters.signal.component import RESOURCE_COMPONENT_ID
 from resources.adapters.signal.config import SignalAdapterSettings
-from resources.adapters.signal.constants import SIGNAL_HEALTH_PATH
 
 _LOGGER = get_logger(__name__)
 _REGISTRATION_WAIT_SECONDS = 0.25
@@ -81,18 +79,7 @@ class SignalRestApiAdapter(SignalAdapter):
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
     def health(self) -> SignalAdapterHealthResult:
-        """Return adapter health by probing Signal runtime health endpoint."""
-        try:
-            self._signal_client.get(
-                SIGNAL_HEALTH_PATH,
-                timeout=self._settings.health_timeout_seconds,
-            )
-        except (HttpRequestError, HttpStatusError, HttpJsonDecodeError) as exc:
-            return SignalAdapterHealthResult(
-                adapter_ready=False,
-                detail=str(exc) or "signal runtime unavailable",
-            )
-
+        """Return local adapter readiness independent of provider reachability."""
         with self._lock:
             registration = self._registration
             worker_alive = self._worker is not None and self._worker.is_alive()
@@ -100,7 +87,7 @@ class SignalRestApiAdapter(SignalAdapter):
         loop_state = "running" if worker_alive else "stopped"
         return SignalAdapterHealthResult(
             adapter_ready=True,
-            detail=f"ok; callback={callback_state}; receive_loop={loop_state}",
+            detail=f"ready; callback={callback_state}; receive_loop={loop_state}",
         )
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))

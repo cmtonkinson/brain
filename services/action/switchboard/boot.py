@@ -15,7 +15,7 @@ from services.action.switchboard.config import (
 from services.action.switchboard.domain import RegisterSignalCallbackResult
 from services.action.switchboard.service import SwitchboardService
 
-dependencies: tuple[str, ...] = ("adapter_signal", "service_cache_authority")
+dependencies: tuple[str, ...] = ("service_cache_authority",)
 
 
 def _resolve_service_and_settings(
@@ -33,7 +33,7 @@ def _resolve_service_and_settings(
 
 
 def is_ready(ctx: BootContext) -> bool:
-    """Return true once Switchboard dependencies report ready."""
+    """Return true once Switchboard and CAS report ready."""
     service, _settings = _resolve_service_and_settings(ctx)
     health = service.health(
         meta=new_meta(
@@ -45,7 +45,7 @@ def is_ready(ctx: BootContext) -> bool:
     if not health.ok or health.payload is None:
         return False
     payload = health.payload.value
-    return payload.service_ready and payload.adapter_ready and payload.cas_ready
+    return payload.service_ready and payload.cas_ready
 
 
 def boot(ctx: BootContext) -> None:
@@ -63,7 +63,7 @@ def register_switchboard_callback_on_boot(
     settings: SwitchboardServiceSettings,
     source: str = "switchboard_boot",
 ) -> Envelope[RegisterSignalCallbackResult]:
-    """Register the in-process Signal callback once dependencies are healthy."""
+    """Register the in-process Signal callback once Switchboard and CAS are healthy."""
     attempts = settings.callback_register_max_retries + 1
 
     for attempt in range(attempts):
@@ -77,7 +77,6 @@ def register_switchboard_callback_on_boot(
             health.ok
             and health.payload is not None
             and health.payload.value.service_ready
-            and health.payload.value.adapter_ready
             and health.payload.value.cas_ready
         )
         if ready:

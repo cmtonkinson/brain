@@ -204,7 +204,6 @@ def _write_override_file(
                     "postgres": {"condition": "service_healthy"},
                     "redis": {"condition": "service_healthy"},
                     "qdrant": {"condition": "service_started"},
-                    "signal-api": {"condition": "service_healthy"},
                     "llm-fake": {"condition": "service_healthy"},
                     "obsidian-fake": {"condition": "service_healthy"},
                 },
@@ -233,6 +232,9 @@ def _write_override_file(
                 "image": fake_http_image,
                 "build": base_build,
                 "restart": "no",
+                "depends_on": {
+                    "brain-core": {"condition": "service_healthy"},
+                },
                 "entrypoint": [
                     "python",
                     "/app/scripts/smoke_fake_http_service.py",

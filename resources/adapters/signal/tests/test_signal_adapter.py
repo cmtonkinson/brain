@@ -218,3 +218,22 @@ def test_settings_require_heartbeat_to_exceed_connect_timeout() -> None:
             receive_connect_timeout_seconds=10.0,
             receive_heartbeat_seconds=10.0,
         )
+
+
+def test_health_reports_local_readiness_without_provider_probe() -> None:
+    """Adapter readiness should not depend on provider health reachability."""
+    adapter = _adapter()
+
+    class _BrokenSignalClient:
+        def get(self, _url: str, **_kwargs):
+            raise AssertionError("provider health should not be probed")
+
+        def post(self, _url: str, **_kwargs):
+            raise AssertionError("unexpected post")
+
+    adapter._signal_client = _BrokenSignalClient()  # type: ignore[attr-defined]
+
+    result = adapter.health()
+
+    assert result.adapter_ready is True
+    assert result.detail == "ready; callback=unconfigured; receive_loop=stopped"

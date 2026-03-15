@@ -25,8 +25,6 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
-      signal-api:
-        condition: service_started
     command: ["python", "-m", "packages.brain_core.main"]
 
   brain-agent:
@@ -55,7 +53,11 @@ services:
   signal-api:
     image: ${SIGNAL_CLI_REST_API_IMAGE:-bbernhard/signal-cli-rest-api:latest}
     restart: unless-stopped
+    depends_on:
+      brain-core:
+        condition: service_healthy
     environment:
+      LOG_LEVEL: warn
       MODE: ${SIGNAL_CLI_REST_API_MODE:-json-rpc}
       JSON_RPC_IGNORE_ATTACHMENTS: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_ATTACHMENTS:-true}
       JSON_RPC_IGNORE_STORIES: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_STORIES:-true}
@@ -65,7 +67,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--loglevel", "warning"]
     volumes:
       - ./data/redis:/data
     healthcheck:
@@ -77,12 +79,15 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.17
     restart: unless-stopped
+    environment:
+      QDRANT__LOG_LEVEL: WARN
     volumes:
       - ./data/qdrant:/qdrant/storage
 
   postgres:
     image: postgres:16
     restart: unless-stopped
+    command: ["postgres", "-c", "log_min_messages=warning"]
     environment:
       POSTGRES_DB: brain
       POSTGRES_USER: brain
