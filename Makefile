@@ -48,7 +48,7 @@ ifeq ($(INTEGRATION),1)
 PYTEST_INTEGRATION_ENV := BRAIN_RUN_INTEGRATION_REAL=1
 endif
 
-.PHONY: all deps deps-upgrade clean check format test test-all docs up down integration outline smoke smoke-e2e smoke-docker
+.PHONY: all deps deps-upgrade clean check format test test-only test-all docs up down integration outline smoke smoke-only smoke-e2e smoke-docker
 
 define run_gate
 	@set +e; \
@@ -97,13 +97,14 @@ check:
 format:
 	$(PY) -m ruff format .
 
-test: check
+test: check test-only
+
+test-only:
 	$(call run_gate,$(if $(filter 1,$(INTEGRATION)),Pytest (unit + integration),Pytest (unit)),$(PYTEST_INTEGRATION_ENV) $(PY) -m pytest --quiet tests resources services actors)
 
-test-all:
-	$(MAKE) check
-	$(MAKE) test integration
-	$(MAKE) smoke
+test-all: check
+	$(MAKE) test-only integration
+	$(MAKE) smoke-only
 	$(MAKE) smoke-e2e
 	$(MAKE) smoke-docker
 
@@ -121,7 +122,9 @@ smoke-e2e:
 smoke-docker:
 	$(call run_gate,Smoke Docker,$(PY) scripts/smoke_docker_turn.py)
 
-smoke: check
+smoke: check smoke-only
+
+smoke-only:
 	$(call run_gate,Pytest Smoke,$(PY) -m pytest --quiet \
 		actors/agent/tests/test_agent_turn_harness.py \
 		tests/integration/test_attention_notify_api_smoke.py \

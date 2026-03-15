@@ -2,48 +2,29 @@
 
 from __future__ import annotations
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.action.switchboard.component import SERVICE_COMPONENT_ID
 
 
 class SwitchboardServiceSettings(BaseModel):
-    """Switchboard ingress runtime settings."""
+    """Switchboard inbound-queue runtime settings."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     queue_name: str = "signal_inbound"
-    signature_tolerance_seconds: int = Field(default=300, ge=0)
-    webhook_bind_host: str = "0.0.0.0"
-    webhook_bind_port: int = Field(default=8091, ge=1, le=65535)
-    webhook_path: str = "/v1/inbound/signal/webhook"
-    webhook_public_base_url: AnyHttpUrl = "http://127.0.0.1:8091"
-    webhook_register_max_retries: int = Field(default=8, ge=0)
-    webhook_register_retry_delay_seconds: float = Field(default=2.0, gt=0)
-
-    @field_validator("webhook_path", mode="before")
-    @classmethod
-    def _normalize_webhook_path(cls, value: object) -> object:
-        """Normalize callback path to a canonical absolute URL path."""
-        if not isinstance(value, str):
-            return value
-        path = value.strip()
-        if path == "":
-            raise ValueError("webhook_path must not be empty")
-        if not path.startswith("/"):
-            path = f"/{path}"
-        return path
+    callback_register_max_retries: int = Field(default=8, ge=0)
+    callback_register_retry_delay_seconds: float = Field(default=2.0, gt=0)
 
 
 class SwitchboardIdentitySettings(BaseModel):
-    """Operator and webhook identity settings consumed by Switchboard."""
+    """Operator identity settings consumed by Switchboard."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     operator_signal_contact_e164: str
     default_dial_code: str
-    webhook_shared_secret: str
 
 
 def resolve_switchboard_service_settings(
@@ -60,9 +41,8 @@ def resolve_switchboard_service_settings(
 def resolve_switchboard_identity_settings(
     settings: CoreRuntimeSettings,
 ) -> SwitchboardIdentitySettings:
-    """Resolve operator identity + webhook secret settings from root profile."""
+    """Resolve operator identity settings from root profile."""
     return SwitchboardIdentitySettings(
         operator_signal_contact_e164=settings.core.profile.operator.signal_contact_e164,
         default_dial_code=settings.core.profile.default_dial_code,
-        webhook_shared_secret=settings.core.profile.webhook_shared_secret,
     )

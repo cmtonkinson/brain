@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import time
 from typing import Any
@@ -14,24 +13,25 @@ from packages.brain_shared.approval import normalize_approval_intent
 from packages.brain_shared.config import ApprovalResponseSettings, CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
+    EnvelopeKind,
     EnvelopeMeta,
     failure,
     new_meta,
     success,
-    utc_now,
     validate_meta,
 )
 from packages.brain_shared.errors import (
+    ErrorCategory,
     ErrorDetail,
     codes,
     dependency_error,
     internal_error,
-    policy_error,
     validation_error,
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.adapters.signal import (
     SignalAdapter,
+    SignalInboundCallbackResult,
     SignalAdapterDependencyError,
     SignalAdapterInternalError,
     SignalRestApiAdapter,
@@ -49,13 +49,12 @@ from services.action.switchboard.domain import (
     HealthStatus,
     IngestResult,
     NormalizedSignalMessage,
-    RegisterSignalWebhookResult,
+    RegisterSignalCallbackResult,
 )
 from services.action.switchboard.service import SwitchboardService
 from services.action.switchboard.validation import (
-    IngestSignalWebhookRequest,
+    IngestSignalMessageRequest,
     PollOperatorInstructionRequest,
-    RegisterSignalWebhookRequest,
 )
 from services.state.cache_authority.service import CacheAuthorityService
 
@@ -114,50 +113,26 @@ class DefaultSwitchboardService(SwitchboardService):
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
     )
-    def ingest_signal_webhook(
+    def ingest_signal_message(
         self,
         *,
         meta: EnvelopeMeta,
         raw_body_json: str,
-        header_timestamp: str,
-        header_signature: str,
     ) -> Envelope[IngestResult]:
-        """Validate/normalize one Signal webhook and enqueue accepted messages."""
+        """Validate/normalize one raw Signal payload and enqueue accepted messages."""
         request, errors = self._validate_request(
             meta=meta,
-            model=IngestSignalWebhookRequest,
+            model=IngestSignalMessageRequest,
             payload={
                 "raw_body_json": raw_body_json,
-                "header_timestamp": header_timestamp,
-                "header_signature": header_signature,
             },
         )
         if errors:
             return failure(meta=meta, errors=errors)
         assert request is not None
 
-        verified, verification_error = self._verify_signature(
-            raw_body_json=request.raw_body_json,
-            header_timestamp=request.header_timestamp,
-            header_signature=request.header_signature,
-        )
-        if not verified:
-            assert verification_error is not None
-            payload_summary = _summarize_signal_payload(
-                raw_body_json=request.raw_body_json
-            )
-            _LOGGER.warning(
-                "switchboard rejected webhook during signature verification",
-                extra={
-                    "error": verification_error.message,
-                    "header_timestamp": request.header_timestamp,
-                    **payload_summary,
-                },
-            )
-            return failure(meta=meta, errors=[verification_error])
-
         _LOGGER.verbose(
-            "switchboard received verified signal webhook payload",
+            "switchboard received raw signal payload",
             extra={
                 "raw_body_json": request.raw_body_json,
                 "payload_sha256": hashlib.sha256(
@@ -176,7 +151,7 @@ class DefaultSwitchboardService(SwitchboardService):
                 raw_body_json=request.raw_body_json
             )
             _LOGGER.warning(
-                "switchboard rejected webhook due to invalid payload",
+                "switchboard rejected inbound signal payload due to invalid payload",
                 extra={"error": parse_error.message, **payload_summary},
             )
             return failure(meta=meta, errors=[parse_error])
@@ -268,40 +243,15 @@ class DefaultSwitchboardService(SwitchboardService):
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
     )
-    def register_signal_webhook(
+    def register_signal_callback(
         self,
         *,
         meta: EnvelopeMeta,
-        callback_url: str,
-    ) -> Envelope[RegisterSignalWebhookResult]:
-        """Register callback URI/secret with owned Signal adapter."""
-        request, errors = self._validate_request(
-            meta=meta,
-            model=RegisterSignalWebhookRequest,
-            payload={
-                "callback_url": callback_url,
-            },
-        )
-        if errors:
-            return failure(meta=meta, errors=errors)
-        assert request is not None
-
-        secret = self._identity.webhook_shared_secret.strip()
-        if secret == "":
-            return failure(
-                meta=meta,
-                errors=[
-                    internal_error(
-                        "profile.webhook_shared_secret is not configured",
-                        code=codes.INTERNAL_ERROR,
-                    )
-                ],
-            )
-
+    ) -> Envelope[RegisterSignalCallbackResult]:
+        """Register one in-process inbound callback with the Signal adapter."""
         try:
-            result = self._adapter.register_webhook(
-                callback_url=str(request.callback_url),
-                shared_secret=secret,
+            result = self._adapter.register_callback(
+                callback=self._build_signal_inbound_callback()
             )
         except SignalAdapterDependencyError as exc:
             return failure(
@@ -327,12 +277,51 @@ class DefaultSwitchboardService(SwitchboardService):
 
         return success(
             meta=meta,
-            payload=RegisterSignalWebhookResult(
+            payload=RegisterSignalCallbackResult(
                 registered=result.registered,
-                callback_url=str(request.callback_url),
                 detail=result.detail,
             ),
         )
+
+    def _build_signal_inbound_callback(self):
+        """Return one adapter callback that ingests raw Signal payloads in-process."""
+
+        def _callback(*, raw_body_json: str) -> SignalInboundCallbackResult:
+            result = self.ingest_signal_message(
+                meta=new_meta(
+                    kind=EnvelopeKind.EVENT,
+                    source="adapter_signal",
+                    principal="operator",
+                ),
+                raw_body_json=raw_body_json,
+            )
+            if result.ok and result.payload is not None:
+                payload = result.payload.value
+                return SignalInboundCallbackResult(
+                    accepted=payload.accepted,
+                    queued=payload.queued,
+                    reason=payload.reason,
+                    sender_e164=""
+                    if payload.message is None
+                    else payload.message.sender_e164,
+                    timestamp_ms=None
+                    if payload.message is None
+                    else payload.message.timestamp_ms,
+                )
+            if len(result.errors) == 0:
+                raise SignalAdapterInternalError("switchboard callback failed")
+            error = result.errors[0]
+            if error.category == ErrorCategory.DEPENDENCY:
+                raise SignalAdapterDependencyError(error.message)
+            if error.category == ErrorCategory.INTERNAL:
+                raise SignalAdapterInternalError(error.message)
+            return SignalInboundCallbackResult(
+                accepted=False,
+                queued=False,
+                reason=error.message,
+            )
+
+        return _callback
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -427,59 +416,13 @@ class DefaultSwitchboardService(SwitchboardService):
             ),
         )
 
-    def _verify_signature(
-        self,
-        *,
-        raw_body_json: str,
-        header_timestamp: str,
-        header_signature: str,
-    ) -> tuple[bool, ErrorDetail | None]:
-        """Verify HMAC timestamp/signature headers against configured secret."""
-        secret = self._identity.webhook_shared_secret.strip()
-        if secret == "":
-            return False, internal_error(
-                "profile.webhook_shared_secret is not configured",
-                code=codes.INTERNAL_ERROR,
-            )
-
-        try:
-            timestamp = int(header_timestamp)
-        except ValueError:
-            return False, validation_error(
-                "header_timestamp must be an integer unix timestamp",
-                code=codes.INVALID_ARGUMENT,
-            )
-
-        now_ts = int(utc_now().timestamp())
-        if self._settings.signature_tolerance_seconds > 0:
-            delta_seconds = abs(now_ts - timestamp)
-            if delta_seconds > self._settings.signature_tolerance_seconds:
-                return False, policy_error(
-                    "webhook timestamp is outside accepted tolerance",
-                    code=codes.PERMISSION_DENIED,
-                )
-
-        expected = hmac.new(
-            key=secret.encode("utf-8"),
-            msg=f"{timestamp}.{raw_body_json}".encode("utf-8"),
-            digestmod=hashlib.sha256,
-        ).hexdigest()
-
-        signatures = _parse_signatures(header_signature)
-        if any(hmac.compare_digest(expected, candidate) for candidate in signatures):
-            return True, None
-        return False, policy_error(
-            "webhook signature mismatch",
-            code=codes.PERMISSION_DENIED,
-        )
-
     def _normalize_signal_message(
         self,
         *,
         meta: EnvelopeMeta,
         raw_body_json: str,
     ) -> tuple[NormalizedSignalMessage | None, ErrorDetail | None]:
-        """Parse + normalize one webhook payload into a canonical message DTO."""
+        """Parse + normalize one inbound Signal payload into a canonical message DTO."""
         try:
             payload = json.loads(raw_body_json)
         except json.JSONDecodeError:
@@ -776,7 +719,7 @@ def _signal_payload_shape(candidate: dict[str, Any]) -> str:
 
 
 def _summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
-    """Summarize one raw webhook body for diagnostic logging."""
+    """Summarize one raw inbound Signal payload for diagnostic logging."""
     try:
         payload = json.loads(raw_body_json)
     except json.JSONDecodeError:
@@ -866,7 +809,7 @@ def _first_non_empty(payload: dict[str, Any], *keys: str) -> str:
 
 
 def _parse_timestamp_ms(value: Any) -> int | None:
-    """Parse webhook timestamps in seconds or milliseconds to milliseconds."""
+    """Parse inbound Signal timestamps in seconds or milliseconds to milliseconds."""
     if value is None:
         return None
     try:
@@ -888,21 +831,6 @@ def _parse_optional_int(value: Any) -> int | None:
         return int(str(value).strip())
     except ValueError:
         return None
-
-
-def _parse_signatures(header_signature: str) -> tuple[str, ...]:
-    """Parse signature header into normalized hex digest candidates."""
-    candidates: list[str] = []
-    for part in header_signature.split(","):
-        token = part.strip()
-        if token == "":
-            continue
-        if "=" in token:
-            _prefix, token = token.split("=", maxsplit=1)
-        token = token.strip().lower()
-        if token != "":
-            candidates.append(token)
-    return tuple(candidates)
 
 
 def _normalize_e164(*, raw: str, default_dial_code: str) -> str:

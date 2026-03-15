@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import os
 from pathlib import Path
@@ -18,20 +16,17 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_FILE = REPO_ROOT / "docker-compose.yaml"
 PYTHON_VERSION = (REPO_ROOT / ".python-version").read_text(encoding="utf-8").strip()
-WEBHOOK_BODY = json.dumps(
+SIGNAL_RECEIVE_PAYLOAD = json.dumps(
     {
-        "data": {
-            "account": "+17175371552",
-            "envelope": {
-                "source": "+16104257807",
-                "sourceDevice": 1,
-                "timestamp": 1730000000000,
-                "dataMessage": {"message": "hello"},
-            },
-        }
+        "account": "+17175371552",
+        "envelope": {
+            "source": "+16104257807",
+            "sourceDevice": 1,
+            "timestamp": 1730000000000,
+            "dataMessage": {"message": "hello"},
+        },
     }
 )
-WEBHOOK_SECRET = "smoke-secret"
 EXPECTED_REPLY = "assistant reply"
 
 
@@ -90,7 +85,6 @@ def _write_smoke_configs(*, config_dir: Path) -> None:
                 "  level: INFO",
                 "  json_output: true",
                 "profile:",
-                "  webhook_shared_secret: smoke-secret",
                 "  operator_name: Operator",
                 "  brain_name: Brain",
                 "  brain_verbosity: normal",
@@ -98,9 +92,8 @@ def _write_smoke_configs(*, config_dir: Path) -> None:
                 "    signal_contact_e164: '+16104257807'",
                 "service:",
                 "  switchboard:",
-                "    webhook_public_base_url: http://brain-core:8091",
-                "    webhook_register_max_retries: 2",
-                "    webhook_register_retry_delay_seconds: 0.2",
+                "    callback_register_max_retries: 2",
+                "    callback_register_retry_delay_seconds: 0.2",
                 "  language_model:",
                 "    document_embedding:",
                 "      provider: openai",
@@ -373,31 +366,17 @@ def _wait_for_agent_running(*, env: dict[str, str], override_file: Path) -> None
     raise _SmokeFailure("timed out waiting for brain-agent to stay running")
 
 
-def _webhook_signature(*, timestamp: int, body: str) -> str:
-    """Build one canonical v1 webhook signature string."""
-    digest = hmac.new(
-        WEBHOOK_SECRET.encode("utf-8"),
-        f"{timestamp}.{body}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    return f"sha256={digest}"
-
-
-def _inject_webhook(*, env: dict[str, str], override_file: Path) -> dict[str, Any]:
-    """Post one inbound webhook to the Switchboard ingress running inside Core."""
-    timestamp = int(time.time())
-    signature = _webhook_signature(timestamp=timestamp, body=WEBHOOK_BODY)
+def _inject_signal_message(
+    *, env: dict[str, str], override_file: Path
+) -> dict[str, Any]:
+    """Queue one inbound Signal payload on the fake Signal provider."""
     program = (
         "import httpx, json, sys;"
         "payload = sys.stdin.read();"
         "response = httpx.post("
-        "'http://127.0.0.1:8091/v1/inbound/signal/webhook',"
+        "'http://signal-api:8080/testing/inject-receive',"
         "content=payload,"
-        "headers={"
-        f"'X-Brain-Timestamp': '{timestamp}',"
-        f"'X-Brain-Signature': '{signature}',"
-        "'Content-Type': 'application/json'"
-        "},"
+        "headers={'Content-Type': 'application/json'},"
         "timeout=10.0);"
         "print(json.dumps({'status_code': response.status_code, 'body': response.json()}))"
     )
@@ -410,11 +389,11 @@ def _inject_webhook(*, env: dict[str, str], override_file: Path) -> dict[str, An
         "python",
         "-c",
         program,
-        input_text=WEBHOOK_BODY,
+        input_text=SIGNAL_RECEIVE_PAYLOAD,
     )
     payload = json.loads(result.stdout.strip())
-    if payload["status_code"] != 202:
-        raise _SmokeFailure(f"webhook failed: {payload}")
+    if payload["status_code"] != 200:
+        raise _SmokeFailure(f"signal injection failed: {payload}")
     return payload
 
 
@@ -546,7 +525,7 @@ def main() -> int:
             _compose(env, override_file, "up", "--build", "--detach")
             _wait_for_core_health(env=env, override_file=override_file)
             _wait_for_agent_running(env=env, override_file=override_file)
-            webhook = _inject_webhook(env=env, override_file=override_file)
+            inbound = _inject_signal_message(env=env, override_file=override_file)
             sends = _wait_for_outbound_send(fake_signal_state=fake_signal_state)
             _assert_database_evidence(env=env, override_file=override_file)
         except Exception:
@@ -568,7 +547,7 @@ def main() -> int:
     if message.get("message") != EXPECTED_REPLY:
         raise _SmokeFailure(f"unexpected outbound reply payload: {message}")
 
-    print(json.dumps(webhook, sort_keys=True))
+    print(json.dumps(inbound, sort_keys=True))
     print(json.dumps(message, sort_keys=True))
     return 0
 

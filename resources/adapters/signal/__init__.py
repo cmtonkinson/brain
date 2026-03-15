@@ -2,12 +2,14 @@
 
 from resources.adapters.signal.adapter import (
     SignalAdapter,
+    SignalCallbackRegistrationResult,
     SignalAdapterDependencyError,
     SignalAdapterError,
     SignalAdapterHealthResult,
+    SignalInboundCallback,
+    SignalInboundCallbackResult,
     SignalAdapterInternalError,
     SignalSendMessageResult,
-    SignalWebhookRegistrationResult,
 )
 from resources.adapters.signal.component import MANIFEST, RESOURCE_COMPONENT_ID
 from resources.adapters.signal.config import (
@@ -20,13 +22,15 @@ __all__ = [
     "MANIFEST",
     "RESOURCE_COMPONENT_ID",
     "SignalAdapter",
+    "SignalCallbackRegistrationResult",
     "SignalAdapterDependencyError",
     "SignalAdapterError",
     "SignalAdapterHealthResult",
+    "SignalInboundCallback",
+    "SignalInboundCallbackResult",
     "SignalAdapterInternalError",
     "SignalAdapterSettings",
     "SignalSendMessageResult",
-    "SignalWebhookRegistrationResult",
     "SignalRestApiAdapter",
     "resolve_signal_adapter_settings",
 ]

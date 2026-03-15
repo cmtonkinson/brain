@@ -6,7 +6,7 @@ Action _Adapter_ _Resource_ that integrates `signal-cli-rest-api` for Switchboar
 `resources/adapters/signal/` implements Layer 0 Signal integration:
 - `component.py`: `ResourceManifest` registration (`adapter_signal`)
 - `adapter.py`: protocol, DTOs, and adapter error taxonomy
-- `signal_adapter.py`: concrete websocket receive + callback forwarding implementation (`SignalRestApiAdapter`)
+- `signal_adapter.py`: concrete websocket receive + in-process callback forwarding implementation (`SignalRestApiAdapter`)
 - `config.py`: adapter settings model and resolver
 - `boot.py`: readiness hook that probes Signal container `/v1/health`
 
@@ -25,31 +25,27 @@ Boundary rules:
 ## Interactions
 Primary interactions:
 - Receives registration input from Switchboard:
-  - callback URL
-  - shared secret
+  - in-process callback method
   - receive identity (from adapter config)
 - Talks to Signal runtime:
   - `GET /v1/health`
   - WebSocket `/v1/receive/{receive_e164}`
-- Forwards each received message as signed JSON callback POST to Switchboard webhook endpoint.
+- Forwards each received message as an in-process callback invocation to Switchboard.
 - Sends outbound messages for Attention Router over `POST /v2/send`.
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
-1. Switchboard calls `register_webhook(callback_url, shared_secret)`.
+1. Switchboard calls `register_callback(callback)`.
 2. Adapter stores registration in memory and ensures receive worker is running.
 3. Worker opens Signal runtime receive websocket for inbound messages.
 4. Adapter wraps each received item as `{"data": <message>}`.
-5. Adapter computes HMAC SHA-256 signature over `<timestamp>.<raw_body_json>`.
-6. Adapter POSTs signed payload to configured Switchboard callback with:
-   - `X-Brain-Timestamp`
-   - `X-Brain-Signature` (`sha256=<digest>`)
-7. On forwarding/receive dependency failure, adapter retains pending messages and retries using exponential backoff with jitter.
+5. Adapter invokes the configured Switchboard callback directly.
+6. On forwarding/receive dependency failure, adapter retains pending payloads and retries using exponential backoff with jitter.
 
 ------------------------------------------------------------------------
 ## Failure Modes and Error Semantics
 Adapter-level failure classes:
-- `SignalAdapterDependencyError`: upstream transport unavailable, non-2xx status, callback delivery failure.
+- `SignalAdapterDependencyError`: upstream transport unavailable or callback dependency failure.
 - `SignalAdapterInternalError`: contract mismatch or invalid adapter-side state.
 
 Behavioral semantics:
@@ -66,7 +62,6 @@ Adapter settings are sourced from `resources.adapter.signal`:
 - `receive_connect_timeout_seconds`
 - `receive_heartbeat_seconds`
 - `send_timeout_seconds`
-- `callback_timeout_seconds`
 - `max_retries`
 - `failure_backoff_initial_seconds`
 - `failure_backoff_max_seconds`
@@ -88,7 +83,6 @@ Primary tests:
 
 Cross-component boundary tests:
 - `services/action/switchboard/tests/test_switchboard_service.py`
-- `services/action/switchboard/tests/test_switchboard_http_ingress.py`
 - `services/action/switchboard/tests/test_switchboard_boot.py`
 
 Project-wide validation:

@@ -84,7 +84,7 @@ _Return PolicyExecutionResult with allow/deny output, PolicyDecision, and Approv
 ------------------------------------------------------------------------
 ## `SwitchboardService`
 - Module: `services/action/switchboard/service.py`
-- Summary: Public API for webhook registration and inbound Signal ingestion.
+- Summary: Public API for inbound Signal ingestion and operator polling.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
 _Return Switchboard and dependency health state._
@@ -92,11 +92,11 @@ _Return Switchboard and dependency health state._
 `poll_operator_instruction(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[NormalizedSignalMessage | None]`  
 _Pop the next queued operator instruction, optionally long-polling._
 
-`ingest_signal_webhook(*, meta: EnvelopeMeta, raw_body_json: str, header_timestamp: str, header_signature: str) -> Envelope[IngestResult]`  
-_Validate, normalize, and enqueue one Signal webhook payload._
+`ingest_signal_message(*, meta: EnvelopeMeta, raw_body_json: str) -> Envelope[IngestResult]`  
+_Normalize and enqueue one raw inbound Signal payload._
 
-`register_signal_webhook(*, meta: EnvelopeMeta, callback_url: str) -> Envelope[RegisterSignalWebhookResult]`  
-_Register Signal webhook callback URI and shared secret._
+`register_signal_callback(*, meta: EnvelopeMeta) -> Envelope[RegisterSignalCallbackResult]`  
+_Register one in-process Signal callback with the owned adapter._
 
 ------------------------------------------------------------------------
 ## `UtilityService`

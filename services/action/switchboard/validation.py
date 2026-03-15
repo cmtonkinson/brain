@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def _strip_text(value: object) -> object:
@@ -12,30 +12,18 @@ def _strip_text(value: object) -> object:
     return value
 
 
-class IngestSignalWebhookRequest(BaseModel):
-    """Validate one inbound webhook ingress request payload."""
+class IngestSignalMessageRequest(BaseModel):
+    """Validate one raw inbound Signal payload."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     raw_body_json: str = Field(min_length=2)
-    header_timestamp: str = Field(min_length=1)
-    header_signature: str = Field(min_length=1)
 
-    @field_validator(
-        "raw_body_json", "header_timestamp", "header_signature", mode="before"
-    )
+    @field_validator("raw_body_json", mode="before")
     @classmethod
     def _strip_fields(cls, value: object) -> object:
         """Normalize textual payload fields before validation."""
         return _strip_text(value)
-
-
-class RegisterSignalWebhookRequest(BaseModel):
-    """Validate one webhook registration request payload."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    callback_url: AnyHttpUrl
 
 
 class PollOperatorInstructionRequest(BaseModel):

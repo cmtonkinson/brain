@@ -1,9 +1,8 @@
-"""Switchboard boot hooks for webhook callback registration."""
+"""Switchboard boot hooks for Signal adapter callback registration."""
 
 from __future__ import annotations
 
 from time import sleep
-from urllib.parse import urljoin
 
 from packages.brain_core.boot import BootContext
 from packages.brain_shared.envelope import Envelope, EnvelopeKind, new_meta
@@ -13,12 +12,10 @@ from services.action.switchboard.config import (
     SwitchboardServiceSettings,
     resolve_switchboard_service_settings,
 )
-from services.action.switchboard.domain import RegisterSignalWebhookResult
-from services.action.switchboard.http_ingress import SwitchboardWebhookHttpServer
+from services.action.switchboard.domain import RegisterSignalCallbackResult
 from services.action.switchboard.service import SwitchboardService
 
 dependencies: tuple[str, ...] = ("adapter_signal", "service_cache_authority")
-_WEBHOOK_SERVER: SwitchboardWebhookHttpServer | None = None
 
 
 def _resolve_service_and_settings(
@@ -52,33 +49,12 @@ def is_ready(ctx: BootContext) -> bool:
 
 
 def boot(ctx: BootContext) -> None:
-    """Execute callback registration during boot once readiness is satisfied."""
+    """Execute adapter callback registration during boot once readiness is satisfied."""
     service, settings = _resolve_service_and_settings(ctx)
-    _ensure_webhook_ingress_started(service=service, settings=settings)
     run_switchboard_boot_hook(
         service=service,
         settings=settings,
     )
-
-
-def _ensure_webhook_ingress_started(
-    *,
-    service: SwitchboardService,
-    settings: SwitchboardServiceSettings,
-) -> None:
-    """Start Switchboard webhook HTTP ingress server once per process."""
-    global _WEBHOOK_SERVER
-    if _WEBHOOK_SERVER is not None:
-        return
-    _WEBHOOK_SERVER = SwitchboardWebhookHttpServer(service=service, settings=settings)
-    _WEBHOOK_SERVER.start()
-
-
-def build_switchboard_callback_url(*, settings: SwitchboardServiceSettings) -> str:
-    """Build canonical public callback URL from base URL + webhook path."""
-    base_url = f"{str(settings.webhook_public_base_url).rstrip('/')}/"
-    path = settings.webhook_path.lstrip("/")
-    return urljoin(base_url, path)
 
 
 def register_switchboard_callback_on_boot(
@@ -86,10 +62,9 @@ def register_switchboard_callback_on_boot(
     service: SwitchboardService,
     settings: SwitchboardServiceSettings,
     source: str = "switchboard_boot",
-) -> Envelope[RegisterSignalWebhookResult]:
-    """Register webhook callback URI once dependencies are healthy."""
-    callback_url = build_switchboard_callback_url(settings=settings)
-    attempts = settings.webhook_register_max_retries + 1
+) -> Envelope[RegisterSignalCallbackResult]:
+    """Register the in-process Signal callback once dependencies are healthy."""
+    attempts = settings.callback_register_max_retries + 1
 
     for attempt in range(attempts):
         health_meta = new_meta(
@@ -111,14 +86,11 @@ def register_switchboard_callback_on_boot(
                 source=source,
                 principal="switchboard",
             )
-            return service.register_signal_webhook(
-                meta=registration_meta,
-                callback_url=callback_url,
-            )
-        if attempt < settings.webhook_register_max_retries:
-            sleep(settings.webhook_register_retry_delay_seconds)
+            return service.register_signal_callback(meta=registration_meta)
+        if attempt < settings.callback_register_max_retries:
+            sleep(settings.callback_register_retry_delay_seconds)
 
-    return Envelope[RegisterSignalWebhookResult](
+    return Envelope[RegisterSignalCallbackResult](
         metadata=new_meta(
             kind=EnvelopeKind.RESULT,
             source=source,

@@ -180,7 +180,7 @@ def test_load_core_settings_applies_secrets_yaml_over_core_yaml(tmp_path: Path) 
         "\n".join(
             [
                 "profile:",
-                "  webhook_shared_secret: public-secret",
+                "  operator_name: Public Operator",
                 "logging:",
                 "  level: WARNING",
             ]
@@ -192,7 +192,7 @@ def test_load_core_settings_applies_secrets_yaml_over_core_yaml(tmp_path: Path) 
         "\n".join(
             [
                 "profile:",
-                "  webhook_shared_secret: private-secret",
+                "  operator_name: Private Operator",
             ]
         ),
         encoding="utf-8",
@@ -200,7 +200,7 @@ def test_load_core_settings_applies_secrets_yaml_over_core_yaml(tmp_path: Path) 
 
     settings = load_core_settings(config_path=config_file, environ={})
 
-    assert settings.profile.webhook_shared_secret == "private-secret"
+    assert settings.profile.operator_name == "Private Operator"
     assert settings.logging.level == "WARNING"
 
 
@@ -211,7 +211,7 @@ def test_load_core_settings_ignores_secrets_yaml_when_missing(tmp_path: Path) ->
         "\n".join(
             [
                 "profile:",
-                "  webhook_shared_secret: public-secret",
+                "  operator_name: Public Operator",
             ]
         ),
         encoding="utf-8",
@@ -219,7 +219,7 @@ def test_load_core_settings_ignores_secrets_yaml_when_missing(tmp_path: Path) ->
 
     settings = load_core_settings(config_path=config_file, environ={})
 
-    assert settings.profile.webhook_shared_secret == "public-secret"
+    assert settings.profile.operator_name == "Public Operator"
 
 
 def test_load_resources_settings_deep_merges_yaml_mappings(tmp_path: Path) -> None:
@@ -338,7 +338,7 @@ def test_core_runtime_settings_exposes_profile_via_core() -> None:
     profile = runtime_settings.core.profile
     assert profile.operator.signal_contact_e164
     assert profile.default_dial_code
-    assert profile.webhook_shared_secret
+    assert profile.operator_name
 
 
 def test_sample_config_files_load_cleanly(tmp_path: Path) -> None:
@@ -422,13 +422,8 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
             ).model_dump(mode="json"),
             "switchboard": {
                 "queue_name": "signal_inbound",
-                "signature_tolerance_seconds": 300,
-                "webhook_bind_host": "0.0.0.0",
-                "webhook_bind_port": 8091,
-                "webhook_path": "/v1/inbound/signal/webhook",
-                "webhook_public_base_url": "http://127.0.0.1:8091",
-                "webhook_register_max_retries": 8,
-                "webhook_register_retry_delay_seconds": 2.0,
+                "callback_register_max_retries": 8,
+                "callback_register_retry_delay_seconds": 2.0,
             },
         },
     }
@@ -472,7 +467,6 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
                 "receive_connect_timeout_seconds": SignalAdapterSettings().receive_connect_timeout_seconds,
                 "receive_heartbeat_seconds": SignalAdapterSettings().receive_heartbeat_seconds,
                 "send_timeout_seconds": SignalAdapterSettings().send_timeout_seconds,
-                "callback_timeout_seconds": SignalAdapterSettings().callback_timeout_seconds,
                 "max_retries": SignalAdapterSettings().max_retries,
                 "failure_backoff_initial_seconds": SignalAdapterSettings().failure_backoff_initial_seconds,
                 "failure_backoff_max_seconds": SignalAdapterSettings().failure_backoff_max_seconds,
@@ -515,7 +509,6 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
         (sample_dir / "secrets.yaml.sample").read_text(encoding="utf-8")
     ) == {
         "profile": {
-            "webhook_shared_secret": "replace-me",
             "operator": {"signal_contact_e164": "+12222222222"},
         },
         "substrate": {"obsidian": {"api_key": "replace-me"}},

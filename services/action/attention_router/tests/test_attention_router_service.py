@@ -12,7 +12,8 @@ from resources.adapters.signal import (
     SignalAdapterDependencyError,
     SignalAdapterHealthResult,
     SignalSendMessageResult,
-    SignalWebhookRegistrationResult,
+    SignalCallbackRegistrationResult,
+    SignalInboundCallback,
 )
 from services.action.attention_router.config import AttentionRouterServiceSettings
 from services.action.attention_router.domain import ApprovalNotificationPayload
@@ -38,15 +39,13 @@ class _FakeSignalAdapter(SignalAdapter):
         self.raise_send: Exception | None = None
         self.health_result = SignalAdapterHealthResult(adapter_ready=True, detail="ok")
 
-    def register_webhook(
+    def register_callback(
         self,
         *,
-        callback_url: str,
-        shared_secret: str,
-        operator_e164: str,
-    ) -> SignalWebhookRegistrationResult:
-        del callback_url, shared_secret, operator_e164
-        return SignalWebhookRegistrationResult(registered=True, detail="ok")
+        callback: SignalInboundCallback,
+    ) -> SignalCallbackRegistrationResult:
+        del callback
+        return SignalCallbackRegistrationResult(registered=True, detail="ok")
 
     def health(self) -> SignalAdapterHealthResult:
         return self.health_result

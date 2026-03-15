@@ -7,8 +7,8 @@ Action _Service_ that owns inbound external event intake and durable buffering f
 - `component.py`: `ServiceManifest` registration (`service_switchboard`)
 - `service.py`: canonical _Public API_ contract
 - `implementation.py`: concrete business logic (`DefaultSwitchboardService`)
-- `http_ingress.py`: HTTP webhook ingress server for inbound Signal callbacks
-- `boot.py`: boot hook that starts ingress server and registers callback with `adapter_signal`
+- `api.py`: published Layer 2 HTTP routes
+- `boot.py`: boot hook that registers an in-process inbound callback with `adapter_signal`
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
@@ -18,7 +18,7 @@ Attention Router (outbound).
 
 Boundary rules:
 - Inbound Signal payloads enter through Switchboard, not directly into other _Services_.
-- Switchboard verifies webhook authenticity and applies ingress acceptance rules.
+- Switchboard applies ingress acceptance rules and payload normalization.
 - Accepted inbound events are durably buffered via CAS queue writes.
 - Other _Services_ must consume Switchboard output through formal _Public APIs_ and queue semantics, not by importing internals.
 
@@ -27,33 +27,22 @@ Boundary rules:
 Primary interactions:
 - Calls `resources/adapters/signal/` through `SignalAdapter` protocol for inbound registration.
 - Calls `services/state/cache_authority/service.py` _Public API_ to persist inbound queue entries.
-- Exposes internal-only webhook registration and webhook ingest methods via `service.py`.
+- Exposes internal-only callback registration and raw message ingest methods via `service.py`.
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
 1. Core boot invokes `services/action/switchboard/boot.py`.
-2. Boot starts `SwitchboardWebhookHttpServer` on configured bind host/port/path.
-3. Boot computes callback URL from `webhook_public_base_url + webhook_path`.
-4. Boot calls `register_signal_webhook(...)` on Switchboard.
-5. Switchboard delegates registration to `adapter_signal` with callback URL, shared secret, and operator identity.
-6. Signal adapter opens the Signal runtime receive websocket and forwards signed callback POSTs to Switchboard ingress.
-7. Switchboard verifies timestamp/signature, normalizes payload, applies sender policy, then enqueues accepted events to CAS.
+2. Boot calls `register_signal_callback(...)` on Switchboard.
+3. Switchboard delegates registration to `adapter_signal` with an in-process callback method.
+4. Signal adapter opens the Signal runtime receive websocket and forwards wrapped payloads in-process.
+5. Switchboard normalizes payloads, applies sender policy, then enqueues accepted events to CAS.
 
 ------------------------------------------------------------------------
 ## Failure Modes and Error Semantics
 Public API error behavior:
 - Validation failures return structured validation errors.
-- Signature mismatch or stale timestamp returns policy errors.
 - Adapter/CAS outages return dependency errors.
 - Unexpected internal faults return internal errors.
-
-Webhook ingress HTTP mapping (`http_ingress.py`):
-- `400` for malformed body/missing headers/validation issues
-- `403` for policy failures
-- `503` for dependency failures
-- `500` for internal failures
-- `202` for accepted and queued inbound message
-- `200` for syntactically valid but intentionally ignored payload (for example, non-message payload or non-operator sender)
 
 ------------------------------------------------------------------------
 ## Configuration Surface
@@ -61,17 +50,11 @@ Switchboard settings are sourced from:
 - `components.service.switchboard` (service runtime)
 - `profile.operator.signal_contact_e164` (operator identity)
 - `profile.default_dial_code` (normalization fallback dial code, for example `+1`)
-- `profile.webhook_shared_secret` (HMAC verification and registration secret)
 
 `components.service.switchboard` keys:
 - `queue_name`
-- `signature_tolerance_seconds`
-- `webhook_bind_host`
-- `webhook_bind_port`
-- `webhook_path`
-- `webhook_public_base_url`
-- `webhook_register_max_retries`
-- `webhook_register_retry_delay_seconds`
+- `callback_register_max_retries`
+- `callback_register_retry_delay_seconds`
 
 Defaults and validation live in `services/action/switchboard/config.py`.
 
@@ -79,7 +62,6 @@ Defaults and validation live in `services/action/switchboard/config.py`.
 ## Testing and Validation
 Primary tests:
 - `services/action/switchboard/tests/test_switchboard_service.py`
-- `services/action/switchboard/tests/test_switchboard_http_ingress.py`
 - `services/action/switchboard/tests/test_switchboard_boot.py`
 - `services/action/switchboard/tests/test_switchboard_api.py`
 - `services/action/switchboard/tests/test_switchboard_config.py`

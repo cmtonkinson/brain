@@ -19,8 +19,28 @@ class SignalAdapterInternalError(SignalAdapterError):
     """Internal adapter failure (mapping or contract mismatch)."""
 
 
-class SignalWebhookRegistrationResult(BaseModel):
-    """Result payload for webhook registration calls."""
+class SignalInboundCallbackResult(BaseModel):
+    """Result payload returned by one in-process inbound callback."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    accepted: bool
+    queued: bool
+    reason: str
+    sender_e164: str = ""
+    timestamp_ms: int | None = None
+
+
+@runtime_checkable
+class SignalInboundCallback(Protocol):
+    """In-process callback invoked for one raw Signal receive payload."""
+
+    def __call__(self, *, raw_body_json: str) -> SignalInboundCallbackResult:
+        """Handle one raw inbound Signal payload and return the queueing result."""
+
+
+class SignalCallbackRegistrationResult(BaseModel):
+    """Result payload for in-process callback registration calls."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -51,15 +71,14 @@ class SignalSendMessageResult(BaseModel):
 
 @runtime_checkable
 class SignalAdapter(Protocol):
-    """Protocol for Signal webhook registration and health checks."""
+    """Protocol for Signal inbound callback registration and health checks."""
 
-    def register_webhook(
+    def register_callback(
         self,
         *,
-        callback_url: str,
-        shared_secret: str,
-    ) -> SignalWebhookRegistrationResult:
-        """Configure callback URL/secret for inbound webhook forwarding."""
+        callback: SignalInboundCallback,
+    ) -> SignalCallbackRegistrationResult:
+        """Configure one in-process callback for inbound Signal forwarding."""
 
     def health(self) -> SignalAdapterHealthResult:
         """Return adapter health state."""

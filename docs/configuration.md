@@ -78,7 +78,6 @@ Root profile and operator identity settings.
 |---|---|---|
 | `operator.signal_contact_e164` | `+10000000000` | Canonical operator Signal identity used by Switchboard ingress policy. Replace with the real operator E.164 number. |
 | `default_dial_code` | `+1` | Switchboard fallback dial code for non-E.164 operator/sender values (for example `+1`, `+44`). |
-| `webhook_shared_secret` | `replace-me` | Shared secret used for inbound webhook signature verification. Replace for any non-local environment. |
 | `operator_name` | `Operator` | Operator display name injected into assembled memory context. |
 | `brain_name` | `Brain` | Brain display name injected into assembled memory context. |
 | `brain_verbosity` | `normal` | Context verbosity selector. One of `terse`, `normal`, `verbose`. |
@@ -203,7 +202,6 @@ Signal runtime adapter defaults.
 | `receive_connect_timeout_seconds` | `10.0` | WebSocket connect timeout in seconds for `/v1/receive/{number}`. Must be > 0. |
 | `receive_heartbeat_seconds` | `30.0` | WebSocket heartbeat interval in seconds for `/v1/receive/{number}`. Must be > `receive_connect_timeout_seconds`. |
 | `send_timeout_seconds` | `30.0` | Per-request HTTP timeout in seconds for outbound `/v2/send` calls. Must be > 0. |
-| `callback_timeout_seconds` | `10.0` | Per-request HTTP timeout in seconds for webhook callback POSTs into Switchboard. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
 | `failure_backoff_initial_seconds` | `1.0` | Initial delay after receive/callback failure before retry. Must be > 0. |
 | `failure_backoff_max_seconds` | `30.0` | Maximum capped delay for failure backoff. Must be > 0. |
@@ -272,13 +270,8 @@ Switchboard Service runtime settings.
 | Key | Default | Description |
 |---|---|---|
 | `queue_name` | `signal_inbound` | CAS queue name used for accepted inbound Signal events. |
-| `signature_tolerance_seconds` | `300` | Allowed absolute clock skew when validating webhook timestamps. Must be >= 0. |
-| `webhook_bind_host` | `0.0.0.0` | Bind host for the Switchboard inbound webhook HTTP server. |
-| `webhook_bind_port` | `8091` | Bind port for the Switchboard inbound webhook HTTP server. Must be in `1..65535`. |
-| `webhook_path` | `/v1/inbound/signal/webhook` | Absolute callback path served by Switchboard webhook ingress. |
-| `webhook_public_base_url` | `http://127.0.0.1:8091` | Publicly reachable base URL used to construct callback registration target. |
-| `webhook_register_max_retries` | `8` | Number of boot-time retry attempts after initial callback registration try when dependencies are not ready. Must be >= 0. |
-| `webhook_register_retry_delay_seconds` | `2.0` | Delay between callback registration retries during boot. Must be > 0. |
+| `callback_register_max_retries` | `8` | Number of boot-time retry attempts after initial callback registration try when dependencies are not ready. Must be >= 0. |
+| `callback_register_retry_delay_seconds` | `2.0` | Delay between callback registration retries during boot. Must be > 0. |
 
 ### `core.service.capability_engine`
 Capability Engine Service runtime settings.

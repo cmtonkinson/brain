@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-import hashlib
-import hmac
 import json
 import shutil
 from pathlib import Path
@@ -29,6 +27,8 @@ from packages.brain_shared.envelope import (
     new_meta,
     success,
 )
+from packages.brain_shared.errors import ErrorDetail
+from packages.brain_shared.http.server import create_app
 from resources.adapters.litellm import (
     AdapterChatResult,
     AdapterChatMessage,
@@ -40,9 +40,10 @@ from resources.adapters.litellm import (
 )
 from resources.adapters.signal import (
     SignalAdapter,
+    SignalCallbackRegistrationResult,
     SignalAdapterHealthResult,
+    SignalInboundCallback,
     SignalSendMessageResult,
-    SignalWebhookRegistrationResult,
 )
 from services.action.attention_router.config import AttentionRouterServiceSettings
 from services.action.attention_router.implementation import (
@@ -74,7 +75,6 @@ from services.action.switchboard.config import (
     SwitchboardIdentitySettings,
     SwitchboardServiceSettings,
 )
-from services.action.switchboard.http_ingress import create_switchboard_webhook_app
 from services.action.switchboard.implementation import DefaultSwitchboardService
 from services.state.cache_authority.domain import HealthStatus, QueueDepth, QueueEntry
 from services.state.cache_authority.service import CacheAuthorityService
@@ -198,14 +198,13 @@ class _FakeSignalAdapter(SignalAdapter):
     def __init__(self) -> None:
         self.send_calls: list[dict[str, str]] = []
 
-    def register_webhook(
+    def register_callback(
         self,
         *,
-        callback_url: str,
-        shared_secret: str,
-    ) -> SignalWebhookRegistrationResult:
-        del callback_url, shared_secret
-        return SignalWebhookRegistrationResult(registered=True, detail="ok")
+        callback: SignalInboundCallback,
+    ) -> SignalCallbackRegistrationResult:
+        del callback
+        return SignalCallbackRegistrationResult(registered=True, detail="ok")
 
     def health(self) -> SignalAdapterHealthResult:
         return SignalAdapterHealthResult(adapter_ready=True, detail="ok")
@@ -346,7 +345,7 @@ def run_agent_e2e_smoke(
     extra_capability_paths: tuple[Path, ...] = (),
     capability_invoke_outputs: dict[str, dict[str, object] | None] | None = None,
 ) -> AgentE2ESmokeResult:
-    """Run one inbound webhook -> poll -> agent turn -> outbound send cycle."""
+    """Run one inbound Signal message -> poll -> agent turn -> outbound send cycle."""
     app, signal, lms = _build_core_app(
         tmp_path=tmp_path,
         tool_chat_results=tool_chat_results,
@@ -355,6 +354,7 @@ def run_agent_e2e_smoke(
         extra_capability_paths=extra_capability_paths,
         capability_invoke_outputs=capability_invoke_outputs or {},
     )
+    switchboard = app.state.switchboard_service
     test_client = TestClient(app)
 
     body = json.dumps(
@@ -370,19 +370,9 @@ def run_agent_e2e_smoke(
             }
         }
     )
-    timestamp = int(
-        new_meta(
-            kind=EnvelopeKind.EVENT, source="test", principal="operator"
-        ).timestamp.timestamp()
-    )
-    inbound = test_client.post(
-        "/v1/inbound/signal/webhook",
-        content=body,
-        headers={
-            "X-Brain-Timestamp": str(timestamp),
-            "X-Brain-Signature": _signature("secret", timestamp, body),
-            "Content-Type": "application/json",
-        },
+    inbound_result = switchboard.ingest_signal_message(
+        meta=new_meta(kind=EnvelopeKind.EVENT, source="test", principal="operator"),
+        raw_body_json=body,
     )
 
     sdk_client = BrainClient(
@@ -406,8 +396,8 @@ def run_agent_e2e_smoke(
     sdk_client.close()
     test_client.close()
     return AgentE2ESmokeResult(
-        inbound_status_code=inbound.status_code,
-        inbound_body=inbound.json(),
+        inbound_status_code=202 if inbound_result.ok else 500,
+        inbound_body=_ingest_result_body(inbound_result),
         response_text=response_text,
         outbound_signal_messages=tuple(signal.send_calls),
         tool_request_tool_names=tuple(lms.tool_chat_tool_names),
@@ -433,16 +423,12 @@ def _build_core_app(
 
     signal = _FakeSignalAdapter()
     cache = _SmokeCacheService()
-    switchboard_settings = SwitchboardServiceSettings(
-        signature_tolerance_seconds=300,
-        webhook_path="/v1/inbound/signal/webhook",
-    )
+    switchboard_settings = SwitchboardServiceSettings()
     switchboard = DefaultSwitchboardService(
         settings=switchboard_settings,
         identity=SwitchboardIdentitySettings(
             operator_signal_contact_e164="+16104257807",
             default_dial_code="+1",
-            webhook_shared_secret="secret",
         ),
         adapter=signal,
         cache_service=cache,
@@ -472,7 +458,6 @@ def _build_core_app(
         repository=_FakeMemoryRepository(),
         language_model=lms,
         profile=ProfileSettings(
-            webhook_shared_secret="secret",
             operator_name="Operator",
             brain_name="Brain",
             brain_verbosity="normal",
@@ -547,9 +532,8 @@ def _build_core_app(
         },
     )
 
-    app = create_switchboard_webhook_app(
-        service=switchboard, settings=switchboard_settings
-    )
+    app = create_app()
+    app.state.switchboard_service = switchboard
     router = APIRouter()
     register_switchboard_routes(router=router, service=switchboard)
     register_memory_routes(router=router, service=memory)
@@ -559,13 +543,31 @@ def _build_core_app(
     return app, signal, adapter
 
 
-def _signature(secret: str, timestamp: int, body: str) -> str:
-    digest = hmac.new(
-        secret.encode("utf-8"),
-        f"{timestamp}.{body}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    return f"sha256={digest}"
+def _ingest_result_body(result: Envelope[object]) -> dict[str, object]:
+    """Serialize one direct Switchboard ingest result into the old smoke shape."""
+    payload = result.payload.value if result.payload is not None else None
+    errors = result.errors
+    return {
+        "ok": result.ok,
+        "accepted": False
+        if payload is None
+        else bool(getattr(payload, "accepted", False)),
+        "queued": False if payload is None else bool(getattr(payload, "queued", False)),
+        "reason": "" if payload is None else str(getattr(payload, "reason", "")),
+        "errors": [_error_body(error) for error in errors],
+    }
+
+
+def _error_body(error: ErrorDetail) -> dict[str, object]:
+    """Serialize one envelope error for smoke assertions."""
+    category = error.category.value if error.category is not None else "unspecified"
+    return {
+        "code": error.code,
+        "message": error.message,
+        "category": category,
+        "retryable": error.retryable,
+        "metadata": error.metadata,
+    }
 
 
 def _settings():

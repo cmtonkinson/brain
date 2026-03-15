@@ -12,9 +12,7 @@ from packages.brain_shared.errors import validation_error
 from packages.brain_shared.http.server import create_app
 from services.action.switchboard.api import register_routes
 from services.action.switchboard.domain import (
-    IngestResult,
     NormalizedSignalMessage,
-    RegisterSignalWebhookResult,
 )
 from services.action.switchboard.service import SwitchboardService
 
@@ -46,35 +44,18 @@ class _FakeSwitchboardService(SwitchboardService):
             ),
         )
 
-    def ingest_signal_webhook(
+    def ingest_signal_message(
         self,
         *,
         meta,
         raw_body_json: str,
-        header_timestamp: str,
-        header_signature: str,
     ):
-        del meta, raw_body_json, header_timestamp, header_signature
-        return success(
-            meta=_meta(),
-            payload=IngestResult(
-                accepted=True,
-                queued=True,
-                queue_name="signal_inbound",
-                reason="accepted",
-            ),
-        )
+        del meta, raw_body_json
+        raise NotImplementedError
 
-    def register_signal_webhook(self, *, meta, callback_url: str):
-        del meta, callback_url
-        return success(
-            meta=_meta(),
-            payload=RegisterSignalWebhookResult(
-                registered=True,
-                callback_url="http://example.test",
-                detail="registered",
-            ),
-        )
+    def register_signal_callback(self, *, meta):
+        del meta
+        raise NotImplementedError
 
     def poll_operator_instruction(
         self,

@@ -1,4 +1,4 @@
-"""Component declaration for Signal webhook adapter resource."""
+"""Component declaration for the Signal adapter resource."""
 
 from __future__ import annotations
 

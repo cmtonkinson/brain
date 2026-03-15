@@ -12,20 +12,21 @@ from packages.brain_shared.config import (
 )
 from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
 from packages.brain_shared.errors import dependency_error
-from services.action.switchboard import boot as switchboard_boot_module
 from services.action.switchboard.boot import (
     boot as run_boot,
-    build_switchboard_callback_url,
     register_switchboard_callback_on_boot,
 )
 from services.action.switchboard.config import SwitchboardServiceSettings
-from services.action.switchboard.domain import HealthStatus, RegisterSignalWebhookResult
+from services.action.switchboard.domain import (
+    HealthStatus,
+    RegisterSignalCallbackResult,
+)
 from services.action.switchboard.service import SwitchboardService
 
 
 @dataclass(frozen=True)
 class _RegisterCall:
-    callback_url: str
+    registered: bool
 
 
 class _FakeSwitchboardService(SwitchboardService):
@@ -37,20 +38,18 @@ class _FakeSwitchboardService(SwitchboardService):
         self.ready_after = 0
         self.register_ok = True
 
-    def ingest_signal_webhook(
+    def ingest_signal_message(
         self,
         *,
         meta,
         raw_body_json: str,
-        header_timestamp: str,
-        header_signature: str,
     ):
-        del meta, raw_body_json, header_timestamp, header_signature
+        del meta, raw_body_json
         raise NotImplementedError
 
-    def register_signal_webhook(self, *, meta, callback_url: str):
+    def register_signal_callback(self, *, meta):
         del meta
-        self.register_calls.append(_RegisterCall(callback_url=callback_url))
+        self.register_calls.append(_RegisterCall(registered=True))
         if not self.register_ok:
             return failure(
                 meta=_meta(),
@@ -58,9 +57,8 @@ class _FakeSwitchboardService(SwitchboardService):
             )
         return success(
             meta=_meta(),
-            payload=RegisterSignalWebhookResult(
+            payload=RegisterSignalCallbackResult(
                 registered=True,
-                callback_url=callback_url,
                 detail="registered",
             ),
         )
@@ -89,36 +87,20 @@ def _meta():
     return new_meta(kind=EnvelopeKind.RESULT, source="test", principal="switchboard")
 
 
-def test_build_switchboard_callback_url_joins_base_and_path() -> None:
-    """Callback URL should combine public base URL and canonical webhook path."""
-    settings = SwitchboardServiceSettings(
-        webhook_public_base_url="https://brain.example.com/api/",
-        webhook_path="/hooks/signal",
-    )
-
-    callback_url = build_switchboard_callback_url(settings=settings)
-
-    assert callback_url == "https://brain.example.com/api/hooks/signal"
-
-
 def test_register_switchboard_callback_waits_for_health_and_registers() -> None:
     """Boot hook should wait for dependency readiness before registration."""
     service = _FakeSwitchboardService()
     service.ready_after = 2
     settings = SwitchboardServiceSettings(
-        webhook_public_base_url="https://brain.example.com",
-        webhook_path="/hooks/signal",
-        webhook_register_max_retries=3,
-        webhook_register_retry_delay_seconds=0.001,
+        callback_register_max_retries=3,
+        callback_register_retry_delay_seconds=0.001,
     )
 
     result = register_switchboard_callback_on_boot(service=service, settings=settings)
 
     assert result.ok is True
     assert service.health_calls == 3
-    assert [call.callback_url for call in service.register_calls] == [
-        "https://brain.example.com/hooks/signal"
-    ]
+    assert len(service.register_calls) == 1
 
 
 def test_register_switchboard_callback_returns_dependency_error_when_not_ready() -> (
@@ -128,8 +110,8 @@ def test_register_switchboard_callback_returns_dependency_error_when_not_ready()
     service = _FakeSwitchboardService()
     service.ready_after = 99
     settings = SwitchboardServiceSettings(
-        webhook_register_max_retries=1,
-        webhook_register_retry_delay_seconds=0.001,
+        callback_register_max_retries=1,
+        callback_register_retry_delay_seconds=0.001,
     )
 
     result = register_switchboard_callback_on_boot(service=service, settings=settings)
@@ -139,24 +121,9 @@ def test_register_switchboard_callback_returns_dependency_error_when_not_ready()
     assert len(service.register_calls) == 0
 
 
-def test_boot_starts_http_ingress_before_registration(monkeypatch) -> None:
-    """Switchboard boot should start webhook ingress server before registration."""
+def test_boot_registers_signal_callback_once_ready() -> None:
+    """Switchboard boot should register the Signal callback once dependencies are ready."""
     service = _FakeSwitchboardService()
-    starts: list[object] = []
-
-    class _FakeIngressServer:
-        def __init__(self, *, service, settings) -> None:
-            del service, settings
-
-        def start(self) -> None:
-            starts.append(object())
-
-    monkeypatch.setattr(
-        switchboard_boot_module,
-        "SwitchboardWebhookHttpServer",
-        _FakeIngressServer,
-    )
-    monkeypatch.setattr(switchboard_boot_module, "_WEBHOOK_SERVER", None)
     ctx = BootContext(
         settings=CoreRuntimeSettings(
             core=CoreSettings(), resources=ResourcesSettings()
@@ -168,5 +135,4 @@ def test_boot_starts_http_ingress_before_registration(monkeypatch) -> None:
 
     run_boot(ctx)
 
-    assert len(starts) == 1
     assert len(service.register_calls) == 1

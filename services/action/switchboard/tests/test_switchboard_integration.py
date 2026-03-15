@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 from dataclasses import dataclass
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from packages.brain_shared.envelope import EnvelopeKind, new_meta, success
 from resources.adapters.signal.adapter import (
     SignalAdapter,
+    SignalCallbackRegistrationResult,
+    SignalInboundCallback,
     SignalAdapterHealthResult,
     SignalSendMessageResult,
-    SignalWebhookRegistrationResult,
 )
 from services.action.switchboard.config import (
     SwitchboardIdentitySettings,
@@ -35,17 +34,15 @@ class _FakeSignalAdapter(SignalAdapter):
     """Signal adapter fake with deterministic registration and health behavior."""
 
     def __init__(self) -> None:
-        self.registered_callback_url: str = ""
+        self.registered_callback: SignalInboundCallback | None = None
 
-    def register_webhook(
+    def register_callback(
         self,
         *,
-        callback_url: str,
-        shared_secret: str,
-    ) -> SignalWebhookRegistrationResult:
-        del shared_secret
-        self.registered_callback_url = callback_url
-        return SignalWebhookRegistrationResult(registered=True, detail="ok")
+        callback: SignalInboundCallback,
+    ) -> SignalCallbackRegistrationResult:
+        self.registered_callback = callback
+        return SignalCallbackRegistrationResult(registered=True, detail="ok")
 
     def health(self) -> SignalAdapterHealthResult:
         return SignalAdapterHealthResult(adapter_ready=True, detail="ok")
@@ -84,8 +81,6 @@ class _FakeCacheService(CacheAuthorityService):
     def push_queue(self, *, meta, component_id, queue, value):
         del meta, component_id
         self.pushed.append({"queue": queue, "value": value})
-        from packages.brain_shared.envelope import success
-
         return success(meta=_meta(), payload=1)
 
     def pop_queue(self, *, meta, component_id, queue):
@@ -95,8 +90,6 @@ class _FakeCacheService(CacheAuthorityService):
         raise NotImplementedError
 
     def health(self, *, meta):
-        from packages.brain_shared.envelope import success
-
         return success(
             meta=meta,
             payload=_CacheHealthPayload(
@@ -112,26 +105,15 @@ def _meta():
     return new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator")
 
 
-def _signature(secret: str, timestamp: int, body: str) -> str:
-    """Return webhook signature header value for payload."""
-    digest = hmac.new(
-        secret.encode("utf-8"),
-        f"{timestamp}.{body}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    return f"sha256={digest}"
-
-
-def test_ingest_signal_webhook_enqueues_operator_message() -> None:
-    """Valid signed operator messages should be normalized and enqueued."""
+def test_ingest_signal_message_enqueues_operator_message() -> None:
+    """Valid operator messages should be normalized and enqueued."""
     adapter = _FakeSignalAdapter()
     cache = _FakeCacheService()
     service = DefaultSwitchboardService(
-        settings=SwitchboardServiceSettings(signature_tolerance_seconds=300),
+        settings=SwitchboardServiceSettings(),
         identity=SwitchboardIdentitySettings(
             operator_signal_contact_e164="+12025550100",
             default_dial_code="+1",
-            webhook_shared_secret="secret",
         ),
         adapter=adapter,
         cache_service=cache,
@@ -152,13 +134,10 @@ def test_ingest_signal_webhook_enqueues_operator_message() -> None:
             }
         }
     )
-    now_ts = int(_meta().timestamp.timestamp())
 
-    result = service.ingest_signal_webhook(
+    result = service.ingest_signal_message(
         meta=_meta(),
         raw_body_json=body,
-        header_timestamp=str(now_ts),
-        header_signature=_signature("secret", now_ts, body),
     )
 
     assert result.ok is True
@@ -180,24 +159,20 @@ def test_ingest_signal_webhook_enqueues_operator_message() -> None:
     }
 
 
-def test_register_signal_webhook_delegates_to_adapter() -> None:
-    """Webhook registration should call owned adapter with callback URL."""
+def test_register_signal_callback_delegates_to_adapter() -> None:
+    """Callback registration should call the owned adapter."""
     adapter = _FakeSignalAdapter()
     service = DefaultSwitchboardService(
         settings=SwitchboardServiceSettings(),
         identity=SwitchboardIdentitySettings(
             operator_signal_contact_e164="+12025550100",
             default_dial_code="+1",
-            webhook_shared_secret="secret",
         ),
         adapter=adapter,
         cache_service=_FakeCacheService(),
     )
 
-    result = service.register_signal_webhook(
-        meta=_meta(),
-        callback_url="http://localhost:8091/v1/inbound/signal/webhook",
-    )
+    result = service.register_signal_callback(meta=_meta())
 
     assert result.ok is True
-    assert adapter.registered_callback_url.endswith("/webhook")
+    assert adapter.registered_callback is not None

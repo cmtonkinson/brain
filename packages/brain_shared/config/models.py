@@ -80,14 +80,13 @@ class ApprovalResponseSettings(BaseModel):
 
 
 class ProfileSettings(BaseModel):
-    """Root profile settings for operator identity and webhook verification."""
+    """Root profile settings for operator identity and agent behavior."""
 
     operator: OperatorProfileSettings = Field(default_factory=OperatorProfileSettings)
     approval_responses: ApprovalResponseSettings = Field(
         default_factory=ApprovalResponseSettings
     )
     default_dial_code: str = "+1"
-    webhook_shared_secret: str = "replace-me"
     operator_name: str = "Operator"
     brain_name: str = "Brain"
     brain_verbosity: str = "normal"

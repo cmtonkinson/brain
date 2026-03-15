@@ -56,7 +56,6 @@ adapter:
     receive_connect_timeout_seconds: 10.0
     receive_heartbeat_seconds: 30.0
     send_timeout_seconds: 30.0
-    callback_timeout_seconds: 10.0
     max_retries: 2
     failure_backoff_initial_seconds: 1.0
     failure_backoff_max_seconds: 30.0

@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
 import json
 from collections import deque
 from dataclasses import dataclass
 from random import random
 from threading import Event, Lock, Thread
-from time import time
 from urllib.parse import quote, urlparse, urlunparse
 
 import aiohttp
@@ -24,40 +21,31 @@ from packages.brain_shared.http import (
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.adapters.signal.adapter import (
     SignalAdapter,
+    SignalAdapterError,
+    SignalCallbackRegistrationResult,
     SignalAdapterDependencyError,
     SignalAdapterHealthResult,
+    SignalInboundCallback,
+    SignalInboundCallbackResult,
     SignalAdapterInternalError,
     SignalSendMessageResult,
-    SignalWebhookRegistrationResult,
 )
 from resources.adapters.signal.component import RESOURCE_COMPONENT_ID
 from resources.adapters.signal.config import SignalAdapterSettings
 from resources.adapters.signal.constants import SIGNAL_HEALTH_PATH
 
 _LOGGER = get_logger(__name__)
-_HEADER_SIGNATURE = "X-Brain-Signature"
-_HEADER_TIMESTAMP = "X-Brain-Timestamp"
 _REGISTRATION_WAIT_SECONDS = 0.25
 _RECEIVE_CHECK_INTERVAL_SECONDS = 1.0
 
 
 @dataclass(frozen=True)
-class _WebhookRegistration:
-    callback_url: str
-    shared_secret: str
-
-
-@dataclass(frozen=True)
-class _WebhookCallbackResult:
-    accepted: bool
-    queued: bool
-    reason: str
-    sender_e164: str
-    timestamp_ms: int | None
+class _CallbackRegistration:
+    callback: SignalInboundCallback
 
 
 class SignalRestApiAdapter(SignalAdapter):
-    """Signal adapter backed by websocket receive and HTTP send/callback flows."""
+    """Signal adapter backed by websocket receive and in-process callback flows."""
 
     def __init__(self, *, settings: SignalAdapterSettings) -> None:
         self._settings = settings
@@ -66,38 +54,27 @@ class SignalRestApiAdapter(SignalAdapter):
             timeout_seconds=settings.send_timeout_seconds,
             headers={"Content-Type": "application/json"},
         )
-        self._callback_client = HttpClient(
-            timeout_seconds=settings.callback_timeout_seconds
-        )
         self._lock = Lock()
-        self._registration: _WebhookRegistration | None = None
-        self._pending_webhooks: deque[str] = deque()
+        self._registration: _CallbackRegistration | None = None
+        self._pending_payloads: deque[str] = deque()
         self._worker: Thread | None = None
         self._stop_event = Event()
         self._backoff_seconds = settings.failure_backoff_initial_seconds
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
-    def register_webhook(
+    def register_callback(
         self,
         *,
-        callback_url: str,
-        shared_secret: str,
-    ) -> SignalWebhookRegistrationResult:
+        callback: SignalInboundCallback,
+    ) -> SignalCallbackRegistrationResult:
         """Configure callback target and start receive loop when needed."""
-        registration = _WebhookRegistration(
-            callback_url=callback_url.strip(),
-            shared_secret=shared_secret.strip(),
-        )
-        if registration.callback_url == "":
-            raise SignalAdapterInternalError("callback_url must be non-empty")
-        if registration.shared_secret == "":
-            raise SignalAdapterInternalError("shared_secret must be non-empty")
+        registration = _CallbackRegistration(callback=callback)
 
         with self._lock:
             self._registration = registration
             self._ensure_worker_started_locked()
 
-        return SignalWebhookRegistrationResult(
+        return SignalCallbackRegistrationResult(
             registered=True,
             detail="configured; receive loop active",
         )
@@ -235,7 +212,9 @@ class SignalRestApiAdapter(SignalAdapter):
         self._worker = Thread(target=self._run_loop, daemon=True)
         self._worker.start()
 
-    async def _run_receive_session(self, *, registration: _WebhookRegistration) -> None:
+    async def _run_receive_session(
+        self, *, registration: _CallbackRegistration
+    ) -> None:
         """Open one receive websocket session and process frames until stopped."""
         timeout = aiohttp.ClientTimeout(
             total=None,
@@ -319,7 +298,7 @@ class SignalRestApiAdapter(SignalAdapter):
     def _process_receive_payload(
         self,
         *,
-        registration: _WebhookRegistration,
+        registration: _CallbackRegistration,
         raw_payload_json: str,
     ) -> None:
         """Parse one websocket payload and forward its contained Signal items."""
@@ -340,7 +319,7 @@ class SignalRestApiAdapter(SignalAdapter):
                     **_summarize_signal_payload(wrapped_body),
                 },
             )
-            self._pending_webhooks.append(wrapped_body)
+            self._pending_payloads.append(wrapped_body)
         self._flush_pending(registration=registration)
 
     def _decode_receive_payload(self, raw_payload_json: str) -> list[dict[str, object]]:
@@ -392,11 +371,11 @@ class SignalRestApiAdapter(SignalAdapter):
             )
         )
 
-    def _flush_pending(self, *, registration: _WebhookRegistration) -> None:
-        """Forward pending webhook bodies to Switchboard callback endpoint."""
-        while len(self._pending_webhooks) > 0:
-            body = self._pending_webhooks[0]
-            callback_result = self._post_callback(
+    def _flush_pending(self, *, registration: _CallbackRegistration) -> None:
+        """Forward pending receive payloads to the registered callback."""
+        while len(self._pending_payloads) > 0:
+            body = self._pending_payloads[0]
+            callback_result = self._invoke_callback(
                 registration=registration,
                 raw_body_json=body,
             )
@@ -406,90 +385,35 @@ class SignalRestApiAdapter(SignalAdapter):
             )
             if callback_result.accepted and callback_result.queued:
                 self._send_read_receipt(callback_result=callback_result)
-            self._pending_webhooks.popleft()
+            self._pending_payloads.popleft()
 
-    def _post_callback(
+    def _invoke_callback(
         self,
         *,
-        registration: _WebhookRegistration,
+        registration: _CallbackRegistration,
         raw_body_json: str,
-    ) -> _WebhookCallbackResult:
-        """Send one signed webhook payload to the configured callback URL."""
-        timestamp = int(time())
-        signature = hmac.new(
-            key=registration.shared_secret.encode("utf-8"),
-            msg=f"{timestamp}.{raw_body_json}".encode("utf-8"),
-            digestmod=hashlib.sha256,
-        ).hexdigest()
-        headers = {
-            "Content-Type": "application/json",
-            _HEADER_TIMESTAMP: str(timestamp),
-            _HEADER_SIGNATURE: f"sha256={signature}",
-        }
-
+    ) -> SignalInboundCallbackResult:
+        """Invoke the configured in-process callback for one receive payload."""
         try:
-            response = self._callback_client.request_json(
-                "POST",
-                registration.callback_url,
-                content=raw_body_json,
-                headers=headers,
-            )
-        except HttpStatusError as exc:
-            raise SignalAdapterDependencyError(
-                f"switchboard callback failed with status {exc.status_code}"
-            ) from None
-        except HttpRequestError as exc:
-            raise SignalAdapterDependencyError(
-                str(exc) or "switchboard callback unavailable"
-            ) from None
-        except HttpJsonDecodeError as exc:
+            return registration.callback(raw_body_json=raw_body_json)
+        except SignalAdapterError:
+            raise
+        except Exception as exc:
             raise SignalAdapterInternalError(
-                f"switchboard callback response JSON invalid: {exc}"
+                f"signal inbound callback failed: {exc}"
             ) from None
-
-        return self._parse_callback_result(response)
-
-    def _parse_callback_result(self, response: object) -> _WebhookCallbackResult:
-        """Validate one Switchboard callback response body."""
-        if not isinstance(response, dict):
-            raise SignalAdapterInternalError(
-                "switchboard callback response must be a JSON object"
-            )
-
-        reason = str(response.get("reason") or "").strip()
-        message = response.get("message")
-        sender_e164 = ""
-        timestamp_ms: int | None = None
-        if isinstance(message, dict):
-            sender = message.get("sender_e164")
-            if sender is not None:
-                sender_e164 = str(sender).strip()
-            raw_timestamp = message.get("timestamp_ms")
-            if raw_timestamp is not None:
-                try:
-                    timestamp_ms = int(str(raw_timestamp).strip())
-                except ValueError:
-                    timestamp_ms = None
-
-        return _WebhookCallbackResult(
-            accepted=bool(response.get("accepted", False)),
-            queued=bool(response.get("queued", False)),
-            reason=reason or "unspecified",
-            sender_e164=sender_e164,
-            timestamp_ms=timestamp_ms,
-        )
 
     def _log_callback_result(
         self,
         *,
-        callback_result: _WebhookCallbackResult,
+        callback_result: SignalInboundCallbackResult,
         raw_body_json: str,
     ) -> None:
         """Emit one visible log line for Switchboard accept/reject decisions."""
         payload_summary = _summarize_signal_payload(raw_body_json)
         if callback_result.accepted and callback_result.queued:
             _LOGGER.info(
-                "signal adapter callback acknowledged queued message",
+                "signal adapter callback accepted queued message",
                 extra={
                     "reason": callback_result.reason,
                     "sender_e164": callback_result.sender_e164,
@@ -500,7 +424,7 @@ class SignalRestApiAdapter(SignalAdapter):
             return
 
         _LOGGER.info(
-            "signal adapter callback acknowledged without queueing",
+            "signal adapter callback completed without queueing",
             extra={
                 "reason": callback_result.reason,
                 "sender_e164": callback_result.sender_e164,
@@ -512,7 +436,7 @@ class SignalRestApiAdapter(SignalAdapter):
     def _send_read_receipt(
         self,
         *,
-        callback_result: _WebhookCallbackResult,
+        callback_result: SignalInboundCallbackResult,
     ) -> None:
         """Send a read receipt after Switchboard confirms the message was queued."""
         if callback_result.sender_e164 == "" or callback_result.timestamp_ms is None:
@@ -561,7 +485,7 @@ class SignalRestApiAdapter(SignalAdapter):
                 },
             )
 
-    def _get_registration(self) -> _WebhookRegistration | None:
+    def _get_registration(self) -> _CallbackRegistration | None:
         """Return latest callback registration snapshot."""
         with self._lock:
             return self._registration

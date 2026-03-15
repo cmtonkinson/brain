@@ -9,25 +9,28 @@ from services.action.switchboard.config import (
 )
 
 
-def test_switchboard_settings_include_webhook_ingress_defaults() -> None:
-    """Resolver should supply default ingress bind/callback settings."""
+def test_switchboard_settings_include_callback_registration_defaults() -> None:
+    """Resolver should supply default callback-registration settings."""
     settings = load_core_runtime_settings()
     switchboard = resolve_switchboard_service_settings(settings)
 
-    assert switchboard.webhook_bind_host == "0.0.0.0"
-    assert switchboard.webhook_bind_port == 8091
-    assert switchboard.webhook_path == "/v1/inbound/signal/webhook"
-    assert str(switchboard.webhook_public_base_url) == "http://127.0.0.1:8091"
+    assert switchboard.queue_name == "signal_inbound"
+    assert switchboard.callback_register_max_retries == 8
+    assert switchboard.callback_register_retry_delay_seconds == 2.0
 
 
-def test_switchboard_settings_normalize_webhook_path_without_leading_slash() -> None:
-    """Webhook path should be canonicalized to a leading-slash absolute path."""
+def test_switchboard_settings_support_callback_registration_env_overrides() -> None:
+    """Callback registration settings should honor environment overrides."""
     settings = load_core_runtime_settings(
-        environ={"BRAIN_CORE_SERVICE__SWITCHBOARD__WEBHOOK_PATH": "hooks/signal"}
+        environ={
+            "BRAIN_CORE_SERVICE__SWITCHBOARD__CALLBACK_REGISTER_MAX_RETRIES": "2",
+            "BRAIN_CORE_SERVICE__SWITCHBOARD__CALLBACK_REGISTER_RETRY_DELAY_SECONDS": "0.5",
+        }
     )
     switchboard = resolve_switchboard_service_settings(settings)
 
-    assert switchboard.webhook_path == "/hooks/signal"
+    assert switchboard.callback_register_max_retries == 2
+    assert switchboard.callback_register_retry_delay_seconds == 0.5
 
 
 def test_resolve_identity_settings_reads_from_core_profile() -> None:
@@ -40,4 +43,3 @@ def test_resolve_identity_settings_reads_from_core_profile() -> None:
         == settings.core.profile.operator.signal_contact_e164
     )
     assert identity.default_dial_code == settings.core.profile.default_dial_code
-    assert identity.webhook_shared_secret == settings.core.profile.webhook_shared_secret

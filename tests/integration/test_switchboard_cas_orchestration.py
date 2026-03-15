@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
@@ -19,29 +17,18 @@ from services.action.switchboard.implementation import DefaultSwitchboardService
 
 
 def _meta():
-    """Build deterministic metadata for webhook ingestion."""
+    """Build deterministic metadata for inbound Signal ingestion."""
     return new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator")
 
 
-def _signature(secret: str, timestamp: int, body: str) -> str:
-    """Return valid signature header for a webhook payload."""
-    digest = hmac.new(
-        secret.encode("utf-8"),
-        f"{timestamp}.{body}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    return f"sha256={digest}"
-
-
-def test_webhook_ingest_enqueues_message_in_cache_authority() -> None:
+def test_signal_ingest_enqueues_message_in_cache_authority() -> None:
     """Switchboard should enqueue normalized operator message into CAS queue."""
     cache = _FakeCacheService()
     service = DefaultSwitchboardService(
-        settings=SwitchboardServiceSettings(signature_tolerance_seconds=300),
+        settings=SwitchboardServiceSettings(),
         identity=SwitchboardIdentitySettings(
             operator_signal_contact_e164="+12025550100",
             default_dial_code="+1",
-            webhook_shared_secret="secret",
         ),
         adapter=_FakeSignalAdapter(),
         cache_service=cache,
@@ -55,12 +42,9 @@ def test_webhook_ingest_enqueues_message_in_cache_authority() -> None:
             }
         }
     )
-    now_ts = int(_meta().timestamp.timestamp())
-    result = service.ingest_signal_webhook(
+    result = service.ingest_signal_message(
         meta=_meta(),
         raw_body_json=body,
-        header_timestamp=str(now_ts),
-        header_signature=_signature("secret", now_ts, body),
     )
 
     assert result.ok is True

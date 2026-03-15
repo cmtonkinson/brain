@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 from dataclasses import dataclass
-from time import time
 from unittest.mock import patch
 
 from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
@@ -15,8 +12,10 @@ from resources.adapters.signal import (
     SignalAdapter,
     SignalAdapterDependencyError,
     SignalAdapterHealthResult,
+    SignalAdapterInternalError,
+    SignalCallbackRegistrationResult,
+    SignalInboundCallback,
     SignalSendMessageResult,
-    SignalWebhookRegistrationResult,
 )
 from services.action.attention_router.domain import (
     ApprovalCorrelationPayload,
@@ -35,33 +34,26 @@ from services.state.cache_authority.service import CacheAuthorityService
 
 
 @dataclass(frozen=True)
-class _RegisterCall:
-    callback_url: str
-    shared_secret: str
-
-
-@dataclass(frozen=True)
 class _QueueCall:
+    """Captured queue push arguments."""
+
     component_id: str
     queue: str
     value: object
 
 
 @dataclass(frozen=True)
-class _QueueDepth:
-    component_id: str
-    queue: str
-    size: int
-
-
-@dataclass(frozen=True)
 class _QueuePopCall:
+    """Captured queue pop arguments."""
+
     component_id: str
     queue: str
 
 
 @dataclass(frozen=True)
 class _CacheHealthStatus:
+    """Minimal cache health payload consumed by Switchboard."""
+
     service_ready: bool
     substrate_ready: bool
     detail: str
@@ -71,25 +63,19 @@ class _FakeSignalAdapter(SignalAdapter):
     """In-memory Signal adapter fake for Switchboard behavior tests."""
 
     def __init__(self) -> None:
-        self.register_calls: list[_RegisterCall] = []
+        self.registered_callbacks: list[SignalInboundCallback] = []
         self.raise_register: Exception | None = None
         self.health_result = SignalAdapterHealthResult(adapter_ready=True, detail="ok")
 
-    def register_webhook(
+    def register_callback(
         self,
         *,
-        callback_url: str,
-        shared_secret: str,
-    ) -> SignalWebhookRegistrationResult:
-        self.register_calls.append(
-            _RegisterCall(
-                callback_url=callback_url,
-                shared_secret=shared_secret,
-            )
-        )
+        callback: SignalInboundCallback,
+    ) -> SignalCallbackRegistrationResult:
+        self.registered_callbacks.append(callback)
         if self.raise_register is not None:
             raise self.raise_register
-        return SignalWebhookRegistrationResult(registered=True, detail="registered")
+        return SignalCallbackRegistrationResult(registered=True, detail="registered")
 
     def health(self) -> SignalAdapterHealthResult:
         return self.health_result
@@ -116,7 +102,7 @@ class _FakeCacheService(CacheAuthorityService):
     def __init__(self) -> None:
         self.queue_calls: list[_QueueCall] = []
         self.pop_calls: list[_QueuePopCall] = []
-        self.push_errors: bool = False
+        self.push_errors = False
         self.pop_results: list[object] = []
 
     def set_value(self, *, meta, component_id, key, value, ttl_seconds=None):
@@ -141,10 +127,7 @@ class _FakeCacheService(CacheAuthorityService):
                 meta=_meta(),
                 errors=[dependency_error("redis unavailable")],
             )
-        return success(
-            meta=_meta(),
-            payload=_QueueDepth(component_id=component_id, queue=queue, size=1),
-        )
+        return success(meta=_meta(), payload=1)
 
     def pop_queue(self, *, meta, component_id, queue):
         del meta
@@ -164,7 +147,9 @@ class _FakeCacheService(CacheAuthorityService):
         return success(
             meta=_meta(),
             payload=_CacheHealthStatus(
-                service_ready=True, substrate_ready=True, detail="ok"
+                service_ready=True,
+                substrate_ready=True,
+                detail="ok",
             ),
         )
 
@@ -252,19 +237,9 @@ def _meta():
     return new_meta(kind=EnvelopeKind.EVENT, source="switchboard", principal="operator")
 
 
-def _signature(secret: str, timestamp: int, body: str) -> str:
-    """Return canonical v1 webhook signature for tests."""
-    return hmac.new(
-        key=secret.encode("utf-8"),
-        msg=f"{timestamp}.{body}".encode("utf-8"),
-        digestmod=hashlib.sha256,
-    ).hexdigest()
-
-
 def _service(
     *,
     operator_signal_contact_e164: str = "+12025550100",
-    webhook_secret: str = "super-secret",
     default_dial_code: str = "+1",
 ) -> tuple[
     DefaultSwitchboardService,
@@ -281,7 +256,6 @@ def _service(
         identity=SwitchboardIdentitySettings(
             operator_signal_contact_e164=operator_signal_contact_e164,
             default_dial_code=default_dial_code,
-            webhook_shared_secret=webhook_secret,
         ),
         adapter=adapter,
         cache_service=cache,
@@ -291,7 +265,7 @@ def _service(
 
 
 def test_ingest_accepts_operator_message_and_enqueues_in_cas() -> None:
-    """Operator messages with valid signature should be accepted and queued."""
+    """Operator messages should be accepted and queued."""
     service, _adapter, cache, _attention_router = _service()
     body = json.dumps(
         {
@@ -301,7 +275,7 @@ def test_ingest_accepts_operator_message_and_enqueues_in_cas() -> None:
                     "source": "2025550100",
                     "sourceNumber": "2025550100",
                     "sourceDevice": 7,
-                    "timestamp": int(time() * 1000),
+                    "timestamp": 1730000000000,
                     "dataMessage": {
                         "message": "hello",
                         "groupInfo": {"groupId": "group-123"},
@@ -312,14 +286,8 @@ def test_ingest_accepts_operator_message_and_enqueues_in_cas() -> None:
             }
         }
     )
-    timestamp = int(time())
 
-    result = service.ingest_signal_webhook(
-        meta=_meta(),
-        raw_body_json=body,
-        header_timestamp=str(timestamp),
-        header_signature=_signature("super-secret", timestamp, body),
-    )
+    result = service.ingest_signal_message(meta=_meta(), raw_body_json=body)
 
     assert result.ok is True
     assert result.payload is not None
@@ -332,25 +300,9 @@ def test_ingest_accepts_operator_message_and_enqueues_in_cas() -> None:
     assert result.payload.value.message.group_id == "group-123"
     assert result.payload.value.message.quote_target_timestamp_ms == 101
     assert result.payload.value.message.reaction_target_timestamp_ms == 202
-    assert result.payload.value.message.reaction_emoji is None
-    assert result.payload.value.message.approval_intent is None
     assert len(cache.queue_calls) == 1
     assert cache.queue_calls[0].component_id == "service_switchboard"
     assert cache.queue_calls[0].queue == "signal_inbound"
-    assert cache.queue_calls[0].value == {
-        "source": "signal",
-        "sender_e164": "+12025550100",
-        "message_text": "hello",
-        "timestamp_ms": result.payload.value.message.timestamp_ms,
-        "source_device": "7",
-        "group_id": "group-123",
-        "quote_target_timestamp_ms": 101,
-        "reaction_target_timestamp_ms": 202,
-        "reaction_emoji": None,
-        "approval_intent": None,
-        "reply_to_proposal_token": None,
-        "reaction_to_proposal_token": None,
-    }
 
 
 def test_ingest_emits_verbose_logs_for_signal_approval_correlation() -> None:
@@ -364,7 +316,7 @@ def test_ingest_emits_verbose_logs_for_signal_approval_correlation() -> None:
                 "account": "+12025550100",
                 "envelope": {
                     "source": "2025550100",
-                    "timestamp": int(time() * 1000),
+                    "timestamp": 1730000000000,
                     "dataMessage": {
                         "message": "approved",
                         "quote": {"timestamp": 101},
@@ -374,32 +326,13 @@ def test_ingest_emits_verbose_logs_for_signal_approval_correlation() -> None:
             }
         }
     )
-    timestamp = int(time())
 
     with patch.object(switchboard_module._LOGGER, "verbose") as verbose_log:
-        result = service.ingest_signal_webhook(
-            meta=_meta(),
-            raw_body_json=body,
-            header_timestamp=str(timestamp),
-            header_signature=_signature("super-secret", timestamp, body),
-        )
+        result = service.ingest_signal_message(meta=_meta(), raw_body_json=body)
 
     assert result.ok is True
-    assert verbose_log.call_count == 4
     assert verbose_log.call_args_list[0].args == (
-        "switchboard received verified signal webhook payload",
-    )
-    assert verbose_log.call_args_list[0].kwargs["extra"]["raw_body_json"] == body
-    assert verbose_log.call_args_list[1].args == (
-        "switchboard normalized signal approval evidence",
-    )
-    assert (
-        verbose_log.call_args_list[1].kwargs["extra"]["quote_target_timestamp_ms"]
-        == 101
-    )
-    assert (
-        verbose_log.call_args_list[1].kwargs["extra"]["reaction_target_timestamp_ms"]
-        == 202
+        "switchboard received raw signal payload",
     )
     completed = [
         call
@@ -413,47 +346,40 @@ def test_ingest_emits_verbose_logs_for_signal_approval_correlation() -> None:
     }
 
 
-def test_ingest_accepts_reaction_only_approval_and_enqueues_structured_fields() -> None:
-    """Reaction-only approvals should survive normalization and queueing."""
+def test_ingest_ignores_non_operator_sender() -> None:
+    """Messages from non-operator senders should not be queued."""
     service, _adapter, cache, _attention_router = _service()
     body = json.dumps(
         {
             "data": {
-                "account": "+12025550100",
+                "account": "+17175550000",
                 "envelope": {
-                    "source": "2025550100",
-                    "sourceNumber": "2025550100",
-                    "sourceDevice": 7,
-                    "timestamp": int(time() * 1000),
-                    "dataMessage": {
-                        "reaction": {
-                            "emoji": "👍",
-                            "targetSentTimestamp": 303,
-                        }
-                    },
+                    "source": "+17175550000",
+                    "timestamp": 1730000000000,
+                    "dataMessage": {"message": "hello"},
                 },
             }
         }
     )
-    timestamp = int(time())
 
-    result = service.ingest_signal_webhook(
-        meta=_meta(),
-        raw_body_json=body,
-        header_timestamp=str(timestamp),
-        header_signature=_signature("super-secret", timestamp, body),
-    )
+    result = service.ingest_signal_message(meta=_meta(), raw_body_json=body)
 
     assert result.ok is True
     assert result.payload is not None
-    assert result.payload.value.accepted is True
-    assert result.payload.value.message is not None
-    assert result.payload.value.message.message_text == ""
-    assert result.payload.value.message.reaction_target_timestamp_ms == 303
-    assert result.payload.value.message.reaction_emoji == "👍"
-    assert result.payload.value.message.approval_intent == "approve"
-    assert cache.queue_calls[0].value["reaction_emoji"] == "👍"
-    assert cache.queue_calls[0].value["approval_intent"] == "approve"
+    assert result.payload.value.accepted is False
+    assert result.payload.value.queued is False
+    assert cache.queue_calls == []
+
+
+def test_ingest_rejects_invalid_json() -> None:
+    """Invalid JSON should fail validation."""
+    service, _adapter, cache, _attention_router = _service()
+
+    result = service.ingest_signal_message(meta=_meta(), raw_body_json="{")
+
+    assert result.ok is False
+    assert result.errors[0].category.value == "validation"
+    assert cache.queue_calls == []
 
 
 def test_ingest_correlates_quote_and_reaction_targets_to_proposal_tokens() -> None:
@@ -467,9 +393,8 @@ def test_ingest_correlates_quote_and_reaction_targets_to_proposal_tokens() -> No
                 "account": "+12025550100",
                 "envelope": {
                     "source": "2025550100",
-                    "sourceNumber": "2025550100",
                     "sourceDevice": 7,
-                    "timestamp": int(time() * 1000),
+                    "timestamp": 1730000000000,
                     "dataMessage": {
                         "message": "yes",
                         "quote": {"timestamp": 101},
@@ -479,14 +404,8 @@ def test_ingest_correlates_quote_and_reaction_targets_to_proposal_tokens() -> No
             }
         }
     )
-    timestamp = int(time())
 
-    result = service.ingest_signal_webhook(
-        meta=_meta(),
-        raw_body_json=body,
-        header_timestamp=str(timestamp),
-        header_signature=_signature("super-secret", timestamp, body),
-    )
+    result = service.ingest_signal_message(meta=_meta(), raw_body_json=body)
 
     assert result.ok is True
     assert result.payload is not None
@@ -498,7 +417,7 @@ def test_ingest_correlates_quote_and_reaction_targets_to_proposal_tokens() -> No
 
 
 def test_ingest_uses_configured_dial_code_for_non_e164_inputs() -> None:
-    """Non-E.164 values normalize using configured default_dial_code."""
+    """Non-E.164 values should normalize using configured default_dial_code."""
     service, _adapter, cache, _attention_router = _service(
         operator_signal_contact_e164="2071234567",
         default_dial_code="+44",
@@ -508,259 +427,43 @@ def test_ingest_uses_configured_dial_code_for_non_e164_inputs() -> None:
             "data": {
                 "source": "2071234567",
                 "message": "hello",
-                "timestamp": int(time() * 1000),
+                "timestamp": 1730000000000,
             }
         }
     )
-    timestamp = int(time())
 
-    result = service.ingest_signal_webhook(
-        meta=_meta(),
-        raw_body_json=body,
-        header_timestamp=str(timestamp),
-        header_signature=_signature("super-secret", timestamp, body),
-    )
+    result = service.ingest_signal_message(meta=_meta(), raw_body_json=body)
 
     assert result.ok is True
     assert result.payload is not None
-    assert result.payload.value.accepted is True
-    assert len(cache.queue_calls) == 1
-
-
-def test_ingest_accepts_sync_sent_message_shape() -> None:
-    """Sync messages from the upstream receive shape should still normalize."""
-    service, _adapter, cache, _attention_router = _service()
-    body = json.dumps(
-        {
-            "data": {
-                "account": "+12025550100",
-                "envelope": {
-                    "source": "+12025550100",
-                    "sourceDevice": 2,
-                    "timestamp": int(time() * 1000),
-                    "syncMessage": {
-                        "sentMessage": {
-                            "message": "follow up",
-                            "groupInfo": {"id": "group-sync"},
-                        }
-                    },
-                },
-            }
-        }
-    )
-    timestamp = int(time())
-
-    result = service.ingest_signal_webhook(
-        meta=_meta(),
-        raw_body_json=body,
-        header_timestamp=str(timestamp),
-        header_signature=_signature("super-secret", timestamp, body),
-    )
-
-    assert result.ok is True
-    assert result.payload is not None
-    assert result.payload.value.accepted is True
     assert result.payload.value.message is not None
-    assert result.payload.value.message.message_text == "follow up"
-    assert result.payload.value.message.group_id == "group-sync"
-    assert len(cache.queue_calls) == 1
+    assert result.payload.value.message.sender_e164 == "+442071234567"
+    assert cache.queue_calls[0].value["sender_e164"] == "+442071234567"
 
 
-def test_ingest_rejects_invalid_signature() -> None:
-    """Invalid signatures should fail ingress as policy violations."""
+def test_poll_operator_instruction_returns_normalized_message() -> None:
+    """Poll should deserialize queued entries back into the DTO."""
     service, _adapter, cache, _attention_router = _service()
-    body = json.dumps(
-        {"data": {"source": "+12025550100", "message": "hello", "timestamp": 1}}
-    )
-
-    result = service.ingest_signal_webhook(
-        meta=_meta(),
-        raw_body_json=body,
-        header_timestamp="1",
-        header_signature="bad-signature",
-    )
-
-    assert result.ok is False
-    assert result.errors[0].category.value == "policy"
-    assert len(cache.queue_calls) == 0
-
-
-def test_ingest_rejects_non_operator_sender() -> None:
-    """Non-operator sender messages should be explicitly rejected, not queued."""
-    service, _adapter, cache, _attention_router = _service()
-    body = json.dumps(
-        {
-            "data": {
-                "source": "+12025550199",
-                "message": "hello",
-                "timestamp": int(time() * 1000),
-            }
-        }
-    )
-    timestamp = int(time())
-
-    result = service.ingest_signal_webhook(
-        meta=_meta(),
-        raw_body_json=body,
-        header_timestamp=str(timestamp),
-        header_signature=_signature("super-secret", timestamp, body),
-    )
-
-    assert result.ok is True
-    assert result.payload is not None
-    assert result.payload.value.accepted is False
-    assert result.payload.value.reason == "sender is not configured operator"
-    assert len(cache.queue_calls) == 0
-
-
-def test_ingest_ignores_non_message_payload() -> None:
-    """Webhook payloads without message text should be ignored without errors."""
-    service, _adapter, cache, _attention_router = _service()
-    body = json.dumps({"data": {"source": "+12025550100", "timestamp": 1}})
-    timestamp = int(time())
-
-    result = service.ingest_signal_webhook(
-        meta=_meta(),
-        raw_body_json=body,
-        header_timestamp=str(timestamp),
-        header_signature=_signature("super-secret", timestamp, body),
-    )
-
-    assert result.ok is True
-    assert result.payload is not None
-    assert result.payload.value.accepted is False
-    assert result.payload.value.reason == "non-message payload"
-    assert len(cache.queue_calls) == 0
-
-
-def test_ingest_reports_signal_exception_events_without_queueing() -> None:
-    """Signal exception events should be surfaced with a specific ignore reason."""
-    service, _adapter, cache, _attention_router = _service()
-    body = json.dumps(
-        {
-            "data": {
-                "exception": {
-                    "type": "UntrustedIdentityException",
-                    "message": "Untrusted identity",
-                },
-                "envelope": {
-                    "source": "+12025550100",
-                    "timestamp": 1,
-                },
-            }
-        }
-    )
-    timestamp = int(time())
-
-    result = service.ingest_signal_webhook(
-        meta=_meta(),
-        raw_body_json=body,
-        header_timestamp=str(timestamp),
-        header_signature=_signature("super-secret", timestamp, body),
-    )
-
-    assert result.ok is True
-    assert result.payload is not None
-    assert result.payload.value.accepted is False
-    assert (
-        result.payload.value.reason
-        == "signal exception event: UntrustedIdentityException"
-    )
-    assert len(cache.queue_calls) == 0
-
-
-def test_ingest_propagates_cas_enqueue_failures() -> None:
-    """CAS failures should be returned as envelope errors from Switchboard."""
-    service, _adapter, cache, _attention_router = _service()
-    cache.push_errors = True
-    body = json.dumps(
-        {
-            "data": {
-                "source": "+12025550100",
-                "message": "hello",
-                "timestamp": int(time() * 1000),
-            }
-        }
-    )
-    timestamp = int(time())
-
-    result = service.ingest_signal_webhook(
-        meta=_meta(),
-        raw_body_json=body,
-        header_timestamp=str(timestamp),
-        header_signature=_signature("super-secret", timestamp, body),
-    )
-
-    assert result.ok is False
-    assert result.errors[0].category.value == "dependency"
-
-
-def test_register_signal_webhook_uses_configured_secret() -> None:
-    """Registration should pass callback URL + resolved secret to adapter."""
-    service, adapter, _cache, _attention_router = _service(
-        webhook_secret="configured-secret"
-    )
-
-    result = service.register_signal_webhook(
-        meta=_meta(),
-        callback_url="https://example.com/switchboard/signal",
-    )
-
-    assert result.ok is True
-    assert len(adapter.register_calls) == 1
-    assert (
-        adapter.register_calls[0].callback_url
-        == "https://example.com/switchboard/signal"
-    )
-    assert adapter.register_calls[0].shared_secret == "configured-secret"
-
-
-def test_register_signal_webhook_maps_dependency_failures() -> None:
-    """Adapter dependency failures should map to dependency envelope errors."""
-    service, adapter, _cache, _attention_router = _service()
-    adapter.raise_register = SignalAdapterDependencyError("signal unavailable")
-
-    result = service.register_signal_webhook(
-        meta=_meta(),
-        callback_url="https://example.com/switchboard/signal",
-    )
-
-    assert result.ok is False
-    assert result.errors[0].category.value == "dependency"
-
-
-def test_health_reports_adapter_and_cas_readiness() -> None:
-    """Health should include aggregated adapter and CAS readiness state."""
-    service, adapter, _cache, _attention_router = _service()
-    adapter.health_result = SignalAdapterHealthResult(
-        adapter_ready=False, detail="degraded"
-    )
-
-    result = service.health(meta=_meta())
-
-    assert result.ok is True
-    assert result.payload is not None
-    assert result.payload.value.service_ready is True
-    assert result.payload.value.adapter_ready is False
-    assert result.payload.value.cas_ready is True
-
-
-def test_poll_operator_instruction_pops_and_returns_normalized_message() -> None:
-    """Polling should dequeue one queued operator instruction and return it."""
-    service, _adapter, cache, _attention_router = _service()
-    cache.pop_results = [
+    cache.pop_results.append(
         QueueEntry(
             component_id="service_switchboard",
             queue="signal_inbound",
             value={
                 "sender_e164": "+12025550100",
                 "message_text": "hello",
-                "timestamp_ms": 1,
+                "timestamp_ms": 1730000000000,
                 "source_device": "1",
                 "source": "signal",
+                "group_id": None,
+                "quote_target_timestamp_ms": None,
+                "reaction_target_timestamp_ms": None,
+                "reaction_emoji": None,
+                "approval_intent": None,
+                "reply_to_proposal_token": None,
+                "reaction_to_proposal_token": None,
             },
         )
-    ]
+    )
 
     result = service.poll_operator_instruction(meta=_meta())
 
@@ -768,18 +471,54 @@ def test_poll_operator_instruction_pops_and_returns_normalized_message() -> None
     assert result.payload is not None
     assert result.payload.value is not None
     assert result.payload.value.message_text == "hello"
-    assert cache.pop_calls == [
-        _QueuePopCall(component_id="service_switchboard", queue="signal_inbound")
-    ]
 
 
-def test_poll_operator_instruction_returns_none_when_queue_is_empty() -> None:
-    """Polling with no queued message should return a successful empty payload."""
-    service, _adapter, cache, _attention_router = _service()
+def test_register_signal_callback_registers_adapter_callback() -> None:
+    """Callback registration should delegate to the adapter."""
+    service, adapter, _cache, _attention_router = _service()
 
-    result = service.poll_operator_instruction(meta=_meta())
+    result = service.register_signal_callback(meta=_meta())
 
     assert result.ok is True
-    assert result.payload is not None
-    assert result.payload.value is None
-    assert len(cache.pop_calls) == 1
+    assert len(adapter.registered_callbacks) == 1
+
+
+def test_register_signal_callback_maps_dependency_failures() -> None:
+    """Adapter dependency failures should surface as envelope dependency errors."""
+    service, adapter, _cache, _attention_router = _service()
+    adapter.raise_register = SignalAdapterDependencyError("signal unavailable")
+
+    result = service.register_signal_callback(meta=_meta())
+
+    assert result.ok is False
+    assert result.errors[0].category.value == "dependency"
+
+
+def test_build_signal_inbound_callback_maps_internal_failures_to_adapter_internal() -> (
+    None
+):
+    """The in-process callback should escalate internal failures to the adapter."""
+    service, _adapter, cache, _attention_router = _service()
+    cache.push_errors = True
+    callback = service._build_signal_inbound_callback()  # type: ignore[attr-defined]
+    body = json.dumps(
+        {
+            "data": {
+                "account": "+12025550100",
+                "envelope": {
+                    "source": "+12025550100",
+                    "timestamp": 1730000000000,
+                    "dataMessage": {"message": "hello"},
+                },
+            }
+        }
+    )
+
+    with patch.object(service, "ingest_signal_message") as ingest:
+        ingest.side_effect = SignalAdapterInternalError("boom")
+        try:
+            callback(raw_body_json=body)
+        except SignalAdapterInternalError as exc:
+            assert str(exc) == "boom"
+        else:
+            raise AssertionError("expected SignalAdapterInternalError")

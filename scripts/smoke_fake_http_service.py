@@ -35,6 +35,13 @@ class _StateStore:
             raise ValueError(f"{path} must contain a JSON array")
         return payload
 
+    async def pop_all(self, *, name: str) -> list[object]:
+        """Atomically drain one named capture file and return its prior contents."""
+        async with self._lock:
+            values = self.read(name=name)
+            self._write(name=name, values=[])
+            return values
+
     def _write(self, *, name: str, values: list[object]) -> None:
         """Atomically replace one named capture file with the provided array."""
         path = self._path(name=name)
@@ -64,7 +71,7 @@ async def _signal_send(request: web.Request) -> web.Response:
 
 
 async def _signal_receive(request: web.Request) -> web.StreamResponse:
-    """Accept and hold a websocket receive session open without emitting messages."""
+    """Accept and hold a websocket receive session open, emitting queued payloads."""
     store: _StateStore = request.app["state_store"]
     websocket = web.WebSocketResponse(heartbeat=30.0, autoping=True)
     await websocket.prepare(request)
@@ -74,7 +81,13 @@ async def _signal_receive(request: web.Request) -> web.StreamResponse:
     )
     try:
         while True:
-            message = await websocket.receive()
+            queued = await store.pop_all(name="queued_receive_payloads")
+            for item in queued:
+                await websocket.send_json(item)
+            try:
+                message = await websocket.receive(timeout=0.5)
+            except TimeoutError:
+                continue
             if message.type in {
                 web.WSMsgType.CLOSE,
                 web.WSMsgType.CLOSED,
@@ -82,9 +95,19 @@ async def _signal_receive(request: web.Request) -> web.StreamResponse:
                 web.WSMsgType.ERROR,
             }:
                 break
+            if message.type in {web.WSMsgType.PING, web.WSMsgType.PONG}:
+                continue
     finally:
         await websocket.close()
     return websocket
+
+
+async def _signal_inject_receive(request: web.Request) -> web.Response:
+    """Queue one inbound receive payload for the next connected websocket session."""
+    store: _StateStore = request.app["state_store"]
+    payload = await request.json()
+    await store.append(name="queued_receive_payloads", value=payload)
+    return web.json_response({"queued": True})
 
 
 async def _obsidian_health(_request: web.Request) -> web.Response:
@@ -159,6 +182,7 @@ def _build_app(*, role: str, state_dir: Path) -> web.Application:
         app.router.add_get("/v1/health", _signal_health)
         app.router.add_post("/v2/send", _signal_send)
         app.router.add_get("/v1/receive/{number}", _signal_receive)
+        app.router.add_post("/testing/inject-receive", _signal_inject_receive)
         return app
 
     if role == "obsidian":

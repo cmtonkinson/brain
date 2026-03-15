@@ -36,13 +36,12 @@ class IngestResult(BaseModel):
     message: NormalizedSignalMessage | None = None
 
 
-class RegisterSignalWebhookResult(BaseModel):
-    """Webhook registration operation result payload."""
+class RegisterSignalCallbackResult(BaseModel):
+    """Signal adapter callback-registration operation result payload."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     registered: bool
-    callback_url: str
     detail: str
 
 

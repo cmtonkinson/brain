@@ -13,32 +13,29 @@ from services.action.switchboard.domain import (
     HealthStatus,
     IngestResult,
     NormalizedSignalMessage,
-    RegisterSignalWebhookResult,
+    RegisterSignalCallbackResult,
 )
 
 
 class SwitchboardService(ABC):
-    """Public API for webhook registration and inbound Signal ingestion."""
+    """Public API for inbound Signal ingestion and operator polling."""
 
     @abstractmethod
-    def ingest_signal_webhook(
+    def ingest_signal_message(
         self,
         *,
         meta: EnvelopeMeta,
         raw_body_json: str,
-        header_timestamp: str,
-        header_signature: str,
     ) -> Envelope[IngestResult]:
-        """Validate, normalize, and enqueue one Signal webhook payload."""
+        """Normalize and enqueue one raw inbound Signal payload."""
 
     @abstractmethod
-    def register_signal_webhook(
+    def register_signal_callback(
         self,
         *,
         meta: EnvelopeMeta,
-        callback_url: str,
-    ) -> Envelope[RegisterSignalWebhookResult]:
-        """Register Signal webhook callback URI and shared secret."""
+    ) -> Envelope[RegisterSignalCallbackResult]:
+        """Register one in-process Signal callback with the owned adapter."""
 
     @abstractmethod
     def poll_operator_instruction(

@@ -9,7 +9,7 @@ from resources.adapters.signal.component import RESOURCE_COMPONENT_ID
 
 
 class SignalAdapterSettings(BaseModel):
-    """Runtime settings for Signal receive, send, and callback forwarding calls."""
+    """Runtime settings for Signal receive and send calls."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -19,7 +19,6 @@ class SignalAdapterSettings(BaseModel):
     receive_connect_timeout_seconds: float = Field(default=10.0, gt=0)
     receive_heartbeat_seconds: float = Field(default=30.0, gt=0)
     send_timeout_seconds: float = Field(default=30.0, gt=0)
-    callback_timeout_seconds: float = Field(default=10.0, gt=0)
     max_retries: int = Field(default=2, ge=0)
     failure_backoff_initial_seconds: float = Field(default=1.0, gt=0)
     failure_backoff_max_seconds: float = Field(default=30.0, gt=0)
