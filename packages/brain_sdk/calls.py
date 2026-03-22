@@ -610,8 +610,17 @@ def _post_json(
     """Issue one HTTP request and return the JSON response dict."""
     try:
         if method == "get":
-            return http.get_json(url, timeout=timeout_seconds)  # type: ignore[union-attr]
-        return http.post_json(url, json=body, timeout=timeout_seconds)  # type: ignore[union-attr]
+            return http.get_json(  # type: ignore[union-attr]
+                url,
+                timeout=timeout_seconds,
+                log_operation=operation,
+            )
+        return http.post_json(  # type: ignore[union-attr]
+            url,
+            json=body,
+            timeout=timeout_seconds,
+            log_operation=operation,
+        )
     except HttpStatusError as exc:
         retryable = exc.status_code >= 500 or exc.status_code == 429
         raise map_transport_error(

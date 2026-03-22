@@ -56,6 +56,32 @@ def test_json_formatter_outputs_verbose_level_name() -> None:
     assert payload["message"] == "payload"
 
 
+def test_json_formatter_includes_extra_fields() -> None:
+    """JSON formatter should preserve custom ``extra=...`` metadata."""
+    formatter = JsonFormatter()
+    record = logging.LogRecord(
+        name="tests.shared.logging.json.extra",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="request complete",
+        args=(),
+        exc_info=None,
+    )
+    record.service = "switchboard"
+    record.operation = "switchboard.poll_operator_instruction"
+    record.endpoint = "/switchboard/poll_operator_instruction"
+    record.status_code = 200
+
+    rendered = formatter.format(record)
+    payload = json.loads(rendered)
+
+    assert payload["service"] == "switchboard"
+    assert payload["operation"] == "switchboard.poll_operator_instruction"
+    assert payload["endpoint"] == "/switchboard/poll_operator_instruction"
+    assert payload["status_code"] == 200
+
+
 def test_configure_logging_supports_split_stdout_and_file_levels(
     capsys,
     tmp_path: Path,

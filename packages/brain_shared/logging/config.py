@@ -43,6 +43,19 @@ def _register_verbose_level() -> None:
 
 _register_verbose_level()
 
+_STANDARD_LOG_RECORD_KEYS = frozenset(
+    logging.makeLogRecord({}).__dict__.keys() | {"message", "asctime", "context"}
+)
+
+
+def _record_extras(record: logging.LogRecord) -> dict[str, Any]:
+    """Return custom ``extra=...`` fields attached to one log record."""
+    return {
+        key: value
+        for key, value in record.__dict__.items()
+        if key not in _STANDARD_LOG_RECORD_KEYS and not key.startswith("_")
+    }
+
 
 class ContextFilter(logging.Filter):
     """Inject per-request/process context into each log record."""
@@ -62,13 +75,13 @@ class JsonFormatter(logging.Formatter):
         payload: dict[str, Any] = {
             fields.TIMESTAMP: datetime.now(UTC).isoformat(),
             fields.LEVEL: record.levelname,
-            fields.LOGGER: record.name,
             fields.MESSAGE: record.getMessage(),
         }
 
         context = getattr(record, "context", None)
         if isinstance(context, dict):
             payload.update(context)
+        payload.update(_record_extras(record))
 
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
@@ -81,16 +94,24 @@ class PlainFormatter(logging.Formatter):
 
     def __init__(self) -> None:
         super().__init__(
-            fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
+            fmt="%(asctime)s %(levelname)s %(message)s",
             datefmt="%Y-%m-%dT%H:%M:%S%z",
         )
 
     def format(self, record: logging.LogRecord) -> str:
         message = super().format(record)
+        suffix_parts: list[str] = []
         context = getattr(record, "context", None)
-        if not isinstance(context, dict) or not context:
+        if isinstance(context, dict) and context:
+            suffix_parts.extend(
+                f"{key}={value}" for key, value in sorted(context.items())
+            )
+        suffix_parts.extend(
+            f"{key}={value}" for key, value in sorted(_record_extras(record).items())
+        )
+        if not suffix_parts:
             return message
-        suffix = " ".join(f"{key}={value}" for key, value in sorted(context.items()))
+        suffix = " ".join(suffix_parts)
         return f"{message} {suffix}"
 
 
@@ -137,16 +158,7 @@ def configure_logging(
         root.addHandler(handler)
     root.propagate = False
     logging.getLogger("httpcore").setLevel(logging.WARNING)
-
-    seed_context: dict[str, str] = {}
-    if process_name:
-        seed_context[fields.PROCESS_NAME] = process_name
-    if environment:
-        seed_context[fields.ENVIRONMENT] = environment
-    if seed_context:
-        from .context import bind_context
-
-        bind_context(**seed_context)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def get_logger(name: str | None = None) -> logging.Logger:

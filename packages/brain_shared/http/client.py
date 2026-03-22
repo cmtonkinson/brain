@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from time import perf_counter
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -47,6 +48,29 @@ def _resolve_log_url(*, client: httpx.Client | httpx.AsyncClient, url: str) -> s
         return str(client.base_url.join(url))
     except Exception:
         return url
+
+
+def _request_log_fields(
+    *,
+    method: str,
+    url: str,
+    operation: str,
+) -> dict[str, object]:
+    """Return structured request log fields for one outbound HTTP call."""
+    resolved_operation = operation.strip()
+    service = resolved_operation.partition(".")[0] if resolved_operation else ""
+    split = urlsplit(url)
+    endpoint = split.path or url.split("?", 1)[0]
+    payload: dict[str, object] = {
+        "method": method,
+        "url": url,
+        "endpoint": endpoint,
+    }
+    if service:
+        payload["service"] = service
+    if resolved_operation:
+        payload["operation"] = resolved_operation
+    return payload
 
 
 class HttpClient:
@@ -96,10 +120,15 @@ class HttpClient:
         """Issue one request and map transport/status failures to typed errors."""
         request_method = method.upper()
         request_url = _resolve_log_url(client=self._client, url=url)
+        log_operation = str(kwargs.pop("log_operation", "")).strip()
         started_at = perf_counter()
         _LOGGER.debug(
             "HTTP client request starting",
-            extra={"method": request_method, "url": request_url},
+            extra=_request_log_fields(
+                method=request_method,
+                url=request_url,
+                operation=log_operation,
+            ),
         )
         try:
             response = self._client.request(method=method, url=url, **kwargs)
@@ -110,8 +139,11 @@ class HttpClient:
             _LOGGER.debug(
                 "HTTP client request failed",
                 extra={
-                    "method": request_method,
-                    "url": request_url,
+                    **_request_log_fields(
+                        method=request_method,
+                        url=request_url,
+                        operation=log_operation,
+                    ),
                     "duration_ms": round((perf_counter() - started_at) * 1000, 3),
                     "failure": type(exc).__name__,
                 },
@@ -127,8 +159,11 @@ class HttpClient:
         _LOGGER.debug(
             "HTTP client request completed",
             extra={
-                "method": request_method,
-                "url": request_url,
+                **_request_log_fields(
+                    method=request_method,
+                    url=request_url,
+                    operation=log_operation,
+                ),
                 "status_code": response.status_code,
                 "duration_ms": round((perf_counter() - started_at) * 1000, 3),
             },
@@ -229,10 +264,15 @@ class AsyncHttpClient:
         """Issue one request and map transport/status failures to typed errors."""
         request_method = method.upper()
         request_url = _resolve_log_url(client=self._client, url=url)
+        log_operation = str(kwargs.pop("log_operation", "")).strip()
         started_at = perf_counter()
         _LOGGER.debug(
             "HTTP client request starting",
-            extra={"method": request_method, "url": request_url},
+            extra=_request_log_fields(
+                method=request_method,
+                url=request_url,
+                operation=log_operation,
+            ),
         )
         try:
             response = await self._client.request(method=method, url=url, **kwargs)
@@ -243,8 +283,11 @@ class AsyncHttpClient:
             _LOGGER.debug(
                 "HTTP client request failed",
                 extra={
-                    "method": request_method,
-                    "url": request_url,
+                    **_request_log_fields(
+                        method=request_method,
+                        url=request_url,
+                        operation=log_operation,
+                    ),
                     "duration_ms": round((perf_counter() - started_at) * 1000, 3),
                     "failure": type(exc).__name__,
                 },
@@ -260,8 +303,11 @@ class AsyncHttpClient:
         _LOGGER.debug(
             "HTTP client request completed",
             extra={
-                "method": request_method,
-                "url": request_url,
+                **_request_log_fields(
+                    method=request_method,
+                    url=request_url,
+                    operation=log_operation,
+                ),
                 "status_code": response.status_code,
                 "duration_ms": round((perf_counter() - started_at) * 1000, 3),
             },

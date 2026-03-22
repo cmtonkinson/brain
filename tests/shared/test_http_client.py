@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import httpx
 import pytest
@@ -14,6 +15,7 @@ from packages.brain_shared.http import (
     HttpRequestError,
     HttpStatusError,
 )
+from packages.brain_shared.http import client as http_client_module
 
 
 def test_http_client_get_json_returns_decoded_payload() -> None:
@@ -135,3 +137,51 @@ def test_async_http_client_post_json_returns_decoded_payload() -> None:
             await client.aclose()
 
     asyncio.run(_run())
+
+
+def test_http_client_logs_operation_metadata() -> None:
+    """HTTP client logs should include structured service and operation fields."""
+
+    records: list[logging.LogRecord] = []
+
+    class _ListHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True}, request=request)
+
+    client = HttpClient(
+        base_url="https://example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    logger = http_client_module._LOGGER
+    original_level = logger.level
+    original_disabled = logger.disabled
+    original_global_disable = logging.root.manager.disable
+    capture_handler = _ListHandler()
+    logger.addHandler(capture_handler)
+    logger.disabled = False
+    logging.disable(logging.NOTSET)
+    logger.setLevel(logging.DEBUG)
+    try:
+        client.get_json(
+            "/switchboard/poll_operator_instruction",
+            log_operation="switchboard.poll_operator_instruction",
+        )
+    finally:
+        logger.removeHandler(capture_handler)
+        logger.setLevel(original_level)
+        logger.disabled = original_disabled
+        logging.disable(original_global_disable)
+        client.close()
+
+    completed = next(
+        record
+        for record in records
+        if record.getMessage() == "HTTP client request completed"
+    )
+    assert completed.service == "switchboard"
+    assert completed.operation == "switchboard.poll_operator_instruction"
+    assert completed.endpoint == "/switchboard/poll_operator_instruction"
+    assert completed.status_code == 200
