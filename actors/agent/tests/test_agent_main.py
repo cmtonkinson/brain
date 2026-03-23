@@ -87,6 +87,26 @@ def test_load_system_prompt_appends_profile_extension_when_present() -> None:
     assert prompt.endswith("Extra operator prompt.")
 
 
+def test_load_prompt_file_reads_compressor_prompt_from_disk() -> None:
+    """Prompt-file helper should load the colocated compressor prompt text."""
+    from actors.agent import main
+
+    prompt = main._load_prompt_file(main._COMPRESS_SYSTEM_PROMPT_PATH)
+
+    assert prompt == main._COMPRESS_SYSTEM_PROMPT
+    assert "tool result compressor" in prompt.lower()
+
+
+def test_load_agent_context_properties_reads_json_from_disk() -> None:
+    """Agent context schema helper should load the colocated JSON object."""
+    from actors.agent import main
+
+    properties = main._load_agent_context_properties()
+
+    assert properties == main._AGENT_CONTEXT_PROPERTIES
+    assert set(properties) == {"call_mode", "response_detail"}
+
+
 def test_configure_logging_uses_shared_dual_path_settings(monkeypatch) -> None:
     """Logging helper should delegate to shared logging with actor settings."""
     from actors.agent import main
@@ -179,6 +199,21 @@ def test_to_sdk_messages_translates_tool_loop_history() -> None:
     ]
 
 
+def test_to_sdk_messages_omits_cache_points_from_user_content() -> None:
+    """Prompt-cache markers should not leak into LMS-visible user text."""
+    from actors.agent import main
+    from pydantic_ai.messages import CachePoint, ModelRequest, UserPromptPart
+
+    messages = [
+        ModelRequest(parts=[UserPromptPart(content=["hello", CachePoint()])]),
+        ModelRequest(parts=[UserPromptPart(content=[CachePoint()])]),
+    ]
+
+    result = main._to_sdk_messages(messages)
+
+    assert result == [LmsChatMessage(role="user", content="hello")]
+
+
 def test_create_runtime_uses_core_profile_system_prompt_append() -> None:
     """Runtime creation should append core profile prompt text to the base prompt."""
     from actors.agent import main
@@ -205,6 +240,46 @@ def test_create_runtime_uses_core_profile_system_prompt_append() -> None:
         "Extra operator prompt." in str(item)
         for item in runtime.agent._system_prompts  # pyright: ignore[reportPrivateUsage]
     )
+
+
+def test_create_runtime_uses_configured_tier2_hop_threshold() -> None:
+    """Runtime creation should wire the configured Tier 2 hop threshold."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def memory_get_latest_or_create_session(self):
+            return MemorySessionRef(session_id="session-1")
+
+        def describe_capabilities(self):
+            return ()
+
+        def list_always_on_capabilities(self):
+            return ()
+
+    captured: dict[str, object] = {}
+
+    def _fake_build_history_processor(**kwargs):
+        captured.update(kwargs)
+
+        async def _processor(_ctx, messages):
+            return messages
+
+        return _processor
+
+    settings = ActorSettings()
+    settings.agent.tool_loop_tier2_hop_threshold = 5
+    original = main._build_history_processor
+    main._build_history_processor = _fake_build_history_processor  # type: ignore[assignment]
+    try:
+        main._create_runtime(
+            client=_FakeClient(),
+            settings=settings,
+            core_settings=CoreSettings(),
+        )
+    finally:
+        main._build_history_processor = original  # type: ignore[assignment]
+
+    assert captured["tier2_hop_threshold"] == 5
 
 
 def test_build_capability_tools_invokes_sdk_client() -> None:
@@ -986,9 +1061,28 @@ def test_tool_model_requests_lms_chat_with_tools() -> None:
                         "type": "object",
                         "properties": {"file_path": {"type": "string"}},
                         "required": ["file_path"],
-                    }
+                    },
+                    "call_mode": {
+                        "type": "string",
+                        "enum": ["decide", "explore"],
+                        "description": (
+                            "Characterize this tool call for result handling. "
+                            "Use 'decide' when you know exactly what you are looking for and the result "
+                            "will directly inform your answer or next action. "
+                            "Use 'explore' when you are orienting or speculatively fetching and may need "
+                            "the full result to reason further."
+                        ),
+                    },
+                    "response_detail": {
+                        "type": "string",
+                        "description": (
+                            "State specifically what information you need from this tool result "
+                            "and how you intend to use it. Used to guide result compression."
+                        ),
+                    },
                 },
                 "required": ["input_payload"],
+                "additionalProperties": False,
             },
             strict=None,
             sequential=False,
@@ -1352,6 +1446,8 @@ def test_runtime_discovery_tools_activate_capabilities_for_prepare_tools() -> No
     discover_result = runtime_tools[0].function(
         query="find vault read tools",
         limit=5,
+        call_mode="explore",
+        response_detail="Find relevant read tools before selecting one.",
     )
     assert discover_result == [
         {
@@ -1432,6 +1528,8 @@ def test_runtime_discovery_tools_filter_denied_capabilities() -> None:
     discover_result = runtime_tools[0].function(
         query="send signal message",
         limit=5,
+        call_mode="explore",
+        response_detail="Check whether a messaging capability is available.",
     )
     assert discover_result == [
         {
@@ -1442,7 +1540,11 @@ def test_runtime_discovery_tools_filter_denied_capabilities() -> None:
     ]
     assert "attention-notify" not in turn_state.active_tool_names
 
-    describe_result = runtime_tools[1].function(capability_id="attention-notify")
+    describe_result = runtime_tools[1].function(
+        capability_id="attention-notify",
+        call_mode="decide",
+        response_detail="Inspect whether this capability can be used right now.",
+    )
     assert describe_result == {
         "capability_id": "attention-notify",
         "available": False,

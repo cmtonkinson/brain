@@ -57,7 +57,20 @@ BRAIN_ACTORS__CORE__HOST=127.0.0.1
 BRAIN_ACTORS__CORE__PORT=8898
 BRAIN_ACTORS__CORE__TIMEOUT_SECONDS=10.0
 BRAIN_ACTORS__CLI__PRINCIPAL=operator
+BRAIN_ACTORS__AGENT__TOOL_LOOP_TIER2_HOP_THRESHOLD=3
 ```
+
+### `actors.agent`
+Agent runtime settings loaded from `actors.yaml`.
+
+| Key | Default | Description |
+|---|---|---|
+| `principal` | `operator` | Principal identity attached to outbound SDK calls from the agent actor. |
+| `source` | `agent` | Source identity attached to outbound SDK calls from the agent actor. |
+| `capability_discovery_deny_list` | `["attention-notify"]` | Capability ids excluded from dynamic discovery and activation. |
+| `tool_return_compress_threshold` | `4000` | Character threshold above which decide-mode tool returns are eligible for compressor prompt reduction. |
+| `tool_return_max_chars` | `8000` | Hard ceiling for tool return content retained in turn history before truncation fallback. |
+| `tool_loop_tier2_hop_threshold` | `3` | Number of intra-turn model-response hops required before the agent inserts the Tier 2 prompt-cache checkpoint. |
 
 ------------------------------------------------------------------------
 ## `logging`

@@ -253,6 +253,9 @@ class AgentActorSettings(ActorNamespaceSettings):
 
     source: str = "agent"
     capability_discovery_deny_list: tuple[str, ...] = ("attention-notify",)
+    tool_return_max_chars: int = 8000
+    tool_return_compress_threshold: int = 4000
+    tool_loop_tier2_hop_threshold: int = Field(default=3, ge=1)
 
 
 class ActorSettings(BaseSettings):

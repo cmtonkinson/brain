@@ -12,8 +12,9 @@ import signal
 from dataclasses import dataclass, field
 from typing import Any
 
-from pydantic_ai import Agent, Tool
+from pydantic_ai import Agent, RunContext, Tool
 from pydantic_ai.messages import (
+    CachePoint,
     ModelRequest,
     ModelResponse,
     SystemPromptPart,
@@ -59,13 +60,35 @@ _LMS_THROTTLE_RESPONSE = (
     "I'm temporarily rate limited by the language model provider. "
     "Please try again in a minute."
 )
-_PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+_AGENT_DIR = Path(__file__).resolve().parent
+_PROMPTS_DIR = _AGENT_DIR / "prompts"
 _SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "system.txt"
+_COMPRESS_SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "compress-tool-return.txt"
+_AGENT_CONTEXT_PROPERTIES_PATH = _AGENT_DIR / "tool-context-properties.json"
 _DISCOVER_CAPABILITIES_TOOL_NAME = "discover_capabilities"
 _DESCRIBE_CAPABILITY_TOOL_NAME = "describe_capability"
 _MAX_PENDING_INVOCATIONS = 128
 _HEARTBEAT_FILE_ENV = "BRAIN_AGENT_HEARTBEAT_FILE"
 _HEARTBEAT_PATH = Path("/run/brain/agent-heartbeat")
+
+
+def _load_prompt_file(path: Path) -> str:
+    """Load one prompt text file from disk and strip outer whitespace."""
+    return path.read_text(encoding="utf-8").strip()
+
+
+def _load_agent_context_properties(
+    *, path: Path = _AGENT_CONTEXT_PROPERTIES_PATH
+) -> dict[str, object]:
+    """Load agent-only tool schema properties from the colocated JSON file."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected JSON object in {path}")
+    return payload
+
+
+_AGENT_CONTEXT_PROPERTIES = _load_agent_context_properties()
+_COMPRESS_SYSTEM_PROMPT = _load_prompt_file(_COMPRESS_SYSTEM_PROMPT_PATH)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,12 +115,14 @@ class _TurnState:
     always_on_capability_ids: frozenset[str] = frozenset()
     denied_capability_ids: frozenset[str] = frozenset()
     active_tool_names: set[str] = field(default_factory=set)
+    tools_frozen: bool = False
     pending_invocations: dict[str, _PendingInvocation] = field(default_factory=dict)
     reply_to_proposal_token: str = ""
     reaction_to_proposal_token: str = ""
 
     def reset_active_tools(self) -> None:
         """Reset the active tool set to the always-on CES tools plus runtime tools."""
+        self.tools_frozen = False
         self.active_tool_names = {
             *(
                 capability_id
@@ -248,7 +273,7 @@ def _write_heartbeat(*, path: Path | None = None) -> None:
 
 def _load_system_prompt(*, system_prompt_append: str | None = None) -> str:
     """Load the effective agent system prompt from disk plus profile append."""
-    prompt = _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
+    prompt = _load_prompt_file(_SYSTEM_PROMPT_PATH)
     appended = "" if system_prompt_append is None else system_prompt_append.strip()
     if appended == "":
         return prompt
@@ -329,6 +354,13 @@ def _stringify_content(value: object) -> str:
     """Render one structured content value into a stable compact string."""
     if isinstance(value, str):
         return value
+    if isinstance(value, list | tuple):
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, CachePoint):
+                continue
+            parts.append(_stringify_content(item))
+        return "".join(parts)
     try:
         return json.dumps(value, sort_keys=True)
     except TypeError:
@@ -355,10 +387,13 @@ def _to_sdk_message_parts(
             if isinstance(part, SystemPromptPart):
                 result.append(LmsChatMessage(role="system", content=part.content))
             elif isinstance(part, UserPromptPart):
+                content = _stringify_content(part.content)
+                if content == "":
+                    continue
                 result.append(
                     LmsChatMessage(
                         role="user",
-                        content=_stringify_content(part.content),
+                        content=content,
                     )
                 )
             elif isinstance(part, ToolReturnPart):
@@ -412,11 +447,28 @@ def _tool_args_json(value: str | dict[str, object] | None) -> str:
     return json.dumps(value, sort_keys=True)
 
 
+def _tool_schema_with_agent_context(schema: dict[str, object]) -> dict[str, object]:
+    """Return one tool schema augmented with agent-only context properties."""
+    properties = schema.get("properties", {})
+    merged_properties = (
+        {**properties, **_AGENT_CONTEXT_PROPERTIES}
+        if isinstance(properties, dict)
+        else dict(_AGENT_CONTEXT_PROPERTIES)
+    )
+    return {
+        **schema,
+        "properties": merged_properties,
+        "additionalProperties": False,
+    }
+
+
 def _to_sdk_tool_definition(value: ToolDefinition) -> LmsChatToolDefinition:
     """Convert one PydanticAI tool definition into an SDK LMS tool definition."""
     return LmsChatToolDefinition(
         name=value.name,
-        parameters_json_schema=dict(value.parameters_json_schema),
+        parameters_json_schema=_tool_schema_with_agent_context(
+            dict(value.parameters_json_schema)
+        ),
         description=value.description,
         strict=value.strict,
         sequential=value.sequential,
@@ -490,14 +542,20 @@ def _build_capability_tools(
             _requires_approval: bool = descriptor.requires_approval,
             **input_payload: object,
         ) -> object:
+            # Strip agent-only context properties before forwarding to the capability.
+            capability_payload = {
+                k: v
+                for k, v in input_payload.items()
+                if k not in _AGENT_CONTEXT_PROPERTIES
+            }
             reply_token, reaction_token = turn_state.proposal_token_for_retry(
                 capability_id=_capability_id,
-                input_payload=input_payload,
+                input_payload=capability_payload,
             )
             try:
                 result = client.invoke_capability(
                     capability_id=_capability_id,
-                    input_payload=input_payload,
+                    input_payload=capability_payload,
                     actor=turn_state.actor,
                     channel=turn_state.channel,
                     reply_to_proposal_token=reply_token,
@@ -518,7 +576,7 @@ def _build_capability_tools(
                     turn_state.remember_pending_invocation(
                         proposal_token=proposal_token,
                         capability_id=_capability_id,
-                        input_payload=input_payload,
+                        input_payload=capability_payload,
                         requires_approval=_requires_approval,
                         reason_codes=tuple(reason_codes),
                         expires_at=expires_at,
@@ -619,8 +677,12 @@ def _build_runtime_tools(
     """Create hardcoded runtime discovery tools for dynamic capability exposure."""
 
     def _discover_capabilities(
-        query: str, limit: int | None = None
+        query: str,
+        limit: int | None = None,
+        call_mode: str = "explore",
+        response_detail: str = "",
     ) -> list[dict[str, object]]:
+        del call_mode, response_detail
         results = client.search_capabilities(query=query, limit=limit)
         visible_results = [
             item
@@ -638,7 +700,12 @@ def _build_runtime_tools(
             for item in visible_results
         ]
 
-    def _describe_capability(capability_id: str) -> dict[str, object]:
+    def _describe_capability(
+        capability_id: str,
+        call_mode: str = "explore",
+        response_detail: str = "",
+    ) -> dict[str, object]:
+        del call_mode, response_detail
         if capability_id in turn_state.denied_capability_ids:
             return {
                 "capability_id": capability_id,
@@ -674,6 +741,7 @@ def _build_runtime_tools(
                 "properties": {
                     "query": {"type": "string"},
                     "limit": {"type": "integer"},
+                    **_AGENT_CONTEXT_PROPERTIES,
                 },
                 "required": ["query"],
                 "additionalProperties": False,
@@ -688,7 +756,10 @@ def _build_runtime_tools(
             ),
             json_schema={
                 "type": "object",
-                "properties": {"capability_id": {"type": "string"}},
+                "properties": {
+                    "capability_id": {"type": "string"},
+                    **_AGENT_CONTEXT_PROPERTIES,
+                },
                 "required": ["capability_id"],
                 "additionalProperties": False,
             },
@@ -702,6 +773,18 @@ def _build_prepare_tools(*, turn_state: _TurnState):
     async def _prepare_tools(
         _ctx: Any, tool_defs: list[ToolDefinition]
     ) -> list[ToolDefinition]:
+        if not turn_state.tools_frozen:
+            # First LLM call of the turn: build the active set normally and freeze it.
+            # Any capability names added by discovery tools between hops are ignored
+            # until the next turn — this keeps the tools array byte-stable for caching.
+            active = [
+                item for item in tool_defs if item.name in turn_state.active_tool_names
+            ]
+            turn_state.active_tool_names = {t.name for t in active}
+            turn_state.tools_frozen = True
+            return active
+        # Subsequent hops: return exactly the frozen set, ignoring any names added
+        # by discovery tool execution since the first hop.
         return [item for item in tool_defs if item.name in turn_state.active_tool_names]
 
     return _prepare_tools
@@ -750,6 +833,12 @@ def _create_runtime(
         turn_state=turn_state,
     )
     runtime_tools = _build_runtime_tools(client=client, turn_state=turn_state)
+    history_processor = _build_history_processor(
+        client=client,
+        compress_threshold=settings.agent.tool_return_compress_threshold,
+        max_chars=settings.agent.tool_return_max_chars,
+        tier2_hop_threshold=settings.agent.tool_loop_tier2_hop_threshold,
+    )
     agent = Agent(
         model,
         system_prompt=_load_system_prompt(
@@ -759,6 +848,7 @@ def _create_runtime(
         max_concurrency=1,
         tools=[*capability_tools, *runtime_tools],
         prepare_tools=_build_prepare_tools(turn_state=turn_state),
+        history_processors=[history_processor],
     )
     return _AgentRuntime(
         client=client,
@@ -815,6 +905,185 @@ def _estimate_token_count(text: str) -> int:
         return 0
     estimated = words * 3
     return (estimated + 1) // 2
+
+
+async def _compress_tool_return(
+    *,
+    client: BrainClient,
+    tool_name: str,
+    call_mode: str,
+    response_detail: str,
+    raw_content: str,
+    max_chars: int,
+) -> str:
+    """Call Haiku to compress one large tool return to relevant content only.
+
+    Uses lms_chat_with_tools (no tools, text-only) so the call is captured in
+    the audit table alongside all other LMS calls for observability.
+    """
+    intent_hint = response_detail.strip() or f"tool call: {tool_name}"
+    user_content = (
+        f"Tool: {tool_name}\n"
+        f"Mode: {call_mode}\n"
+        f"Intent: {intent_hint}\n\n"
+        f"Raw output:\n{raw_content[:max_chars]}"
+    )
+    messages = (
+        LmsChatMessage(role="system", content=_COMPRESS_SYSTEM_PROMPT),
+        LmsChatMessage(role="user", content=user_content),
+    )
+    try:
+        result = await asyncio.to_thread(
+            client.lms_chat_with_tools,
+            messages=messages,
+            tools=(),
+            allow_text_output=True,
+            profile="quick",
+        )
+        compressed = (result.text or "").strip()
+        if compressed:
+            return compressed
+    except Exception:
+        _LOGGER.warning(
+            "brain agent tool return compression failed; using truncation",
+            extra={"tool_name": tool_name},
+        )
+    return raw_content[:max_chars] + "\n[truncated]"
+
+
+def _build_history_processor(
+    *,
+    client: BrainClient,
+    compress_threshold: int,
+    max_chars: int,
+    tier2_hop_threshold: int,
+):
+    """Return a PydanticAI history_processor that manages caching and tool result size."""
+
+    # Build an index of tool call args keyed by tool_call_id so the processor
+    # can read call_mode and response_detail from the assistant's tool call args
+    # when evaluating the corresponding tool return.
+    def _tool_call_args_index(
+        msgs: list[ModelRequest | ModelResponse],
+    ) -> dict[str, dict[str, object]]:
+        index: dict[str, dict[str, object]] = {}
+        for msg in msgs:
+            if not isinstance(msg, ModelResponse):
+                continue
+            for part in msg.parts:
+                if not isinstance(part, ToolCallPart):
+                    continue
+                try:
+                    args = (
+                        part.args
+                        if isinstance(part.args, dict)
+                        else json.loads(part.args or "{}")
+                    )
+                    if isinstance(args, dict):
+                        index[part.tool_call_id] = args
+                except (ValueError, TypeError):
+                    pass
+        return index
+
+    async def _process_history(
+        _ctx: RunContext[None],
+        messages: list[ModelRequest | ModelResponse],
+    ) -> list[ModelRequest | ModelResponse]:
+        result: list[ModelRequest | ModelResponse] = []
+        tier1_placed = False
+        hop_count = sum(1 for m in messages if isinstance(m, ModelResponse))
+        call_args_by_id = _tool_call_args_index(messages)
+
+        for i, message in enumerate(messages):
+            if not isinstance(message, ModelRequest):
+                result.append(message)
+                continue
+
+            new_parts = []
+            for part in message.parts:
+                if isinstance(part, UserPromptPart) and not tier1_placed:
+                    # Tier 1: stable cache point after system + MAS context + user prompt.
+                    # Byte-stable across all intra-turn hops as long as tool array
+                    # does not change.
+                    content = part.content if isinstance(part.content, str) else ""
+                    new_parts.append(
+                        UserPromptPart(
+                            content=[content, CachePoint()]
+                            if content
+                            else [CachePoint()]
+                        )
+                    )
+                    tier1_placed = True
+                    continue
+
+                if isinstance(part, ToolReturnPart):
+                    raw = (
+                        part.content
+                        if isinstance(part.content, str)
+                        else str(part.content)
+                    )
+                    if len(raw) > compress_threshold:
+                        # Read call_mode and response_detail from the tool call args
+                        # that produced this return, keyed by tool_call_id.
+                        call_args = call_args_by_id.get(part.tool_call_id, {})
+                        call_mode = str(call_args.get("call_mode", "explore"))
+                        response_detail = str(call_args.get("response_detail", ""))
+
+                        if call_mode == "decide":
+                            # Model flagged this as a targeted fetch — Haiku can
+                            # compress against the stated intent safely.
+                            compressed = await _compress_tool_return(
+                                client=client,
+                                tool_name=part.tool_name,
+                                call_mode=call_mode,
+                                response_detail=response_detail,
+                                raw_content=raw,
+                                max_chars=max_chars,
+                            )
+                            new_parts.append(
+                                ToolReturnPart(
+                                    tool_name=part.tool_name,
+                                    content=compressed,
+                                    tool_call_id=part.tool_call_id,
+                                )
+                            )
+                            continue
+
+                        if len(raw) > max_chars:
+                            # Explore mode but exceeds hard ceiling — truncate only,
+                            # no LLM judgment applied.
+                            new_parts.append(
+                                ToolReturnPart(
+                                    tool_name=part.tool_name,
+                                    content=raw[:max_chars] + "\n[truncated]",
+                                    tool_call_id=part.tool_call_id,
+                                )
+                            )
+                            continue
+
+                new_parts.append(part)
+
+            # Tier 2: dynamic cache point after accumulated tool exchanges when the
+            # turn has run deep enough to warrant it. Placed after the last tool
+            # return in the final request, covering all prior exchanges at 10% read
+            # cost on subsequent hops.
+            if (
+                hop_count >= tier2_hop_threshold
+                and i == len(messages) - 1
+                and any(isinstance(p, ToolReturnPart) for p in new_parts)
+            ):
+                last_tool_idx = max(
+                    j for j, p in enumerate(new_parts) if isinstance(p, ToolReturnPart)
+                )
+                new_parts.insert(
+                    last_tool_idx + 1, UserPromptPart(content=[CachePoint()])
+                )
+
+            result.append(ModelRequest(parts=new_parts))
+
+        return result
+
+    return _process_history
 
 
 def _instruction_context_message(instruction: SwitchboardOperatorInstruction) -> str:

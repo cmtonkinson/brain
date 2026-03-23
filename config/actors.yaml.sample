@@ -21,6 +21,9 @@ agent:
   source: agent
   capability_discovery_deny_list:
     - attention-notify
+  tool_return_compress_threshold: 4000
+  tool_return_max_chars: 8000
+  tool_loop_tier2_hop_threshold: 3
 
 beat:
   principal: operator

@@ -1,0 +1,11 @@
+{
+  "call_mode": {
+    "type": "string",
+    "enum": ["decide", "explore"],
+    "description": "Characterize this tool call for result handling. Use 'decide' when you know exactly what you are looking for and the result will directly inform your answer or next action. Use 'explore' when you are orienting or speculatively fetching and may need the full result to reason further."
+  },
+  "response_detail": {
+    "type": "string",
+    "description": "State specifically what information you need from this tool result and how you intend to use it. Used to guide result compression."
+  }
+}

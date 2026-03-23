@@ -322,6 +322,7 @@ def test_load_actor_settings_deep_merges_agent_defaults_with_secrets_yaml(
     assert actors.agent.principal == "assistant"
     assert actors.agent.source == "test-agent"
     assert actors.agent.capability_discovery_deny_list == ("attention-notify",)
+    assert actors.agent.tool_loop_tier2_hop_threshold == 3
 
 
 def test_core_runtime_settings_exposes_profile_via_core() -> None:
