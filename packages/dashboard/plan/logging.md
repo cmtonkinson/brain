@@ -7,6 +7,7 @@ dashboard.
 The dashboard needs a live log surface that:
 - shows recent operational activity
 - correlates with trace and health information when possible
+- correlates with shared inspection context when the operator opts in
 - works across both host-local and containerized components
 - remains read-only and out-of-band
 
@@ -14,7 +15,7 @@ The dashboard needs a live log surface that:
 ## Core Principles
 ### One Abstraction
 The dashboard should consume logs through one canonical source abstraction, not
-through pane-specific readers.
+through view-specific readers.
 
 Suggested abstraction:
 - `LogSource`
@@ -23,6 +24,7 @@ Responsibilities:
 - yield raw log lines or structured log payloads
 - identify source/component metadata
 - support follow/stream semantics
+- maintain bounded event history independent of viewport follow state
 
 ### File First
 When durable file logs exist and are readable, prefer them.
@@ -44,7 +46,7 @@ The gateway is host-side and should never be treated as containerized.
 Its fallback path must remain host-local, not Docker-based.
 
 ### Normalize Before Rendering
-The log pane should render canonical dashboard log events, not raw lines from
+The log view should render canonical dashboard log events, not raw lines from
 heterogeneous sources.
 
 ------------------------------------------------------------------------
@@ -153,7 +155,7 @@ raw source
   -> normalizer
   -> canonical DashboardLogEvent
   -> in-memory buffer
-  -> LogPane
+  -> LogView
 ```
 
 ### Decoder
@@ -187,9 +189,9 @@ When follow mode is enabled:
 - keep active source readers running
 - append normalized events to the event buffer as they arrive
 
-Follow mode is a pane concern only at the interaction level.
+Follow mode is a view concern only at the interaction level.
 Source readers should still be capable of streaming regardless of whether the
-pane is visually focused.
+view is visually focused or temporally frozen.
 
 ------------------------------------------------------------------------
 ## Buffering
@@ -199,9 +201,15 @@ events.
 Reasons:
 - prevents unbounded growth
 - decouples stream ingestion from rendering
-- allows pane-local filtering and navigation without re-reading sources
+- allows view-local filtering and navigation without re-reading sources
 
-The log pane should read from this buffer, not directly from the sources.
+The log view should read from this buffer, not directly from the sources.
+
+Retention semantics:
+- logs are events
+- `recent` means a bounded recent duration and/or bounded recent event count
+- stepping in a frozen `LogView` moves by retained event, not by wall-clock
+  second
 
 ------------------------------------------------------------------------
 ## Filtering
@@ -212,8 +220,9 @@ Initial filter dimensions:
 - level
 - text match
 - trace id
+- envelope id
 
-The log pane owns user-facing filter state.
+The log view owns user-facing filter state.
 Sources do not need to implement presentation filters.
 
 ------------------------------------------------------------------------
@@ -229,6 +238,14 @@ At minimum, normalization should preserve:
 - `trace_id`
 - `envelope_id`
 - component identity
+- provider/model when present
+
+When the operator enables shared inspection context following, `LogView` may
+apply compatible context fields as filters:
+- `trace_id`
+- `envelope_id`
+- `component`
+- focal timestamp or time range
 
 ------------------------------------------------------------------------
 ## Refresh and Retry Behavior
@@ -259,6 +276,8 @@ Rules:
 - source failures should degrade only the affected component stream
 - malformed lines should not terminate a source reader
 - decode failures should preserve the raw line as plain-text message content
+- an unavailable source must surface as unknown or degraded, not as an empty
+  successful stream
 
 ------------------------------------------------------------------------
 ## Configuration
@@ -298,6 +317,7 @@ Logging tests should cover:
 - host-local fallback selection for gateway
 - startup backfill behavior
 - follow-mode streaming behavior
+- frozen viewport behavior while ingestion continues
 - reopen-on-failure behavior for file sources
 - JSON log-line decode
 - plain-text fallback decode
@@ -312,7 +332,8 @@ Logging tests should cover:
 - Prefer file logs when readable.
 - Use Docker logs only as fallback for containerized components.
 - Keep file-handle recovery simple: reopen on failure, no rotation logic yet.
-- Keep normalization and buffering independent from pane rendering.
+- Keep normalization and buffering independent from view rendering.
+- Keep log ingestion live even when the operator freezes a log viewport.
 
 
 ------------------------------------------------------------------------

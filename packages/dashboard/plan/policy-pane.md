@@ -1,24 +1,30 @@
-# Dashboard Policy Pane Plan
-This document defines the intended design for the dashboard policy pane.
+# Dashboard Policy View Plan
+This document defines the intended design for the dashboard policy view.
 
 ------------------------------------------------------------------------
 ## Purpose
-The policy pane exists to answer two questions quickly:
+The policy view exists to answer two questions quickly:
 
 1. _Is anything currently awaiting approval?_
 2. _What was the most recent policy decision?_
 
-It is a standalone observability pane.
+It is a standalone observability view.
 It does not assume cross-pane context or selection linkage.
 
 ------------------------------------------------------------------------
 ## Core Principles
 ### Standalone by Default
-The policy pane should be useful even when no trace, turn, or log pane context
+The policy view should be useful even when no trace, turn, or log view context
 is available.
 
 The pane should derive its own current and recent views from policy-related
 state only.
+
+The policy view is an event-and-snapshot view:
+- acquisition continues as approvals and decisions change
+- the viewport may follow the newest policy activity or freeze on retained
+  history
+- stepping moves by retained approval or decision item
 
 ### Current Plus Recent
 The pane should have two layers:
@@ -30,6 +36,16 @@ If there is an open approval, that approval is the current item.
 
 If there are no open approvals, the most recent policy decision becomes the
 current item.
+
+### Shared Inspection Context Is Optional and Explicit
+The policy view may publish to and follow shared inspection context, but it must
+remain useful standalone.
+
+Compatible context fields include:
+- `capability`
+- `component`
+- `trace_id` when policy records can be correlated
+- focal timestamp or time range
 
 ------------------------------------------------------------------------
 ## Current Item Selection Rule
@@ -207,6 +223,9 @@ As long as each row can normalize to:
 - state
 - capability
 
+If shared inspection context provides a compatible capability or time range, a
+context-following policy view may narrow its recent list to that scope.
+
 ------------------------------------------------------------------------
 ## Rendering Rules
 ### Current Section
@@ -231,6 +250,22 @@ When the pane is narrow:
 - keep labels short
 - wrap summary text
 - preserve state/capability visibility over secondary fields if needed
+
+------------------------------------------------------------------------
+## Context Workflows
+Illustrative policy-view workflows:
+- selecting a recent policy item publishes `capability`, focal timestamp, and
+  any known correlated ids
+- a `LogView` may follow the same time range or correlated component to inspect
+  surrounding activity
+- a `TraceView` may follow correlated `trace_id` when present
+
+Rules:
+- context following is opt-in
+- pinning local policy state detaches the view from future workspace context
+  updates
+- the view must distinguish clearly between no policy items, zero pending
+  approvals, and unavailable policy data
 
 ------------------------------------------------------------------------
 ## Suggested Render Shape
@@ -285,7 +320,7 @@ These should remain out of the initial compact pane design.
 
 ------------------------------------------------------------------------
 ## Testing Expectations
-Policy pane tests should cover:
+Policy view tests should cover:
 - selection of newest pending approval as current item
 - fallback to most recent decision when no approval is pending
 - recent-list ordering by descending time
@@ -303,4 +338,4 @@ Policy pane tests should cover:
 
 
 ------------------------------------------------------------------------
-_End of Dashboard Policy Pane Plan_
+_End of Dashboard Policy View Plan_

@@ -1,10 +1,10 @@
-# Dashboard Host Widget Plan
+# Dashboard Host View Plan
 This document defines the intended scope and behavior for the dashboard host
-widget.
+view.
 
 ------------------------------------------------------------------------
 ## Purpose
-The host widget exists to answer one question quickly:
+The host view exists to answer one question quickly:
 
 _Is the host machine under pressure or constrained in a way that explains what
 the operator is seeing in Brain?_
@@ -13,7 +13,7 @@ It is not intended to be a full system monitor.
 
 ------------------------------------------------------------------------
 ## Scope
-The host widget should remain compact and high-signal.
+The host view should remain compact and high-signal.
 
 It should provide:
 - CPU pressure
@@ -30,9 +30,15 @@ It should not try to replace:
 - `btop`
 - Activity Monitor
 
+The host view is a sampled-metric view.
+It participates in the shared dashboard temporal model:
+- acquisition continues on cadence into retained samples
+- the viewport may follow live samples or freeze on retained history
+- stepping moves by retained sample interval or bucket
+
 ------------------------------------------------------------------------
 ## Initial Metric Set
-The initial host widget should include:
+The initial host view should include:
 
 - CPU %
 - memory %
@@ -123,7 +129,7 @@ If the machine has no battery, omit this row entirely.
 
 ------------------------------------------------------------------------
 ## Explicit Exclusions
-The following should not appear in the initial host widget:
+The following should not appear in the initial host view:
 
 - swap as a primary metric
 - per-core CPU breakdowns
@@ -135,18 +141,18 @@ The following should not appear in the initial host widget:
 
 ------------------------------------------------------------------------
 ## Swap Policy
-Swap is intentionally excluded from the initial host widget.
+Swap is intentionally excluded from the initial host view.
 
 Reason:
 - Linux swap metrics are generally straightforward
 - macOS swap semantics are less clean and less useful in a compact, portable
-  widget
+  view
 
 Future policy:
 - swap may be added later in a more detailed host drill-down
 - if ever added, it should be platform-aware
 - if shown on Linux, a swap percentage may be acceptable
-- it should not be forced into the initial cross-platform compact widget
+- it should not be forced into the initial cross-platform compact view
 
 ------------------------------------------------------------------------
 ## Power Policy
@@ -158,8 +164,8 @@ Rules:
 - do not render placeholder noise for battery-less hosts
 
 ------------------------------------------------------------------------
-## Host Widget Philosophy
-The host widget should be diagnostic, not exhaustive.
+## Host View Philosophy
+The host view should be diagnostic, not exhaustive.
 
 If a metric does not help explain:
 - sluggishness
@@ -167,7 +173,7 @@ If a metric does not help explain:
 - storage exhaustion
 - host-state constraints
 
-it likely does not belong in the initial widget.
+it likely does not belong in the initial view.
 
 ------------------------------------------------------------------------
 ## Suggested Render Shape
@@ -203,9 +209,9 @@ Up    2d 04h
 Metrics should be collected through a dedicated host data source or host metrics
 collector.
 
-Do not scatter host probes across multiple panes or widgets.
+Do not scatter host probes across multiple panes or views.
 
-The host widget should consume one normalized host snapshot model.
+The host view should consume one normalized host snapshot model.
 
 Suggested shape:
 
@@ -222,11 +228,13 @@ HostSnapshot
 - uptime_seconds: int
 - battery_percent: float | None
 - battery_charging: bool | None
+- sampled_at: datetime
+- provenance: str
 ```
 
 ------------------------------------------------------------------------
 ## Normalization Rules
-The host widget should render normalized values, not raw platform output.
+The host view should render normalized values, not raw platform output.
 
 Rules:
 - percentages should be rounded consistently
@@ -234,11 +242,23 @@ Rules:
 - I/O rates should be humanized consistently
 - uptime should be rendered in a compact human-readable form
 - missing battery values should suppress the power line entirely
+- unavailable metrics should render as unknown, not zero
+
+------------------------------------------------------------------------
+## Retention and Recent Semantics
+Host metrics are samples, not events.
+
+Rules:
+- the host data source retains a bounded recent sample history
+- `recent` means a recent sample window, not an unbounded timeline
+- rate calculations such as disk I/O belong in the data source or derived layer,
+  not in render code
+- freezing the host view freezes the viewport only; sampling continues
 
 ------------------------------------------------------------------------
 ## Future Expansion
 Possible future additions belong in a deeper host drill-down, not the initial
-compact widget:
+compact view:
 - swap
 - per-device disk usage
 - per-disk I/O
@@ -249,21 +269,22 @@ compact widget:
 
 ------------------------------------------------------------------------
 ## Testing Expectations
-Host widget tests should cover:
+Host view tests should cover:
 - compact rendering of the required metrics
 - omission of the power row when no battery exists
 - consistent humanization of I/O rates
 - consistent uptime formatting
 - normalization behavior for load and percentage values
+- explicit distinction between zero and unknown metric values
 
 ------------------------------------------------------------------------
 ## Contributor Notes
-- Keep the host widget compact.
-- Keep swap out of the initial widget.
+- Keep the host view compact.
+- Keep swap out of the initial view.
 - Keep power conditional on battery presence.
 - Prefer one normalized host snapshot model.
 - Add deeper host detail later only if it remains clearly useful.
 
 
 ------------------------------------------------------------------------
-_End of Dashboard Host Widget Plan_
+_End of Dashboard Host View Plan_

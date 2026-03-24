@@ -8,7 +8,8 @@ the current dashboard state.
 
 It should answer:
 - what global workspace actions are available right now?
-- what widget-specific actions are available for the currently focused pane?
+- what shared temporal and context actions are available right now?
+- what view-specific actions are available for the currently focused pane?
 
 It is not intended to be a full command reference or tutorial surface.
 
@@ -20,25 +21,29 @@ The footer should remain visible at all times as part of the fixed app chrome.
 ### Global Plus Contextual
 The footer should combine:
 - global workspace actions
-- context-sensitive actions for the widget loaded in the currently focused pane
+- shared temporal actions
+- shared context actions
+- context-sensitive actions for the view loaded in the currently focused pane
 
 ### Context Only When Relevant
-Widget-specific actions should appear only when they are meaningful in the
+View-specific actions should appear only when they are meaningful in the
 current state.
 
 Examples:
 - expand/collapse tree bindings appear only when the focused pane contains a
-  trace widget and the selected node can expand or collapse
+  trace view and the selected node can expand or collapse
 - inspect-modal binding appears only when the selected node supports rich
   inspection
-- follow-mode toggle appears only for widgets that support follow behavior
+- context-follow toggle appears only when the focused view can follow shared
+  inspection context
 
 ### Width-Aware
 The footer should adapt to available width.
 
 When there is enough width:
 - show all global actions
-- show contextual widget actions
+- show shared temporal and context actions
+- show contextual view actions
 
 When width is constrained:
 - preserve the highest-value actions first
@@ -46,9 +51,11 @@ When width is constrained:
 
 ------------------------------------------------------------------------
 ## Footer Content Model
-The footer should be composed from two conceptual groups:
+The footer should be composed from four conceptual groups:
 
 - `global`
+- `temporal`
+- `context`
 - `contextual`
 
 Suggested internal shape:
@@ -56,6 +63,8 @@ Suggested internal shape:
 ```text
 FooterState
 - global_items: list[FooterItem]
+- temporal_items: list[FooterItem]
+- context_items: list[FooterItem]
 - contextual_items: list[FooterItem]
 
 FooterItem
@@ -67,7 +76,11 @@ FooterItem
 
 Rules:
 - `global_items` are derived from workspace state
-- `contextual_items` are derived from the widget loaded in the currently focused
+- `temporal_items` are derived from the focused pane's temporal state and the
+  focused view's stepping semantics
+- `context_items` are derived from the focused view's relationship to shared
+  inspection context
+- `contextual_items` are derived from the view loaded in the currently focused
   pane and its local state; if the focused pane is empty, contextual items are
   empty
 - the footer renderer is responsible for fitting visible items into available
@@ -90,17 +103,57 @@ Illustrative full-width global section:
 [tab] Focus  [s] Split-H  [v] Split-V  [enter] Max  [Q] Quit
 ```
 
-There are no numbered pane toggle items. Widgets are loaded by interacting with
-the empty pane picker, not via global footer keys.
+There are no numbered pane toggle items. Views are loaded into panes via the
+empty-pane view picker, not via global footer keys.
+
+------------------------------------------------------------------------
+## Temporal Items
+Temporal items are shared action concepts even when views step differently.
+
+Suggested temporal actions:
+- freeze
+- step backward
+- step forward
+- jump to live
+- follow live
+
+Rules:
+- temporal items appear only for views that have retained history
+- `freeze` and `follow live` are mutually exclusive in the rendered footer
+- stepping actions should disappear or disable when the focused view is in
+  live-follow and stepping would be meaningless
+
+Illustrative temporal section:
+
+```text
+[f] Freeze  [[] Prev  []] Next  [g] Live
+```
+
+------------------------------------------------------------------------
+## Context Items
+Context items expose the focused view's relationship to shared inspection
+context.
+
+Suggested context actions:
+- follow context
+- pin local state
+- publish selection
+
+Rules:
+- follow state must be explicit
+- if the focused view cannot interpret shared inspection context, omit context
+  items entirely
+- pinning local state is the action that stops following without clearing the
+  view's current scope
 
 ------------------------------------------------------------------------
 ## Contextual Items
-Contextual items depend on the widget loaded in the focused pane and the current
-selection within that widget. If the focused pane is empty, no contextual items
+Contextual items depend on the view loaded in the focused pane and the current
+selection within that view. If the focused pane is empty, no contextual items
 are shown.
 
-### Trace Widget Context
-When the focused pane contains a trace widget:
+### Trace View Context
+When the focused pane contains a trace view:
 - show up/down navigation
 - show expand/collapse when the selected node is expandable
 - show inspect-modal action when the selected node supports rich inspection
@@ -117,30 +170,34 @@ If the selected node is a leaf:
 If the selected node does not support inspect:
 - omit inspect
 
-### Log Widget Context
-When the focused pane contains a log widget:
-- show follow toggle
+### Log View Context
+When the focused pane contains a log view:
 - show filter/search if supported
 
 Illustrative contextual items:
 
 ```text
-[f] Follow  [/] Filter
+[/] Filter
 ```
 
-### Policy Widget Context
-The initial policy widget may have little or no contextual behavior beyond
+### Policy View Context
+The initial policy view may have little or no contextual behavior beyond
 selection movement if a recent list becomes selectable.
 
-Until then, it is acceptable for the policy widget to contribute no contextual
+Until then, it is acceptable for the policy view to contribute no contextual
 footer items.
 
-### Turn Widget Context
-The initial turn widget may also contribute no contextual footer items beyond
+### Turn View Context
+The initial turn view may also contribute no contextual footer items beyond
 selection movement if and when the recent list becomes interactive.
 
-### Host Widget Context
-The host widget likely contributes no contextual footer items initially.
+### Host View Context
+The host view likely contributes no contextual footer items initially.
+
+### LLM View Context
+When the focused pane contains an `LLMView`:
+- show move/select actions for provider/model rows
+- show freeze/follow state only through shared temporal items
 
 ------------------------------------------------------------------------
 ## Width-Adaptive Rendering
@@ -151,8 +208,10 @@ Suggested priority order:
 2. maximize / restore
 3. focus next / previous
 4. split actions
-5. focused-pane contextual widget actions
-6. lower-value secondary actions
+5. temporal actions affecting live/frozen state
+6. context follow state
+7. focused-pane contextual view actions
+8. lower-value secondary actions
 
 More specifically:
 
@@ -161,7 +220,7 @@ More specifically:
 - medium width:
   - show global navigation and a small contextual set
 - wide width:
-  - show full global actions plus context-sensitive widget actions
+  - show full global actions plus context-sensitive view actions
 
 The footer should not wrap into multiple lines.
 It should truncate by dropping lower-priority items.
@@ -192,8 +251,10 @@ Rules:
 ## Dynamic Behavior
 The footer should update whenever any of the following changes:
 - focused pane changes
-- widget loaded into or unloaded from the focused pane
+- view loaded into or unloaded from the focused pane
 - focused pane selection changes
+- focused view temporal mode changes
+- focused view context-follow state changes
 - selected trace node expands or collapses
 - inspect eligibility changes
 - pane maximize state changes
@@ -205,18 +266,22 @@ The footer must be a reactive view of app state, not a static string.
 ## Data Requirements
 The footer should derive its content from:
 - workspace state
-- focused pane identity and widget loaded therein
-- focused widget-local capability state
+- focused pane identity and view loaded therein
+- focused view-local capability state
+- focused view temporal state
+- focused view context-follow state
 - width constraints
 
 This suggests a footer-specific builder layer rather than hard-coding the footer
-string in the widget.
+string in the view.
 
 Suggested structure:
 
 ```text
 FooterBuilder
   -> build_global_items(workspace_state)
+  -> build_temporal_items(focused_pane_state)
+  -> build_context_items(focused_pane_state, inspection_context)
   -> build_contextual_items(focused_pane_state)
   -> fit_items_to_width(items, width)
   -> render_footer(items)
@@ -224,14 +289,14 @@ FooterBuilder
 
 ------------------------------------------------------------------------
 ## Examples
-### Wide Footer, Trace Widget Focused
+### Wide Footer, Trace View Focused
 ```text
-[tab] Focus  [s] Split-H  [v] Split-V  [enter] Max  [j/k] Move  [h/l] Collapse/Expand  [i] Inspect  [Q] Quit
+[tab] Focus  [s] Split-H  [v] Split-V  [f] Freeze  [g] Live  [c] Follow Ctx  [j/k] Move  [h/l] Collapse/Expand  [i] Inspect  [Q] Quit
 ```
 
-### Medium Footer, Log Widget Focused
+### Medium Footer, Log View Focused
 ```text
-[tab] Focus  [s] Split-H  [v] Split-V  [enter] Max  [f] Follow  [/] Filter  [Q] Quit
+[tab] Focus  [enter] Max  [f] Freeze  [g] Live  [c] Pin  [/] Filter  [Q] Quit
 ```
 
 ### Narrow Footer
@@ -258,18 +323,22 @@ The footer is a tactical prompt, not a manual.
 ------------------------------------------------------------------------
 ## Testing Expectations
 Footer tests should cover:
-- global item rendering independent of focused widget type
-- contextual action rendering for a focused trace widget
-- contextual action rendering for a focused log widget
+- global item rendering independent of focused view type
+- contextual action rendering for a focused trace view
+- contextual action rendering for a focused log view
+- temporal action rendering for live-follow and frozen states
+- context action rendering for a followable versus pinned view
 - omission of contextual items when the focused pane is empty
 - omission of irrelevant contextual actions based on node or selection state
 - width-based item dropping by priority
-- updates on focus changes, widget load/unload, and selection changes
+- updates on focus changes, view load/unload, and selection changes
 
 ------------------------------------------------------------------------
 ## Contributor Notes
 - Keep the footer compact.
 - Keep global and contextual actions distinct.
+- Keep temporal and context actions distinct from both global and
+  view-specific actions.
 - Show contextual actions only when they are currently meaningful.
 - Prefer dropping low-priority items over wrapping.
 - Derive footer content from state; do not hard-code one static footer string.

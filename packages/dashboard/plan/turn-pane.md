@@ -1,17 +1,17 @@
-# Dashboard Turn Pane Plan
-This document defines the intended design for the dashboard turn pane.
+# Dashboard Turn View Plan
+This document defines the intended design for the dashboard turn view.
 
 ------------------------------------------------------------------------
 ## Purpose
-The turn pane exists to answer two questions quickly:
+The turn view exists to answer two questions quickly:
 
 1. _What did the operator say, and how did the agent respond?_
 2. _What model, reasoning level, and token cost were involved?_
 
-The turn pane is a dialogue-level observability surface.
+The turn view is a dialogue-level observability surface.
 It shows _what_ happened from a conversational perspective.
 It does not show _how_ it happened from an infrastructure perspective; that is
-the trace pane's job.
+the trace view's job.
 
 ------------------------------------------------------------------------
 ## Core Principles
@@ -26,14 +26,19 @@ Turns and traces are related but not one-to-one:
 - a turn may correlate to one or more traces
 - a trace may serve a non-dialogue trigger
 
-The turn pane must not conflate these two perspectives.
+The turn view must not conflate these two perspectives.
 
 ### Standalone by Default
-The turn pane should be useful even when no trace, policy, or log pane context
+The turn view should be useful even when no trace, policy, or log view context
 is available.
 
 The pane should derive its own current and recent views from dialogue state
 only.
+
+The turn view is a snapshot-oriented view with bounded recent history:
+- acquisition continues as MAS records new dialogue turns
+- the viewport may follow the latest turn or freeze on retained recent turns
+- stepping moves by retained turn or paired exchange, not by sample interval
 
 ### Current Plus Recent
 The pane should have two layers:
@@ -43,9 +48,20 @@ The pane should have two layers:
 ### MAS Is the Authority
 The Memory Authority Service owns dialogue state: sessions, turns, and focus.
 
-The turn pane consumes MAS-originated data.
+The turn view consumes MAS-originated data.
 It does not query the Language Model Service, Capability Engine, or trace
 infrastructure directly.
+
+### Shared Inspection Context Is Optional and Explicit
+The turn view may publish to and follow shared inspection context, but it must
+remain useful standalone.
+
+Compatible context fields include:
+- `turn_id`
+- `trace_id`
+- `provider`
+- `model`
+- focal timestamp or time range
 
 ------------------------------------------------------------------------
 ## Current Item Selection Rule
@@ -215,6 +231,10 @@ in the same session, pair them into a completed turn.
 
 If no outbound response follows, treat the turn as pending.
 
+If shared inspection context provides a compatible `turn_id`, a
+context-following turn view should scope to that specific turn rather than the
+most recent one.
+
 ### Recent List Query
 The recent list should include recent turns in descending time order.
 
@@ -249,6 +269,21 @@ When the pane is narrow:
 - keep labels short
 - truncate content aggressively
 - preserve state, direction, and time visibility over secondary fields
+
+------------------------------------------------------------------------
+## Context Workflows
+Illustrative turn-view workflows:
+- selecting a turn publishes `turn_id`, `trace_id` when known, `provider`,
+  `model`, and focal timestamp
+- an `LLMView` follows that context and scopes model-usage rates to the same
+  provider/model and time region
+- a `TraceView` follows the correlated `trace_id` when present
+
+Rules:
+- context following is opt-in
+- pinning local turn state detaches the view from future workspace context
+  updates
+- the view must make follow-versus-pinned state visible
 
 ------------------------------------------------------------------------
 ## Suggested Render Shape
@@ -300,7 +335,7 @@ Recent
 The inspect modal provides a deep-dive view for one selected turn.
 
 It is a transient overlay, not a persistent subview.
-It appears on explicit user action and dismisses back to the turn pane.
+It appears on explicit user action and dismisses back to the turn view.
 
 ### Activation
 The inspect modal should be activated by an explicit action on the currently
@@ -369,7 +404,7 @@ The inspect modal should dismiss on:
 - an explicit close action
 - pressing escape
 
-Dismissal returns focus to the turn pane in its prior state.
+Dismissal returns focus to the turn view in its prior state.
 
 ### Explicit Exclusions for Inspect
 The inspect modal should not include in its initial design:
@@ -395,7 +430,7 @@ These should remain out of the initial compact pane design.
 
 ------------------------------------------------------------------------
 ## Testing Expectations
-Turn pane tests should cover:
+Turn view tests should cover:
 - selection of most recent inbound turn as current item
 - pairing of inbound with corresponding outbound for completed turns
 - pending state when no outbound response exists
@@ -419,4 +454,4 @@ Turn pane tests should cover:
 
 
 ------------------------------------------------------------------------
-_End of Dashboard Turn Pane Plan_
+_End of Dashboard Turn View Plan_

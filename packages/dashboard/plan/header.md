@@ -71,7 +71,7 @@ Normalization is where component-specific policy lives.
 Rendering converts canonical health models into the fixed display format used by
 the header.
 
-The header widget must not contain substrate-specific health logic.
+The header view must not contain substrate-specific health logic.
 
 ------------------------------------------------------------------------
 ## Canonical Health Model
@@ -109,7 +109,7 @@ widgets/health_header.py
   compact rendering only
 ```
 
-The header widget should depend on a single snapshot builder, not on multiple
+The header view should depend on a single snapshot builder, not on multiple
 substrate readers.
 
 ------------------------------------------------------------------------
@@ -344,7 +344,7 @@ Header tests should cover:
 ------------------------------------------------------------------------
 ## Contributor Notes
 - Keep fetch, normalize, and render strictly separate.
-- Keep the header widget dumb.
+- Keep the header view dumb.
 - Keep component-specific health policy in the normalization layer.
 - Prefer health/alive/ping/heartbeat checks over arbitrary queries.
 - Do not couple header status to domain-level application state.

@@ -1,7 +1,8 @@
 # Dashboard Data Access Plan
 This document defines the data access strategy for the dashboard: how it
-connects to Brain-owned substrates, what each pane reads, and how data sources
-present a uniform interface that abstracts the underlying refresh mechanism.
+connects to Brain-owned substrates, what each view reads, and how data sources
+present a uniform interface that abstracts the underlying refresh mechanism and
+feeds bounded internal histories.
 
 ------------------------------------------------------------------------
 ## Purpose
@@ -11,8 +12,11 @@ services that Brain owns. This document governs:
 - where the dashboard sits relative to Brain's architecture
 - the read-only invariant
 - connection strategy per substrate
-- per-pane data source mapping
-- the interface contract between data sources and panes
+- per-view data source mapping
+- the interface contract between data sources and views
+- the layering between raw acquisition, normalized records, derived data, and
+  view models
+- temporal buffering and retention semantics
 - the open question of push vs poll refresh
 - failure semantics
 - configuration
@@ -52,6 +56,54 @@ DB-level triggers (Postgres-side, not application-side) remain a possibility but
 the decision is deferred.
 
 ------------------------------------------------------------------------
+## Data Flow Layers
+Dashboard data flow is split into four explicit layers.
+
+### 1. Raw Acquisition
+Substrate-specific readers fetch raw state from:
+- Postgres
+- Redis
+- files
+- Docker
+- host-local probes
+- health endpoints
+
+Raw acquisition is transport- and substrate-specific.
+
+### 2. Normalized Records
+Raw payloads normalize into canonical dashboard records with:
+- stable ids where available
+- normalized timestamps
+- correlation fields such as `turn_id`, `trace_id`, `envelope_id`,
+  `component`, `provider`, `model`, and `capability`
+- provenance describing where the record came from
+
+Normalization is where source heterogeneity is hidden.
+
+### 3. Derived and Aggregated Data
+Derived layers build on normalized records to produce:
+- bounded histories
+- windowed rates
+- summaries
+- pressure states
+- cross-record aggregations
+
+Windowed metrics belong here, not in view code.
+
+### 4. View Models
+View models are presentation-ready shapes for one view.
+
+They may:
+- select the relevant subset of normalized or derived data
+- arrange fields for display
+- pre-compute labels or compact summaries
+
+They must not:
+- perform substrate reads
+- define retention policy
+- compute heavy aggregations ad hoc during render
+
+------------------------------------------------------------------------
 ## Read-Only Invariant
 The dashboard must _never_ write to any Brain-owned state.
 
@@ -70,6 +122,10 @@ Enforcement:
 - Redis connections should use read-only commands only
 - HTTP calls must target health/alive endpoints only, never mutation endpoints
 - filesystem access must be read-only opens
+
+Read-only also applies to temporal behavior:
+- freezing a viewport must never pause or alter Brain-side systems
+- backfill and follow behavior must be dashboard-local only
 
 ------------------------------------------------------------------------
 ## Connection Strategy
@@ -138,8 +194,120 @@ containers.
 Docker access is already covered by the logging plan and header plan.
 
 ------------------------------------------------------------------------
-## Per-Pane Data Source Mapping
-Each pane has a defined set of data sources. The mapping below identifies the
+## Temporal Model
+All changing data sources feed bounded internal histories.
+
+The temporal model distinguishes:
+- acquisition: ingestion of new raw data into internal buffers
+- viewport: the slice or anchor the operator is currently viewing
+
+Acquisition continues independently of viewport state.
+
+Core terms:
+- _buffer_: bounded retained history for a dashboard data source or domain
+- _live edge_: most recent retained record, sample, or snapshot
+- _temporal cursor_: the record, sample bucket, or snapshot timestamp anchoring
+  the current viewport
+- _live-follow_: cursor tracks the live edge
+- _frozen_: cursor is detached from the live edge while acquisition continues
+
+Rules:
+- `freeze` freezes the viewport, not the buffer
+- stepping moves the temporal cursor within retained history only
+- `jump_live` and `follow_live` restore the live edge as the viewport anchor
+- no view may redefine these terms with local semantics
+
+------------------------------------------------------------------------
+## Time Semantics and Retention
+The dashboard recognizes three temporal data families.
+
+### Event
+An event is a discrete occurrence with its own timestamp and identity.
+
+Examples:
+- log events
+- policy decisions
+- envelope execution records
+
+Event buffers retain the newest `N` events or a bounded recent duration.
+Stepping moves by event or visible row.
+
+### Sample
+A sample is a measurement captured at intervals.
+
+Examples:
+- CPU percentage
+- disk I/O rate
+- model token rate buckets
+
+Sample retention keeps bounded recent windows or fixed-count samples.
+Stepping moves by retained sample or bucket interval.
+
+### Snapshot
+A snapshot is the state of an entity or compact state surface at a point in
+time.
+
+Examples:
+- current turn summary
+- current approval state
+- trace tree for one trace at one acquisition point
+
+Snapshot retention keeps bounded recent snapshots or entity versions.
+Stepping moves by snapshot timestamp, entity selection, or retained version.
+
+### Recent Semantics
+`recent` must be explicit per view family:
+- event-heavy views: a recent duration and/or recent event count
+- sampled views: a recent time window and sample interval
+- snapshot views: a bounded recent entity count or snapshot count
+
+The docs and config must avoid ambiguous uses of `recent`.
+
+### Eviction Expectations
+Buffers are bounded. Retention is not infinite.
+
+High-level expectations:
+- event buffers should behave like ring buffers or equivalent bounded histories
+- sample buffers should evict oldest retained samples first
+- snapshot histories should evict oldest retained snapshots or versions first
+- eviction must not corrupt ordering, provenance, or correlation metadata
+- the dashboard may indicate when the operator has reached the oldest retained
+  history boundary
+
+------------------------------------------------------------------------
+## Correlation Model
+The dashboard supports three correlation axes, and the data layer must preserve
+enough information for all three:
+
+### Entity Correlation
+Relating records that describe the same unit of work.
+
+Examples:
+- turn -> trace
+- trace -> envelope
+- policy decision -> capability
+
+### Temporal Correlation
+Relating records that occurred at the same time or in the same retained time
+window.
+
+Examples:
+- what logs surrounded this envelope at `14:31:59`
+- what other components were active during this rate spike
+
+### Resource Correlation
+Relating activity to a shared resource or budget.
+
+Examples:
+- which turn or trace contributed to a provider/model token surge
+- which model activity is driving projected rate-limit breach
+
+Views may emphasize different axes, but normalized records and derived models
+must preserve the fields needed for all of them.
+
+------------------------------------------------------------------------
+## Per-View Data Source Mapping
+Each view has a defined set of data sources. The mapping below identifies the
 substrate, schema (where applicable), and nature of each access.
 
 ### Header
@@ -152,57 +320,66 @@ substrate, schema (where applicable), and nature of each access.
 
 Header data access is fully specified in the header plan.
 
-### Trace Pane
+### Trace View
 - Postgres: reads from service-owned schemas that persist trace and envelope
   execution data
 - Relevant schemas: those owned by services that record envelope lifecycle,
   trace metadata, and execution trees
 
-The trace pane reads normalized execution history to build the trace tree and
-detail views specified in the trace pane plan.
+The trace view reads normalized execution history to build the trace tree and
+detail views specified in the trace view plan.
 
-### Turn Pane
+### Turn View
 - Postgres: reads from the Memory Authority Service schema
   (`service_memory_authority`)
 - Reads dialogue turn records, session records, and associated metadata
 
-The turn pane reads dialogue history to show recent conversation turns and
+The turn view reads dialogue history to show recent conversation turns and
 context assembly results.
 
-### Policy Pane
+### Policy View
 - Postgres: reads from the Policy Service schema (`service_policy_service`)
 - Reads policy decisions, approval proposals, and approval state
 
-The policy pane reads policy state to show pending approvals and recent decisions
-as specified in the policy pane plan.
+The policy view reads policy state to show pending approvals and recent decisions
+as specified in the policy view plan.
 
-### Log Pane
+### Log View
 - Filesystem: log files by component
 - Docker: container logs as fallback
 
-Log pane data access is fully specified in the logging plan.
+Log view data access is fully specified in the logging plan.
 
-### Host Pane
+### Host View
 - Host system metrics via psutil-style calls
 - No Brain data access
 
-Host pane data access is fully specified in the host pane plan.
+Host view data access is fully specified in the host view plan.
+
+### LLM View
+- Postgres and/or logs: reads normalized LLM request activity where
+  provider/model usage can be reconstructed
+- Optional config surface: provider/model budget or allowance metadata when
+  available
+
+The `LLMView` reads normalized model-usage records and derives windowed rate
+pressure as specified in the `LLMView` plan.
 
 ------------------------------------------------------------------------
 ## Interface Contract
-Each pane consumes data through a _data source_ abstraction. The data source
-presents a clean interface to the pane and hides the underlying acquisition
+Each view consumes data through a _data source_ abstraction. The data source
+presents a clean interface to the view and hides the underlying acquisition
 mechanism.
 
 ### Principle
-A pane must not know or care whether its data arrived via:
+A view must not know or care whether its data arrived via:
 - a periodic SQL poll
 - a Postgres LISTEN/NOTIFY push
 - a trigger-driven callback
 - a Redis subscription
 - a filesystem watch
 
-The pane asks its data source for the current state. The data source is
+The view asks its data source for the current state. The data source is
 responsible for keeping that state current, by whatever mechanism it uses
 internally.
 
@@ -213,6 +390,8 @@ Each data source should present an interface equivalent to:
 DataSource
 - get_current() -> T | None
 - get_snapshot() -> Snapshot[T]
+- get_history() -> History[T]
+- get_viewport(cursor: TemporalCursor | None) -> Viewport[T]
 - is_stale() -> bool
 - last_refreshed_at() -> datetime | None
 ```
@@ -225,28 +404,75 @@ Snapshot[T]
 - refreshed_at: datetime | None
 - error: str | None
 - stale: bool
+- provenance: list[ProvenanceRecord]
+```
+
+Where `History[T]`, `Viewport[T]`, and `TemporalCursor` are equivalent to:
+
+```text
+History[T]
+- records: list[T]
+- retention: RetentionPolicy
+- live_edge_at: datetime | None
+
+Viewport[T]
+- data: T | None
+- cursor: TemporalCursor | None
+- mode: "follow" | "frozen"
+- live_edge_at: datetime | None
+- at_live_edge: bool
+
+TemporalCursor
+- anchor_time: datetime | None
+- anchor_id: str | None
+- anchor_index: int | None
+```
+
+`RetentionPolicy` is equivalent to:
+
+```text
+RetentionPolicy
+- family: "event" | "sample" | "snapshot"
+- max_items: int | None
+- recent_seconds: int | None
+- recent_count: int | None
+```
+
+`ProvenanceRecord` is equivalent to:
+
+```text
+ProvenanceRecord
+- source_type: str
+- source_name: str
+- source_location: str | None
+- observed_at: datetime | None
 ```
 
 Rules:
 - `get_current()` returns the most recently acquired data, or `None` if no data
   has been acquired
 - `get_snapshot()` returns the data plus metadata about freshness and errors
+- `get_history()` returns the retained bounded history used to derive viewports
+- `get_viewport()` returns the render-ready state for one temporal cursor
 - `is_stale()` returns `True` when the data has not been refreshed within the
   expected cadence
 - `last_refreshed_at()` returns the timestamp of the most recent successful
   refresh
-- the pane never triggers a refresh directly; the data source manages its own
+- the view never triggers a refresh directly; the data source manages its own
   refresh lifecycle
+- the data source or its view-model layer, not the view, is responsible for
+  deriving windowed metrics and temporal slices
 
-### One Source Per Pane Domain
-Each pane should depend on one primary data source for its domain data.
+### One Source Per View Domain
+Each view should depend on one primary data source for its domain data.
 
 Examples:
-- the trace pane depends on a trace data source
-- the policy pane depends on a policy data source
-- the turn pane depends on a turn data source
+- the trace view depends on a trace data source
+- the policy view depends on a policy data source
+- the turn view depends on a turn data source
+- the `llm` view depends on an LLM usage data source
 
-A pane should not scatter multiple independent substrate readers across its
+A view should not scatter multiple independent substrate readers across its
 rendering code.
 
 ------------------------------------------------------------------------
@@ -273,15 +499,15 @@ Polling is the simplest mechanism that satisfies all requirements without
 requiring any changes to Brain internals.
 
 Each data source should poll its substrate on a configured cadence and update its
-internal snapshot.
+internal buffers and latest snapshot.
 
 ### The Requirement
-The data source interface _must_ support either mechanism without requiring pane
+The data source interface _must_ support either mechanism without requiring view
 changes.
 
 If the underlying mechanism later changes from polling to push-driven:
 - the data source implementation changes
-- the pane code does not change
+- the view code does not change
 - the interface contract remains the same
 
 This is the primary architectural requirement of the data source abstraction.
@@ -296,6 +522,7 @@ Suggested defaults:
 - policy: moderate to fast (pending approvals benefit from responsiveness)
 - log: already specified in logging plan
 - host: moderate
+- llm: moderate to fast
 
 Exact cadence values belong in configuration, not in this plan.
 
@@ -318,6 +545,8 @@ Rules:
 - avoid full table scans
 - avoid queries that would be expensive on large tables
 - prefer indexed access paths
+- preserve source timestamps and correlation ids whenever the substrate exposes
+  them
 
 ### No ORM
 The dashboard does not use Brain's SQLAlchemy models or ORM infrastructure.
@@ -339,17 +568,23 @@ Rules:
   refreshing
 - a failed refresh must preserve the most recently successful snapshot
 - the snapshot must reflect the failure state (error populated, stale flag set)
-- panes must render gracefully when their data source is in a failed or stale
+- views must render gracefully when their data source is in a failed or stale
   state
 - connection failures must not leak connections or exhaust the pool
 - query timeouts must be explicit and enforced
+- no failure path may silently replace unknown data with zero-valued data
 
 ### Degradation Behavior
 When a data source fails:
-- the pane should continue rendering the last known good data
-- the pane should visually indicate staleness or error state
+- the view should continue rendering the last known good data
+- the view should visually indicate staleness or error state
 - the data source should continue attempting to refresh on its normal cadence
 - recovery should be automatic when the substrate becomes available again
+
+The dashboard must preserve operator trust by distinguishing:
+- no data retained yet
+- data retained and value is zero
+- data unavailable or unknown because acquisition failed
 
 ------------------------------------------------------------------------
 ## Configuration
@@ -358,6 +593,9 @@ Dashboard data access configuration should define:
 - query timeouts
 - connection pool sizing
 - staleness thresholds
+- retention bounds by view family
+- recent-window defaults by view family
+- optional LLM provider/model budgets
 
 Substrate connection parameters are _not_ configured separately. The dashboard
 reads Brain's existing `resources.yaml` and environment variables.
@@ -377,6 +615,17 @@ dashboard:
       poll_seconds: 2.0
     policy:
       poll_seconds: 1.0
+    llm:
+      poll_seconds: 1.0
+  retention:
+    events:
+      recent_seconds: 300
+      max_items: 5000
+    samples:
+      recent_seconds: 600
+      max_items: 1200
+    snapshots:
+      recent_count: 50
   postgres:
     pool_size: 3
     read_only: true
@@ -397,14 +646,21 @@ Data access tests should cover:
 - connection failure handling without crash
 - one data source failure not affecting others
 - polling cadence respect
+- retention-bound enforcement
+- consistent distinction between event, sample, and snapshot histories
+- provenance preservation through normalization
+- view-model derivation of windowed rates outside view rendering code
 
 ------------------------------------------------------------------------
 ## Contributor Notes
 - Keep the dashboard external to Brain's architecture in all data access code.
 - Keep all substrate access read-only by construction.
 - Keep the data source interface agnostic to push vs poll.
-- Keep pane code free of substrate-specific logic.
+- Keep view code free of substrate-specific logic.
+- Keep view code free of retention policy and windowed metric computation.
 - Keep queries explicit, bounded, and schema-targeted.
+- Keep normalized ids, timestamps, correlation fields, and provenance
+  consistent across sources.
 - Do not import or depend on Brain's SQLAlchemy models, ORM sessions, or
   internal service code.
 - Do not add notification hooks, event listeners, or pub/sub channels inside

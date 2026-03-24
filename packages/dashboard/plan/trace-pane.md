@@ -1,9 +1,9 @@
-# Dashboard Trace Pane Plan
-This document defines the intended design for the dashboard trace pane.
+# Dashboard Trace View Plan
+This document defines the intended design for the dashboard trace view.
 
 ------------------------------------------------------------------------
 ## Purpose
-The trace pane exists to answer two closely related questions:
+The trace view exists to answer two closely related questions:
 
 1. _What happened in the most recent execution trace?_
 2. _What are the details of the currently selected envelope or service call
@@ -18,7 +18,7 @@ view of _what_ was said.
 ------------------------------------------------------------------------
 ## Core Principles
 ### Tree and Detail, Not Positional Assumptions
-The trace pane is composed of two semantic subviews:
+The trace view is composed of two semantic subviews:
 - `tree`
 - `detail`
 
@@ -30,6 +30,12 @@ Orientation should be chosen adaptively based on available pane dimensions.
 At any given time, the pane is scoped to one trace.
 
 The default selected trace is the most recent trace.
+
+The trace view is an entity/snapshot view with event-backed history:
+- acquisition may continue to update retained trace records and selected trace
+  detail
+- the viewport may follow the live edge or freeze on a retained trace
+- stepping moves by retained trace or snapshot timestamp, not by raw log line
 
 ### Selection Drives Detail
 The tree is the navigation surface.
@@ -45,6 +51,17 @@ Preferred node presentation:
 - component
 - operation
 - status
+
+### Shared Inspection Context Is Optional and Explicit
+The trace view may publish to and follow shared inspection context, but it must
+remain useful standalone.
+
+Compatible context fields include:
+- `turn_id`
+- `trace_id`
+- `envelope_id`
+- `component`
+- focal timestamp or time range
 
 ------------------------------------------------------------------------
 ## Subviews
@@ -80,7 +97,7 @@ Rules:
 
 ------------------------------------------------------------------------
 ## Trace Scope
-The initial trace pane should display exactly one trace at a time.
+The initial trace view should display exactly one trace at a time.
 
 Default trace selection:
 - the most recent trace by timestamp
@@ -88,6 +105,10 @@ Default trace selection:
 The pane does not yet need to define how the user changes from one trace to
 another.
 That can be added later.
+
+If shared inspection context provides a compatible `trace_id`, a context-following
+trace view should scope to that trace explicitly rather than defaulting to the
+most recent trace.
 
 ------------------------------------------------------------------------
 ## Tree Content
@@ -196,7 +217,7 @@ section below.
 
 ------------------------------------------------------------------------
 ## Explicit Exclusions
-The initial trace pane should not attempt to show all of these at once:
+The initial trace view should not attempt to show all of these at once:
 - full raw payload JSON
 - full timeline as an always-visible third subview
 - cross-pane linked context assumptions
@@ -253,6 +274,21 @@ This means:
 - recent/default selection should resolve against visible nodes
 
 ------------------------------------------------------------------------
+## Context Workflows
+Illustrative trace-view workflows:
+- a `TurnView` publishes `trace_id`; `TraceView` follows and opens that trace
+- selecting a node in `TraceView` publishes `trace_id`, `envelope_id`,
+  `component`, and focal timestamp
+- a `LogView` in another pane follows that context and filters to correlated
+  log events
+
+Rules:
+- context following is opt-in
+- pinning local trace state detaches the view from future workspace context
+  updates
+- trace selection must remain explicit and visible
+
+------------------------------------------------------------------------
 ## Status Rendering
 Tree node status should normalize to the same compact state family used
 elsewhere in the dashboard where appropriate.
@@ -268,7 +304,7 @@ The initial tree should prioritize clarity over exhaustive state taxonomy.
 
 ------------------------------------------------------------------------
 ## Data Requirements
-The trace pane needs:
+The trace view needs:
 - one normalized most-recent trace tree
 - one selected node detail view
 
@@ -357,7 +393,7 @@ dismissed when no longer needed.
 
 ### Purpose
 The inspect modal exists to expose structured execution details for the
-currently selected trace node without turning the main trace pane into an
+currently selected trace node without turning the main trace view into an
 unreadable blob.
 
 This is especially valuable for LMS nodes such as:
@@ -369,7 +405,7 @@ payload is relevant.
 
 ### Core Principles
 #### Secondary Drill-Down, Not Primary Display
-The trace pane remains the primary navigation and compact inspection surface.
+The trace view remains the primary navigation and compact inspection surface.
 
 The inspect modal is optional, invoked on demand, and focused on the currently
 selected node.
@@ -388,7 +424,7 @@ Not every node needs or supports a rich inspect view.
 LMS nodes are the primary target.
 
 ### Invocation
-The inspect modal should be opened from the trace pane by a dedicated action.
+The inspect modal should be opened from the trace view by a dedicated action.
 
 Suggested action:
 - `open_inspect_modal`
@@ -599,8 +635,8 @@ No extended inspection view is available for this node type.
 
 Either behavior is acceptable as long as it is predictable.
 
-### Relationship to Trace Pane
-The normal trace pane should remain compact.
+### Relationship to Trace View
+The normal trace view should remain compact.
 
 The inspect modal must not move these richer details into the default trace
 detail view.
@@ -626,7 +662,7 @@ These are future enhancements, not part of the initial pane definition.
 
 ------------------------------------------------------------------------
 ## Testing Expectations
-Trace pane tests should cover:
+Trace view tests should cover:
 - default selection of the most recent trace
 - default node selection behavior
 - visible-tree traversal
@@ -658,4 +694,4 @@ Inspect modal tests should cover:
 
 
 ------------------------------------------------------------------------
-_End of Dashboard Trace Pane Plan_
+_End of Dashboard Trace View Plan_
