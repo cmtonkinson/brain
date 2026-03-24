@@ -1,4 +1,4 @@
-"""Textual application for the Brain Dashboard."""
+"""Textual application for the dashboard."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container
 
-from packages.brain_dashboard.config import load_dashboard_config
-from packages.brain_dashboard.widgets import HealthHeader, KeymapFooter
-from packages.brain_dashboard.workspace import Workspace
+from packages.dashboard.config import load_dashboard_config
+from packages.dashboard.widgets import HealthHeader, KeymapFooter
+from packages.dashboard.workspace import Workspace
 
 
 class BrainDashboardApp(App[None]):

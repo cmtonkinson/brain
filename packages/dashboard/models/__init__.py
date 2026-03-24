@@ -1,4 +1,4 @@
-"""View-model exports for Brain Dashboard."""
+"""View-model exports for the dashboard."""
 
 from .health import HealthStatusItem
 from .log_event import DashboardLogEvent

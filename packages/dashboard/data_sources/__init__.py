@@ -1,4 +1,4 @@
-"""Read-only substrate readers used by the Brain dashboard."""
+"""Read-only substrate readers used by the dashboard."""
 
 from .docker import DockerDataSource
 from .files import FileDataSource

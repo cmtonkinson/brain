@@ -5,7 +5,7 @@ from __future__ import annotations
 from textual.containers import Container
 from textual.reactive import reactive
 
-from packages.brain_dashboard.panes import (
+from packages.dashboard.panes import (
     DashboardPane,
     LogPane,
     PolicyPane,

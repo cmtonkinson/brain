@@ -14,4 +14,4 @@ fi
 
 export PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 
-exec "${PYTHON}" -m packages.brain_dashboard.main "$@"
+exec "${PYTHON}" -m packages.dashboard.main "$@"

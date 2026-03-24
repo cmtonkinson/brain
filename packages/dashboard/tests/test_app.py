@@ -1,10 +1,10 @@
-"""Smoke tests for the Brain Dashboard Textual app."""
+"""Smoke tests for the dashboard Textual app."""
 
 from __future__ import annotations
 
-from packages.brain_dashboard.app import BrainDashboardApp
-from packages.brain_dashboard.widgets import HealthHeader, KeymapFooter
-from packages.brain_dashboard.workspace import Workspace
+from packages.dashboard.app import BrainDashboardApp
+from packages.dashboard.widgets import HealthHeader, KeymapFooter
+from packages.dashboard.workspace import Workspace
 
 
 def test_app_compose_contains_core_widgets() -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from textual.widgets import Static
 
-from packages.brain_dashboard.data_sources import DockerDataSource, PostgresDataSource
+from packages.dashboard.data_sources import DockerDataSource, PostgresDataSource
 
 
 class HealthHeader(Static):

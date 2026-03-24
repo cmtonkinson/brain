@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_dashboard.workspace import Workspace
+from packages.dashboard.workspace import Workspace
 
 
 def test_toggle_pane_hides_visible_pane() -> None:

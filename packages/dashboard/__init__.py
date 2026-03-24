@@ -1,4 +1,4 @@
-"""Brain Dashboard package."""
+"""Dashboard package."""
 
 from .app import BrainDashboardApp
 

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from packages.brain_dashboard.data_sources import LogDataSource
-from packages.brain_dashboard.panes.base import DashboardPane
+from packages.dashboard.data_sources import LogDataSource
+from packages.dashboard.panes.base import DashboardPane
 
 
 class LogPane(DashboardPane):

@@ -6,11 +6,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DashboardConfig(BaseModel):
-    """Runtime configuration for the out-of-band Brain dashboard."""
+    """Runtime configuration for the out-of-band dashboard."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    app_title: str = Field(default="Brain Dashboard")
+    app_title: str = Field(default="Dashboard")
     log_follow_enabled: bool = Field(default=True)
     refresh_interval_seconds: float = Field(default=1.0, gt=0)
 

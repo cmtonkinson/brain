@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_dashboard.panes.base import DashboardPane
+from packages.dashboard.panes.base import DashboardPane
 
 
 class WelcomePane(DashboardPane):

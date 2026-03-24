@@ -1,4 +1,4 @@
-"""Pane exports for the Brain dashboard workspace."""
+"""Pane exports for the dashboard workspace."""
 
 from .base import DashboardPane
 from .log import LogPane

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_dashboard.models import DashboardLogEvent
+from packages.dashboard.models import DashboardLogEvent
 
 
 class LogDataSource:

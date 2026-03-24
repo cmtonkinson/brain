@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_dashboard.models import (
+from packages.dashboard.models import (
     HealthStatusItem,
     PolicyDecisionView,
     TraceEventView,

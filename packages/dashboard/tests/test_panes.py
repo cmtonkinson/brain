@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_dashboard.panes import (
+from packages.dashboard.panes import (
     LogPane,
     PolicyPane,
     TracePane,
