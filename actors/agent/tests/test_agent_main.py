@@ -214,6 +214,139 @@ def test_to_sdk_messages_omits_cache_points_from_user_content() -> None:
     assert result == [LmsChatMessage(role="user", content="hello")]
 
 
+def test_normalize_tool_return_passes_through_small_results_and_logs() -> None:
+    """Small tool returns should bypass compression but still emit audit metadata."""
+    from actors.agent import main
+
+    debug = MagicMock()
+    original_debug = main._LOGGER.debug
+    main._LOGGER.debug = debug
+    try:
+        normalized = asyncio.run(
+            main._normalize_tool_return(
+                client=object(),  # type: ignore[arg-type]
+                tool_name="vault-get-file",
+                tool_call_id="call-1",
+                tool_args={"file_path": "notes/test.md", "call_mode": "decide"},
+                raw_content="hello",
+                compress_threshold=10,
+                max_chars=20,
+            )
+        )
+    finally:
+        main._LOGGER.debug = original_debug
+
+    assert normalized == main._NormalizedToolReturn(
+        content="hello",
+        normalization_kind="pass_through",
+        raw_content="hello",
+        raw_char_count=5,
+        final_char_count=5,
+    )
+    debug.assert_called_once()
+    assert debug.call_args.kwargs["extra"] == {
+        "tool_name": "vault-get-file",
+        "tool_call_id": "call-1",
+        "tool_input": {"file_path": "notes/test.md", "call_mode": "decide"},
+        "raw_output": "hello",
+        "display_output": "hello",
+        "normalization_kind": "pass_through",
+        "raw_char_count": 5,
+        "final_char_count": 5,
+        "compressed_by_model": "",
+        "compressed_by_provider": "",
+    }
+
+
+def test_normalize_tool_return_compresses_decide_mode_results() -> None:
+    """Large decide-mode tool returns should be compressed before reuse."""
+    from actors.agent import main
+
+    async def _fake_compress_tool_return(**kwargs):
+        assert kwargs["tool_name"] == "vault-search-files"
+        assert kwargs["call_mode"] == "decide"
+        assert kwargs["response_detail"] == "Find Claire's birthday."
+        assert kwargs["raw_content"] == "x" * 40
+        return main._CompressedToolReturn(
+            content="compressed birthday",
+            model="claude-haiku-4-5-20251001",
+            provider="anthropic",
+        )
+
+    debug = MagicMock()
+    original_compress = main._compress_tool_return
+    original_debug = main._LOGGER.debug
+    main._compress_tool_return = _fake_compress_tool_return  # type: ignore[assignment]
+    main._LOGGER.debug = debug
+    try:
+        normalized = asyncio.run(
+            main._normalize_tool_return(
+                client=object(),  # type: ignore[arg-type]
+                tool_name="vault-search-files",
+                tool_call_id="call-2",
+                tool_args={
+                    "query": "Claire birthday",
+                    "call_mode": "decide",
+                    "response_detail": "Find Claire's birthday.",
+                },
+                raw_content="x" * 40,
+                compress_threshold=10,
+                max_chars=20,
+            )
+        )
+    finally:
+        main._compress_tool_return = original_compress  # type: ignore[assignment]
+        main._LOGGER.debug = original_debug
+
+    assert normalized == main._NormalizedToolReturn(
+        content="compressed birthday",
+        normalization_kind="compress",
+        raw_content="x" * 40,
+        raw_char_count=40,
+        final_char_count=len("compressed birthday"),
+        compressed_by_model="claude-haiku-4-5-20251001",
+        compressed_by_provider="anthropic",
+    )
+    debug.assert_called_once()
+    assert debug.call_args.kwargs["extra"]["normalization_kind"] == "compress"
+    assert debug.call_args.kwargs["extra"]["compressed_by_model"] == (
+        "claude-haiku-4-5-20251001"
+    )
+
+
+def test_normalize_tool_return_truncates_large_explore_results() -> None:
+    """Large explore-mode tool returns should truncate without LLM compression."""
+    from actors.agent import main
+
+    debug = MagicMock()
+    original_debug = main._LOGGER.debug
+    main._LOGGER.debug = debug
+    try:
+        normalized = asyncio.run(
+            main._normalize_tool_return(
+                client=object(),  # type: ignore[arg-type]
+                tool_name="vault-list-files",
+                tool_call_id="call-3",
+                tool_args={"path": "/", "call_mode": "explore"},
+                raw_content="abcdefghijklmnopqrstuvwxyz",
+                compress_threshold=10,
+                max_chars=8,
+            )
+        )
+    finally:
+        main._LOGGER.debug = original_debug
+
+    assert normalized == main._NormalizedToolReturn(
+        content="abcdefgh\n[truncated]",
+        normalization_kind="truncate",
+        raw_content="abcdefghijklmnopqrstuvwxyz",
+        raw_char_count=26,
+        final_char_count=len("abcdefgh\n[truncated]"),
+    )
+    debug.assert_called_once()
+    assert debug.call_args.kwargs["extra"]["normalization_kind"] == "truncate"
+
+
 def test_create_runtime_uses_core_profile_system_prompt_append() -> None:
     """Runtime creation should append core profile prompt text to the base prompt."""
     from actors.agent import main

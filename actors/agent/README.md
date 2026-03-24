@@ -100,41 +100,79 @@ tools array hash changes and the Tier 1 cache is invalidated. The tool list
 should be frozen after the first intra-turn call.
 
 ### Tool result compression
-The primary mechanism for controlling token amplification is compression of
-large tool results before they enter the message history. This is implemented
-at the tool boundary, not inside the LLM loop.
+The primary mechanism for controlling token amplification is normalization of
+tool results before they enter the message history. This is implemented at the
+tool boundary, not inside the LLM loop, and applies to every `ToolReturnPart`
+before that result can be sent back to the primary model.
 
-When a tool returns a result exceeding a size threshold, a secondary Haiku call
-compresses it before the result is returned to Sonnet as a `ToolReturnPart`.
-Sonnet's context window sees only the summary; the raw result is never
-accumulated across hops.
+The normalization boundary has exactly three outcomes:
+- `pass_through` — the raw tool result is already small enough to keep
+- `compress` — a secondary Haiku call rewrites the raw result to the minimum
+  display-safe content needed for the stated intent
+- `truncate` — the raw result is clipped to a hard ceiling when compression is
+  not applicable
 
-Haiku compression calls are stateless by default — each receives only the raw
-tool result and enough intent context to guide summarization. They do not share
-Sonnet's context window and cannot bust Sonnet's cache.
+This means the primary model never sees an unbounded raw tool payload once the
+normalization boundary has run. Sonnet's context window receives only the
+normalized display content; the full raw result is not allowed to accumulate
+across intra-turn hops.
+
+Haiku compression calls are stateless by default. Each receives only:
+- tool name
+- call mode
+- response detail / intent
+- raw tool output
+
+They do not share Sonnet's context window, cannot call tools themselves, and
+cannot invalidate Sonnet's prompt-cache prefix with unrelated conversational
+state.
 
 **Call mode tagging.** Tool definitions include an optional `call_mode`
 parameter (`"decide"` or `"explore"`) that Sonnet populates at call time:
 - `decide` — Sonnet knows what it is looking for; Haiku can compress
   aggressively against the stated intent.
-- `explore` — Sonnet is orienting; full result is passed through (or truncated
-  only) since downstream relevance is not yet known.
+- `explore` — Sonnet is orienting; large results truncate to the hard ceiling
+  without LLM compression since downstream relevance is not yet known.
 
 An optional `response_detail` parameter lets Sonnet state its specific intent,
 giving Haiku precise guidance on what to preserve during compression.
 
-Tools known to produce large results safely compressible regardless of mode
-(e.g. `vault-list-files`, capability discovery) may be flagged as always
-eligible for compression in their capability definition.
+The runtime, not the model, decides which normalization path applies. The
+decision is based on:
+- tool name
+- raw result size
+- `call_mode`
+- `response_detail`
+- the configured compression and truncation thresholds
 
 ### History processor
 Both caching and compression concerns are applied in a PydanticAI
 `history_processors` function registered on the `Agent` at construction time.
 This function runs before every intra-turn LLM request and is responsible for:
 - placing `CachePoint` markers (Tier 1 and Tier 2)
-- enforcing a hard char ceiling on `ToolReturnPart` content (truncation
-  fallback when Haiku compression is not applicable)
-- evicting or summarizing stale tool exchanges when context grows too large
+- normalizing every `ToolReturnPart` through the mandatory
+  `pass_through` / `compress` / `truncate` boundary
+- ensuring only normalized display content is returned to the primary model
+
+### Tool return audit logging
+Every normalized tool result produces one structured agent log record. The
+record includes:
+- `tool_name`
+- `tool_call_id`
+- `tool_input`
+- `raw_output`
+- `display_output`
+- `normalization_kind`
+- `raw_char_count`
+- `final_char_count`
+- `compressed_by_model`
+- `compressed_by_provider`
+
+This makes the full tool-return path inspectable after the fact:
+- what the primary model asked for
+- what the tool actually returned
+- how the runtime transformed that result before reuse
+- which secondary model performed compression when compression occurred
 
 
 ------------------------------------------------------------------------

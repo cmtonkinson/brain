@@ -242,6 +242,28 @@ class _AgentRuntime:
     agent: Agent[None, str]
 
 
+@dataclass(frozen=True, slots=True)
+class _CompressedToolReturn:
+    """Result of one secondary LMS compression call for a tool return."""
+
+    content: str
+    model: str
+    provider: str
+
+
+@dataclass(frozen=True, slots=True)
+class _NormalizedToolReturn:
+    """Display-safe tool return plus audit metadata for one tool execution."""
+
+    content: str
+    normalization_kind: str
+    raw_content: str
+    raw_char_count: int
+    final_char_count: int
+    compressed_by_model: str = ""
+    compressed_by_provider: str = ""
+
+
 def _handle_shutdown(_signum: int, _frame: object) -> None:
     """Mark the agent runtime for graceful shutdown."""
     global _RUNNING
@@ -915,7 +937,7 @@ async def _compress_tool_return(
     response_detail: str,
     raw_content: str,
     max_chars: int,
-) -> str:
+) -> _CompressedToolReturn:
     """Call Haiku to compress one large tool return to relevant content only.
 
     Uses lms_chat_with_tools (no tools, text-only) so the call is captured in
@@ -942,13 +964,136 @@ async def _compress_tool_return(
         )
         compressed = (result.text or "").strip()
         if compressed:
-            return compressed
+            return _CompressedToolReturn(
+                content=compressed,
+                model=result.model,
+                provider=result.provider,
+            )
     except Exception:
         _LOGGER.warning(
             "brain agent tool return compression failed; using truncation",
             extra={"tool_name": tool_name},
         )
-    return raw_content[:max_chars] + "\n[truncated]"
+    return _CompressedToolReturn(
+        content=raw_content[:max_chars] + "\n[truncated]",
+        model="",
+        provider="",
+    )
+
+
+def _log_tool_return_audit(
+    *,
+    tool_name: str,
+    tool_call_id: str,
+    tool_args: dict[str, object],
+    normalized: _NormalizedToolReturn,
+) -> None:
+    """Emit one structured audit record for a normalized tool return."""
+    _LOGGER.debug(
+        "brain agent normalized tool return",
+        extra={
+            "tool_name": tool_name,
+            "tool_call_id": tool_call_id,
+            "tool_input": tool_args,
+            "raw_output": normalized.raw_content,
+            "display_output": normalized.content,
+            "normalization_kind": normalized.normalization_kind,
+            "raw_char_count": normalized.raw_char_count,
+            "final_char_count": normalized.final_char_count,
+            "compressed_by_model": normalized.compressed_by_model,
+            "compressed_by_provider": normalized.compressed_by_provider,
+        },
+    )
+
+
+async def _normalize_tool_return(
+    *,
+    client: BrainClient,
+    tool_name: str,
+    tool_call_id: str,
+    tool_args: dict[str, object],
+    raw_content: str,
+    compress_threshold: int,
+    max_chars: int,
+) -> _NormalizedToolReturn:
+    """Normalize one tool return before it can re-enter the main model loop."""
+    call_mode = str(tool_args.get("call_mode", "explore")).strip() or "explore"
+    response_detail = str(tool_args.get("response_detail", ""))
+    raw_char_count = len(raw_content)
+
+    if raw_char_count <= compress_threshold:
+        normalized = _NormalizedToolReturn(
+            content=raw_content,
+            normalization_kind="pass_through",
+            raw_content=raw_content,
+            raw_char_count=raw_char_count,
+            final_char_count=raw_char_count,
+        )
+        _log_tool_return_audit(
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+            tool_args=tool_args,
+            normalized=normalized,
+        )
+        return normalized
+
+    if call_mode == "decide":
+        compressed = await _compress_tool_return(
+            client=client,
+            tool_name=tool_name,
+            call_mode=call_mode,
+            response_detail=response_detail,
+            raw_content=raw_content,
+            max_chars=max_chars,
+        )
+        normalized = _NormalizedToolReturn(
+            content=compressed.content,
+            normalization_kind="compress",
+            raw_content=raw_content,
+            raw_char_count=raw_char_count,
+            final_char_count=len(compressed.content),
+            compressed_by_model=compressed.model,
+            compressed_by_provider=compressed.provider,
+        )
+        _log_tool_return_audit(
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+            tool_args=tool_args,
+            normalized=normalized,
+        )
+        return normalized
+
+    if raw_char_count > max_chars:
+        truncated = raw_content[:max_chars] + "\n[truncated]"
+        normalized = _NormalizedToolReturn(
+            content=truncated,
+            normalization_kind="truncate",
+            raw_content=raw_content,
+            raw_char_count=raw_char_count,
+            final_char_count=len(truncated),
+        )
+        _log_tool_return_audit(
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+            tool_args=tool_args,
+            normalized=normalized,
+        )
+        return normalized
+
+    normalized = _NormalizedToolReturn(
+        content=raw_content,
+        normalization_kind="pass_through",
+        raw_content=raw_content,
+        raw_char_count=raw_char_count,
+        final_char_count=raw_char_count,
+    )
+    _log_tool_return_audit(
+        tool_name=tool_name,
+        tool_call_id=tool_call_id,
+        tool_args=tool_args,
+        normalized=normalized,
+    )
+    return normalized
 
 
 def _build_history_processor(
@@ -1017,49 +1162,25 @@ def _build_history_processor(
                     continue
 
                 if isinstance(part, ToolReturnPart):
-                    raw = (
-                        part.content
-                        if isinstance(part.content, str)
-                        else str(part.content)
+                    raw = _stringify_content(part.content)
+                    call_args = call_args_by_id.get(part.tool_call_id, {})
+                    normalized = await _normalize_tool_return(
+                        client=client,
+                        tool_name=part.tool_name,
+                        tool_call_id=part.tool_call_id,
+                        tool_args=call_args,
+                        raw_content=raw,
+                        compress_threshold=compress_threshold,
+                        max_chars=max_chars,
                     )
-                    if len(raw) > compress_threshold:
-                        # Read call_mode and response_detail from the tool call args
-                        # that produced this return, keyed by tool_call_id.
-                        call_args = call_args_by_id.get(part.tool_call_id, {})
-                        call_mode = str(call_args.get("call_mode", "explore"))
-                        response_detail = str(call_args.get("response_detail", ""))
-
-                        if call_mode == "decide":
-                            # Model flagged this as a targeted fetch — Haiku can
-                            # compress against the stated intent safely.
-                            compressed = await _compress_tool_return(
-                                client=client,
-                                tool_name=part.tool_name,
-                                call_mode=call_mode,
-                                response_detail=response_detail,
-                                raw_content=raw,
-                                max_chars=max_chars,
-                            )
-                            new_parts.append(
-                                ToolReturnPart(
-                                    tool_name=part.tool_name,
-                                    content=compressed,
-                                    tool_call_id=part.tool_call_id,
-                                )
-                            )
-                            continue
-
-                        if len(raw) > max_chars:
-                            # Explore mode but exceeds hard ceiling — truncate only,
-                            # no LLM judgment applied.
-                            new_parts.append(
-                                ToolReturnPart(
-                                    tool_name=part.tool_name,
-                                    content=raw[:max_chars] + "\n[truncated]",
-                                    tool_call_id=part.tool_call_id,
-                                )
-                            )
-                            continue
+                    new_parts.append(
+                        ToolReturnPart(
+                            tool_name=part.tool_name,
+                            content=normalized.content,
+                            tool_call_id=part.tool_call_id,
+                        )
+                    )
+                    continue
 
                 new_parts.append(part)
 
