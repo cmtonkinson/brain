@@ -23,12 +23,14 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
         "/memory/get_latest_or_create_session",
         "/capabilities/describe",
         "/capabilities/always-on",
-        "/memory/assemble_context",
+        "/memory/record_inbound_turn",
+        "/memory/assemble_snapshot",
         "/lms/chat-with-tools",
-        "/memory/record_response",
+        "/memory/record_outbound_candidate",
         "/capabilities/invoke",
+        "/memory/record_outbound_delivery",
     ]
-    invoke_call = result.calls[-1]
+    invoke_call = result.calls[7]
     assert invoke_call.body["capability_id"] == "attention-notify"
     assert invoke_call.body["input_payload"] == {
         "actor": "operator",
@@ -43,15 +45,20 @@ def test_agent_turn_harness_preserves_trace_linkage_for_final_notify() -> None:
     result = run_agent_turn_scenario(AgentTurnScenario())
 
     assemble_call = next(
-        call for call in result.calls if call.path == "/memory/assemble_context"
+        call for call in result.calls if call.path == "/memory/assemble_snapshot"
     )
     lms_call = next(
         call for call in result.calls if call.path == "/lms/chat-with-tools"
     )
     record_call = next(
-        call for call in result.calls if call.path == "/memory/record_response"
+        call
+        for call in result.calls
+        if call.path == "/memory/record_outbound_candidate"
     )
-    notify_call = result.calls[-1]
+    notify_call = next(
+        call for call in reversed(result.calls) if call.path == "/capabilities/invoke"
+    )
+    delivery_call = result.calls[-1]
 
     assert notify_call.path == "/capabilities/invoke"
     assert notify_call.body["capability_id"] == "attention-notify"
@@ -59,6 +66,7 @@ def test_agent_turn_harness_preserves_trace_linkage_for_final_notify() -> None:
     assert record_call.body["trace_id"] == lms_call.body["trace_id"]
     assert lms_call.body["trace_id"] == notify_call.body["trace_id"]
     assert notify_call.body["parent_id"] == lms_call.body["envelope_id"]
+    assert delivery_call.path == "/memory/record_outbound_delivery"
 
 
 def test_agent_turn_harness_logs_notify_failures_without_failing_turn() -> None:
@@ -185,18 +193,20 @@ def test_agent_turn_harness_runs_discovery_activate_and_tool_use_flow() -> None:
         "/memory/get_latest_or_create_session",
         "/capabilities/describe",
         "/capabilities/always-on",
-        "/memory/assemble_context",
+        "/memory/record_inbound_turn",
+        "/memory/assemble_snapshot",
         "/lms/chat-with-tools",
         "/capabilities/search",
         "/lms/chat-with-tools",
         "/capabilities/invoke",
         "/lms/chat-with-tools",
-        "/memory/record_response",
+        "/memory/record_outbound_candidate",
         "/capabilities/invoke",
+        "/memory/record_outbound_delivery",
     ]
-    first_lms_call = result.calls[4]
-    second_lms_call = result.calls[6]
-    third_lms_call = result.calls[8]
+    first_lms_call = result.calls[5]
+    second_lms_call = result.calls[7]
+    third_lms_call = result.calls[9]
     assert [tool["name"] for tool in first_lms_call.body["tools"]] == [
         "vault-search-files",
         "discover_capabilities",
@@ -214,8 +224,8 @@ def test_agent_turn_harness_runs_discovery_activate_and_tool_use_flow() -> None:
         "discover_capabilities",
         "describe_capability",
     ]
-    assert result.calls[7].body["capability_id"] == "vault-get-file"
-    assert result.calls[7].body["input_payload"] == {
+    assert result.calls[8].body["capability_id"] == "vault-get-file"
+    assert result.calls[8].body["input_payload"] == {
         "file_path": "professional/resume.md"
     }
 
@@ -291,7 +301,7 @@ def test_agent_turn_harness_keeps_deny_listed_capabilities_out_of_next_round_too
     result = run_agent_turn_scenario(scenario)
 
     assert result.response_text == "assistant reply"
-    second_lms_call = result.calls[6]
+    second_lms_call = result.calls[7]
     tool_names = [tool["name"] for tool in second_lms_call.body["tools"]]
     assert "attention-notify" not in tool_names
     assert "vault-get-file" in tool_names

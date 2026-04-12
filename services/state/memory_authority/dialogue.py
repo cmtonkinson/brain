@@ -15,6 +15,7 @@ from services.state.memory_authority.config import MemoryAuthoritySettings
 from services.state.memory_authority.data.repository import MemoryRepository
 from services.state.memory_authority.domain import (
     DialogueTurn,
+    InboundInstructionRecord,
     TurnDirection,
     TurnRecord,
     estimate_token_count,
@@ -52,6 +53,7 @@ class DialogueModule:
         content: str,
         trace_id: str,
         principal: str,
+        instruction: InboundInstructionRecord | None = None,
     ) -> TurnRecord:
         """Append one inbound user turn."""
         return self._repository.insert_turn(
@@ -65,6 +67,8 @@ class DialogueModule:
             reasoning_level=None,
             trace_id=trace_id,
             principal=principal,
+            source=None if instruction is None else instruction.source,
+            instruction=instruction,
         )
 
     def append_outbound(
@@ -93,8 +97,14 @@ class DialogueModule:
             principal=principal,
         )
 
-    def assemble(self, *, meta: EnvelopeMeta, session_id: str) -> list[DialogueTurn]:
-        """Assemble dialogue as recent verbatim turns plus capped older summaries."""
+    def assemble(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+        exclude_turn_id: str | None = None,
+    ) -> list[DialogueTurn]:
+        """Assemble historical dialogue, optionally excluding one live turn."""
         turns = self._repository.list_turns(session_id=session_id)
         if not turns:
             return []
@@ -102,6 +112,10 @@ class DialogueModule:
         session = self._repository.get_session(session_id=session_id)
         pointer = None if session is None else session.dialogue_start_turn_id
         visible_turns = self._turns_after_pointer(turns=turns, pointer_turn_id=pointer)
+        if exclude_turn_id is not None:
+            visible_turns = [
+                turn for turn in visible_turns if turn.id != exclude_turn_id
+            ]
         if not visible_turns:
             return []
 

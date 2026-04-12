@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Any
 
@@ -156,6 +157,24 @@ class MemoryContextBlock:
     focus: str | None
     dialogue: tuple[MemoryDialogueTurn, ...]
     reference_snippets: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryTurnRecord:
+    """One MAS turn record payload."""
+
+    id: str
+    session_id: str
+    direction: str
+    content: str
+    role: str
+    model: str | None
+    provider: str | None
+    token_count: int | None
+    reasoning_level: str | None
+    trace_id: str
+    principal: str
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -476,6 +495,158 @@ def call_memory_assemble_context(
     return _memory_context_block(payload)
 
 
+def call_memory_record_inbound_turn(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    session_id: str,
+    message: str,
+    instruction: SwitchboardOperatorInstruction | None = None,
+) -> MemoryTurnRecord:
+    """Persist one inbound turn and return the recorded turn payload."""
+    instruction_body: dict[str, object] | None = None
+    if instruction is not None:
+        instruction_body = {
+            "sender_e164": instruction.sender_e164,
+            "message_text": instruction.message_text,
+            "timestamp_ms": instruction.timestamp_ms,
+            "source_device": instruction.source_device,
+            "source": instruction.source,
+            "group_id": instruction.group_id,
+            "quote_target_timestamp_ms": instruction.quote_target_timestamp_ms,
+            "reaction_target_timestamp_ms": instruction.reaction_target_timestamp_ms,
+            "reaction_emoji": instruction.reaction_emoji,
+            "approval_intent": instruction.approval_intent,
+            "reply_to_proposal_token": instruction.reply_to_proposal_token,
+            "reaction_to_proposal_token": instruction.reaction_to_proposal_token,
+        }
+    data = _post_json(
+        operation="memory.record_inbound_turn",
+        http=http,
+        url="/memory/record_inbound_turn",
+        body={
+            **metadata,
+            "session_id": session_id,
+            "message": message,
+            "instruction": instruction_body,
+        },
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="memory.record_inbound_turn",
+        errors=_errors_from_data(data),
+    )
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        raise BrainDomainError(
+            message="memory.record_inbound_turn domain failure: missing payload",
+            operation="memory.record_inbound_turn",
+        )
+    return _memory_turn_record(payload)
+
+
+def call_memory_assemble_snapshot(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    session_id: str,
+) -> MemoryContextBlock:
+    """Return the historical MAS context snapshot for one session."""
+    data = _post_json(
+        operation="memory.assemble_snapshot",
+        http=http,
+        url="/memory/assemble_snapshot",
+        body={
+            **metadata,
+            "session_id": session_id,
+        },
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="memory.assemble_snapshot",
+        errors=_errors_from_data(data),
+    )
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        raise BrainDomainError(
+            message="memory.assemble_snapshot domain failure: missing payload",
+            operation="memory.assemble_snapshot",
+        )
+    return _memory_context_block(payload)
+
+
+def call_memory_record_outbound_candidate(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    session_id: str,
+    content: str,
+    model: str,
+    provider: str,
+    token_count: int,
+    reasoning_level: str,
+) -> MemoryTurnRecord:
+    """Persist one outbound candidate turn and return the recorded turn payload."""
+    data = _post_json(
+        operation="memory.record_outbound_candidate",
+        http=http,
+        url="/memory/record_outbound_candidate",
+        body={
+            **metadata,
+            "session_id": session_id,
+            "content": content,
+            "model": model,
+            "provider": provider,
+            "token_count": token_count,
+            "reasoning_level": reasoning_level,
+        },
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="memory.record_outbound_candidate",
+        errors=_errors_from_data(data),
+    )
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        raise BrainDomainError(
+            message="memory.record_outbound_candidate domain failure: missing payload",
+            operation="memory.record_outbound_candidate",
+        )
+    return _memory_turn_record(payload)
+
+
+def call_memory_record_outbound_delivery(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    session_id: str,
+    turn_id: str,
+    delivered: bool,
+) -> bool:
+    """Persist one outbound delivery result."""
+    data = _post_json(
+        operation="memory.record_outbound_delivery",
+        http=http,
+        url="/memory/record_outbound_delivery",
+        body={
+            **metadata,
+            "session_id": session_id,
+            "turn_id": turn_id,
+            "delivered": delivered,
+        },
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="memory.record_outbound_delivery",
+        errors=_errors_from_data(data),
+    )
+    return bool(data.get("payload"))
+
+
 def call_memory_create_session(
     *,
     http: object,
@@ -760,6 +931,30 @@ def _lms_tool_definition(value: LmsChatToolDefinition) -> dict[str, object]:
         "strict": value.strict,
         "sequential": value.sequential,
     }
+
+
+def _memory_turn_record(value: dict[str, Any]) -> MemoryTurnRecord:
+    """Map one raw MAS turn payload into the SDK dataclass."""
+    return MemoryTurnRecord(
+        id=str(value.get("id", "")),
+        session_id=str(value.get("session_id", "")),
+        direction=str(value.get("direction", "")),
+        content=str(value.get("content", "")),
+        role=str(value.get("role", "")),
+        model=None if value.get("model") is None else str(value.get("model")),
+        provider=None if value.get("provider") is None else str(value.get("provider")),
+        token_count=(
+            None if value.get("token_count") is None else int(value.get("token_count"))
+        ),
+        reasoning_level=(
+            None
+            if value.get("reasoning_level") is None
+            else str(value.get("reasoning_level"))
+        ),
+        trace_id=str(value.get("trace_id", "")),
+        principal=str(value.get("principal", "")),
+        created_at=datetime.fromisoformat(str(value.get("created_at"))),
+    )
 
 
 def _memory_context_block(value: dict[str, Any]) -> MemoryContextBlock:
@@ -1057,6 +1252,52 @@ def memory_assemble_context(
     )
 
 
+def memory_record_inbound_turn(
+    *,
+    client: object,
+    session_id: str,
+    message: str,
+    instruction: SwitchboardOperatorInstruction | None = None,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> MemoryTurnRecord:
+    """High-level SDK wrapper for MAS inbound-turn recording."""
+    return client.memory_record_inbound_turn(  # type: ignore[union-attr]
+        session_id=session_id,
+        message=message,
+        instruction=instruction,
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        ),
+    )
+
+
+def memory_assemble_snapshot(
+    *,
+    client: object,
+    session_id: str,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> MemoryContextBlock:
+    """High-level SDK wrapper for MAS snapshot assembly."""
+    return client.memory_assemble_snapshot(  # type: ignore[union-attr]
+        session_id=session_id,
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        ),
+    )
+
+
 def memory_create_session(
     *,
     client: object,
@@ -1092,6 +1333,62 @@ def memory_get_latest_or_create_session(
             trace_id=trace_id,
             parent_id=parent_id,
         )
+    )
+
+
+def memory_record_outbound_candidate(
+    *,
+    client: object,
+    session_id: str,
+    content: str,
+    model: str,
+    provider: str,
+    token_count: int,
+    reasoning_level: str,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> MemoryTurnRecord:
+    """High-level SDK wrapper for MAS outbound-candidate recording."""
+    return client.memory_record_outbound_candidate(  # type: ignore[union-attr]
+        session_id=session_id,
+        content=content,
+        model=model,
+        provider=provider,
+        token_count=token_count,
+        reasoning_level=reasoning_level,
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        ),
+    )
+
+
+def memory_record_outbound_delivery(
+    *,
+    client: object,
+    session_id: str,
+    turn_id: str,
+    delivered: bool,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> bool:
+    """High-level SDK wrapper for MAS outbound-delivery recording."""
+    return client.memory_record_outbound_delivery(  # type: ignore[union-attr]
+        session_id=session_id,
+        turn_id=turn_id,
+        delivered=delivered,
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        ),
     )
 
 

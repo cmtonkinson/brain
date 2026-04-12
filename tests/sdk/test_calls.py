@@ -413,6 +413,96 @@ def test_call_memory_assemble_context_success() -> None:
     assert result.reference_snippets == ("snippet",)
 
 
+def test_call_memory_record_inbound_turn_success() -> None:
+    """MAS inbound-record wrapper should return the typed turn payload."""
+    from packages.brain_sdk.calls import call_memory_record_inbound_turn
+    from packages.brain_sdk.calls import SwitchboardOperatorInstruction
+
+    http = _fake_http(
+        {
+            "payload": {
+                "id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                "direction": "inbound",
+                "content": "hello",
+                "role": "user",
+                "model": None,
+                "provider": None,
+                "token_count": 3,
+                "reasoning_level": None,
+                "trace_id": "trace",
+                "principal": "operator",
+                "created_at": "2026-04-12T00:00:00+00:00",
+            },
+            "errors": [],
+        }
+    )
+
+    result = call_memory_record_inbound_turn(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        message="hello",
+        instruction=SwitchboardOperatorInstruction(
+            sender_e164="+12025550100",
+            message_text="hello",
+            timestamp_ms=1,
+            source_device="1",
+            source="signal",
+            group_id=None,
+            quote_target_timestamp_ms=None,
+            reaction_target_timestamp_ms=None,
+            reaction_emoji=None,
+            approval_intent=None,
+            reply_to_proposal_token=None,
+            reaction_to_proposal_token=None,
+        ),
+    )
+
+    assert result.id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    assert result.direction == "inbound"
+    assert result.content == "hello"
+    assert (
+        http.post_json.call_args.kwargs["json"]["instruction"]["sender_e164"]
+        == "+12025550100"
+    )
+
+
+def test_call_memory_assemble_snapshot_success() -> None:
+    """MAS snapshot wrapper should return the typed historical context payload."""
+    from packages.brain_sdk.calls import call_memory_assemble_snapshot
+
+    http = _fake_http(
+        {
+            "payload": {
+                "profile": {
+                    "operator_name": "Operator",
+                    "brain_name": "Brain",
+                    "brain_verbosity": "normal",
+                },
+                "focus": "current focus",
+                "dialogue": [
+                    {"role": "assistant", "content": "prior", "is_summary": False}
+                ],
+                "reference_snippets": ["snippet"],
+            },
+            "errors": [],
+        }
+    )
+
+    result = call_memory_assemble_snapshot(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    )
+
+    assert result.profile.brain_name == "Brain"
+    assert result.dialogue[0].content == "prior"
+    assert result.reference_snippets == ("snippet",)
+
+
 def test_call_memory_create_session_success() -> None:
     """MAS create-session wrapper should return the new session identifier."""
     from packages.brain_sdk.calls import call_memory_create_session
@@ -469,6 +559,65 @@ def test_call_memory_record_response_success() -> None:
         provider="unit",
         token_count=42,
         reasoning_level="standard",
+    )
+
+    assert result is True
+
+
+def test_call_memory_record_outbound_candidate_success() -> None:
+    """MAS outbound-candidate wrapper should return the typed turn payload."""
+    from packages.brain_sdk.calls import call_memory_record_outbound_candidate
+
+    http = _fake_http(
+        {
+            "payload": {
+                "id": "turn-outbound",
+                "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                "direction": "outbound",
+                "content": "assistant reply",
+                "role": "assistant",
+                "model": "test-model",
+                "provider": "unit",
+                "token_count": 42,
+                "reasoning_level": "standard",
+                "trace_id": "trace",
+                "principal": "operator",
+                "created_at": "2026-04-12T00:00:00+00:00",
+            },
+            "errors": [],
+        }
+    )
+
+    result = call_memory_record_outbound_candidate(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        content="assistant reply",
+        model="test-model",
+        provider="unit",
+        token_count=42,
+        reasoning_level="standard",
+    )
+
+    assert result.id == "turn-outbound"
+    assert result.direction == "outbound"
+    assert result.content == "assistant reply"
+
+
+def test_call_memory_record_outbound_delivery_success() -> None:
+    """MAS outbound-delivery wrapper should return the delivery boolean."""
+    from packages.brain_sdk.calls import call_memory_record_outbound_delivery
+
+    http = _fake_http({"payload": True, "errors": []})
+
+    result = call_memory_record_outbound_delivery(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        turn_id="turn-outbound",
+        delivered=True,
     )
 
     assert result is True

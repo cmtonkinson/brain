@@ -16,8 +16,10 @@ from packages.brain_shared.ids import (
 )
 from resources.substrates.postgres.schema_session import ServiceSchemaSessionProvider
 from services.state.memory_authority.domain import (
+    InboundInstructionRecord,
     SessionRecord,
     TurnDirection,
+    OutboundDeliveryRecord,
     TurnRecord,
     TurnSummaryRecord,
 )
@@ -67,6 +69,9 @@ class MemoryRepository(Protocol):
         reasoning_level: str | None,
         trace_id: str,
         principal: str,
+        source: str | None = None,
+        instruction: InboundInstructionRecord | None = None,
+        delivery: OutboundDeliveryRecord | None = None,
     ) -> TurnRecord:
         """Insert one dialogue turn row and return it."""
 
@@ -75,6 +80,14 @@ class MemoryRepository(Protocol):
 
     def get_latest_turn(self, *, session_id: str) -> TurnRecord | None:
         """Read latest turn for one session."""
+
+    def update_turn_delivery(
+        self,
+        *,
+        turn_id: str,
+        delivery: OutboundDeliveryRecord,
+    ) -> TurnRecord | None:
+        """Update one outbound turn with final delivery state."""
 
     def list_turn_summaries(self, *, session_id: str) -> list[TurnSummaryRecord]:
         """List persisted turn summaries for one session."""
@@ -230,10 +243,18 @@ class PostgresMemoryRepository:
         reasoning_level: str | None,
         trace_id: str,
         principal: str,
+        source: str | None = None,
+        instruction: InboundInstructionRecord | None = None,
+        delivery: OutboundDeliveryRecord | None = None,
     ) -> TurnRecord:
         """Insert one turn row and return mapped domain record."""
         turn_id = generate_ulid_bytes()
         session_id_bytes = ulid_str_to_bytes(session_id)
+        instruction_values = _instruction_row_values(instruction)
+        delivery_values = _delivery_row_values(delivery)
+        resolved_source = source
+        if resolved_source is None and instruction is not None:
+            resolved_source = instruction.source
         with self._sessions.session() as session:
             session.execute(
                 insert(turns).values(
@@ -248,6 +269,9 @@ class PostgresMemoryRepository:
                     reasoning_level=reasoning_level,
                     trace_id=trace_id,
                     principal=principal,
+                    source=resolved_source,
+                    **instruction_values,
+                    **delivery_values,
                 )
             )
             row = (
@@ -287,6 +311,29 @@ class PostgresMemoryRepository:
                 .one_or_none()
             )
             return None if row is None else _to_turn(row)
+
+    def update_turn_delivery(
+        self,
+        *,
+        turn_id: str,
+        delivery: OutboundDeliveryRecord,
+    ) -> TurnRecord | None:
+        """Update one turn delivery fields and return latest row."""
+        turn_id_bytes = ulid_str_to_bytes(turn_id)
+        with self._sessions.session() as session:
+            result = session.execute(
+                update(turns)
+                .where(turns.c.id == turn_id_bytes)
+                .values(**_delivery_row_values(delivery))
+            )
+            if int(result.rowcount or 0) == 0:
+                return None
+            row = (
+                session.execute(select(turns).where(turns.c.id == turn_id_bytes))
+                .mappings()
+                .one()
+            )
+            return _to_turn(row)
 
     def list_turn_summaries(self, *, session_id: str) -> list[TurnSummaryRecord]:
         """List summary rows for one session ordered by create timestamp."""
@@ -409,8 +456,87 @@ def _to_turn(row: Mapping[str, object]) -> TurnRecord:
         ),
         trace_id=str(row["trace_id"]),
         principal=str(row["principal"]),
+        source=(None if row.get("source") is None else str(row["source"])),
+        sender_e164=(
+            None if row.get("sender_e164") is None else str(row["sender_e164"])
+        ),
+        timestamp_ms=(
+            None if row.get("timestamp_ms") is None else int(row["timestamp_ms"])
+        ),
+        source_device=(
+            None if row.get("source_device") is None else str(row["source_device"])
+        ),
+        group_id=(None if row.get("group_id") is None else str(row["group_id"])),
+        quote_target_timestamp_ms=(
+            None
+            if row.get("quote_target_timestamp_ms") is None
+            else int(row["quote_target_timestamp_ms"])
+        ),
+        reaction_target_timestamp_ms=(
+            None
+            if row.get("reaction_target_timestamp_ms") is None
+            else int(row["reaction_target_timestamp_ms"])
+        ),
+        reaction_emoji=(
+            None if row.get("reaction_emoji") is None else str(row["reaction_emoji"])
+        ),
+        approval_intent=(
+            None if row.get("approval_intent") is None else str(row["approval_intent"])
+        ),
+        reply_to_proposal_token=(
+            None
+            if row.get("reply_to_proposal_token") is None
+            else str(row["reply_to_proposal_token"])
+        ),
+        reaction_to_proposal_token=(
+            None
+            if row.get("reaction_to_proposal_token") is None
+            else str(row["reaction_to_proposal_token"])
+        ),
+        delivery_state=(
+            None if row.get("delivery_state") is None else str(row["delivery_state"])
+        ),
+        delivery_timestamp_ms=(
+            None
+            if row.get("delivery_timestamp_ms") is None
+            else int(row["delivery_timestamp_ms"])
+        ),
+        delivery_detail=(
+            None if row.get("delivery_detail") is None else str(row["delivery_detail"])
+        ),
         created_at=_row_dt(row, "created_at"),
     )
+
+
+def _instruction_row_values(
+    instruction: InboundInstructionRecord | None,
+) -> dict[str, object]:
+    """Return SQL row values for one inbound instruction metadata bundle."""
+    if instruction is None:
+        return {}
+    return {
+        "sender_e164": instruction.sender_e164,
+        "timestamp_ms": instruction.timestamp_ms,
+        "source_device": instruction.source_device,
+        "group_id": instruction.group_id,
+        "quote_target_timestamp_ms": instruction.quote_target_timestamp_ms,
+        "reaction_target_timestamp_ms": instruction.reaction_target_timestamp_ms,
+        "reaction_emoji": instruction.reaction_emoji,
+        "approval_intent": instruction.approval_intent,
+        "reply_to_proposal_token": instruction.reply_to_proposal_token,
+        "reaction_to_proposal_token": instruction.reaction_to_proposal_token,
+    }
+
+
+def _delivery_row_values(delivery: OutboundDeliveryRecord | None) -> dict[str, object]:
+    """Return SQL row values for one outbound delivery state bundle."""
+    if delivery is None:
+        return {}
+    return {
+        "delivery_state": delivery.state,
+        "delivery_timestamp_ms": delivery.delivered_at_ms,
+        "delivery_detail": delivery.detail,
+    }
 
 
 def _to_turn_summary(row: Mapping[str, object]) -> TurnSummaryRecord:

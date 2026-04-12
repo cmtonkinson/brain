@@ -245,7 +245,6 @@ def _meta_from_request(
     parent_id: str,
     envelope_id: str | None,
 ) -> EnvelopeMeta:
-
     meta = new_meta(
         kind=EnvelopeKind.COMMAND,
         source=source,

@@ -23,6 +23,7 @@ from pydantic_ai.messages import (
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
+    UserContent,
 )
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.profiles import ModelProfile
@@ -438,6 +439,15 @@ def _stringify_content(value: object) -> str:
         return json.dumps(value, sort_keys=True)
     except TypeError:
         return str(value)
+
+
+def _content_has_cache_point(value: object) -> bool:
+    """Return whether one structured user-content payload already includes cache."""
+    if isinstance(value, CachePoint):
+        return True
+    if isinstance(value, list | tuple):
+        return any(_content_has_cache_point(item) for item in value)
+    return False
 
 
 def _to_sdk_messages(
@@ -952,34 +962,34 @@ def _format_user_prompt(
     *,
     instruction: SwitchboardOperatorInstruction,
     context: MemoryContextBlock,
-) -> str:
-    """Render one full prompt from MAS context plus inbound message metadata."""
+) -> list[UserContent]:
+    """Render one full prompt with stable context before the current instruction."""
     dialogue_lines = [f"- {turn.role}: {turn.content}" for turn in context.dialogue]
     snippet_lines = [f"- {snippet}" for snippet in context.reference_snippets]
-    return "\n".join(
-        [
-            "Operator Instruction",
-            f"channel: {instruction.source}",
-            f"sender: {instruction.sender_e164}",
-            f"message: {instruction.message_text}",
-            f"approval_intent: {'' if instruction.approval_intent is None else instruction.approval_intent}",
-            f"reaction_emoji: {'' if instruction.reaction_emoji is None else instruction.reaction_emoji}",
-            f"quote_target_timestamp_ms: {'' if instruction.quote_target_timestamp_ms is None else instruction.quote_target_timestamp_ms}",
-            f"reaction_target_timestamp_ms: {'' if instruction.reaction_target_timestamp_ms is None else instruction.reaction_target_timestamp_ms}",
-            f"reply_to_proposal_token: {'' if instruction.reply_to_proposal_token is None else instruction.reply_to_proposal_token}",
-            f"reaction_to_proposal_token: {'' if instruction.reaction_to_proposal_token is None else instruction.reaction_to_proposal_token}",
-            "",
-            "MAS Context",
-            f"operator_name: {context.profile.operator_name}",
-            f"brain_name: {context.profile.brain_name}",
-            f"brain_verbosity: {context.profile.brain_verbosity}",
-            f"focus: {'' if context.focus is None else context.focus}",
-            "dialogue:",
-            *(dialogue_lines or ["- (none)"]),
-            "reference_snippets:",
-            *(snippet_lines or ["- (none)"]),
-        ]
-    )
+    return [
+        "MAS Context",
+        "profile:",
+        f"operator_name: {context.profile.operator_name}",
+        f"brain_name: {context.profile.brain_name}",
+        f"brain_verbosity: {context.profile.brain_verbosity}",
+        "focus:",
+        f"focus: {'' if context.focus is None else context.focus}",
+        "historical_snapshot:",
+        *(dialogue_lines or ["- (none)"]),
+        CachePoint(),
+        "reference_snippets:",
+        *(snippet_lines or ["- (none)"]),
+        "Current Instruction:",
+        f"channel: {instruction.source}",
+        f"sender: {instruction.sender_e164}",
+        f"message: {instruction.message_text}",
+        f"approval_intent: {'' if instruction.approval_intent is None else instruction.approval_intent}",
+        f"reaction_emoji: {'' if instruction.reaction_emoji is None else instruction.reaction_emoji}",
+        f"quote_target_timestamp_ms: {'' if instruction.quote_target_timestamp_ms is None else instruction.quote_target_timestamp_ms}",
+        f"reaction_target_timestamp_ms: {'' if instruction.reaction_target_timestamp_ms is None else instruction.reaction_target_timestamp_ms}",
+        f"reply_to_proposal_token: {'' if instruction.reply_to_proposal_token is None else instruction.reply_to_proposal_token}",
+        f"reaction_to_proposal_token: {'' if instruction.reaction_to_proposal_token is None else instruction.reaction_to_proposal_token}",
+    ]
 
 
 def _estimate_token_count(text: str) -> int:
@@ -1209,17 +1219,18 @@ def _build_history_processor(
             new_parts = []
             for part in message.parts:
                 if isinstance(part, UserPromptPart) and not tier1_placed:
-                    # Tier 1: stable cache point after system + MAS context + user prompt.
+                    # Tier 1: stable cache point after system + MAS historical snapshot.
                     # Byte-stable across all intra-turn hops as long as tool array
                     # does not change.
-                    content = part.content if isinstance(part.content, str) else ""
-                    new_parts.append(
-                        UserPromptPart(
-                            content=[content, CachePoint()]
-                            if content
-                            else [CachePoint()]
-                        )
-                    )
+                    if _content_has_cache_point(part.content):
+                        new_parts.append(part)
+                    else:
+                        if isinstance(part.content, str):
+                            new_content: list[UserContent] = [part.content]
+                        else:
+                            new_content = list(part.content)
+                        new_content.append(CachePoint())
+                        new_parts.append(UserPromptPart(content=new_content))
                     tier1_placed = True
                     continue
 
@@ -1302,12 +1313,19 @@ async def _process_instruction(
     """Handle one inbound operator instruction end-to-end."""
     runtime.turn_state.prune_pending_invocations()
     runtime.turn_state.begin_turn_trace()
-    context = await asyncio.to_thread(
+    _inbound_turn = await asyncio.to_thread(
         _call_with_optional_meta,
-        runtime.client.memory_assemble_context,
+        runtime.client.memory_record_inbound_turn,
         meta=runtime.turn_state.nested_call_meta(),
         session_id=runtime.session_id,
         message=_instruction_context_message(instruction),
+        instruction=instruction,
+    )
+    context = await asyncio.to_thread(
+        _call_with_optional_meta,
+        runtime.client.memory_assemble_snapshot,
+        meta=runtime.turn_state.nested_call_meta(),
+        session_id=runtime.session_id,
     )
     runtime.turn_state.actor = "operator"
     runtime.turn_state.channel = instruction.source
@@ -1339,9 +1357,9 @@ async def _process_instruction(
         )
         response_text = _LMS_THROTTLE_RESPONSE
     chat = runtime.model.last_result
-    await asyncio.to_thread(
+    candidate_turn = await asyncio.to_thread(
         _call_with_optional_meta,
-        runtime.client.memory_record_response,
+        runtime.client.memory_record_outbound_candidate,
         meta=runtime.turn_state.nested_call_meta(),
         session_id=runtime.session_id,
         content=response_text,
@@ -1350,10 +1368,18 @@ async def _process_instruction(
         token_count=_estimate_token_count(response_text),
         reasoning_level="standard",
     )
-    await _route_outbound_response(
+    delivered = await _route_outbound_response(
         runtime=runtime,
         instruction=instruction,
         response_text=response_text,
+    )
+    await asyncio.to_thread(
+        _call_with_optional_meta,
+        runtime.client.memory_record_outbound_delivery,
+        meta=runtime.turn_state.nested_call_meta(),
+        session_id=runtime.session_id,
+        turn_id=candidate_turn.id,
+        delivered=delivered,
     )
     return response_text
 
@@ -1363,7 +1389,7 @@ async def _route_outbound_response(
     runtime: _AgentRuntime,
     instruction: SwitchboardOperatorInstruction,
     response_text: str,
-) -> None:
+) -> bool:
     """Deliver one finalized response via Attention Router notify capability."""
     payload: dict[str, object] = {
         "actor": "operator",
@@ -1380,6 +1406,7 @@ async def _route_outbound_response(
             actor="operator",
             channel=instruction.source,
         )
+        return True
     except Exception:  # noqa: BLE001
         _LOGGER.exception(
             "brain agent outbound notify failed",
@@ -1389,6 +1416,7 @@ async def _route_outbound_response(
                 "actor": "operator",
             },
         )
+        return False
 
 
 async def _run_main() -> None:

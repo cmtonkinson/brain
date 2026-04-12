@@ -12,6 +12,7 @@ from services.action.language_model.service import LanguageModelService
 from services.state.memory_authority.config import MemoryAuthoritySettings
 from services.state.memory_authority.domain import (
     BrainVerbosity,
+    InboundInstructionRecord,
     SessionRecord,
     TurnDirection,
     TurnRecord,
@@ -121,6 +122,8 @@ class _FakeMemoryRepository:
         reasoning_level: str | None,
         trace_id: str,
         principal: str,
+        source: str | None = None,
+        instruction: InboundInstructionRecord | None = None,
     ) -> TurnRecord:
         """Insert one turn row for session."""
         record = TurnRecord(
@@ -135,6 +138,29 @@ class _FakeMemoryRepository:
             reasoning_level=reasoning_level,
             trace_id=trace_id,
             principal=principal,
+            source=source,
+            sender_e164=None if instruction is None else instruction.sender_e164,
+            timestamp_ms=None if instruction is None else instruction.timestamp_ms,
+            source_device=None if instruction is None else instruction.source_device,
+            group_id=None if instruction is None else instruction.group_id,
+            quote_target_timestamp_ms=(
+                None if instruction is None else instruction.quote_target_timestamp_ms
+            ),
+            reaction_target_timestamp_ms=(
+                None
+                if instruction is None
+                else instruction.reaction_target_timestamp_ms
+            ),
+            reaction_emoji=None if instruction is None else instruction.reaction_emoji,
+            approval_intent=(
+                None if instruction is None else instruction.approval_intent
+            ),
+            reply_to_proposal_token=(
+                None if instruction is None else instruction.reply_to_proposal_token
+            ),
+            reaction_to_proposal_token=(
+                None if instruction is None else instruction.reaction_to_proposal_token
+            ),
             created_at=_now(),
         )
         self.turns.setdefault(session_id, []).append(record)
@@ -383,13 +409,22 @@ def test_session_create_clear_and_get() -> None:
 
 
 def test_assemble_context_returns_expected_shape() -> None:
-    """Assembled context should include profile, focus, dialogue, and empty references."""
-    service, _, _ = _build_service()
+    """Assembled context should return the historical snapshot before the new turn."""
+    service, repository, _ = _build_service()
     created = service.create_session(meta=_meta())
     assert created.payload is not None
     session_id = created.payload.value.id
 
     _ = service.update_focus(meta=_meta(), session_id=session_id, content="focus state")
+    _ = service.record_response(
+        meta=_meta(),
+        session_id=session_id,
+        content="prior assistant",
+        model="test",
+        provider="unit",
+        token_count=3,
+        reasoning_level="standard",
+    )
     result = service.assemble_context(meta=_meta(), session_id=session_id, message="hi")
 
     assert result.ok
@@ -399,10 +434,9 @@ def test_assemble_context_returns_expected_shape() -> None:
     assert block.profile.brain_name == "Brain"
     assert block.profile.brain_verbosity == BrainVerbosity.NORMAL
     assert block.focus == "focus state"
-    assert len(block.dialogue) == 1
-    assert block.dialogue[0].role == "user"
-    assert block.dialogue[0].content == "hi"
+    assert [turn.content for turn in block.dialogue] == ["prior assistant"]
     assert block.reference_snippets == []
+    assert repository.turns[session_id][-1].content == "hi"
 
 
 def test_get_latest_or_create_session_prefers_existing_session() -> None:
@@ -464,8 +498,9 @@ def test_dialogue_respects_recent_and_older_boundaries() -> None:
 
     dialogue = context.payload.value.dialogue
     assert len(dialogue) >= 3
-    assert dialogue[-1].content == "latest-user"
+    assert dialogue[-1].content == "assistant-4"
     assert dialogue[-1].is_summary is False
+    assert all(item.content != "latest-user" for item in dialogue)
     assert any(item.is_summary for item in dialogue[:-2])
 
 
@@ -516,6 +551,59 @@ def test_record_response_persists_turn_metadata() -> None:
     assert turn.provider == "unit"
     assert turn.token_count == 42
     assert turn.reasoning_level == "deep"
+
+
+def test_record_inbound_turn_persists_turn_metadata() -> None:
+    """record_inbound_turn should persist inbound turn metadata exactly."""
+    service, repository, _ = _build_service()
+    created = service.create_session(meta=_meta())
+    assert created.payload is not None
+    session_id = created.payload.value.id
+
+    result = service.record_inbound_turn(
+        meta=_meta(),
+        session_id=session_id,
+        message="operator instruction",
+    )
+    assert result.ok
+    assert result.payload is not None
+    turn = result.payload.value
+    assert turn.direction == TurnDirection.INBOUND
+    assert turn.content == "operator instruction"
+
+    turns = repository.turns[session_id]
+    assert len(turns) == 1
+    assert turns[0].id == turn.id
+
+
+def test_assemble_snapshot_excludes_current_live_turn() -> None:
+    """assemble_snapshot should omit the current live inbound turn from dialogue."""
+    service, _, _ = _build_service()
+    created = service.create_session(meta=_meta())
+    assert created.payload is not None
+    session_id = created.payload.value.id
+
+    _ = service.record_response(
+        meta=_meta(),
+        session_id=session_id,
+        content="prior assistant",
+        model="test",
+        provider="unit",
+        token_count=3,
+        reasoning_level="standard",
+    )
+    _ = service.record_inbound_turn(
+        meta=_meta(),
+        session_id=session_id,
+        message="live instruction",
+    )
+
+    snapshot = service.assemble_snapshot(meta=_meta(), session_id=session_id)
+    assert snapshot.ok
+    assert snapshot.payload is not None
+    assert [turn.content for turn in snapshot.payload.value.dialogue] == [
+        "prior assistant"
+    ]
 
 
 def test_turn_summary_range_uses_distinct_endpoints_for_multi_turn_summary() -> None:

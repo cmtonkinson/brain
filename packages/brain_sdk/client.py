@@ -13,6 +13,7 @@ from packages.brain_sdk.calls import (
     LmsToolChatResult,
     MemoryContextBlock,
     MemorySessionRef,
+    MemoryTurnRecord,
     SwitchboardOperatorInstruction,
     call_capabilities_describe,
     call_capabilities_list_always_on,
@@ -23,8 +24,12 @@ from packages.brain_sdk.calls import (
     call_lms_chat,
     call_lms_chat_with_tools,
     call_memory_assemble_context,
+    call_memory_assemble_snapshot,
     call_memory_create_session,
     call_memory_get_latest_or_create_session,
+    call_memory_record_inbound_turn,
+    call_memory_record_outbound_candidate,
+    call_memory_record_outbound_delivery,
     call_memory_record_response,
     call_switchboard_poll_operator_instruction,
 )
@@ -211,6 +216,38 @@ class BrainClient:
             message=message,
         )
 
+    def memory_record_inbound_turn(
+        self,
+        *,
+        session_id: str,
+        message: str,
+        instruction: SwitchboardOperatorInstruction | None = None,
+        meta: MetaOverrides | None = None,
+    ) -> MemoryTurnRecord:
+        """Persist one inbound turn and return the recorded turn payload."""
+        return call_memory_record_inbound_turn(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            session_id=session_id,
+            message=message,
+            instruction=instruction,
+        )
+
+    def memory_assemble_snapshot(
+        self,
+        *,
+        session_id: str,
+        meta: MetaOverrides | None = None,
+    ) -> MemoryContextBlock:
+        """Return the historical MAS snapshot for one session."""
+        return call_memory_assemble_snapshot(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            session_id=session_id,
+        )
+
     def memory_create_session(
         self,
         *,
@@ -257,6 +294,48 @@ class BrainClient:
             provider=provider,
             token_count=token_count,
             reasoning_level=reasoning_level,
+        )
+
+    def memory_record_outbound_candidate(
+        self,
+        *,
+        session_id: str,
+        content: str,
+        model: str,
+        provider: str,
+        token_count: int,
+        reasoning_level: str,
+        meta: MetaOverrides | None = None,
+    ) -> MemoryTurnRecord:
+        """Persist one outbound candidate turn."""
+        return call_memory_record_outbound_candidate(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            session_id=session_id,
+            content=content,
+            model=model,
+            provider=provider,
+            token_count=token_count,
+            reasoning_level=reasoning_level,
+        )
+
+    def memory_record_outbound_delivery(
+        self,
+        *,
+        session_id: str,
+        turn_id: str,
+        delivered: bool,
+        meta: MetaOverrides | None = None,
+    ) -> bool:
+        """Record outbound delivery status."""
+        return call_memory_record_outbound_delivery(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            session_id=session_id,
+            turn_id=turn_id,
+            delivered=delivered,
         )
 
     def switchboard_poll_operator_instruction(

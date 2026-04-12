@@ -23,10 +23,20 @@ class ContextAssembler:
         self._focus = focus
         self._dialogue = dialogue
 
-    def assemble(self, *, meta: EnvelopeMeta, session_id: str) -> ContextBlock:
-        """Assemble full context block for one session."""
+    def assemble(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+        exclude_turn_id: str | None = None,
+    ) -> ContextBlock:
+        """Assemble one historical context block for a session."""
         focus = self._focus.read(session_id=session_id)
-        dialogue = self._dialogue.assemble(meta=meta, session_id=session_id)
+        dialogue = self._dialogue.assemble(
+            meta=meta,
+            session_id=session_id,
+            exclude_turn_id=exclude_turn_id,
+        )
 
         return ContextBlock(
             profile=self._profile.read(),

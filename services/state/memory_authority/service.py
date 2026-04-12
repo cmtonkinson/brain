@@ -11,12 +11,59 @@ from services.state.memory_authority.domain import (
     ContextBlock,
     FocusRecord,
     HealthStatus,
+    InboundInstructionRecord,
     SessionRecord,
+    TurnRecord,
 )
 
 
 class MemoryAuthorityService(ABC):
     """Public API for Memory Authority Service context and session operations."""
+
+    @abstractmethod
+    def record_inbound_turn(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+        message: str,
+        instruction: InboundInstructionRecord | None = None,
+    ) -> Envelope[TurnRecord]:
+        """Persist one inbound turn and return the recorded turn row."""
+
+    @abstractmethod
+    def assemble_snapshot(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+    ) -> Envelope[ContextBlock]:
+        """Return the historical MAS context snapshot for one session."""
+
+    @abstractmethod
+    def record_outbound_candidate(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+        content: str,
+        model: str,
+        provider: str,
+        token_count: int,
+        reasoning_level: str,
+    ) -> Envelope[TurnRecord]:
+        """Persist one outbound candidate turn and return the recorded row."""
+
+    @abstractmethod
+    def record_outbound_delivery(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+        turn_id: str,
+        delivered: bool,
+    ) -> Envelope[bool]:
+        """Record delivery status for one outbound turn."""
 
     @abstractmethod
     def assemble_context(
@@ -26,7 +73,7 @@ class MemoryAuthorityService(ABC):
         session_id: str,
         message: str,
     ) -> Envelope[ContextBlock]:
-        """Append inbound message and return assembled Profile/Focus/Dialogue context."""
+        """Backward-compatible wrapper for the historical snapshot flow."""
 
     @abstractmethod
     def record_response(
@@ -40,7 +87,7 @@ class MemoryAuthorityService(ABC):
         token_count: int,
         reasoning_level: str,
     ) -> Envelope[bool]:
-        """Append one outbound dialogue turn with response metadata."""
+        """Backward-compatible wrapper for outbound candidate recording."""
 
     @abstractmethod
     def update_focus(

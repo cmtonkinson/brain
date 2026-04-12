@@ -59,6 +59,12 @@ _Response: `_AssembleContextResponse`_
 _Summary: Append one inbound message and return the assembled MAS context block._
 
 
+`POST /memory/assemble_snapshot` &mdash; return the stable historical MAS snapshot without the live inbound turn  
+_Handler: `assemble_snapshot`_
+_Response: `_AssembleContextResponse`_
+_Summary: Return the historical MAS context snapshot without the live turn._
+
+
 `POST /memory/create_session` &mdash; create one new MAS session for the agent  
 _Handler: `create_session`_
 _Response: `_CreateSessionResponse`_
@@ -71,9 +77,27 @@ _Response: `_CreateSessionResponse`_
 _Summary: Return the latest MAS session id or create one when none exist._
 
 
+`POST /memory/record_inbound_turn` &mdash; persist one inbound MAS turn before prompt assembly  
+_Handler: `record_inbound_turn`_
+_Response: `_TurnResponse`_
+_Summary: Persist one inbound turn and return the authoritative turn record._
+
+
+`POST /memory/record_outbound_candidate` &mdash; persist one outbound MAS candidate turn before delivery  
+_Handler: `record_outbound_candidate`_
+_Response: `_TurnResponse`_
+_Summary: Persist one outbound candidate turn and return the authoritative row._
+
+
+`POST /memory/record_outbound_delivery` &mdash; persist the final delivery state for one outbound MAS turn  
+_Handler: `record_outbound_delivery`_
+_Response: `_BoolResponse`_
+_Summary: Persist one outbound delivery result._
+
+
 `POST /memory/record_response` &mdash; persist one outbound MAS response turn  
 _Handler: `record_response`_
-_Response: `_RecordResponseResponse`_
+_Response: `_BoolResponse`_
 _Summary: Append one outbound response turn with response metadata._
 
 

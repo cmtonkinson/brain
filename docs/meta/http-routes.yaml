@@ -9,5 +9,9 @@
 /memory/create_session: create one new MAS session for the agent
 /memory/get_latest_or_create_session: return the latest MAS session id or create one for the agent
 /memory/assemble_context: assemble MAS context for one inbound turn
+/memory/assemble_snapshot: return the stable historical MAS snapshot without the live inbound turn
+/memory/record_inbound_turn: persist one inbound MAS turn before prompt assembly
+/memory/record_outbound_candidate: persist one outbound MAS candidate turn before delivery
+/memory/record_outbound_delivery: persist the final delivery state for one outbound MAS turn
 /memory/record_response: persist one outbound MAS response turn
 /switchboard/poll_operator_instruction: dequeue the next queued operator instruction for the agent

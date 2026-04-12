@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -54,6 +55,35 @@ class ContextBlock(BaseModel):
     reference_snippets: list[str]
 
 
+class InboundInstructionRecord(BaseModel):
+    """Full inbound operator instruction metadata persisted with the turn."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    sender_e164: str
+    message_text: str
+    timestamp_ms: int
+    source_device: str
+    source: str
+    group_id: str | None = None
+    quote_target_timestamp_ms: int | None = None
+    reaction_target_timestamp_ms: int | None = None
+    reaction_emoji: str | None = None
+    approval_intent: str | None = None
+    reply_to_proposal_token: str | None = None
+    reaction_to_proposal_token: str | None = None
+
+
+class OutboundDeliveryRecord(BaseModel):
+    """Outbound candidate delivery outcome persisted with the assistant turn."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: Literal["candidate", "delivered", "failed"]
+    delivered_at_ms: int | None = None
+    detail: str | None = None
+
+
 class SessionRecord(BaseModel):
     """Authoritative MAS session state row."""
 
@@ -94,6 +124,20 @@ class TurnRecord(BaseModel):
     reasoning_level: str | None
     trace_id: str
     principal: str
+    source: str | None = None
+    sender_e164: str | None = None
+    timestamp_ms: int | None = None
+    source_device: str | None = None
+    group_id: str | None = None
+    quote_target_timestamp_ms: int | None = None
+    reaction_target_timestamp_ms: int | None = None
+    reaction_emoji: str | None = None
+    approval_intent: str | None = None
+    reply_to_proposal_token: str | None = None
+    reaction_to_proposal_token: str | None = None
+    delivery_state: Literal["candidate", "delivered", "failed"] | None = None
+    delivery_timestamp_ms: int | None = None
+    delivery_detail: str | None = None
     created_at: datetime
 
 

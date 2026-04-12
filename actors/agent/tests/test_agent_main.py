@@ -241,6 +241,56 @@ def test_to_sdk_messages_omits_cache_points_from_user_content() -> None:
     assert result == [LmsChatMessage(role="user", content="hello")]
 
 
+def test_format_user_prompt_places_cachepoint_before_current_instruction() -> None:
+    """The current instruction should come after the historical snapshot cache cut."""
+    from actors.agent import main
+    from pydantic_ai.messages import CachePoint
+
+    prompt = main._format_user_prompt(
+        instruction=SwitchboardOperatorInstruction(
+            sender_e164="+12025550100",
+            message_text="hello",
+            timestamp_ms=1,
+            source_device="1",
+            source="signal",
+            group_id=None,
+            quote_target_timestamp_ms=None,
+            reaction_target_timestamp_ms=None,
+            reaction_emoji=None,
+            approval_intent=None,
+        ),
+        context=MemoryContextBlock(
+            profile=MemoryProfileContext(
+                operator_name="Operator",
+                brain_name="Brain",
+                brain_verbosity="normal",
+            ),
+            focus="current focus",
+            dialogue=(
+                MemoryDialogueTurn(
+                    role="assistant",
+                    content="prior turn",
+                    is_summary=False,
+                ),
+            ),
+            reference_snippets=("snippet",),
+        ),
+    )
+
+    cache_index = next(
+        index for index, item in enumerate(prompt) if isinstance(item, CachePoint)
+    )
+    historical_index = prompt.index("historical_snapshot:")
+    reference_index = prompt.index("reference_snippets:")
+    current_index = prompt.index("Current Instruction:")
+
+    assert prompt[0] == "MAS Context"
+    assert prompt.index("profile:") < prompt.index("focus:")
+    assert historical_index < cache_index < reference_index < current_index
+    assert prompt[-1] == "reaction_to_proposal_token: "
+    assert prompt[current_index + 3] == "message: hello"
+
+
 def test_normalize_tool_return_passes_through_small_results_and_logs() -> None:
     """Small tool returns should bypass compression but still emit audit metadata."""
     from actors.agent import main
@@ -1257,14 +1307,26 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
 
     class _FakeClient:
         def __init__(self) -> None:
-            self.assembled: list[tuple[str, str]] = []
+            self.inbound: list[
+                tuple[str, str, SwitchboardOperatorInstruction | None]
+            ] = []
+            self.snapshots: list[str] = []
             self.recorded: list[tuple[str, str, str, str, int, str]] = []
+            self.deliveries: list[tuple[str, str, bool]] = []
             self.invoked: list[tuple[str, dict[str, object], str, str]] = []
 
-        def memory_assemble_context(
-            self, *, session_id: str, message: str
-        ) -> MemoryContextBlock:
-            self.assembled.append((session_id, message))
+        def memory_record_inbound_turn(
+            self,
+            *,
+            session_id: str,
+            message: str,
+            instruction: SwitchboardOperatorInstruction | None = None,
+        ):
+            self.inbound.append((session_id, message, instruction))
+            return type("TurnRecord", (), {"id": "turn-inbound"})()
+
+        def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
+            self.snapshots.append(session_id)
             return MemoryContextBlock(
                 profile=MemoryProfileContext(
                     operator_name="Operator",
@@ -1274,15 +1336,15 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
                 focus="current focus",
                 dialogue=(
                     MemoryDialogueTurn(
-                        role="user",
-                        content=message,
+                        role="assistant",
+                        content="prior turn",
                         is_summary=False,
                     ),
                 ),
-                reference_snippets=(),
+                reference_snippets=("snippet",),
             )
 
-        def memory_record_response(
+        def memory_record_outbound_candidate(
             self,
             *,
             session_id: str,
@@ -1291,11 +1353,21 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
             provider: str,
             token_count: int,
             reasoning_level: str,
-        ) -> bool:
+        ):
             self.recorded.append(
                 (session_id, content, model, provider, token_count, reasoning_level)
             )
-            return True
+            return type("TurnRecord", (), {"id": "turn-outbound"})()
+
+        def memory_record_outbound_delivery(
+            self,
+            *,
+            session_id: str,
+            turn_id: str,
+            delivered: bool,
+        ) -> bool:
+            self.deliveries.append((session_id, turn_id, delivered))
+            return delivered
 
         def invoke_capability(
             self,
@@ -1356,7 +1428,27 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
     )
 
     assert response == "assistant reply"
-    assert client.assembled == [("01ARZ3NDEKTSV4RRFFQ69G5FAV", "hello")]
+    assert client.inbound == [
+        (
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "hello",
+            SwitchboardOperatorInstruction(
+                sender_e164="+12025550100",
+                message_text="hello",
+                timestamp_ms=1,
+                source_device="1",
+                source="signal",
+                group_id=None,
+                quote_target_timestamp_ms=None,
+                reaction_target_timestamp_ms=None,
+                reaction_emoji=None,
+                approval_intent=None,
+                reply_to_proposal_token=None,
+                reaction_to_proposal_token=None,
+            ),
+        )
+    ]
+    assert client.snapshots == ["01ARZ3NDEKTSV4RRFFQ69G5FAV"]
     assert client.recorded == [
         (
             "01ARZ3NDEKTSV4RRFFQ69G5FAV",
@@ -1367,6 +1459,7 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
             "standard",
         )
     ]
+    assert client.deliveries == [("01ARZ3NDEKTSV4RRFFQ69G5FAV", "turn-outbound", True)]
     assert client.invoked == [
         (
             "attention-notify",
@@ -1387,12 +1480,26 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
 
     class _FakeClient:
         def __init__(self) -> None:
+            self.inbound: list[
+                tuple[str, str, SwitchboardOperatorInstruction | None]
+            ] = []
+            self.snapshots: list[str] = []
             self.recorded: list[tuple[str, str, str, str, int, str]] = []
+            self.deliveries: list[tuple[str, str, bool]] = []
             self.invoked: list[tuple[str, dict[str, object], str, str]] = []
 
-        def memory_assemble_context(
-            self, *, session_id: str, message: str
-        ) -> MemoryContextBlock:
+        def memory_record_inbound_turn(
+            self,
+            *,
+            session_id: str,
+            message: str,
+            instruction: SwitchboardOperatorInstruction | None = None,
+        ):
+            self.inbound.append((session_id, message, instruction))
+            return type("TurnRecord", (), {"id": "turn-inbound"})()
+
+        def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
+            self.snapshots.append(session_id)
             return MemoryContextBlock(
                 profile=MemoryProfileContext(
                     operator_name="Operator",
@@ -1402,15 +1509,15 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
                 focus="current focus",
                 dialogue=(
                     MemoryDialogueTurn(
-                        role="user",
-                        content=message,
+                        role="assistant",
+                        content="prior turn",
                         is_summary=False,
                     ),
                 ),
                 reference_snippets=(),
             )
 
-        def memory_record_response(
+        def memory_record_outbound_candidate(
             self,
             *,
             session_id: str,
@@ -1419,11 +1526,21 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
             provider: str,
             token_count: int,
             reasoning_level: str,
-        ) -> bool:
+        ):
             self.recorded.append(
                 (session_id, content, model, provider, token_count, reasoning_level)
             )
-            return True
+            return type("TurnRecord", (), {"id": "turn-outbound"})()
+
+        def memory_record_outbound_delivery(
+            self,
+            *,
+            session_id: str,
+            turn_id: str,
+            delivered: bool,
+        ) -> bool:
+            self.deliveries.append((session_id, turn_id, delivered))
+            return delivered
 
         def invoke_capability(
             self,

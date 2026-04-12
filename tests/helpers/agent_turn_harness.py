@@ -237,6 +237,81 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                     "errors": [],
                 },
             )
+        if path == "/memory/record_inbound_turn":
+            return _json_response(
+                request,
+                {
+                    "payload": {
+                        "id": generate_ulid_str(),
+                        "session_id": scenario.session_id,
+                        "direction": "inbound",
+                        "content": str(body.get("message", "")),
+                        "role": "user",
+                        "model": None,
+                        "provider": None,
+                        "token_count": 3,
+                        "reasoning_level": None,
+                        "trace_id": body.get("trace_id", ""),
+                        "principal": body.get("principal", ""),
+                        "created_at": "2026-04-12T00:00:00+00:00",
+                    },
+                    "errors": [],
+                },
+            )
+        if path == "/memory/assemble_snapshot":
+            return _json_response(
+                request,
+                {
+                    "payload": {
+                        "profile": {
+                            "operator_name": scenario.context.profile.operator_name,
+                            "brain_name": scenario.context.profile.brain_name,
+                            "brain_verbosity": scenario.context.profile.brain_verbosity,
+                        },
+                        "focus": scenario.context.focus,
+                        "dialogue": [
+                            {
+                                "role": turn.role,
+                                "content": turn.content,
+                                "is_summary": turn.is_summary,
+                            }
+                            for turn in scenario.context.dialogue
+                        ],
+                        "reference_snippets": list(scenario.context.reference_snippets),
+                    },
+                    "errors": [],
+                },
+            )
+        if path == "/memory/record_outbound_candidate":
+            content = str(body.get("content", ""))
+            return _json_response(
+                request,
+                {
+                    "payload": {
+                        "id": generate_ulid_str(),
+                        "session_id": scenario.session_id,
+                        "direction": "outbound",
+                        "content": content,
+                        "role": "assistant",
+                        "model": str(body.get("model", "")),
+                        "provider": str(body.get("provider", "")),
+                        "token_count": int(body.get("token_count", 0)),
+                        "reasoning_level": str(body.get("reasoning_level", "")),
+                        "trace_id": body.get("trace_id", ""),
+                        "principal": body.get("principal", ""),
+                        "created_at": "2026-04-12T00:00:00+00:00",
+                    },
+                    "errors": [],
+                },
+            )
+        if path == "/memory/record_outbound_delivery":
+            return _json_response(
+                request,
+                {
+                    "payload": bool(body.get("delivered", False)),
+                    "errors": [],
+                },
+            )
         if path == "/lms/chat-with-tools":
             chat_result = (
                 remaining_chat_results.pop(0)

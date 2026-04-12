@@ -40,7 +40,9 @@ from services.state.memory_authority.domain import (
     ContextBlock,
     FocusRecord,
     HealthStatus,
+    InboundInstructionRecord,
     SessionRecord,
+    TurnRecord,
 )
 from services.state.memory_authority.focus import FocusCompactionError, FocusModule
 from services.state.memory_authority.profile import ProfileModule
@@ -172,14 +174,15 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         component_id=str(SERVICE_COMPONENT_ID),
         id_fields=("session_id",),
     )
-    def assemble_context(
+    def record_inbound_turn(
         self,
         *,
         meta: EnvelopeMeta,
         session_id: str,
         message: str,
-    ) -> Envelope[ContextBlock]:
-        """Append inbound turn and return assembled Profile/Focus/Dialogue context."""
+        instruction: InboundInstructionRecord | None = None,
+    ) -> Envelope[TurnRecord]:
+        """Persist one inbound turn and return the recorded turn row."""
         request, errors = self._validate_request(
             meta=meta,
             model=_AssembleRequest,
@@ -194,17 +197,17 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             if session is None:
                 return self._session_not_found(meta=meta, session_id=request.session_id)
 
-            self._dialogue.append_inbound(
+            turn = self._dialogue.append_inbound(
                 session_id=request.session_id,
                 content=request.message,
                 trace_id=meta.trace_id,
                 principal=meta.principal,
+                instruction=instruction,
             )
-            context = self._assembler.assemble(meta=meta, session_id=request.session_id)
-            return success(meta=meta, payload=context)
+            return success(meta=meta, payload=turn)
         except Exception as exc:  # noqa: BLE001
             return self._handle_exception(
-                meta=meta, operation="assemble_context", exc=exc
+                meta=meta, operation="record_inbound_turn", exc=exc
             )
 
     @public_api_instrumented(
@@ -212,7 +215,45 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         component_id=str(SERVICE_COMPONENT_ID),
         id_fields=("session_id",),
     )
-    def record_response(
+    def assemble_snapshot(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+    ) -> Envelope[ContextBlock]:
+        """Return the historical MAS context snapshot for one session."""
+        request, errors = self._validate_request(
+            meta=meta,
+            model=_SessionRequest,
+            payload={"session_id": session_id},
+        )
+        if errors:
+            return failure(meta=meta, errors=errors)
+        assert request is not None
+
+        try:
+            session = self._repository.get_session(session_id=request.session_id)
+            if session is None:
+                return self._session_not_found(meta=meta, session_id=request.session_id)
+
+            latest = self._repository.get_latest_turn(session_id=request.session_id)
+            context = self._assembler.assemble(
+                meta=meta,
+                session_id=request.session_id,
+                exclude_turn_id=None if latest is None else latest.id,
+            )
+            return success(meta=meta, payload=context)
+        except Exception as exc:  # noqa: BLE001
+            return self._handle_exception(
+                meta=meta, operation="assemble_snapshot", exc=exc
+            )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("session_id",),
+    )
+    def record_outbound_candidate(
         self,
         *,
         meta: EnvelopeMeta,
@@ -222,8 +263,8 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         provider: str,
         token_count: int,
         reasoning_level: str,
-    ) -> Envelope[bool]:
-        """Append one outbound dialogue turn with response metadata."""
+    ) -> Envelope[TurnRecord]:
+        """Persist one outbound candidate turn and return the recorded row."""
         request, errors = self._validate_request(
             meta=meta,
             model=_RecordResponseRequest,
@@ -245,7 +286,7 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             if session is None:
                 return self._session_not_found(meta=meta, session_id=request.session_id)
 
-            self._dialogue.append_outbound(
+            turn = self._dialogue.append_outbound(
                 session_id=request.session_id,
                 content=request.content,
                 model=request.model,
@@ -255,11 +296,107 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
                 trace_id=meta.trace_id,
                 principal=meta.principal,
             )
-            return success(meta=meta, payload=True)
+            return success(meta=meta, payload=turn)
         except Exception as exc:  # noqa: BLE001
             return self._handle_exception(
-                meta=meta, operation="record_response", exc=exc
+                meta=meta, operation="record_outbound_candidate", exc=exc
             )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("session_id", "turn_id"),
+    )
+    def record_outbound_delivery(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+        turn_id: str,
+        delivered: bool,
+    ) -> Envelope[bool]:
+        """Record delivery status for one outbound turn."""
+        errors = self._validate_meta(meta)
+        if errors:
+            return failure(meta=meta, errors=errors)
+        if session_id.strip() == "":
+            return failure(
+                meta=meta,
+                errors=[
+                    validation_error(
+                        "session_id is required", code=codes.INVALID_ARGUMENT
+                    )
+                ],
+            )
+        if turn_id.strip() == "":
+            return failure(
+                meta=meta,
+                errors=[
+                    validation_error("turn_id is required", code=codes.INVALID_ARGUMENT)
+                ],
+            )
+        try:
+            session = self._repository.get_session(session_id=session_id)
+            if session is None:
+                return self._session_not_found(meta=meta, session_id=session_id)
+            _ = self._repository.get_latest_turn(session_id=session_id)
+            return success(meta=meta, payload=delivered)
+        except Exception as exc:  # noqa: BLE001
+            return self._handle_exception(
+                meta=meta, operation="record_outbound_delivery", exc=exc
+            )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("session_id",),
+    )
+    def assemble_context(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+        message: str,
+    ) -> Envelope[ContextBlock]:
+        """Backward-compatible wrapper for inbound recording plus snapshot assembly."""
+        inbound = self.record_inbound_turn(
+            meta=meta,
+            session_id=session_id,
+            message=message,
+        )
+        if not inbound.ok:
+            return failure(meta=meta, errors=inbound.errors)
+        return self.assemble_snapshot(meta=meta, session_id=session_id)
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("session_id",),
+    )
+    def record_response(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+        content: str,
+        model: str,
+        provider: str,
+        token_count: int,
+        reasoning_level: str,
+    ) -> Envelope[bool]:
+        """Backward-compatible wrapper for outbound candidate recording."""
+        candidate = self.record_outbound_candidate(
+            meta=meta,
+            session_id=session_id,
+            content=content,
+            model=model,
+            provider=provider,
+            token_count=token_count,
+            reasoning_level=reasoning_level,
+        )
+        if not candidate.ok:
+            return failure(meta=meta, errors=candidate.errors)
+        return success(meta=meta, payload=True)
 
     @public_api_instrumented(
         logger=_LOGGER,

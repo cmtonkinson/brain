@@ -16,8 +16,11 @@ from services.state.memory_authority.domain import (
     BrainVerbosity,
     ContextBlock,
     DialogueTurn,
+    InboundInstructionRecord,
     ProfileContext,
     SessionRecord,
+    TurnDirection,
+    TurnRecord,
 )
 from services.state.memory_authority.service import MemoryAuthorityService
 
@@ -46,14 +49,70 @@ class _RecordResponseCall:
     principal: str
 
 
+@dataclass(frozen=True)
+class _TurnCall:
+    """Captured turn-record invocation arguments."""
+
+    session_id: str
+    message: str
+    source: str
+    principal: str
+
+
+@dataclass(frozen=True)
+class _CandidateCall:
+    """Captured outbound-candidate invocation arguments."""
+
+    session_id: str
+    content: str
+    model: str
+    provider: str
+    token_count: int
+    reasoning_level: str
+    source: str
+    principal: str
+
+
+@dataclass(frozen=True)
+class _DeliveryCall:
+    """Captured outbound-delivery invocation arguments."""
+
+    session_id: str
+    turn_id: str
+    delivered: bool
+    source: str
+    principal: str
+
+
 class _FakeMemoryAuthorityService(MemoryAuthorityService):
     """Programmable MAS fake for route-adapter tests."""
 
     def __init__(self) -> None:
+        self.record_inbound_calls: list[_TurnCall] = []
+        self.assemble_snapshot_calls: list[tuple[str, str]] = []
+        self.record_outbound_candidate_calls: list[_CandidateCall] = []
+        self.record_outbound_delivery_calls: list[_DeliveryCall] = []
         self.assemble_calls: list[_AssembleCall] = []
         self.record_response_calls: list[_RecordResponseCall] = []
         self.create_session_calls: list[tuple[str, str]] = []
         self.get_latest_or_create_session_calls: list[tuple[str, str]] = []
+        self.record_inbound_result = success(
+            meta=_meta(),
+            payload=TurnRecord(
+                id="turn-inbound",
+                session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                direction=TurnDirection.INBOUND,
+                content="hello",
+                role="user",
+                model=None,
+                provider=None,
+                token_count=3,
+                reasoning_level=None,
+                trace_id="trace",
+                principal="operator",
+                created_at=datetime.now(UTC),
+            ),
+        )
         self.assemble_result = success(
             meta=_meta(),
             payload=ContextBlock(
@@ -67,6 +126,24 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
                 reference_snippets=[],
             ),
         )
+        self.record_outbound_candidate_result = success(
+            meta=_meta(),
+            payload=TurnRecord(
+                id="turn-outbound",
+                session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                direction=TurnDirection.OUTBOUND,
+                content="assistant reply",
+                role="assistant",
+                model="test-model",
+                provider="unit",
+                token_count=42,
+                reasoning_level="standard",
+                trace_id="trace",
+                principal="operator",
+                created_at=datetime.now(UTC),
+            ),
+        )
+        self.record_outbound_delivery_result = success(meta=_meta(), payload=True)
         self.record_response_result = success(meta=_meta(), payload=True)
         self.create_session_result = success(
             meta=_meta(),
@@ -79,6 +156,72 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
                 updated_at=datetime.now(UTC),
             ),
         )
+
+    def record_inbound_turn(
+        self,
+        *,
+        meta,
+        session_id: str,
+        message: str,
+        instruction: InboundInstructionRecord | None = None,
+    ):
+        self.record_inbound_calls.append(
+            _TurnCall(
+                session_id=session_id,
+                message=message,
+                source=meta.source,
+                principal=meta.principal,
+            )
+        )
+        return self.record_inbound_result
+
+    def assemble_snapshot(self, *, meta, session_id: str):
+        self.assemble_snapshot_calls.append((session_id, meta.source))
+        return self.assemble_result
+
+    def record_outbound_candidate(
+        self,
+        *,
+        meta,
+        session_id: str,
+        content: str,
+        model: str,
+        provider: str,
+        token_count: int,
+        reasoning_level: str,
+    ):
+        self.record_outbound_candidate_calls.append(
+            _CandidateCall(
+                session_id=session_id,
+                content=content,
+                model=model,
+                provider=provider,
+                token_count=token_count,
+                reasoning_level=reasoning_level,
+                source=meta.source,
+                principal=meta.principal,
+            )
+        )
+        return self.record_outbound_candidate_result
+
+    def record_outbound_delivery(
+        self,
+        *,
+        meta,
+        session_id: str,
+        turn_id: str,
+        delivered: bool,
+    ):
+        self.record_outbound_delivery_calls.append(
+            _DeliveryCall(
+                session_id=session_id,
+                turn_id=turn_id,
+                delivered=delivered,
+                source=meta.source,
+                principal=meta.principal,
+            )
+        )
+        return self.record_outbound_delivery_result
 
     def assemble_context(
         self,
@@ -182,14 +325,15 @@ def test_assemble_context_route_forwards_request_and_returns_payload() -> None:
     assert payload["payload"]["profile"]["brain_name"] == "Brain"
     assert payload["payload"]["dialogue"][0]["content"] == "hello"
     assert payload["errors"] == []
-    assert service.assemble_calls == [
-        _AssembleCall(
+    assert service.record_inbound_calls == [
+        _TurnCall(
             session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
             message="hello",
             source="sdk",
             principal="operator",
         )
     ]
+    assert service.assemble_snapshot_calls == [("01ARZ3NDEKTSV4RRFFQ69G5FAV", "sdk")]
 
 
 def test_record_response_route_forwards_request_and_maps_errors() -> None:
@@ -226,6 +370,122 @@ def test_record_response_route_forwards_request_and_maps_errors() -> None:
             provider="unit",
             token_count=-1,
             reasoning_level="standard",
+            source="sdk",
+            principal="operator",
+        )
+    ]
+
+
+def test_record_inbound_turn_route_returns_turn_payload() -> None:
+    """record_inbound_turn route should serialize the recorded turn row."""
+    client, service = _client()
+
+    response = client.post(
+        "/memory/record_inbound_turn",
+        json={
+            "source": "sdk",
+            "principal": "operator",
+            "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "message": "hello",
+            "instruction": {
+                "sender_e164": "+12025550100",
+                "message_text": "hello",
+                "timestamp_ms": 1,
+                "source_device": "1",
+                "source": "signal",
+                "group_id": None,
+                "quote_target_timestamp_ms": None,
+                "reaction_target_timestamp_ms": None,
+                "reaction_emoji": None,
+                "approval_intent": None,
+                "reply_to_proposal_token": None,
+                "reaction_to_proposal_token": None,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["payload"]["direction"] == "inbound"
+    assert payload["payload"]["content"] == "hello"
+    assert service.record_inbound_calls == [
+        _TurnCall(
+            session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            message="hello",
+            source="sdk",
+            principal="operator",
+        )
+    ]
+
+
+def test_assemble_snapshot_route_returns_context_without_live_turn() -> None:
+    """assemble_snapshot route should return the historical snapshot payload."""
+    client, service = _client()
+
+    response = client.post(
+        "/memory/assemble_snapshot",
+        json={
+            "source": "sdk",
+            "principal": "operator",
+            "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["payload"]["dialogue"][0]["content"] == "hello"
+    assert service.assemble_snapshot_calls == [("01ARZ3NDEKTSV4RRFFQ69G5FAV", "sdk")]
+
+
+def test_record_outbound_candidate_and_delivery_routes_round_trip() -> None:
+    """Outbound candidate and delivery routes should serialize their payloads."""
+    client, service = _client()
+
+    candidate = client.post(
+        "/memory/record_outbound_candidate",
+        json={
+            "source": "sdk",
+            "principal": "operator",
+            "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "content": "assistant reply",
+            "model": "test-model",
+            "provider": "unit",
+            "token_count": 42,
+            "reasoning_level": "standard",
+        },
+    )
+    delivery = client.post(
+        "/memory/record_outbound_delivery",
+        json={
+            "source": "sdk",
+            "principal": "operator",
+            "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "turn_id": "turn-outbound",
+            "delivered": True,
+        },
+    )
+
+    assert candidate.status_code == 200
+    assert candidate.json()["payload"]["content"] == "assistant reply"
+    assert delivery.status_code == 200
+    assert delivery.json()["payload"] is True
+    assert service.record_outbound_candidate_calls == [
+        _CandidateCall(
+            session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            content="assistant reply",
+            model="test-model",
+            provider="unit",
+            token_count=42,
+            reasoning_level="standard",
+            source="sdk",
+            principal="operator",
+        )
+    ]
+    assert service.record_outbound_delivery_calls == [
+        _DeliveryCall(
+            session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            turn_id="turn-outbound",
+            delivered=True,
             source="sdk",
             principal="operator",
         )

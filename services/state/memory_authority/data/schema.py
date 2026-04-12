@@ -7,6 +7,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    BigInteger,
     Index,
     Integer,
     MetaData,
@@ -97,12 +98,38 @@ turns = Table(
     Column("reasoning_level", String(64), nullable=True),
     Column("trace_id", String(64), nullable=False),
     Column("principal", String(128), nullable=False),
+    Column("source", String(128), nullable=True),
+    Column("sender_e164", String(32), nullable=True),
+    Column("timestamp_ms", BigInteger, nullable=True),
+    Column("source_device", String(128), nullable=True),
+    Column("group_id", String(128), nullable=True),
+    Column("quote_target_timestamp_ms", BigInteger, nullable=True),
+    Column("reaction_target_timestamp_ms", BigInteger, nullable=True),
+    Column("reaction_emoji", String(32), nullable=True),
+    Column("approval_intent", String(64), nullable=True),
+    Column("reply_to_proposal_token", String(128), nullable=True),
+    Column("reaction_to_proposal_token", String(128), nullable=True),
+    Column("delivery_state", String(32), nullable=True),
+    Column("delivery_timestamp_ms", BigInteger, nullable=True),
+    Column("delivery_detail", Text, nullable=True),
     Column(
         "created_at", DateTime(timezone=True), nullable=False, server_default=func.now()
     ),
     CheckConstraint(
         "token_count IS NULL OR token_count >= 0",
         name="ck_turn_token_count_nonnegative",
+    ),
+    CheckConstraint(
+        "timestamp_ms IS NULL OR timestamp_ms >= 0",
+        name="ck_turn_timestamp_ms_nonnegative",
+    ),
+    CheckConstraint(
+        "delivery_timestamp_ms IS NULL OR delivery_timestamp_ms >= 0",
+        name="ck_turn_delivery_timestamp_ms_nonnegative",
+    ),
+    CheckConstraint(
+        "delivery_state IS NULL OR delivery_state IN ('candidate', 'delivered', 'failed')",
+        name="ck_turn_delivery_state_valid",
     ),
 )
 

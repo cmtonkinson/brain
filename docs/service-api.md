@@ -215,16 +215,25 @@ _List known specs._
 _Return MAS and Postgres substrate readiness._
 
 `assemble_context(*, meta: EnvelopeMeta, session_id: str, message: str) -> Envelope[ContextBlock]`  
-_Append inbound message and return assembled Profile/Focus/Dialogue context._
+_Backward-compatible wrapper for the historical snapshot flow._
 
 `update_focus(*, meta: EnvelopeMeta, session_id: str, content: str) -> Envelope[FocusRecord]`  
 _Persist explicit focus content with budget-aware compaction semantics._
 
+`record_inbound_turn(*, meta: EnvelopeMeta, session_id: str, message: str, instruction: InboundInstructionRecord | None = None) -> Envelope[TurnRecord]`  
+_Persist one inbound turn and return the recorded turn row._
+
 `get_latest_or_create_session(*, meta: EnvelopeMeta) -> Envelope[SessionRecord]`  
 _Return latest MAS session or create one when none exist._
 
+`record_outbound_candidate(*, meta: EnvelopeMeta, session_id: str, content: str, model: str, provider: str, token_count: int, reasoning_level: str) -> Envelope[TurnRecord]`  
+_Persist one outbound candidate turn and return the recorded row._
+
+`record_outbound_delivery(*, meta: EnvelopeMeta, session_id: str, turn_id: str, delivered: bool) -> Envelope[bool]`  
+_Record delivery status for one outbound turn._
+
 `record_response(*, meta: EnvelopeMeta, session_id: str, content: str, model: str, provider: str, token_count: int, reasoning_level: str) -> Envelope[bool]`  
-_Append one outbound dialogue turn with response metadata._
+_Backward-compatible wrapper for outbound candidate recording._
 
 `get_session(*, meta: EnvelopeMeta, session_id: str) -> Envelope[SessionRecord]`  
 _Read one MAS session by id._
@@ -234,6 +243,9 @@ _Advance dialogue pointer and clear focus without deleting historical data._
 
 `create_session(*, meta: EnvelopeMeta) -> Envelope[SessionRecord]`  
 _Create and return one new MAS session._
+
+`assemble_snapshot(*, meta: EnvelopeMeta, session_id: str) -> Envelope[ContextBlock]`  
+_Return the historical MAS context snapshot for one session._
 
 ------------------------------------------------------------------------
 ## `ObjectAuthorityService`
