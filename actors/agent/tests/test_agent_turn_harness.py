@@ -20,7 +20,7 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
 
     assert result.response_text == "assistant reply"
     assert [call.path for call in result.calls] == [
-        "/memory/get_latest_or_create_session",
+        "/memory/create_session",
         "/capabilities/describe",
         "/capabilities/always-on",
         "/memory/record_inbound_turn",
@@ -190,7 +190,7 @@ def test_agent_turn_harness_runs_discovery_activate_and_tool_use_flow() -> None:
 
     assert result.response_text == "assistant reply"
     assert [call.path for call in result.calls] == [
-        "/memory/get_latest_or_create_session",
+        "/memory/create_session",
         "/capabilities/describe",
         "/capabilities/always-on",
         "/memory/record_inbound_turn",

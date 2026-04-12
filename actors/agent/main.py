@@ -66,7 +66,6 @@ _LMS_THROTTLE_RESPONSE = (
 )
 _AGENT_DIR = Path(__file__).resolve().parent
 _PROMPTS_DIR = _AGENT_DIR / "prompts"
-_SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "system.txt"
 _COMPRESS_SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "compress-tool-return.txt"
 _AGENT_CONTEXT_PROPERTIES_PATH = _AGENT_DIR / "tool-context-properties.json"
 _DISCOVER_CAPABILITIES_TOOL_NAME = "discover_capabilities"
@@ -334,15 +333,6 @@ def _write_heartbeat(*, path: Path | None = None) -> None:
     heartbeat_path = _resolve_heartbeat_path() if path is None else path
     heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
     heartbeat_path.touch()
-
-
-def _load_system_prompt(*, system_prompt_append: str | None = None) -> str:
-    """Load the effective agent system prompt from disk plus profile append."""
-    prompt = _load_prompt_file(_SYSTEM_PROMPT_PATH)
-    appended = "" if system_prompt_append is None else system_prompt_append.strip()
-    if appended == "":
-        return prompt
-    return f"{prompt}\n\n{appended}"
 
 
 def _configure_logging(*, settings: ActorSettings) -> None:
@@ -903,7 +893,9 @@ def _create_runtime(
 ) -> _AgentRuntime:
     """Create one fully wired agent runtime from the published Core surface."""
     effective_core_settings = CoreSettings() if core_settings is None else core_settings
-    session = client.memory_get_latest_or_create_session()
+    session = client.memory_start_session(
+        personality=effective_core_settings.profile.personality
+    )
     capabilities = client.describe_capabilities()
     always_on_capabilities = client.list_always_on_capabilities()
     denied_capability_ids = frozenset(
@@ -935,9 +927,7 @@ def _create_runtime(
     )
     agent = Agent(
         model,
-        system_prompt=_load_system_prompt(
-            system_prompt_append=effective_core_settings.profile.system_prompt_append
-        ),
+        system_prompt=session.system_prompt,
         retries=3,
         max_concurrency=1,
         tools=[*capability_tools, *runtime_tools],

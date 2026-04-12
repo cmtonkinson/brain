@@ -241,8 +241,8 @@ _Read one MAS session by id._
 `clear_session(*, meta: EnvelopeMeta, session_id: str) -> Envelope[bool]`  
 _Advance dialogue pointer and clear focus without deleting historical data._
 
-`create_session(*, meta: EnvelopeMeta) -> Envelope[SessionRecord]`  
-_Create and return one new MAS session._
+`create_session(*, meta: EnvelopeMeta, system_prompt: str) -> Envelope[SessionRecord]`  
+_Create and return one new MAS session with the rendered system prompt._
 
 `assemble_snapshot(*, meta: EnvelopeMeta, session_id: str) -> Envelope[ContextBlock]`  
 _Return the historical MAS context snapshot for one session._

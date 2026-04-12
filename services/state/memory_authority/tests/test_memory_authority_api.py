@@ -116,6 +116,7 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
         self.assemble_result = success(
             meta=_meta(),
             payload=ContextBlock(
+                system_prompt="",
                 profile=ProfileContext(
                     operator_name="Operator",
                     brain_name="Brain",
@@ -149,6 +150,7 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
             meta=_meta(),
             payload=SessionRecord(
                 id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                system_prompt="",
                 focus=None,
                 focus_token_count=None,
                 dialogue_start_turn_id=None,
@@ -273,7 +275,7 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
         del meta, session_id
         raise NotImplementedError
 
-    def create_session(self, *, meta):
+    def create_session(self, *, meta, system_prompt: str = ""):
         self.create_session_calls.append((meta.source, meta.principal))
         return self.create_session_result
 
@@ -501,6 +503,7 @@ def test_create_session_route_returns_session_id_only() -> None:
         json={
             "source": "agent",
             "principal": "agent",
+            "system_prompt": "You are Brain.",
         },
     )
 

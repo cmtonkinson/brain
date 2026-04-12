@@ -153,6 +153,7 @@ class MemoryDialogueTurn:
 class MemoryContextBlock:
     """Full MAS assembled context payload."""
 
+    system_prompt: str
     profile: MemoryProfileContext
     focus: str | None
     dialogue: tuple[MemoryDialogueTurn, ...]
@@ -182,6 +183,7 @@ class MemorySessionRef:
     """Minimal MAS session reference returned to SDK callers."""
 
     session_id: str
+    system_prompt: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -652,13 +654,14 @@ def call_memory_create_session(
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
+    system_prompt: str,
 ) -> MemorySessionRef:
     """Create one MAS session and return the new session identifier."""
     data = _post_json(
         operation="memory.create_session",
         http=http,
         url="/memory/create_session",
-        body=metadata,
+        body={**metadata, "system_prompt": system_prompt},
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
@@ -966,6 +969,7 @@ def _memory_context_block(value: dict[str, Any]) -> MemoryContextBlock:
     snippets = value.get("reference_snippets", [])
     snippet_items = snippets if isinstance(snippets, list) else []
     return MemoryContextBlock(
+        system_prompt=str(value.get("system_prompt", "")),
         profile=MemoryProfileContext(
             operator_name=str(profile_dict.get("operator_name", "")),
             brain_name=str(profile_dict.get("brain_name", "")),

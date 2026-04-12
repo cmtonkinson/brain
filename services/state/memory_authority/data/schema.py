@@ -50,6 +50,7 @@ sessions = Table(
     "session",
     metadata,
     ulid_primary_key_column("id", schema_name=memory_postgres_schema()),
+    Column("system_prompt", Text, nullable=False),
     Column("focus", Text, nullable=True),
     Column("focus_token_count", Integer, nullable=True),
     Column(

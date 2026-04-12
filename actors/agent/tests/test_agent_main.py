@@ -50,10 +50,8 @@ def _actor_settings_stub(**agent_overrides):
     )
 
 
-def _core_settings_stub(system_prompt_append: str | None = None):
-    return SimpleNamespace(
-        profile=SimpleNamespace(system_prompt_append=system_prompt_append)
-    )
+def _core_settings_stub(personality: str = "default"):
+    return SimpleNamespace(profile=SimpleNamespace(personality=personality))
 
 
 def test_resolve_config_path_uses_env_override(monkeypatch) -> None:
@@ -94,24 +92,29 @@ def test_write_heartbeat_creates_parent_and_updates_file(tmp_path) -> None:
     assert heartbeat_path.exists()
 
 
-def test_load_system_prompt_reads_colocated_prompt_file() -> None:
-    """System prompt should load from the colocated prompt file on disk."""
-    from actors.agent import main
+def test_render_system_prompt_returns_rendered_default_personality() -> None:
+    """render_system_prompt should render the default personality template."""
+    from packages.brain_sdk.personality import render_system_prompt
 
-    prompt = main._load_system_prompt()
+    prompt = render_system_prompt("default")
 
     assert prompt != ""
     assert "tool" in prompt.lower()
-    assert "Respond with JSON only." not in prompt
+    assert "Brain" in prompt
 
 
-def test_load_system_prompt_appends_profile_extension_when_present() -> None:
-    """System prompt loader should append operator-supplied prompt text verbatim."""
-    from actors.agent import main
+def test_render_system_prompt_raises_for_unknown_personality() -> None:
+    """render_system_prompt should raise PersonalityNotFoundError for unknown names."""
+    from packages.brain_sdk.personality import (
+        PersonalityNotFoundError,
+        render_system_prompt,
+    )
 
-    prompt = main._load_system_prompt(system_prompt_append="Extra operator prompt.")
-
-    assert prompt.endswith("Extra operator prompt.")
+    try:
+        render_system_prompt("nonexistent_personality_xyz")
+        assert False, "expected PersonalityNotFoundError"
+    except PersonalityNotFoundError:
+        pass
 
 
 def test_load_prompt_file_reads_compressor_prompt_from_disk() -> None:
@@ -260,6 +263,7 @@ def test_format_user_prompt_places_cachepoint_before_current_instruction() -> No
             approval_intent=None,
         ),
         context=MemoryContextBlock(
+            system_prompt="",
             profile=MemoryProfileContext(
                 operator_name="Operator",
                 brain_name="Brain",
@@ -424,13 +428,16 @@ def test_normalize_tool_return_truncates_large_explore_results() -> None:
     assert debug.call_args.kwargs["extra"]["normalization_kind"] == "truncate"
 
 
-def test_create_runtime_uses_core_profile_system_prompt_append() -> None:
-    """Runtime creation should append core profile prompt text to the base prompt."""
+def test_create_runtime_uses_personality_system_prompt() -> None:
+    """Runtime creation should render the personality and use it as the system prompt."""
     from actors.agent import main
 
     class _FakeClient:
-        def memory_get_latest_or_create_session(self):
-            return MemorySessionRef(session_id="session-1")
+        def memory_start_session(self, *, personality: str = "default"):
+            return MemorySessionRef(
+                session_id="session-1",
+                system_prompt="You are Brain, a personal AI system.",
+            )
 
         def describe_capabilities(self):
             return ()
@@ -441,11 +448,11 @@ def test_create_runtime_uses_core_profile_system_prompt_append() -> None:
     runtime = main._create_runtime(
         client=_FakeClient(),
         settings=_actor_settings_stub(),
-        core_settings=_core_settings_stub("Extra operator prompt."),
+        core_settings=_core_settings_stub("default"),
     )
 
     assert any(
-        "Extra operator prompt." in str(item)
+        "Brain" in str(item)
         for item in runtime.agent._system_prompts  # pyright: ignore[reportPrivateUsage]
     )
 
@@ -455,8 +462,8 @@ def test_create_runtime_uses_configured_tier2_hop_threshold() -> None:
     from actors.agent import main
 
     class _FakeClient:
-        def memory_get_latest_or_create_session(self):
-            return MemorySessionRef(session_id="session-1")
+        def memory_start_session(self, *, personality: str = "default"):
+            return MemorySessionRef(session_id="session-1", system_prompt="")
 
         def describe_capabilities(self):
             return ()
@@ -1328,6 +1335,7 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
         def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
             self.snapshots.append(session_id)
             return MemoryContextBlock(
+                system_prompt="",
                 profile=MemoryProfileContext(
                     operator_name="Operator",
                     brain_name="Brain",
@@ -1501,6 +1509,7 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
         def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
             self.snapshots.append(session_id)
             return MemoryContextBlock(
+                system_prompt="",
                 profile=MemoryProfileContext(
                     operator_name="Operator",
                     brain_name="Brain",
@@ -1633,9 +1642,13 @@ def test_create_runtime_creates_session_and_registers_tools() -> None:
             self.described = 0
             self.always_on = 0
 
-        def memory_get_latest_or_create_session(self) -> MemorySessionRef:
+        def memory_start_session(
+            self, *, personality: str = "default"
+        ) -> MemorySessionRef:
             self.created += 1
-            return MemorySessionRef(session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV")
+            return MemorySessionRef(
+                session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV", system_prompt=""
+            )
 
         def describe_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
             self.described += 1

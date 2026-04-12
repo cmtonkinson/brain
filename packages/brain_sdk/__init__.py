@@ -51,6 +51,10 @@ from packages.brain_sdk.errors import (
     SdkErrorDetail,
 )
 from packages.brain_sdk.meta import MetaOverrides
+from packages.brain_sdk.personality import (
+    PersonalityNotFoundError,
+    render_system_prompt,
+)
 
 DomainError = BrainDomainError
 TransportError = BrainTransportError
@@ -58,6 +62,8 @@ TransportError = BrainTransportError
 __all__ = [
     "BrainClient",
     "BrainSdkClient",
+    "PersonalityNotFoundError",
+    "render_system_prompt",
     "BrainConflictError",
     "BrainDependencyError",
     "BrainDomainError",

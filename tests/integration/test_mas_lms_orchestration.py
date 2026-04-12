@@ -26,7 +26,7 @@ def test_update_focus_routes_through_language_model_dependency() -> None:
         language_model=language_model,
         repository=_FakeMemoryRepository(),
     )
-    session_id = service.create_session(meta=_meta()).payload.value.id
+    session_id = service.create_session(meta=_meta(), system_prompt="").payload.value.id
 
     updated = service.update_focus(meta=_meta(), session_id=session_id, content="focus")
 

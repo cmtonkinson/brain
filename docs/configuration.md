@@ -94,7 +94,7 @@ Root profile and operator identity settings.
 | `operator_name` | `Operator` | Operator display name injected into assembled memory context. |
 | `brain_name` | `Brain` | Brain display name injected into assembled memory context. |
 | `brain_verbosity` | `normal` | Context verbosity selector. One of `terse`, `normal`, `verbose`. |
-| `system_prompt_append` | `null` | Optional operator-supplied text appended verbatim to the agent system prompt at startup. |
+| `personality` | `default` | Named personality bundle used to render the agent system prompt at boot. Must match a file in `packages/brain_sdk/personalities/`. |
 
 ------------------------------------------------------------------------
 ## Runtime Settings Namespaces

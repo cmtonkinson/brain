@@ -518,6 +518,7 @@ def test_call_memory_create_session_success() -> None:
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
+        system_prompt="",
     )
 
     assert result.session_id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"

@@ -148,19 +148,17 @@ def test_load_core_settings_uses_model_defaults_when_sources_missing(
     assert settings.boot.boot_retry_attempts == 3
     assert settings.http.host == "0.0.0.0"
     assert settings.http.port == 8898
-    assert settings.profile.system_prompt_append is None
+    assert settings.profile.personality == "default"
 
 
-def test_load_core_settings_reads_profile_system_prompt_append(tmp_path: Path) -> None:
-    """core.yaml should support an optional profile.system_prompt_append block."""
+def test_load_core_settings_reads_profile_personality(tmp_path: Path) -> None:
+    """core.yaml should support an optional profile.personality block."""
     config_file = tmp_path / "core.yaml"
     config_file.write_text(
         "\n".join(
             [
                 "profile:",
-                "  system_prompt_append: |",
-                "    Extra operator prompt.",
-                "    Keep this appended.",
+                "  personality: focused",
             ]
         ),
         encoding="utf-8",
@@ -168,9 +166,7 @@ def test_load_core_settings_reads_profile_system_prompt_append(tmp_path: Path) -
 
     settings = load_core_settings(config_path=config_file, environ={})
 
-    assert settings.profile.system_prompt_append == (
-        "Extra operator prompt.\nKeep this appended."
-    )
+    assert settings.profile.personality == "focused"
 
 
 def test_load_core_settings_applies_secrets_yaml_over_core_yaml(tmp_path: Path) -> None:
@@ -401,7 +397,7 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
             "operator_name": ProfileSettings().operator_name,
             "brain_name": ProfileSettings().brain_name,
             "brain_verbosity": ProfileSettings().brain_verbosity,
-            "system_prompt_append": ProfileSettings().system_prompt_append,
+            "personality": ProfileSettings().personality,
         },
         "boot": CoreBootSettings().model_dump(mode="json"),
         "http": CoreHttpSettings().model_dump(mode="json"),

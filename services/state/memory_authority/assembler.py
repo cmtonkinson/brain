@@ -28,6 +28,7 @@ class ContextAssembler:
         *,
         meta: EnvelopeMeta,
         session_id: str,
+        system_prompt: str,
         exclude_turn_id: str | None = None,
     ) -> ContextBlock:
         """Assemble one historical context block for a session."""
@@ -39,6 +40,7 @@ class ContextAssembler:
         )
 
         return ContextBlock(
+            system_prompt=system_prompt,
             profile=self._profile.read(),
             focus=None if focus is None else focus.content,
             dialogue=dialogue,

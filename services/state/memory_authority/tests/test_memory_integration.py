@@ -26,7 +26,7 @@ def test_session_context_record_and_clear_flow() -> None:
         repository=_FakeMemoryRepository(),
     )
 
-    created = service.create_session(meta=_meta())
+    created = service.create_session(meta=_meta(), system_prompt="")
     assert created.ok is True
     session_id = created.payload.value.id
 

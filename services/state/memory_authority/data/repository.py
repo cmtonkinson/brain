@@ -30,7 +30,7 @@ from .schema import sessions, turn_summaries, turns
 class MemoryRepository(Protocol):
     """Protocol for MAS authoritative persistence operations."""
 
-    def create_session(self) -> SessionRecord:
+    def create_session(self, *, system_prompt: str) -> SessionRecord:
         """Create and return one session row."""
 
     def get_latest_session(self) -> SessionRecord | None:
@@ -119,13 +119,14 @@ class PostgresMemoryRepository:
     def __init__(self, sessions_provider: ServiceSchemaSessionProvider) -> None:
         self._sessions = sessions_provider
 
-    def create_session(self) -> SessionRecord:
+    def create_session(self, *, system_prompt: str) -> SessionRecord:
         """Create and return one new session row."""
         session_id = generate_ulid_bytes()
         with self._sessions.session() as session:
             session.execute(
                 insert(sessions).values(
                     id=session_id,
+                    system_prompt=system_prompt,
                     focus=None,
                     focus_token_count=None,
                     dialogue_start_turn_id=None,
@@ -424,6 +425,7 @@ def _to_session(row: Mapping[str, object]) -> SessionRecord:
     pointer = row.get("dialogue_start_turn_id")
     return SessionRecord(
         id=ulid_bytes_to_str(_row_bytes(row, "id")),
+        system_prompt=str(row.get("system_prompt") or ""),
         focus=(None if row.get("focus") is None else str(row["focus"])),
         focus_token_count=(
             None

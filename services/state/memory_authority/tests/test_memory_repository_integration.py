@@ -27,7 +27,7 @@ def test_session_turn_and_summary_roundtrip(migrated_integration_settings) -> No
     runtime = MemoryPostgresRuntime.from_settings(migrated_integration_settings)
     repo = PostgresMemoryRepository(runtime.schema_sessions)
 
-    session = repo.create_session()
+    session = repo.create_session(system_prompt="")
     first = repo.insert_turn(
         session_id=session.id,
         direction=TurnDirection.INBOUND,
@@ -62,7 +62,7 @@ def test_turn_metadata_and_delivery_roundtrip(migrated_integration_settings) -> 
     runtime = MemoryPostgresRuntime.from_settings(migrated_integration_settings)
     repo = PostgresMemoryRepository(runtime.schema_sessions)
 
-    session = repo.create_session()
+    session = repo.create_session(system_prompt="")
     inbound = repo.insert_turn(
         session_id=session.id,
         direction=TurnDirection.INBOUND,
@@ -129,8 +129,8 @@ def test_get_latest_session_returns_newest_session(
     runtime = MemoryPostgresRuntime.from_settings(migrated_integration_settings)
     repo = PostgresMemoryRepository(runtime.schema_sessions)
 
-    first = repo.create_session()
-    second = repo.create_session()
+    first = repo.create_session(system_prompt="")
+    second = repo.create_session(system_prompt="")
 
     latest = repo.get_latest_session()
 

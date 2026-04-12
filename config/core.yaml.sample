@@ -39,7 +39,7 @@ profile:
   operator_name: Operator
   brain_name: Brain
   brain_verbosity: normal
-  system_prompt_append: null
+  personality: default
 
 boot:
   run_migrations_on_startup: true

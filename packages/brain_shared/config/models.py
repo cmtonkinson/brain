@@ -90,7 +90,7 @@ class ProfileSettings(BaseModel):
     operator_name: str = "Operator"
     brain_name: str = "Brain"
     brain_verbosity: str = "normal"
-    system_prompt_append: str | None = None
+    personality: str = "default"
 
 
 class CoreBootSettings(BaseModel):

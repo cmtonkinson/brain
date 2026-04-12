@@ -109,8 +109,10 @@ class MemoryAuthorityService(ABC):
         """Advance dialogue pointer and clear focus without deleting historical data."""
 
     @abstractmethod
-    def create_session(self, *, meta: EnvelopeMeta) -> Envelope[SessionRecord]:
-        """Create and return one new MAS session."""
+    def create_session(
+        self, *, meta: EnvelopeMeta, system_prompt: str
+    ) -> Envelope[SessionRecord]:
+        """Create and return one new MAS session with the rendered system prompt."""
 
     @abstractmethod
     def get_latest_or_create_session(

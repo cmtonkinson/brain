@@ -251,6 +251,7 @@ class BrainClient:
     def memory_create_session(
         self,
         *,
+        system_prompt: str,
         meta: MetaOverrides | None = None,
     ) -> MemorySessionRef:
         """Create one MAS session and return the new session identifier."""
@@ -258,7 +259,28 @@ class BrainClient:
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
+            system_prompt=system_prompt,
         )
+
+    def memory_start_session(
+        self,
+        *,
+        personality: str = "default",
+        meta: MetaOverrides | None = None,
+    ) -> MemorySessionRef:
+        """Render personality, create MAS session, return session reference.
+
+        This is the preferred boot-time entry point for actors. It renders the
+        system prompt from the named personality, registers a new session with
+        MAS, and returns a MemorySessionRef containing both the session_id and
+        the rendered system_prompt. The system prompt is also stored in MAS and
+        returned via assemble_context on every subsequent turn.
+        """
+        from packages.brain_sdk.personality import render_system_prompt
+
+        system_prompt = render_system_prompt(personality)
+        ref = self.memory_create_session(system_prompt=system_prompt, meta=meta)
+        return MemorySessionRef(session_id=ref.session_id, system_prompt=system_prompt)
 
     def memory_get_latest_or_create_session(
         self,

@@ -112,6 +112,12 @@ class _BoolResponse(BaseModel):
     errors: list[_ErrorOut]
 
 
+class _CreateSessionRequest(_RequestMeta):
+    """Inbound body for MAS create-session requests."""
+
+    system_prompt: str
+
+
 class _CreateSessionResponse(BaseModel):
     """Serialized response body for MAS create-session."""
 
@@ -129,11 +135,13 @@ def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> No
     async def create_session(request: Request) -> _CreateSessionResponse:
         """Create one MAS session and return only the session identifier."""
         body = await read_json_body(request)
-        req = _RequestMeta.model_validate(body)
+        req = _CreateSessionRequest.model_validate(body)
         meta = _meta_from_request(
             req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
         )
-        result = await run_in_threadpool(service.create_session, meta=meta)
+        result = await run_in_threadpool(
+            service.create_session, meta=meta, system_prompt=req.system_prompt
+        )
         session_id = None
         if result.payload is not None:
             session_id = result.payload.value.id

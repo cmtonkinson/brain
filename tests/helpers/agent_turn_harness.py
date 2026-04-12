@@ -62,6 +62,7 @@ class AgentTurnScenario:
     )
     context: MemoryContextBlock = field(
         default_factory=lambda: MemoryContextBlock(
+            system_prompt="",
             profile=MemoryProfileContext(
                 operator_name="Operator",
                 brain_name="Brain",
@@ -119,7 +120,7 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
             )
         )
         path = request.url.path
-        if path == "/memory/get_latest_or_create_session":
+        if path in ("/memory/get_latest_or_create_session", "/memory/create_session"):
             return _json_response(
                 request,
                 {
@@ -375,7 +376,7 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
         )
     )
     core_settings = SimpleNamespace(
-        profile=SimpleNamespace(system_prompt_append=None),
+        profile=SimpleNamespace(personality="default"),
     )
     runtime = agent_main._create_runtime(
         client=client,

@@ -49,6 +49,7 @@ class ContextBlock(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    system_prompt: str
     profile: ProfileContext
     focus: str | None
     dialogue: list[DialogueTurn]
@@ -90,6 +91,7 @@ class SessionRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: str
+    system_prompt: str
     focus: str | None
     focus_token_count: int | None
     dialogue_start_turn_id: str | None

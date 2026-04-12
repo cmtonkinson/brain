@@ -41,11 +41,12 @@ class _FakeMemoryRepository:
         self.turns: dict[str, list[TurnRecord]] = {}
         self.summaries: dict[str, list[TurnSummaryRecord]] = {}
 
-    def create_session(self) -> SessionRecord:
+    def create_session(self, *, system_prompt: str = "") -> SessionRecord:
         """Create one session row."""
         now = _now()
         session = SessionRecord(
             id=generate_ulid_str(),
+            system_prompt=system_prompt,
             focus=None,
             focus_token_count=None,
             dialogue_start_turn_id=None,
@@ -384,7 +385,7 @@ def test_session_create_clear_and_get() -> None:
     """MAS should create, clear, and read session state consistently."""
     service, repository, _ = _build_service()
 
-    created = service.create_session(meta=_meta())
+    created = service.create_session(meta=_meta(), system_prompt="")
     assert created.ok
     assert created.payload is not None
     session_id = created.payload.value.id
@@ -411,7 +412,7 @@ def test_session_create_clear_and_get() -> None:
 def test_assemble_context_returns_expected_shape() -> None:
     """Assembled context should return the historical snapshot before the new turn."""
     service, repository, _ = _build_service()
-    created = service.create_session(meta=_meta())
+    created = service.create_session(meta=_meta(), system_prompt="")
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -442,8 +443,8 @@ def test_assemble_context_returns_expected_shape() -> None:
 def test_get_latest_or_create_session_prefers_existing_session() -> None:
     """MAS should return the newest existing session before creating another."""
     service, repository, _ = _build_service()
-    first = repository.create_session()
-    second = repository.create_session()
+    first = repository.create_session(system_prompt="")
+    second = repository.create_session(system_prompt="")
     repository.update_focus(
         session_id=second.id,
         focus="active",
@@ -473,7 +474,7 @@ def test_get_latest_or_create_session_creates_when_empty() -> None:
 def test_dialogue_respects_recent_and_older_boundaries() -> None:
     """Dialogue assembly should keep recent verbatim turns and cap older coverage."""
     service, _, _ = _build_service(dialogue_recent_turns=2, dialogue_older_turns=3)
-    created = service.create_session(meta=_meta())
+    created = service.create_session(meta=_meta(), system_prompt="")
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -507,7 +508,7 @@ def test_dialogue_respects_recent_and_older_boundaries() -> None:
 def test_focus_compaction_triggers_when_budget_exceeded() -> None:
     """Focus updates above budget should invoke LMS quick compaction."""
     service, _, language_model = _build_service(focus_token_budget=4)
-    created = service.create_session(meta=_meta())
+    created = service.create_session(meta=_meta(), system_prompt="")
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -527,7 +528,7 @@ def test_focus_compaction_triggers_when_budget_exceeded() -> None:
 def test_record_response_persists_turn_metadata() -> None:
     """record_response should persist outbound turn metadata exactly."""
     service, repository, _ = _build_service()
-    created = service.create_session(meta=_meta())
+    created = service.create_session(meta=_meta(), system_prompt="")
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -556,7 +557,7 @@ def test_record_response_persists_turn_metadata() -> None:
 def test_record_inbound_turn_persists_turn_metadata() -> None:
     """record_inbound_turn should persist inbound turn metadata exactly."""
     service, repository, _ = _build_service()
-    created = service.create_session(meta=_meta())
+    created = service.create_session(meta=_meta(), system_prompt="")
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -579,7 +580,7 @@ def test_record_inbound_turn_persists_turn_metadata() -> None:
 def test_assemble_snapshot_excludes_current_live_turn() -> None:
     """assemble_snapshot should omit the current live inbound turn from dialogue."""
     service, _, _ = _build_service()
-    created = service.create_session(meta=_meta())
+    created = service.create_session(meta=_meta(), system_prompt="")
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -611,7 +612,7 @@ def test_turn_summary_range_uses_distinct_endpoints_for_multi_turn_summary() -> 
     service, repository, _ = _build_service(
         dialogue_recent_turns=1, dialogue_older_turns=10
     )
-    created = service.create_session(meta=_meta())
+    created = service.create_session(meta=_meta(), system_prompt="")
     assert created.payload is not None
     session_id = created.payload.value.id
 

@@ -240,6 +240,7 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             context = self._assembler.assemble(
                 meta=meta,
                 session_id=request.session_id,
+                system_prompt=session.system_prompt,
                 exclude_turn_id=None if latest is None else latest.id,
             )
             return success(meta=meta, payload=context)
@@ -480,14 +481,16 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
     )
-    def create_session(self, *, meta: EnvelopeMeta) -> Envelope[SessionRecord]:
-        """Create and return one new session."""
+    def create_session(
+        self, *, meta: EnvelopeMeta, system_prompt: str
+    ) -> Envelope[SessionRecord]:
+        """Create and return one new session with the rendered system prompt."""
         errors = self._validate_meta(meta)
         if errors:
             return failure(meta=meta, errors=errors)
 
         try:
-            record = self._repository.create_session()
+            record = self._repository.create_session(system_prompt=system_prompt)
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
             return self._handle_exception(
@@ -509,7 +512,7 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         try:
             record = self._repository.get_latest_session()
             if record is None:
-                record = self._repository.create_session()
+                record = self._repository.create_session(system_prompt="")
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
             return self._handle_exception(
