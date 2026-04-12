@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+import inspect
 import json
 import logging
 import os
@@ -42,6 +43,7 @@ from packages.brain_sdk import (
     LmsChatToolCall,
     LmsChatToolDefinition,
     LmsToolChatResult,
+    MetaOverrides,
     MemoryContextBlock,
     SwitchboardOperatorInstruction,
 )
@@ -51,6 +53,7 @@ from packages.brain_shared.config import (
     load_actor_settings,
     load_core_settings,
 )
+from packages.brain_shared.ids import generate_ulid_str
 
 _LOGGER = logging.getLogger(__name__)
 _RUNNING = True
@@ -91,6 +94,17 @@ _AGENT_CONTEXT_PROPERTIES = _load_agent_context_properties()
 _COMPRESS_SYSTEM_PROMPT = _load_prompt_file(_COMPRESS_SYSTEM_PROMPT_PATH)
 
 
+def _call_with_optional_meta(func, /, *, meta: MetaOverrides | None, **kwargs: Any):
+    """Call one SDK-style method, omitting ``meta`` for legacy fake clients."""
+    try:
+        parameters = inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    if "meta" in parameters:
+        return func(meta=meta, **kwargs)
+    return func(**kwargs)
+
+
 @dataclass(frozen=True, slots=True)
 class _PendingInvocation:
     """Short-lived record for one approval-gated capability attempt."""
@@ -112,6 +126,9 @@ class _TurnState:
 
     actor: str = "operator"
     channel: str = ""
+    trace_id: str = ""
+    root_envelope_id: str = ""
+    current_model_envelope_id: str = ""
     always_on_capability_ids: frozenset[str] = frozenset()
     denied_capability_ids: frozenset[str] = frozenset()
     active_tool_names: set[str] = field(default_factory=set)
@@ -230,6 +247,31 @@ class _TurnState:
             return ""
         return token
 
+    def begin_turn_trace(self) -> None:
+        """Start one fresh trace context for the current operator turn."""
+        self.trace_id = generate_ulid_str()
+        self.root_envelope_id = generate_ulid_str()
+        self.current_model_envelope_id = ""
+
+    def next_model_meta(self) -> MetaOverrides:
+        """Allocate metadata for one LMS request within the active turn trace."""
+        envelope_id = generate_ulid_str()
+        self.current_model_envelope_id = envelope_id
+        return MetaOverrides(
+            trace_id=self.trace_id or None,
+            parent_id=self.root_envelope_id,
+            envelope_id=envelope_id,
+        )
+
+    def nested_call_meta(self) -> MetaOverrides | None:
+        """Return metadata for one nested SDK call under the current model node."""
+        if self.trace_id == "":
+            return None
+        return MetaOverrides(
+            trace_id=self.trace_id,
+            parent_id=self.current_model_envelope_id or self.root_envelope_id,
+        )
+
 
 @dataclass(slots=True)
 class _AgentRuntime:
@@ -320,9 +362,16 @@ def _configure_logging(*, settings: ActorSettings) -> None:
 class _BrainSdkToolModel(Model):
     """PydanticAI model backed by the Brain SDK tool-capable LMS endpoint."""
 
-    def __init__(self, *, client: BrainClient, profile_name: str = "standard") -> None:
+    def __init__(
+        self,
+        *,
+        client: BrainClient,
+        turn_state: _TurnState | None = None,
+        profile_name: str = "standard",
+    ) -> None:
         super().__init__(profile=ModelProfile(supports_tools=True))
         self._client = client
+        self._turn_state = _TurnState() if turn_state is None else turn_state
         self._profile_name = profile_name
         self.last_result: LmsToolChatResult | None = None
 
@@ -339,7 +388,9 @@ class _BrainSdkToolModel(Model):
         )
         del prepared_settings
         result = await asyncio.to_thread(
+            _call_with_optional_meta,
             self._client.lms_chat_with_tools,
+            meta=self._turn_state.next_model_meta(),
             messages=tuple(_to_sdk_messages(messages)),
             tools=tuple(
                 _to_sdk_tool_definition(item) for item in prepared_params.function_tools
@@ -575,7 +626,9 @@ def _build_capability_tools(
                 input_payload=capability_payload,
             )
             try:
-                result = client.invoke_capability(
+                result = _call_with_optional_meta(
+                    client.invoke_capability,
+                    meta=turn_state.nested_call_meta(),
                     capability_id=_capability_id,
                     input_payload=capability_payload,
                     actor=turn_state.actor,
@@ -705,7 +758,12 @@ def _build_runtime_tools(
         response_detail: str = "",
     ) -> list[dict[str, object]]:
         del call_mode, response_detail
-        results = client.search_capabilities(query=query, limit=limit)
+        results = _call_with_optional_meta(
+            client.search_capabilities,
+            meta=turn_state.nested_call_meta(),
+            query=query,
+            limit=limit,
+        )
         visible_results = [
             item
             for item in results
@@ -734,7 +792,11 @@ def _build_runtime_tools(
                 "available": False,
                 "reason": "capability is denied for this agent",
             }
-        descriptor = client.describe_capability(capability_id=capability_id)
+        descriptor = _call_with_optional_meta(
+            client.describe_capability,
+            meta=turn_state.nested_call_meta(),
+            capability_id=capability_id,
+        )
         turn_state.active_tool_names.add(descriptor.capability_id)
         return {
             "capability_id": descriptor.capability_id,
@@ -848,7 +910,7 @@ def _create_runtime(
         denied_capability_ids=denied_capability_ids,
     )
     turn_state.reset_active_tools()
-    model = _BrainSdkToolModel(client=client)
+    model = _BrainSdkToolModel(client=client, turn_state=turn_state)
     capability_tools = _build_capability_tools(
         client=client,
         capabilities=capabilities,
@@ -1239,8 +1301,11 @@ async def _process_instruction(
 ) -> str:
     """Handle one inbound operator instruction end-to-end."""
     runtime.turn_state.prune_pending_invocations()
+    runtime.turn_state.begin_turn_trace()
     context = await asyncio.to_thread(
+        _call_with_optional_meta,
         runtime.client.memory_assemble_context,
+        meta=runtime.turn_state.nested_call_meta(),
         session_id=runtime.session_id,
         message=_instruction_context_message(instruction),
     )
@@ -1275,7 +1340,9 @@ async def _process_instruction(
         response_text = _LMS_THROTTLE_RESPONSE
     chat = runtime.model.last_result
     await asyncio.to_thread(
+        _call_with_optional_meta,
         runtime.client.memory_record_response,
+        meta=runtime.turn_state.nested_call_meta(),
         session_id=runtime.session_id,
         content=response_text,
         model="brain-sdk-lms" if chat is None else chat.model,
@@ -1305,7 +1372,9 @@ async def _route_outbound_response(
     }
     try:
         await asyncio.to_thread(
+            _call_with_optional_meta,
             runtime.client.invoke_capability,
+            meta=runtime.turn_state.nested_call_meta(),
             capability_id="attention-notify",
             input_payload=payload,
             actor="operator",

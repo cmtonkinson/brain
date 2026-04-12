@@ -32,13 +32,16 @@ class PolicyPane(BaseView):
     def __init__(
         self,
         policy_source: PolicyDataSource | None = None,
+        approval: CurrentApprovalView | None = None,
+        decision: CurrentDecisionView | None = None,
+        recent: list[RecentPolicyItemView] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self._policy_source = policy_source
-        self._approval: CurrentApprovalView | None = None
-        self._decision: CurrentDecisionView | None = None
-        self._recent: list[RecentPolicyItemView] = []
+        self._approval = approval
+        self._decision = decision
+        self._recent: list[RecentPolicyItemView] = recent or []
 
     def compose(self) -> ComposeResult:
         yield Static(self._render_current(), id="policy-current")
@@ -53,9 +56,21 @@ class PolicyPane(BaseView):
         snapshot = self._policy_source.get_current()
         if snapshot is None:
             return
-        self._approval = snapshot.approval
-        self._decision = snapshot.decision
-        self._recent = snapshot.recent
+        self.refresh_data(
+            approval=snapshot.approval,
+            decision=snapshot.decision,
+            recent=snapshot.recent,
+        )
+
+    def refresh_data(
+        self,
+        approval: CurrentApprovalView | None,
+        decision: CurrentDecisionView | None,
+        recent: list[RecentPolicyItemView],
+    ) -> None:
+        self._approval = approval
+        self._decision = decision
+        self._recent = recent
         try:
             self.query_one("#policy-current", Static).update(self._render_current())
             self.query_one("#policy-recent", Static).update(self._render_recent())
@@ -69,7 +84,7 @@ class PolicyPane(BaseView):
             exp = a.expires_at.strftime("%H:%M:%S")
             return (
                 "Current\n"
-                f"State       pending\n"
+                f"State       {a.state}\n"
                 f"Capability  {a.capability_id}\n"
                 f"Actor       {a.actor}\n"
                 f"Channel     {a.channel}\n"

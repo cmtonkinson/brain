@@ -13,10 +13,14 @@ class TraceTreeNode(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     envelope_id: str
-    kind: str
+    component: str
+    operation: str
+    status: str
     source: str
+    principal: str | None = None
     timestamp: datetime
     parent_id: str | None = None
+    elapsed_ms: int | None = None
     children: tuple[TraceTreeNode, ...] = ()
     depth: int = 0
 
@@ -31,6 +35,7 @@ class TraceTreeView(BaseModel):
 
     trace_id: str
     root_nodes: tuple[TraceTreeNode, ...] = ()
+    selected_node_id: str | None = None
 
 
 class TraceDetailView(BaseModel):
@@ -39,9 +44,13 @@ class TraceDetailView(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     envelope_id: str
-    kind: str
+    component: str
+    operation: str
+    status: str
     source: str
-    component: str | None = None
+    principal: str | None = None
     timestamp: datetime
+    parent_id: str | None = None
+    elapsed_ms: int | None = None
     payload_summary: str | None = None
-    error: str | None = None
+    errors: tuple[str, ...] = ()

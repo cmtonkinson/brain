@@ -44,7 +44,7 @@ class PolicyDataSource(BasePostgresDataSource[PolicySnapshot]):
             # Newest pending approval
             cur.execute(
                 """
-                SELECT capability_id, actor, channel, summary, created_at, expires_at
+                SELECT status, capability_id, actor, channel, summary, created_at, expires_at
                 FROM service_policy_service.approvals
                 WHERE status = 'pending' AND expires_at > now()
                 ORDER BY created_at DESC
@@ -84,12 +84,13 @@ class PolicyDataSource(BasePostgresDataSource[PolicySnapshot]):
         approval: CurrentApprovalView | None = None
         if approval_row:
             approval = CurrentApprovalView(
-                capability_id=approval_row[0],
-                actor=approval_row[1],
-                channel=approval_row[2],
-                summary=approval_row[3],
-                requested_at=approval_row[4],
-                expires_at=approval_row[5],
+                state=approval_row[0],
+                capability_id=approval_row[1],
+                actor=approval_row[2],
+                channel=approval_row[3],
+                summary=approval_row[4],
+                requested_at=approval_row[5],
+                expires_at=approval_row[6],
             )
 
         decision: CurrentDecisionView | None = None

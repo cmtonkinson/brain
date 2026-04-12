@@ -31,7 +31,7 @@ def test_app_has_canonical_bindings() -> None:
     assert "tab" in binding_keys  # focus_next
     assert "enter" in binding_keys  # maximize
     assert "Q" in binding_keys  # quit
-    assert "1" in binding_keys  # load trace
-    assert "2" in binding_keys  # load turn
-    assert "3" in binding_keys  # load policy
-    assert "4" in binding_keys  # load log
+    assert "1" not in binding_keys  # picker-local, not app-global
+    assert "2" not in binding_keys
+    assert "3" not in binding_keys
+    assert "4" not in binding_keys

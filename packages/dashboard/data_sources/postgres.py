@@ -20,6 +20,15 @@ class PostgresConnectionConfig(BaseModel):
     read_only: bool = True
 
 
+def normalize_postgres_dsn(url: str) -> str:
+    """Convert SQLAlchemy-style psycopg URLs into plain libpq DSNs."""
+    normalized = url.strip()
+    prefix = "postgresql+psycopg://"
+    if normalized.startswith(prefix):
+        return f"postgresql://{normalized.removeprefix(prefix)}"
+    return normalized
+
+
 class BasePostgresDataSource(BasePollingDataSource[T], Generic[T]):
     def __init__(
         self,
@@ -36,9 +45,10 @@ class BasePostgresDataSource(BasePollingDataSource[T], Generic[T]):
 
         if self._conn is None or self._conn.closed:
             self._conn = psycopg.connect(
-                self._config.url,
+                normalize_postgres_dsn(self._config.url),
                 autocommit=True,
                 options="-c default_transaction_read_only=on",
+                connect_timeout=max(1, int(self._config.query_timeout_seconds)),
             )
         return self._conn
 

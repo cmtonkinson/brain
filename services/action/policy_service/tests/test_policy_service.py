@@ -55,6 +55,7 @@ class _FakeAttentionRouterService(AttentionRouterService):
 
     def __init__(self) -> None:
         self.approval_payloads: list[RouterApprovalNotificationPayload] = []
+        self.approval_metas: list[object] = []
         self.fail_approval_routing: bool = False
 
     def route_notification(self, *, meta, **kwargs):
@@ -69,7 +70,7 @@ class _FakeAttentionRouterService(AttentionRouterService):
         )
 
     def route_approval_notification(self, *, meta, approval):
-        del meta
+        self.approval_metas.append(meta)
         self.approval_payloads.append(approval)
         if self.fail_approval_routing:
             return failure(
@@ -320,7 +321,11 @@ def test_approval_required_routes_proposal_via_attention_router() -> None:
     assert result.allowed is False
     assert result.proposal is not None
     assert len(router.approval_payloads) == 1
+    assert len(router.approval_metas) == 1
     assert router.approval_payloads[0].proposal_token == result.proposal.proposal_token
+    assert router.approval_metas[0].trace_id == req.metadata.trace_id
+    assert router.approval_metas[0].parent_id == req.metadata.envelope_id
+    assert router.approval_metas[0].envelope_id != req.metadata.envelope_id
 
 
 def test_approval_notification_failure_is_reflected_in_reason_codes() -> None:

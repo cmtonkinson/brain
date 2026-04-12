@@ -10,11 +10,16 @@ from packages.dashboard.models.turn import CurrentTurnView, RecentTurnItemView
 from packages.dashboard.panes.base import BaseView
 
 _RECENT_MAX = 8
-_TRUNCATE = 52  # max chars for content preview
+_TRUNCATE = 52
 
 
 def _trunc(text: str, n: int = _TRUNCATE) -> str:
     return text if len(text) <= n else text[:n] + "..."
+
+
+def _fmt_time(value) -> str:
+    """Format one timestamp for compact dashboard display."""
+    return value.strftime("%H:%M:%S")
 
 
 class TurnPane(BaseView):
@@ -59,17 +64,26 @@ class TurnPane(BaseView):
     def _render_current(self) -> str:
         if self._current is None:
             return "Current\n—"
-        t = self._current
+        turn = self._current
         lines = [
             "Current",
-            f"State      {t.phase}",
-            f"Inbound    {_trunc(t.inbound_text)}",
-            f"Model      {t.model_name}",
-            f"Provider   {t.provider}",
-            f"Turns      {t.context_turn_count}",
+            f"State      {turn.state}",
+            f"Inbound    {_trunc(turn.inbound_content)}",
+            f"Principal  {turn.inbound_principal}",
+            f"Time       {_fmt_time(turn.inbound_time)}",
         ]
-        if t.token_count is not None:
-            lines.append(f"Tokens     {t.token_count}")
+        if turn.state == "complete":
+            lines.append(f"Response   {_trunc(turn.response_content or '')}")
+            if turn.model:
+                lines.append(f"Model      {turn.model}")
+            if turn.provider:
+                lines.append(f"Provider   {turn.provider}")
+            if turn.reasoning_level:
+                lines.append(f"Reasoning  {turn.reasoning_level}")
+        elif turn.elapsed_ms is not None:
+            lines.append(f"Elapsed    {turn.elapsed_ms}ms")
+        if turn.token_count is not None:
+            lines.append(f"Tokens     {turn.token_count}")
         return "\n".join(lines)
 
     def _render_recent(self) -> str:
@@ -77,10 +91,9 @@ class TurnPane(BaseView):
             return ""
         lines = ["Recent"]
         for item in self._recent[:_RECENT_MAX]:
-            ts = item.recorded_at.strftime("%H:%M:%S")
-            direction = "in " if "in" in item.phase else "out"
-            preview = _trunc(item.inbound_preview, 42)
-            lines.append(f"{ts}  {direction}  {preview}")
+            lines.append(
+                f"{_fmt_time(item.timestamp)}  {item.direction}  {_trunc(item.summary, 42)}"
+            )
         return "\n".join(lines)
 
     def refresh_data(

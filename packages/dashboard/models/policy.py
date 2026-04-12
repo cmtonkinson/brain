@@ -12,6 +12,7 @@ class CurrentApprovalView(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    state: str = "pending"
     capability_id: str
     actor: str
     channel: str

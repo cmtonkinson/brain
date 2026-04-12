@@ -12,16 +12,24 @@ def _dt(h: int = 12, m: int = 0) -> datetime:
     return datetime(2024, 1, 1, h, m, 0, tzinfo=timezone.utc)
 
 
-def _current(phase: str = "complete", tokens: int | None = 1842) -> CurrentTurnView:
+def _current(state: str = "complete", tokens: int | None = 1842) -> CurrentTurnView:
     return CurrentTurnView(
-        session_id="sess-1",
-        inbound_text="Can you draft a reply to Chris about tomorrow?",
-        phase=phase,
-        model_name="claude-sonnet-4-20250514",
-        provider="anthropic",
-        context_turn_count=3,
-        summary_count=0,
+        state=state,
+        inbound_content="Can you draft a reply to Chris about tomorrow?",
+        inbound_time=_dt(14, 31),
+        inbound_principal="operator",
+        response_content=(
+            "Sure. I've drafted a reply confirming tomorrow at 10am."
+            if state == "complete"
+            else None
+        ),
+        response_time=_dt(14, 32) if state == "complete" else None,
+        model="claude-sonnet-4-20250514" if state == "complete" else None,
+        provider="anthropic" if state == "complete" else None,
+        reasoning_level="standard" if state == "complete" else None,
         token_count=tokens,
+        trace_id="trace-1",
+        elapsed_ms=2400 if state == "pending" else 1000,
     )
 
 
@@ -37,6 +45,7 @@ def test_turn_pane_current_complete():
     assert "complete" in text
     assert "anthropic" in text
     assert "1842" in text
+    assert "Response" in text
 
 
 def test_turn_pane_current_pending():
@@ -44,12 +53,14 @@ def test_turn_pane_current_pending():
     text = pane._render_current()
     assert "pending" in text
     assert "Tokens" not in text
+    assert "Elapsed" in text
+    assert "Response" not in text
 
 
 def test_turn_pane_truncation():
     long_text = "x" * 100
     result = _trunc(long_text, 52)
-    assert len(result) == 55  # 52 + "..."
+    assert len(result) == 55
     assert result.endswith("...")
 
 
@@ -61,12 +72,9 @@ def test_turn_pane_no_truncation_short():
 def test_turn_pane_recent_rendered():
     recent = [
         RecentTurnItemView(
-            turn_id="t1",
-            session_id="s1",
-            inbound_preview="Remind me about standup",
-            phase="complete",
-            model_name="claude-sonnet-4",
-            recorded_at=_dt(14, 28),
+            timestamp=_dt(14, 28),
+            direction="in",
+            summary="Remind me about standup",
         )
     ]
     pane = TurnPane(recent=recent)

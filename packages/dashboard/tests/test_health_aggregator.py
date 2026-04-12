@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from datetime import datetime, timezone
@@ -10,7 +11,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from packages.dashboard.config import DashboardConfig, DataSourcePollConfig
+from packages.dashboard.config import (
+    DashboardConfig,
+    DataSourcePollConfig,
+    load_dashboard_config,
+)
 from packages.dashboard.data_sources.health import HealthAggregator, HealthConfig
 from packages.dashboard.models.health import ComponentHealth
 
@@ -24,54 +29,41 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def test_fetch_core_health_returns_none_on_failure() -> None:
+def _mock_response(payload: bytes) -> MagicMock:
+    response = MagicMock()
+    response.read.return_value = payload
+    response.__enter__ = lambda s: s
+    response.__exit__ = MagicMock(return_value=False)
+    return response
+
+
+def test_probe_core_returns_unknown_on_failure() -> None:
     agg = _make_agg()
     with patch("urllib.request.urlopen", side_effect=Exception("timeout")):
-        result, detail = agg._fetch_core_health()
-    assert result is None
-    assert detail is not None
+        result = agg._probe_http_component(
+            name="core",
+            url=agg._config.core_health_url,
+            timeout_seconds=agg._config.core_timeout_seconds,
+            now=_now(),
+        )
+    assert result.state == "unknown"
+    assert result.detail == "timeout"
 
 
-def test_fetch_core_health_parses_json() -> None:
+def test_probe_core_maps_ready_false_to_no() -> None:
     agg = _make_agg()
-    payload = b'{"ready": true, "resources": {}, "services": {}}'
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = payload
-    mock_resp.__enter__ = lambda s: s
-    mock_resp.__exit__ = MagicMock(return_value=False)
-    with patch("urllib.request.urlopen", return_value=mock_resp):
-        result, detail = agg._fetch_core_health()
-    assert result == {"ready": True, "resources": {}, "services": {}}
-    assert detail is None
-
-
-def test_state_from_core_ok() -> None:
-    agg = _make_agg()
-    core = {"resources": {"substrate_postgres": {"ready": True, "detail": "ok"}}, "services": {}}
-    result = agg._state_from_core("postgres", core, _now())
-    assert result.state == "ok"
-    assert result.name == "postgres"
-
-
-def test_state_from_core_no() -> None:
-    agg = _make_agg()
-    core = {"resources": {"substrate_redis": {"ready": False, "detail": "refused"}}, "services": {}}
-    result = agg._state_from_core("redis", core, _now())
+    with patch(
+        "urllib.request.urlopen",
+        return_value=_mock_response(b'{"ready": false, "detail": "booting"}'),
+    ):
+        result = agg._probe_http_component(
+            name="core",
+            url=agg._config.core_health_url,
+            timeout_seconds=agg._config.core_timeout_seconds,
+            now=_now(),
+        )
     assert result.state == "no"
-    assert result.detail == "refused"
-
-
-def test_state_from_core_unknown_when_core_none() -> None:
-    agg = _make_agg()
-    result = agg._state_from_core("postgres", None, _now())
-    assert result.state == "unknown"
-
-
-def test_state_from_core_unknown_when_key_missing() -> None:
-    agg = _make_agg()
-    core = {"resources": {}, "services": {}}
-    result = agg._state_from_core("postgres", core, _now())
-    assert result.state == "unknown"
+    assert result.detail == "booting"
 
 
 def test_probe_agent_ok_fresh_file(tmp_path: Path) -> None:
@@ -88,31 +80,85 @@ def test_probe_agent_no_stale_file(tmp_path: Path) -> None:
     old_time = time.time() - 60
     os.utime(str(hb), (old_time, old_time))
     agg = _make_agg(agent_heartbeat_path=str(hb), agent_freshness_seconds=30.0)
-    with patch.object(agg, "_docker_inspect", return_value=None):
-        result = agg._probe_agent(_now())
+    result = agg._probe_agent(_now())
     assert result.state == "no"
 
 
 def test_probe_agent_unknown_missing_file(tmp_path: Path) -> None:
     agg = _make_agg(agent_heartbeat_path=str(tmp_path / "missing.heartbeat"))
-    with patch.object(agg, "_docker_inspect", return_value=None):
-        result = agg._probe_agent(_now())
+    result = agg._probe_agent(_now())
     assert result.state == "unknown"
+
+
+def test_probe_postgres_ok() -> None:
+    agg = _make_agg()
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.__exit__.return_value = False
+    cursor = MagicMock()
+    cursor.__enter__.return_value = cursor
+    cursor.__exit__.return_value = False
+    connection.cursor.return_value = cursor
+    with patch("psycopg.connect", return_value=connection):
+        result = agg._probe_postgres(_now())
+    assert result.state == "ok"
+
+
+def test_probe_redis_ok() -> None:
+    agg = _make_agg()
+    client = MagicMock()
+    client.ping.return_value = True
+    with patch("redis.Redis.from_url", return_value=client):
+        result = agg._probe_redis(_now())
+    assert result.state == "ok"
+    client.close.assert_called_once()
 
 
 def test_fetch_returns_seven_components() -> None:
     agg = _make_agg()
-    payload = b'{"ready": true, "resources": {"substrate_postgres": {"ready": true}, "substrate_redis": {"ready": true}, "substrate_qdrant": {"ready": true}, "adapter_signal": {"ready": true}, "adapter_litellm": {"ready": true}}, "services": {}}'
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = payload
-    mock_resp.__enter__ = lambda s: s
-    mock_resp.__exit__ = MagicMock(return_value=False)
-    with patch("urllib.request.urlopen", return_value=mock_resp):
-        with patch.object(agg, "_probe_agent", return_value=ComponentHealth(name="agent", state="unknown", checked_at=_now())):
-            results = agg._fetch()
+    with patch.object(
+        agg,
+        "_probe_http_component",
+        side_effect=[
+            ComponentHealth(name="core", state="ok", checked_at=_now()),
+            ComponentHealth(name="signal", state="unknown", checked_at=_now()),
+            ComponentHealth(name="qdrant", state="ok", checked_at=_now()),
+            ComponentHealth(name="gateway", state="unknown", checked_at=_now()),
+        ],
+    ):
+        with patch.object(
+            agg,
+            "_probe_agent",
+            return_value=ComponentHealth(
+                name="agent", state="unknown", checked_at=_now()
+            ),
+        ):
+            with patch.object(
+                agg,
+                "_probe_postgres",
+                return_value=ComponentHealth(
+                    name="postgres", state="ok", checked_at=_now()
+                ),
+            ):
+                with patch.object(
+                    agg,
+                    "_probe_redis",
+                    return_value=ComponentHealth(
+                        name="redis", state="ok", checked_at=_now()
+                    ),
+                ):
+                    results = agg._fetch()
     assert len(results) == 7
     names = {r.name for r in results}
-    assert names == {"core", "agent", "postgres", "redis", "signal", "qdrant", "gateway"}
+    assert names == {
+        "core",
+        "agent",
+        "postgres",
+        "redis",
+        "signal",
+        "qdrant",
+        "gateway",
+    }
 
 
 def test_dashboard_config_defaults() -> None:
@@ -124,3 +170,64 @@ def test_dashboard_config_defaults() -> None:
 def test_data_source_poll_config_rejects_zero() -> None:
     with pytest.raises(Exception):
         DataSourcePollConfig(poll_seconds=0)
+
+
+def test_load_dashboard_config_sources_runtime_health_defaults(tmp_path: Path) -> None:
+    core_file = tmp_path / "core.yaml"
+    core_file.write_text("http:\n  host: 0.0.0.0\n  port: 9123\n", encoding="utf-8")
+    resources_file = tmp_path / "resources.yaml"
+    resources_file.write_text(
+        "\n".join(
+            [
+                "substrate:",
+                "  postgres:",
+                "    url: postgresql+psycopg://db-user:db-pass@db-host:5432/brain",
+                "    pool_size: 7",
+                "    health_timeout_seconds: 3.0",
+                "    connect_timeout_seconds: 9.0",
+                "  redis:",
+                "    url: redis://cache-host:6380/2",
+                "    health_timeout_seconds: 4.0",
+                "  qdrant:",
+                "    url: http://qdrant-host:6333",
+                "    request_timeout_seconds: 5.0",
+                "adapter:",
+                "  signal:",
+                "    base_url: http://signal-host:8080",
+                "    health_timeout_seconds: 6.0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    dashboard_file = tmp_path / "dashboard.yaml"
+    dashboard_file.write_text(
+        "dashboard:\n  app_title: Ops\n  health:\n    agent_freshness_seconds: 12.0\n",
+        encoding="utf-8",
+    )
+    gateway_file = tmp_path / "host-mcp-gateway.json"
+    gateway_file.write_text(
+        json.dumps({"bind_host": "127.0.0.1", "bind_port": 7412}),
+        encoding="utf-8",
+    )
+
+    config = load_dashboard_config(
+        dashboard_config_path=dashboard_file,
+        core_config_path=core_file,
+        resources_config_path=resources_file,
+        gateway_config_path=gateway_file,
+        environ={},
+    )
+
+    assert config.app_title == "Ops"
+    assert config.health.core_health_url == "http://127.0.0.1:9123/health"
+    assert config.health.agent_freshness_seconds == 12.0
+    assert (
+        config.health.postgres_url
+        == "postgresql+psycopg://db-user:db-pass@db-host:5432/brain"
+    )
+    assert config.health.redis_url == "redis://cache-host:6380/2"
+    assert config.health.signal_health_url == "http://signal-host:8080/v1/health"
+    assert config.health.qdrant_health_url == "http://qdrant-host:6333/healthz"
+    assert config.health.gateway_health_url == "http://127.0.0.1:7412/health"
+    assert config.postgres.pool_size == 7
+    assert config.postgres.query_timeout_seconds == 9.0

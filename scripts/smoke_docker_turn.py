@@ -500,6 +500,21 @@ def _print_diagnostics(*, env: dict[str, str], override_file: Path) -> None:
     print(logs.stdout or logs.stderr)
 
 
+def _build_smoke_environment() -> dict[str, str]:
+    """Build one isolated compose environment for the Docker smoke stack."""
+    return {
+        **os.environ,
+        "BRAIN_CORE_PORT_BIND": "127.0.0.1::8898",
+        "BRAIN_POSTGRES_PORT_BIND": "127.0.0.1::5432",
+        "BRAIN_REDIS_PORT_BIND": "127.0.0.1::6379",
+        "BRAIN_QDRANT_PORT_BIND": "127.0.0.1::6333",
+        "PYTHON_VERSION": PYTHON_VERSION.split(".")[0]
+        + "."
+        + PYTHON_VERSION.split(".")[1],
+        "COMPOSE_PROJECT_NAME": f"brain-smoke-{int(time.time())}",
+    }
+
+
 def main() -> int:
     """Run one full boot-and-turn smoke against the real Compose stack."""
     with tempfile.TemporaryDirectory(prefix="brain-smoke-docker-") as tmp:
@@ -514,14 +529,7 @@ def main() -> int:
             config_dir=config_dir,
         )
 
-        env = {
-            **os.environ,
-            "BRAIN_CORE_PORT_BIND": "127.0.0.1::8898",
-            "PYTHON_VERSION": PYTHON_VERSION.split(".")[0]
-            + "."
-            + PYTHON_VERSION.split(".")[1],
-            "COMPOSE_PROJECT_NAME": f"brain-smoke-{int(time.time())}",
-        }
+        env = _build_smoke_environment()
 
         try:
             _compose(env, override_file, "up", "--build", "--detach")

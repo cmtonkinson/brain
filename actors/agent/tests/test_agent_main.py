@@ -6,9 +6,9 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from packages.brain_shared.config import ActorSettings, CoreSettings
 from packages.brain_sdk import (
     BrainDependencyError,
     BrainInternalError,
@@ -27,6 +27,33 @@ from packages.brain_sdk import (
     SwitchboardOperatorInstruction,
 )
 from packages.brain_sdk.errors import SdkErrorDetail
+
+
+def _actor_settings_stub(**agent_overrides):
+    return SimpleNamespace(
+        logging=SimpleNamespace(
+            level="INFO",
+            file_capture_enabled=False,
+            file_capture_level="VERBOSE",
+            file_capture_directory="logs",
+            json_output=True,
+            process_name="agent",
+            environment="dev",
+        ),
+        agent=SimpleNamespace(
+            capability_discovery_deny_list=(),
+            tool_return_compress_threshold=4000,
+            tool_return_max_chars=8000,
+            tool_loop_tier2_hop_threshold=3,
+            **agent_overrides,
+        ),
+    )
+
+
+def _core_settings_stub(system_prompt_append: str | None = None):
+    return SimpleNamespace(
+        profile=SimpleNamespace(system_prompt_append=system_prompt_append)
+    )
 
 
 def test_resolve_config_path_uses_env_override(monkeypatch) -> None:
@@ -116,7 +143,7 @@ def test_configure_logging_uses_shared_dual_path_settings(monkeypatch) -> None:
         "packages.brain_shared.logging.configure_logging", configure_logging
     )
 
-    settings = ActorSettings()
+    settings = _actor_settings_stub()
     settings.logging.level = "DEBUG"
     settings.logging.file_capture_enabled = True
     settings.logging.file_capture_level = "VERBOSE"
@@ -363,10 +390,8 @@ def test_create_runtime_uses_core_profile_system_prompt_append() -> None:
 
     runtime = main._create_runtime(
         client=_FakeClient(),
-        settings=ActorSettings(),
-        core_settings=CoreSettings(
-            profile={"system_prompt_append": "Extra operator prompt."}
-        ),
+        settings=_actor_settings_stub(),
+        core_settings=_core_settings_stub("Extra operator prompt."),
     )
 
     assert any(
@@ -399,7 +424,7 @@ def test_create_runtime_uses_configured_tier2_hop_threshold() -> None:
 
         return _processor
 
-    settings = ActorSettings()
+    settings = _actor_settings_stub()
     settings.agent.tool_loop_tier2_hop_threshold = 5
     original = main._build_history_processor
     main._build_history_processor = _fake_build_history_processor  # type: ignore[assignment]
@@ -407,7 +432,7 @@ def test_create_runtime_uses_configured_tier2_hop_threshold() -> None:
         main._create_runtime(
             client=_FakeClient(),
             settings=settings,
-            core_settings=CoreSettings(),
+            core_settings=_core_settings_stub(),
         )
     finally:
         main._build_history_processor = original  # type: ignore[assignment]
@@ -1518,8 +1543,8 @@ def test_create_runtime_creates_session_and_registers_tools() -> None:
 
     runtime = main._create_runtime(
         client=_FakeClient(),  # type: ignore[arg-type]
-        settings=ActorSettings(),
-        core_settings=CoreSettings(),
+        settings=_actor_settings_stub(),
+        core_settings=_core_settings_stub(),
     )
 
     assert runtime.session_id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"

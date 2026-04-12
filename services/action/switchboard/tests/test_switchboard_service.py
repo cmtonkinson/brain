@@ -159,6 +159,7 @@ class _FakeAttentionRouterService(AttentionRouterService):
 
     def __init__(self) -> None:
         self.timestamp_to_token: dict[tuple[str, int], str] = {}
+        self.resolve_calls: list[tuple[object, str, int]] = []
 
     def route_notification(self, *, meta, **kwargs):
         del meta, kwargs
@@ -225,7 +226,7 @@ class _FakeAttentionRouterService(AttentionRouterService):
         channel: str,
         target_timestamp_ms: int,
     ):
-        del meta
+        self.resolve_calls.append((meta, channel, target_timestamp_ms))
         return success(
             meta=_meta(),
             payload=self.timestamp_to_token.get((channel, target_timestamp_ms)),
@@ -327,10 +328,22 @@ def test_ingest_emits_verbose_logs_for_signal_approval_correlation() -> None:
         }
     )
 
+    inbound_meta = _meta()
     with patch.object(switchboard_module._LOGGER, "verbose") as verbose_log:
-        result = service.ingest_signal_message(meta=_meta(), raw_body_json=body)
+        result = service.ingest_signal_message(meta=inbound_meta, raw_body_json=body)
 
     assert result.ok is True
+    assert len(attention_router.resolve_calls) == 2
+    first_meta, first_channel, first_timestamp = attention_router.resolve_calls[0]
+    second_meta, second_channel, second_timestamp = attention_router.resolve_calls[1]
+    assert first_channel == "signal"
+    assert first_timestamp == 101
+    assert second_channel == "signal"
+    assert second_timestamp == 202
+    assert first_meta.trace_id == second_meta.trace_id == inbound_meta.trace_id
+    assert first_meta.parent_id == second_meta.parent_id == inbound_meta.envelope_id
+    assert first_meta.envelope_id != inbound_meta.envelope_id
+    assert second_meta.envelope_id != inbound_meta.envelope_id
     assert verbose_log.call_args_list[0].args == (
         "switchboard received raw signal payload",
     )

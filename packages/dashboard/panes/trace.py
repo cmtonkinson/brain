@@ -16,14 +16,18 @@ from packages.dashboard.models.trace import (
 )
 from packages.dashboard.panes.base import BaseView
 
-_TRUNC = 24
-
 
 def _node_label(node: TraceTreeNode) -> str:
-    """Compact label: source  kind"""
-    src = (node.source or "?")[:12]
-    kind = (node.kind or "?")[:20]
-    return f"{src:<12}  {kind}"
+    """Compact label: component  operation  status."""
+    component = (node.component or "?")[:12]
+    operation = (node.operation or "?")[:20]
+    status = (node.status or "?")[:6]
+    return f"{component:<12}  {operation:<20}  {status}"
+
+
+def _select_trace_view(trace_views: list[TraceTreeView]) -> TraceTreeView | None:
+    """Choose the single trace the pane should render."""
+    return trace_views[0] if trace_views else None
 
 
 def _render_detail(node: TraceTreeNode, detail: TraceDetailView | None = None) -> str:
@@ -33,19 +37,23 @@ def _render_detail(node: TraceTreeNode, detail: TraceDetailView | None = None) -
         "Selected",
         "",
         f"Time       {ts}",
+        f"Component  {node.component}",
+        f"Operation  {node.operation}",
+        f"Status     {node.status}",
         f"Source     {node.source}",
-        f"Kind       {node.kind}",
         f"Envelope   {node.envelope_id[:16]}...",
     ]
+    if node.principal:
+        lines.append(f"Principal  {node.principal}")
     if node.parent_id:
         lines.append(f"Parent     {node.parent_id[:16]}...")
+    if node.elapsed_ms is not None:
+        lines.append(f"Elapsed    {node.elapsed_ms}ms")
     if detail is not None:
-        if detail.component:
-            lines.append(f"Component  {detail.component}")
         if detail.payload_summary:
             lines.append(f"Summary    {detail.payload_summary[:60]}")
-        if detail.error:
-            lines.append(f"Error      {detail.error[:60]}")
+        if detail.errors:
+            lines.append(f"Errors     {detail.errors[0][:60]}")
         else:
             lines.append("Errors     none")
     return "\n".join(lines)
@@ -100,15 +108,9 @@ class TracePane(BaseView):
         snapshot = self._trace_source.get_current()
         if snapshot is None or not snapshot.traces:
             return
-        # Show all recent traces as root nodes in one combined tree
-        combined_roots: list[TraceTreeNode] = []
-        for tv in snapshot.traces:
-            combined_roots.extend(tv.root_nodes)
-        combined = TraceTreeView(
-            trace_id="live",
-            root_nodes=tuple(combined_roots),
-        )
-        self.refresh_data(combined)
+        selected = _select_trace_view(snapshot.traces)
+        if selected is not None:
+            self.refresh_data(selected)
 
     def _populate_tree(self, tree: Tree) -> None:
         tree.clear()

@@ -38,6 +38,29 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
     assert invoke_call.body["invocation_id"] != ""
 
 
+def test_agent_turn_harness_preserves_trace_linkage_for_final_notify() -> None:
+    """Final attention notify should stay on the same turn trace as LMS tool chat."""
+    result = run_agent_turn_scenario(AgentTurnScenario())
+
+    assemble_call = next(
+        call for call in result.calls if call.path == "/memory/assemble_context"
+    )
+    lms_call = next(
+        call for call in result.calls if call.path == "/lms/chat-with-tools"
+    )
+    record_call = next(
+        call for call in result.calls if call.path == "/memory/record_response"
+    )
+    notify_call = result.calls[-1]
+
+    assert notify_call.path == "/capabilities/invoke"
+    assert notify_call.body["capability_id"] == "attention-notify"
+    assert assemble_call.body["trace_id"] == lms_call.body["trace_id"]
+    assert record_call.body["trace_id"] == lms_call.body["trace_id"]
+    assert lms_call.body["trace_id"] == notify_call.body["trace_id"]
+    assert notify_call.body["parent_id"] == lms_call.body["envelope_id"]
+
+
 def test_agent_turn_harness_logs_notify_failures_without_failing_turn() -> None:
     """Outbound notify failures should be logged while preserving turn completion."""
     scenario = AgentTurnScenario(

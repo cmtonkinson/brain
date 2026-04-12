@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from textual.widgets import Static
 
-from packages.dashboard.data_sources.health import HealthAggregator
+from packages.dashboard.data_sources.health import COMPONENTS, HealthAggregator
 from packages.dashboard.models.health import ComponentHealth
 
-_COMPONENT_ORDER = ("core", "agent", "postgres", "redis", "signal", "qdrant", "gateway")
+_COMPONENT_ORDER = COMPONENTS
 _STATE_TOKENS = {
     "ok": "[green]OK[/green]",
     "no": "[red]NO[/red]",

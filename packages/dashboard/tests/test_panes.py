@@ -7,7 +7,14 @@ from datetime import datetime, timezone
 from packages.dashboard.data_sources.logs import LogBuffer
 from packages.dashboard.models.log_event import DashboardLogEvent
 from packages.dashboard.panes import BaseView, EmptyPicker
-from packages.dashboard.panes import LogPane, PolicyPane, TracePane, TurnPane
+from packages.dashboard.panes import (
+    HostPane,
+    LLMPane,
+    LogPane,
+    PolicyPane,
+    TracePane,
+    TurnPane,
+)
 from packages.dashboard.panes.empty_picker import VIEW_CHOICES
 
 
@@ -35,6 +42,14 @@ def test_turn_pane_has_correct_view_id():
 
 def test_policy_pane_has_correct_view_id():
     assert PolicyPane.view_id == "policy"
+
+
+def test_host_pane_has_correct_view_id():
+    assert HostPane.view_id == "host"
+
+
+def test_llm_pane_has_correct_view_id():
+    assert LLMPane.view_id == "llm"
 
 
 def test_empty_picker_view_choices_not_empty():

@@ -69,7 +69,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--loglevel", "warning"]
     ports:
-      - "8761:6379"
+      - "${BRAIN_REDIS_PORT_BIND:-8761:6379}"
     volumes:
       - ./data/redis:/data
     healthcheck:
@@ -84,7 +84,7 @@ services:
     environment:
       QDRANT__LOG_LEVEL: WARN
     ports:
-      - "8762:6333"
+      - "${BRAIN_QDRANT_PORT_BIND:-8762:6333}"
     volumes:
       - ./data/qdrant:/qdrant/storage
 
@@ -97,7 +97,7 @@ services:
       POSTGRES_USER: brain
       POSTGRES_PASSWORD: brain
     ports:
-      - "8760:5432"
+      - "${BRAIN_POSTGRES_PORT_BIND:-8760:5432}"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:

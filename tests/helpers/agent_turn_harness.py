@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -21,7 +22,6 @@ from packages.brain_sdk import (
     MemoryProfileContext,
     SwitchboardOperatorInstruction,
 )
-from packages.brain_shared.config import ActorSettings
 from packages.brain_shared.http.client import HttpClient
 from packages.brain_shared.ids import generate_ulid_str
 
@@ -291,7 +291,22 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
         config=BrainSdkConfig(source="agent", principal="operator"),
         http=http,
     )
-    runtime = agent_main._create_runtime(client=client, settings=ActorSettings())
+    settings = SimpleNamespace(
+        agent=SimpleNamespace(
+            capability_discovery_deny_list=(),
+            tool_return_compress_threshold=4000,
+            tool_return_max_chars=8000,
+            tool_loop_tier2_hop_threshold=3,
+        )
+    )
+    core_settings = SimpleNamespace(
+        profile=SimpleNamespace(system_prompt_append=None),
+    )
+    runtime = agent_main._create_runtime(
+        client=client,
+        settings=settings,
+        core_settings=core_settings,
+    )
     response_text = asyncio.run(
         agent_main._process_instruction(
             runtime=runtime,

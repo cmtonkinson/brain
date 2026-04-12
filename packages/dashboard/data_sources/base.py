@@ -108,6 +108,10 @@ class BasePollingDataSource(DataSource[T]):
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=5)
+            self._thread = None
+        close = getattr(self, "close", None)
+        if callable(close):
+            close()
 
     def is_stale(self) -> bool:
         with self._lock:

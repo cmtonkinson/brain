@@ -39,10 +39,6 @@ class BrainDashboardApp(App[None]):
         Binding("enter", "maximize", "Maximize", show=False, priority=True),
         Binding("q", "close_view_or_pane", "Close", show=False, priority=True),
         Binding("Q", "quit", "Quit", show=False, priority=True),
-        Binding("1", "load_view('trace')", "Trace", show=False, priority=True),
-        Binding("2", "load_view('turn')", "Turn", show=False, priority=True),
-        Binding("3", "load_view('policy')", "Policy", show=False, priority=True),
-        Binding("4", "load_view('log')", "Log", show=False, priority=True),
     ]
 
     def __init__(self) -> None:
@@ -154,21 +150,20 @@ class BrainDashboardApp(App[None]):
             ws.close_pane()
 
     def action_load_view(self, view_id: str) -> None:
-        """Load a view into the currently focused pane."""
+        """Load a view into the currently focused pane when it is empty."""
         ws = self._workspace()
         focused = ws.focused_pane_id
-        if focused is not None:
+        if focused is not None and ws.focused_node_view_id is None:
             ws.load_view(focused, view_id)
 
-    # Directional focus — spatial nav deferred to Phase 4, use focus_next for now
     def action_focus_left(self) -> None:
-        self._workspace().focus_previous()
+        self._workspace().focus_left()
 
     def action_focus_right(self) -> None:
-        self._workspace().focus_next()
+        self._workspace().focus_right()
 
     def action_focus_up(self) -> None:
-        self._workspace().focus_previous()
+        self._workspace().focus_up()
 
     def action_focus_down(self) -> None:
-        self._workspace().focus_next()
+        self._workspace().focus_down()

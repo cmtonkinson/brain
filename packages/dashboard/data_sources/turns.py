@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from packages.dashboard.data_sources.postgres import (
     BasePostgresDataSource,
     PostgresConnectionConfig,
@@ -9,8 +11,92 @@ from packages.dashboard.data_sources.postgres import (
 from packages.dashboard.models.data_source import RetentionPolicy
 from packages.dashboard.models.turn import CurrentTurnView, RecentTurnItemView
 
-
 _RECENT_LIMIT = 20
+_SUMMARY_LIMIT = 80
+
+type TurnRow = tuple[
+    str,
+    str,
+    str,
+    str,
+    str,
+    str,
+    int | None,
+    str | None,
+    str,
+    str,
+    datetime,
+]
+
+
+def _summarize_content(content: str, limit: int = _SUMMARY_LIMIT) -> str:
+    """Return one compact dialogue preview line."""
+    normalized = " ".join(content.split())
+    return normalized if len(normalized) <= limit else normalized[:limit] + "..."
+
+
+def _build_recent_turns(rows: list[TurnRow]) -> list[RecentTurnItemView]:
+    """Normalize recent turn rows for the compact recent list."""
+    return [
+        RecentTurnItemView(
+            timestamp=row[10],
+            direction="in" if row[2] == "inbound" else "out",
+            summary=_summarize_content(row[3]),
+        )
+        for row in rows
+    ]
+
+
+def _build_current_turn(session_turns: list[TurnRow]) -> CurrentTurnView | None:
+    """Pair the newest inbound turn with the next outbound response when present."""
+    if not session_turns:
+        return None
+
+    descending = sorted(session_turns, key=lambda row: row[10], reverse=True)
+    inbound = next((row for row in descending if row[2] == "inbound"), None)
+    if inbound is None:
+        return None
+
+    outbound = next(
+        (row for row in descending if row[2] == "outbound" and row[10] > inbound[10]),
+        None,
+    )
+
+    if outbound is None:
+        elapsed_ms = max(
+            0,
+            int((datetime.now(timezone.utc) - inbound[10]).total_seconds() * 1000),
+        )
+        return CurrentTurnView(
+            state="pending",
+            inbound_content=inbound[3],
+            inbound_time=inbound[10],
+            inbound_principal=inbound[9],
+            response_content=None,
+            response_time=None,
+            model=None,
+            provider=None,
+            reasoning_level=None,
+            token_count=None,
+            trace_id=inbound[8],
+            elapsed_ms=elapsed_ms,
+        )
+
+    elapsed_ms = max(0, int((outbound[10] - inbound[10]).total_seconds() * 1000))
+    return CurrentTurnView(
+        state="complete",
+        inbound_content=inbound[3],
+        inbound_time=inbound[10],
+        inbound_principal=inbound[9],
+        response_content=outbound[3],
+        response_time=outbound[10],
+        model=outbound[4] or None,
+        provider=outbound[5] or None,
+        reasoning_level=outbound[7] or None,
+        token_count=outbound[6],
+        trace_id=outbound[8] or inbound[8],
+        elapsed_ms=elapsed_ms,
+    )
 
 
 class TurnSnapshot:
@@ -40,7 +126,6 @@ class TurnDataSource(BasePostgresDataSource[TurnSnapshot]):
     def _fetch(self) -> TurnSnapshot | None:  # type: ignore[override]
         conn = self._get_connection()
         with conn.cursor() as cur:
-            # Most recent N turns across all sessions (live dashboard shows latest session)
             cur.execute(
                 """
                 SELECT
@@ -51,6 +136,9 @@ class TurnDataSource(BasePostgresDataSource[TurnSnapshot]):
                     COALESCE(model, ''),
                     COALESCE(provider, ''),
                     token_count,
+                    reasoning_level,
+                    trace_id,
+                    principal,
                     created_at
                 FROM service_memory_authority.turn
                 ORDER BY created_at DESC
@@ -63,49 +151,9 @@ class TurnDataSource(BasePostgresDataSource[TurnSnapshot]):
         if not rows:
             return TurnSnapshot(current=None, recent=[])
 
-        # Determine active session from the most recent row
-        latest = rows[0]
-        active_session = latest[1]
-
-        # Current = most recent inbound turn in the active session
-        current: CurrentTurnView | None = None
-        session_turns = [r for r in rows if r[1] == active_session]
-        inbound_turns = [r for r in session_turns if r[2] == "inbound"]
-
-        if inbound_turns:
-            r = inbound_turns[0]
-            # Count turns in session
-            turn_count = len(session_turns)
-            # Phase: if the most recent turn in session is outbound, it's complete; else active
-            phase = "complete" if rows[0][2] == "outbound" else "active"
-            # Model/provider from last outbound turn
-            outbound = [r2 for r2 in session_turns if r2[2] == "outbound"]
-            model_name = outbound[0][4] if outbound else ""
-            provider = outbound[0][5] if outbound else ""
-            token_count = outbound[0][6] if outbound else None
-            current = CurrentTurnView(
-                session_id=active_session,
-                inbound_text=r[3],
-                phase=phase,
-                model_name=model_name,
-                provider=provider,
-                context_turn_count=turn_count,
-                summary_count=0,
-                token_count=token_count,
-            )
-
-        # Recent = all fetched rows as summary items
-        recent: list[RecentTurnItemView] = []
-        for r in rows:
-            recent.append(
-                RecentTurnItemView(
-                    turn_id=r[0],
-                    session_id=r[1],
-                    inbound_preview=r[3][:80] if r[3] else "",
-                    phase=r[2],
-                    model_name=r[4],
-                    recorded_at=r[7],
-                )
-            )
-
-        return TurnSnapshot(current=current, recent=recent)
+        active_session = rows[0][1]
+        session_turns = [row for row in rows if row[1] == active_session]
+        return TurnSnapshot(
+            current=_build_current_turn(session_turns),
+            recent=_build_recent_turns(rows),
+        )

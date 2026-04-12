@@ -9,6 +9,8 @@ from .data_source import (
     Viewport,
 )
 from .health import ComponentHealth
+from .host import HostSnapshotView
+from .llm import LLMUsageRowView, LLMUsageTableView
 from .log_event import DashboardLogEvent
 from .policy import CurrentApprovalView, CurrentDecisionView, RecentPolicyItemView
 from .trace import TraceDetailView, TraceTreeNode, TraceTreeView
@@ -22,7 +24,10 @@ __all__ = [
     "CurrentTurnView",
     "DashboardLogEvent",
     "History",
+    "HostSnapshotView",
     "LayoutNode",
+    "LLMUsageRowView",
+    "LLMUsageTableView",
     "ProvenanceRecord",
     "RecentPolicyItemView",
     "RecentTurnItemView",

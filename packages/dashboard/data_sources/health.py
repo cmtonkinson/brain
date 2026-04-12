@@ -8,36 +8,43 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from math import ceil
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from packages.dashboard.data_sources.base import BasePollingDataSource
+from packages.dashboard.data_sources.postgres import normalize_postgres_dsn
 from packages.dashboard.models.data_source import RetentionPolicy
 from packages.dashboard.models.health import ComponentHealth
 
-
-COMPONENTS = ["core", "agent", "postgres", "redis", "signal", "qdrant", "gateway"]
-
-# Keys in core's /health response that map to our component names.
-_CORE_SUBSTRATE_MAP = {
-    "postgres": "substrate_postgres",
-    "redis": "substrate_redis",
-    "qdrant": "substrate_qdrant",
-    "signal": "adapter_signal",
-    "gateway": "adapter_litellm",
-}
+COMPONENTS = ("core", "agent", "postgres", "redis", "signal", "qdrant", "gateway")
 
 
 class HealthConfig(BaseModel):
+    """Resolved runtime settings for direct dashboard health probes."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     core_health_url: str = "http://localhost:8898/health"
+    core_timeout_seconds: float = Field(default=1.0, gt=0)
     agent_heartbeat_path: str = "./var/agent.heartbeat"
     agent_freshness_seconds: float = Field(default=30.0, gt=0)
-    probe_timeout_seconds: float = Field(default=2.0, gt=0)
+    postgres_url: str = "postgresql+psycopg://brain:brain@localhost:8760/brain"
+    postgres_timeout_seconds: float = Field(default=1.0, gt=0)
+    redis_url: str = "redis://localhost:8761/0"
+    redis_connect_timeout_seconds: float = Field(default=1.0, gt=0)
+    redis_socket_timeout_seconds: float = Field(default=1.0, gt=0)
+    signal_health_url: str | None = None
+    signal_timeout_seconds: float = Field(default=0.5, gt=0)
+    qdrant_health_url: str = "http://localhost:8762/healthz"
+    qdrant_timeout_seconds: float = Field(default=2.0, gt=0)
+    gateway_health_url: str | None = None
+    gateway_timeout_seconds: float = Field(default=2.0, gt=0)
 
 
 class HealthAggregator(BasePollingDataSource[list[ComponentHealth]]):
+    """Poll canonical read-only health probes for the dashboard header."""
+
     def __init__(self, config: HealthConfig, poll_interval: float = 2.0) -> None:
         super().__init__(
             poll_interval, RetentionPolicy(family="snapshot", max_items=50)
@@ -45,108 +52,212 @@ class HealthAggregator(BasePollingDataSource[list[ComponentHealth]]):
         self._config = config
 
     def _fetch(self) -> list[ComponentHealth]:
+        """Run one direct probe per header component in canonical order."""
         now = datetime.now(timezone.utc)
-        core_health, core_detail = self._fetch_core_health()
-
-        results: list[ComponentHealth] = []
-
-        # core — determined directly from HTTP probe
-        results.append(
-            ComponentHealth(
+        return [
+            self._probe_http_component(
                 name="core",
-                state="ok" if core_health is not None else "no",
-                detail=core_detail if core_health is None else None,
-                checked_at=now,
-            )
-        )
+                url=self._config.core_health_url,
+                timeout_seconds=self._config.core_timeout_seconds,
+                now=now,
+            ),
+            self._probe_agent(now),
+            self._probe_postgres(now),
+            self._probe_redis(now),
+            self._probe_http_component(
+                name="signal",
+                url=self._config.signal_health_url,
+                timeout_seconds=self._config.signal_timeout_seconds,
+                now=now,
+            ),
+            self._probe_http_component(
+                name="qdrant",
+                url=self._config.qdrant_health_url,
+                timeout_seconds=self._config.qdrant_timeout_seconds,
+                now=now,
+            ),
+            self._probe_http_component(
+                name="gateway",
+                url=self._config.gateway_health_url,
+                timeout_seconds=self._config.gateway_timeout_seconds,
+                now=now,
+            ),
+        ]
 
-        # agent — heartbeat file, then docker inspect
-        results.append(self._probe_agent(now))
-
-        # postgres, redis, qdrant, signal, gateway — read from core's health payload
-        for component in ("postgres", "redis", "signal", "qdrant", "gateway"):
-            results.append(
-                self._state_from_core(component, core_health, now)
-            )
-
-        return results
-
-    def _fetch_core_health(self) -> tuple[dict | None, str | None]:
-        """Fetch and parse core /health JSON. Returns (parsed_dict, None) on success,
-        (None, error_detail) on failure."""
-        try:
-            with urllib.request.urlopen(
-                self._config.core_health_url,
-                timeout=self._config.probe_timeout_seconds,
-            ) as resp:
-                return json.loads(resp.read()), None
-        except urllib.error.HTTPError as e:
-            return None, f"HTTP {e.code}"
-        except Exception as e:
-            return None, str(e)
-
-    def _state_from_core(
-        self, component: str, core_health: dict | None, now: datetime
+    def _probe_http_component(
+        self,
+        *,
+        name: str,
+        url: str | None,
+        timeout_seconds: float,
+        now: datetime,
     ) -> ComponentHealth:
-        """Derive a component's state from core's /health payload."""
-        if core_health is None:
-            return ComponentHealth(name=component, state="unknown", checked_at=now)
-        key = _CORE_SUBSTRATE_MAP.get(component)
-        if key is None:
-            return ComponentHealth(name=component, state="unknown", checked_at=now)
-        resources = core_health.get("resources", {})
-        services = core_health.get("services", {})
-        entry = resources.get(key) or services.get(key)
-        if entry is None:
-            return ComponentHealth(name=component, state="unknown", checked_at=now)
-        ready = entry.get("ready", False)
-        detail = entry.get("detail") if not ready else None
-        return ComponentHealth(
-            name=component,
-            state="ok" if ready else "no",
-            detail=detail,
-            checked_at=now,
-        )
+        """Probe one HTTP health endpoint with direct, no-fallback semantics."""
+        if url is None or url.strip() == "":
+            return self._component(
+                name=name,
+                state="unknown",
+                detail="health endpoint not configured",
+                now=now,
+            )
+        try:
+            with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
+                payload = response.read()
+        except urllib.error.HTTPError as exc:
+            return self._component(
+                name=name,
+                state="no",
+                detail=f"HTTP {exc.code}",
+                now=now,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._component(
+                name=name,
+                state="unknown",
+                detail=str(exc) or type(exc).__name__,
+                now=now,
+            )
+
+        state, detail = self._state_from_http_payload(payload)
+        return self._component(name=name, state=state, detail=detail, now=now)
 
     def _probe_agent(self, now: datetime) -> ComponentHealth:
+        """Probe agent liveness from heartbeat freshness only."""
         path = self._config.agent_heartbeat_path
         try:
             mtime = os.path.getmtime(path)
             age = time.time() - mtime
             if age < self._config.agent_freshness_seconds:
-                return ComponentHealth(name="agent", state="ok", checked_at=now)
-            return ComponentHealth(
+                return self._component(name="agent", state="ok", detail=None, now=now)
+            return self._component(
                 name="agent",
                 state="no",
                 detail=f"heartbeat stale ({age:.0f}s)",
-                checked_at=now,
+                now=now,
             )
-        except OSError:
-            pass
-        fallback = self._docker_inspect("brain-brain-agent-1", "agent", now)
-        return fallback or ComponentHealth(
-            name="agent", state="unknown", checked_at=now
+        except OSError as exc:
+            return self._component(
+                name="agent",
+                state="unknown",
+                detail=str(exc) or type(exc).__name__,
+                now=now,
+            )
+
+    def _probe_postgres(self, now: datetime) -> ComponentHealth:
+        """Probe Postgres with one read-only connection-level health query."""
+        import psycopg  # noqa: PLC0415
+
+        try:
+            with psycopg.connect(
+                normalize_postgres_dsn(self._config.postgres_url),
+                autocommit=True,
+                options="-c default_transaction_read_only=on",
+                connect_timeout=max(1, ceil(self._config.postgres_timeout_seconds)),
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+        except Exception as exc:  # noqa: BLE001
+            state = "unknown"
+            lowered = (str(exc) or type(exc).__name__).lower()
+            if (
+                "refused" in lowered
+                or "authentication" in lowered
+                or "password" in lowered
+            ):
+                state = "no"
+            return self._component(
+                name="postgres",
+                state=state,
+                detail=str(exc) or type(exc).__name__,
+                now=now,
+            )
+        return self._component(name="postgres", state="ok", detail=None, now=now)
+
+    def _probe_redis(self, now: datetime) -> ComponentHealth:
+        """Probe Redis with one direct PING."""
+        import redis  # noqa: PLC0415
+
+        client = None
+        try:
+            client = redis.Redis.from_url(
+                self._config.redis_url,
+                socket_connect_timeout=self._config.redis_connect_timeout_seconds,
+                socket_timeout=self._config.redis_socket_timeout_seconds,
+                decode_responses=True,
+            )
+            ready = bool(client.ping())
+        except Exception as exc:  # noqa: BLE001
+            state = "unknown"
+            lowered = (str(exc) or type(exc).__name__).lower()
+            if "refused" in lowered or "auth" in lowered or "wrongpass" in lowered:
+                state = "no"
+            return self._component(
+                name="redis",
+                state=state,
+                detail=str(exc) or type(exc).__name__,
+                now=now,
+            )
+        finally:
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        state = "ok" if ready else "no"
+        detail = None if ready else "PING returned false"
+        return self._component(name="redis", state=state, detail=detail, now=now)
+
+    def _component(
+        self,
+        *,
+        name: str,
+        state: str,
+        detail: str | None,
+        now: datetime,
+    ) -> ComponentHealth:
+        """Build one canonical component record."""
+        return ComponentHealth(
+            name=name,
+            state=state,
+            detail=detail,
+            checked_at=now,
         )
 
-    def _docker_inspect(
-        self, container_name: str, component_name: str, now: datetime
-    ) -> ComponentHealth | None:
-        """Returns ComponentHealth from docker inspect, or None if docker unavailable."""
+    def _state_from_http_payload(self, payload: bytes) -> tuple[str, str | None]:
+        """Normalize one HTTP payload into canonical dashboard state."""
+        text = payload.decode("utf-8", errors="ignore").strip()
+        if text == "":
+            return "ok", None
         try:
-            import docker  # type: ignore[import-untyped]
+            body = json.loads(text)
+        except json.JSONDecodeError:
+            return "ok", None
 
-            client = docker.from_env()
-            container = client.containers.get(container_name)
-            status = container.status
-            health = (
-                container.attrs.get("State", {}).get("Health", {}).get("Status", "")
-            )
-            if status == "running" and health in ("healthy", ""):
-                return ComponentHealth(name=component_name, state="ok", checked_at=now)
-            if status in ("exited", "dead") or health == "unhealthy":
-                return ComponentHealth(name=component_name, state="no", checked_at=now)
-            return ComponentHealth(
-                name=component_name, state="unknown", checked_at=now
-            )
-        except Exception:
-            return None
+        if not isinstance(body, dict):
+            return "ok", None
+
+        detail = self._detail_from_payload(body)
+        status = body.get("status")
+        if (
+            body.get("ready") is False
+            or body.get("ok") is False
+            or body.get("healthy") is False
+        ):
+            return "no", detail
+        if isinstance(status, str) and status.lower() in {
+            "error",
+            "failed",
+            "down",
+            "unhealthy",
+        }:
+            return "no", detail
+        return "ok", None
+
+    def _detail_from_payload(self, payload: dict[str, object]) -> str | None:
+        """Extract one concise detail string from a JSON health payload."""
+        for key in ("detail", "error", "message", "status"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip() != "":
+                return value.strip()
+        return None

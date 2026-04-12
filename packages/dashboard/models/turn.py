@@ -9,28 +9,29 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CurrentTurnView(BaseModel):
-    """Current agent-turn snapshot for the selected trace/session."""
+    """Most recent dialogue exchange rendered in the Turn pane."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    session_id: str
-    inbound_text: str
-    phase: Literal["pending", "active", "complete"]
-    model_name: str
-    provider: str
-    context_turn_count: int = Field(ge=0)
-    summary_count: int = Field(ge=0)
+    state: Literal["pending", "complete"]
+    inbound_content: str
+    inbound_time: datetime
+    inbound_principal: str
+    response_content: str | None = None
+    response_time: datetime | None = None
+    model: str | None = None
+    provider: str | None = None
+    reasoning_level: str | None = None
     token_count: int | None = None
+    trace_id: str | None = None
+    elapsed_ms: int | None = Field(default=None, ge=0)
 
 
 class RecentTurnItemView(BaseModel):
-    """Summary row for a recently completed turn."""
+    """Compact recent-turn row rendered beneath the current exchange."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    turn_id: str
-    session_id: str
-    inbound_preview: str
-    phase: str
-    model_name: str
-    recorded_at: datetime
+    timestamp: datetime
+    direction: Literal["in", "out"]
+    summary: str

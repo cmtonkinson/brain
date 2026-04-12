@@ -1,8 +1,9 @@
 """Workspace state models for the dashboard."""
 
+from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class LayoutNode(BaseModel):
@@ -41,6 +42,25 @@ class LayoutNode(BaseModel):
 LayoutNode.model_rebuild()
 
 
+class InspectionContext(BaseModel):
+    """Shared workspace-level inspection context for cross-view correlation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    turn_id: str | None = None
+    trace_id: str | None = None
+    envelope_id: str | None = None
+    component: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    capability: str | None = None
+    focal_timestamp: datetime | None = None
+    time_range_start: datetime | None = None
+    time_range_end: datetime | None = None
+    source_pane_id: str | None = None
+    published_at: datetime | None = None
+
+
 class WorkspaceState(BaseModel):
     """Top-level workspace state for the dashboard."""
 
@@ -49,3 +69,8 @@ class WorkspaceState(BaseModel):
     focused_pane_id: str | None = None
     maximized_pane_id: str | None = None
     root: LayoutNode | None = None
+    inspection_context: InspectionContext = Field(default_factory=InspectionContext)
+    pane_context_follow: dict[str, bool] = Field(default_factory=dict)
+    pane_temporal_mode: dict[str, Literal["follow", "frozen"]] = Field(
+        default_factory=dict
+    )
