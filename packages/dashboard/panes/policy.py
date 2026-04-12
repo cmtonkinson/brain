@@ -1,33 +1,101 @@
-"""Policy pane for decision, reasons, and approval state."""
+"""Policy pane: current approval/decision state and recent history."""
 
 from __future__ import annotations
 
-from packages.dashboard.data_sources import PostgresDataSource
-from packages.dashboard.panes.base import DashboardPane
+from textual.app import ComposeResult
+from textual.widgets import Static
+
+from packages.dashboard.data_sources.policy import PolicyDataSource
+from packages.dashboard.models.policy import (
+    CurrentApprovalView,
+    CurrentDecisionView,
+    RecentPolicyItemView,
+)
+from packages.dashboard.panes.base import BaseView
+
+_RECENT_MAX = 8
+_MIN_HEIGHT_FOR_RECENT = 12
 
 
-class PolicyPane(DashboardPane):
-    """Pane showing the current or selected policy decision summary."""
+class PolicyPane(BaseView):
+    """Current approval/decision state with compact recent history."""
 
-    pane_title = "Policy"
-    pane_id = "policy"
-    toggle_key = "3"
+    view_id = "policy"
+    view_title = "Policy"
 
-    def __init__(self, *, postgres: PostgresDataSource | None = None, **kwargs) -> None:
-        """Initialize the pane with one optional Postgres reader."""
+    DEFAULT_CSS = """
+    PolicyPane { layout: vertical; height: 1fr; }
+    PolicyPane > #policy-current { height: auto; }
+    PolicyPane > #policy-recent { height: 1fr; }
+    """
+
+    def __init__(
+        self,
+        policy_source: PolicyDataSource | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(**kwargs)
-        self._postgres = postgres or PostgresDataSource()
+        self._policy_source = policy_source
+        self._approval: CurrentApprovalView | None = None
+        self._decision: CurrentDecisionView | None = None
+        self._recent: list[RecentPolicyItemView] = []
 
-    def body_text(self) -> str:
-        """Render one placeholder policy summary."""
-        policy = self._postgres.fetch_policy_view()
-        reasons = "\n".join(f"- {reason}" for reason in policy.reason_codes)
-        approval = "yes" if policy.approval_required else "no"
-        return (
-            f"Capability: {policy.capability_id}\n"
-            f"Autonomy: {policy.autonomy_level}\n"
-            f"Decision: {policy.decision}\n"
-            f"Approval required: {approval}\n"
-            "Reasons:\n"
-            f"{reasons}"
-        )
+    def compose(self) -> ComposeResult:
+        yield Static(self._render_current(), id="policy-current")
+        yield Static(self._render_recent(), id="policy-recent")
+
+    def on_mount(self) -> None:
+        self.set_interval(2.0, self._refresh_from_source)
+
+    def _refresh_from_source(self) -> None:
+        if self._policy_source is None:
+            return
+        snapshot = self._policy_source.get_current()
+        if snapshot is None:
+            return
+        self._approval = snapshot.approval
+        self._decision = snapshot.decision
+        self._recent = snapshot.recent
+        try:
+            self.query_one("#policy-current", Static).update(self._render_current())
+            self.query_one("#policy-recent", Static).update(self._render_recent())
+        except Exception:
+            pass
+
+    def _render_current(self) -> str:
+        if self._approval is not None:
+            a = self._approval
+            req = a.requested_at.strftime("%H:%M:%S")
+            exp = a.expires_at.strftime("%H:%M:%S")
+            return (
+                "Current\n"
+                f"State       pending\n"
+                f"Capability  {a.capability_id}\n"
+                f"Actor       {a.actor}\n"
+                f"Channel     {a.channel}\n"
+                f"Summary     {a.summary}\n"
+                f"Requested   {req}\n"
+                f"Expires     {exp}"
+            )
+        if self._decision is not None:
+            d = self._decision
+            ts = d.decided_at.strftime("%H:%M:%S")
+            return (
+                "Current\n"
+                f"State       {d.state}\n"
+                f"Capability  {d.capability_id}\n"
+                f"Actor       {d.actor}\n"
+                f"Channel     {d.channel}\n"
+                f"Decided     {ts}"
+            )
+        return "Current\n—"
+
+    def _render_recent(self) -> str:
+        if not self._recent:
+            return ""
+        lines = ["Recent"]
+        for item in self._recent[:_RECENT_MAX]:
+            ts = item.timestamp.strftime("%H:%M:%S")
+            cap = item.capability_id[:30]
+            lines.append(f"{ts}  {item.state:<8}  {cap}")
+        return "\n".join(lines)

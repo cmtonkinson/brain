@@ -1,29 +1,20 @@
-"""Base pane types shared by dashboard workspace panes."""
+"""Base view type for dashboard workspace views."""
 
 from __future__ import annotations
 
-from textual.reactive import reactive
-from textual.widgets import Static
+from textual.widget import Widget
 
 
-class DashboardPane(Static):
-    """Common base widget for workspace panes."""
+class BaseView(Widget):
+    """Base class for all dashboard view widgets.
 
-    pane_title = "Pane"
-    pane_id = "pane"
-    toggle_key = "0"
-    is_followable = False
+    Subclasses set class-level view_id and view_title and provide their
+    own compose method.
+    """
 
-    focused = reactive(False)
+    DEFAULT_CSS = """
+    BaseView { layout: vertical; height: 1fr; }
+    """
 
-    def __init__(self, *args, **kwargs) -> None:
-        """Initialize the pane with standard Textual widget arguments."""
-        super().__init__(*args, **kwargs)
-
-    def render(self) -> str:
-        """Render a simple titled body for the pane."""
-        return f"[b]{self.pane_title}[/b]\n\n{self.body_text()}"
-
-    def body_text(self) -> str:
-        """Return pane-specific body text."""
-        return "Stub pane."
+    view_id: str = ""
+    view_title: str = ""

@@ -68,6 +68,8 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--loglevel", "warning"]
+    ports:
+      - "8761:6379"
     volumes:
       - ./data/redis:/data
     healthcheck:
@@ -81,6 +83,8 @@ services:
     restart: unless-stopped
     environment:
       QDRANT__LOG_LEVEL: WARN
+    ports:
+      - "8762:6333"
     volumes:
       - ./data/qdrant:/qdrant/storage
 
@@ -92,6 +96,8 @@ services:
       POSTGRES_DB: brain
       POSTGRES_USER: brain
       POSTGRES_PASSWORD: brain
+    ports:
+      - "8760:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:

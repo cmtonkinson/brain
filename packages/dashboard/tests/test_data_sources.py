@@ -1,29 +1,50 @@
-"""Tests for dashboard read-only data-source stubs."""
+"""Tests for dashboard data source connection skeletons."""
 
 from __future__ import annotations
 
-from packages.dashboard.data_sources import (
-    DockerDataSource,
-    FileDataSource,
-    LogDataSource,
-    PostgresDataSource,
-    RedisDataSource,
+from unittest.mock import patch
+
+
+from packages.dashboard.data_sources.postgres import (
+    BasePostgresDataSource,
+    PostgresConnectionConfig,
 )
+from packages.dashboard.data_sources.redis import (
+    BaseRedisDataSource,
+    RedisConnectionConfig,
+)
+from packages.dashboard.models.data_source import RetentionPolicy
+
+_RETENTION = RetentionPolicy(family="snapshot", max_items=10)
 
 
-def test_postgres_data_source_returns_placeholder_views() -> None:
-    """Postgres data source should return non-empty placeholder snapshots."""
-    source = PostgresDataSource()
-
-    assert source.fetch_health_items()
-    assert source.fetch_active_trace().events
-    assert source.fetch_turn_view().phase != ""
-    assert source.fetch_policy_view().decision != ""
+def test_postgres_config_defaults():
+    cfg = PostgresConnectionConfig(url="postgresql://x:y@localhost/db")
+    assert cfg.pool_size == 3
+    assert cfg.read_only is True
 
 
-def test_other_data_sources_return_placeholder_state() -> None:
-    """Other substrate readers should return non-empty placeholder data."""
-    assert DockerDataSource().fetch_container_statuses()
-    assert RedisDataSource().fetch_queue_depths()
-    assert LogDataSource().fetch_recent_events()
-    assert FileDataSource().list_known_log_files()
+def test_redis_config_defaults():
+    cfg = RedisConnectionConfig()
+    assert cfg.url == "redis://localhost:6379/0"
+    assert cfg.read_only is True
+
+
+def test_postgres_fetch_error_captured():
+    cfg = PostgresConnectionConfig(url="postgresql://bad:bad@localhost/bad")
+    src = BasePostgresDataSource(config=cfg, poll_interval=1.0, retention=_RETENTION)
+    with patch("psycopg.connect", side_effect=Exception("conn refused")):
+        src._poll_once()
+    snap = src.get_snapshot()
+    assert snap.stale is True
+    assert snap.error is not None
+
+
+def test_redis_fetch_error_captured():
+    cfg = RedisConnectionConfig(url="redis://bad:6379/0")
+    src = BaseRedisDataSource(config=cfg, poll_interval=1.0, retention=_RETENTION)
+    with patch("redis.Redis.from_url", side_effect=Exception("no redis")):
+        src._poll_once()
+    snap = src.get_snapshot()
+    assert snap.stale is True
+    assert snap.error is not None

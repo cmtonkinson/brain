@@ -71,6 +71,15 @@ All other services are run with Docker Compose:
 - Caching and queueing are handled by [Redis]
 - Vector search for semantic embeddings is powered by [Qdrant]
 
+Host port assignments (non-standard range to avoid conflicts):
+
+| Port | Service | Protocol |
+|------|---------|---------|
+| 8760 | Postgres | TCP |
+| 8761 | Redis | TCP |
+| 8762 | Qdrant | HTTP |
+| 8898 | Brain Core | HTTP |
+
 There is also an optional OpenTelemetry-based observability stack (a separate
 but related Docker Compose) which leverages [Prometheus], [Loki],
 [Grafana], and [cAdvisor].

@@ -1,63 +1,56 @@
-"""Dashboard header widget with one compact health/status line."""
+"""Dashboard header widget: compact 7-component health bar."""
 
 from __future__ import annotations
 
 from textual.widgets import Static
 
-from packages.dashboard.data_sources import DockerDataSource, PostgresDataSource
+from packages.dashboard.data_sources.health import HealthAggregator
+from packages.dashboard.models.health import ComponentHealth
+
+_COMPONENT_ORDER = ("core", "agent", "postgres", "redis", "signal", "qdrant", "gateway")
+_STATE_TOKENS = {
+    "ok": "[green]OK[/green]",
+    "no": "[red]NO[/red]",
+    "unknown": "[dim]??[/dim]",
+}
+
+
+def _render_health(components: list[ComponentHealth]) -> str:
+    """Build compact health line from a list of ComponentHealth."""
+    by_name = {c.name: c for c in components}
+    parts = []
+    for name in _COMPONENT_ORDER:
+        health = by_name.get(name)
+        state = health.state if health is not None else "unknown"
+        token = _STATE_TOKENS.get(state, "[dim]??[/dim]")
+        parts.append(f"{name} {token}")
+    return "  ".join(parts)
 
 
 class HealthHeader(Static):
-    """Compact top-of-screen health bar."""
-
-    _STATUS_ORDER = (
-        "core",
-        "agent",
-        "postgres",
-        "redis",
-        "signal",
-        "qdrant",
-        "gateway",
-    )
+    """Compact top-of-screen health bar backed by HealthAggregator."""
 
     def __init__(
         self,
-        *,
-        docker: DockerDataSource | None = None,
-        postgres: PostgresDataSource | None = None,
+        aggregator: HealthAggregator | None = None,
+        _fixture: list[ComponentHealth] | None = None,
     ) -> None:
-        """Initialize the header with optional substrate readers."""
-        super().__init__(id="health-header")
-        self._docker = docker or DockerDataSource()
-        self._postgres = postgres or PostgresDataSource()
+        super().__init__(id="health-header", markup=True)
+        self._aggregator = aggregator
+        self._fixture = _fixture  # for testing without live data
 
     def on_mount(self) -> None:
-        """Render the initial health text on mount."""
-        self.update(self._build_text())
+        self._refresh_health()
+        self.set_interval(2.0, self._refresh_health)
 
-    def _build_text(self) -> str:
-        """Build one compact health/status line."""
-        statuses: dict[str, str] = {}
-        for item in self._postgres.fetch_health_items():
-            statuses[self._normalize_name(item.name)] = item.status
-        for name, status in self._docker.fetch_container_statuses().items():
-            statuses[self._normalize_name(name)] = status
-        return "  ".join(
-            self._format_status(name, statuses.get(name, "unknown"))
-            for name in self._STATUS_ORDER
-        )
-
-    def _format_status(self, name: str, status: str) -> str:
-        """Normalize one component name and render a compact colored status."""
-        normalized_status = status.strip().lower()
-        ok = normalized_status in {"ok", "healthy", "up", "running"}
-        marker = "[green]OK[/green]" if ok else "[red]NOK[/red]"
-        return f"{name} {marker}"
-
-    def _normalize_name(self, name: str) -> str:
-        """Normalize raw source-specific component names to header names."""
-        normalized_name = name.strip().lower().removeprefix("brain-")
-        aliases = {
-            "pg": "postgres",
-        }
-        return aliases.get(normalized_name, normalized_name)
+    def _refresh_health(self) -> None:
+        if self._fixture is not None:
+            self.update(_render_health(self._fixture))
+            return
+        if self._aggregator is not None:
+            snapshot = self._aggregator.get_snapshot()
+            components: list[ComponentHealth] = snapshot.data or []
+            self.update(_render_health(components))
+        else:
+            # No aggregator configured — show all unknown
+            self.update(_render_health([]))

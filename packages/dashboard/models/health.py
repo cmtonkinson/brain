@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict
 
 
-class HealthStatusItem(BaseModel):
-    """Compact one-line status entry for a named subsystem."""
+class ComponentHealth(BaseModel):
+    """Health state for a single named component."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    name: str = Field(min_length=1)
-    status: str = Field(min_length=1)
+    name: str
+    state: Literal["ok", "no", "unknown"]
+    detail: str | None = None
+    checked_at: datetime | None = None

@@ -1,33 +1,73 @@
-"""Tests for dashboard workspace pane orchestration."""
+"""Tests for WorkspaceManager binary split tree."""
 
 from __future__ import annotations
 
-from packages.dashboard.workspace import Workspace
+from packages.dashboard.workspace import WorkspaceManager
 
 
-def test_toggle_pane_hides_visible_pane() -> None:
-    """Workspace should remove a pane from the visible set when toggled off."""
-    workspace = Workspace()
-
-    workspace.toggle_pane("trace")
-
-    assert "trace" not in workspace._visible_pane_ids
-
-
-def test_toggle_pane_shows_hidden_pane() -> None:
-    """Workspace should re-add a pane to the visible set when toggled on."""
-    workspace = Workspace()
-    workspace.toggle_pane("trace")
-
-    workspace.toggle_pane("trace")
-
-    assert "trace" in workspace._visible_pane_ids
+def test_initial_state_single_pane():
+    m = WorkspaceManager()
+    leaves = m._leaves()
+    assert len(leaves) == 1
+    assert leaves[0].pane_id == "pane-0"
+    assert m.state.focused_pane_id == "pane-0"
 
 
-def test_focus_next_pane_cycles_visible_panes() -> None:
-    """Workspace should cycle focus through visible panes."""
-    workspace = Workspace()
+def test_split_horizontal_creates_two_leaves():
+    m = WorkspaceManager()
+    new_id = m.split("horizontal")
+    leaves = m._leaves()
+    assert len(leaves) == 2
+    assert any(leaf.pane_id == new_id for leaf in leaves)
 
-    workspace.focus_next_pane()
 
-    assert workspace._focused_pane_id == "turn"
+def test_split_vertical_creates_two_leaves():
+    m = WorkspaceManager()
+    m.split("vertical")
+    leaves = m._leaves()
+    assert len(leaves) == 2
+
+
+def test_focus_next_cycles():
+    m = WorkspaceManager()
+    m.split("horizontal")
+    first = m.state.focused_pane_id
+    m.focus_next()
+    second = m.state.focused_pane_id
+    assert first != second
+    m.focus_next()
+    assert m.state.focused_pane_id == first
+
+
+def test_close_view_clears_view_id():
+    m = WorkspaceManager()
+    m.load_view("trace")
+    m.close_view()
+    assert m.state.root.view_id is None
+
+
+def test_close_pane_last_pane_does_nothing():
+    m = WorkspaceManager()
+    m.close_pane()
+    assert len(m._leaves()) == 1
+
+
+def test_close_pane_two_panes_leaves_one():
+    m = WorkspaceManager()
+    m.split("horizontal")
+    m.close_pane()
+    assert len(m._leaves()) == 1
+
+
+def test_maximize_toggle():
+    m = WorkspaceManager()
+    m.maximize()
+    assert m.state.maximized_pane_id == "pane-0"
+    m.maximize()
+    assert m.state.maximized_pane_id is None
+
+
+def test_load_view_sets_view_id():
+    m = WorkspaceManager()
+    m.load_view("trace")
+    assert m.state.root.view_id == "trace"

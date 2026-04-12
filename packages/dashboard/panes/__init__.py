@@ -1,17 +1,17 @@
 """Pane exports for the dashboard workspace."""
 
-from .base import DashboardPane
+from .base import BaseView
+from .empty_picker import EmptyPicker
 from .log import LogPane
 from .policy import PolicyPane
 from .trace import TracePane
 from .turn import TurnPane
-from .welcome import WelcomePane
 
 __all__ = [
-    "DashboardPane",
+    "BaseView",
+    "EmptyPicker",
     "LogPane",
     "PolicyPane",
     "TracePane",
     "TurnPane",
-    "WelcomePane",
 ]

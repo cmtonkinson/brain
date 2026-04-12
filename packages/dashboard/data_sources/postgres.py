@@ -1,69 +1,57 @@
-"""Read-only Postgres access for dashboard view models."""
+"""Read-only Postgres access for dashboard data sources."""
 
 from __future__ import annotations
 
-from packages.dashboard.models import (
-    HealthStatusItem,
-    PolicyDecisionView,
-    TraceEventView,
-    TraceView,
-    TurnView,
-)
+from typing import Generic, TypeVar
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from packages.dashboard.data_sources.base import BasePollingDataSource
+from packages.dashboard.models.data_source import RetentionPolicy
+
+T = TypeVar("T")
 
 
-class PostgresDataSource:
-    """Stub Postgres reader for dashboard state snapshots."""
+class PostgresConnectionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    url: str
+    pool_size: int = Field(default=3, gt=0)
+    query_timeout_seconds: float = Field(default=5.0, gt=0)
+    read_only: bool = True
 
-    def fetch_health_items(self) -> tuple[HealthStatusItem, ...]:
-        """Return placeholder health state derived from persisted runtime state."""
-        return (
-            HealthStatusItem(name="core", status="OK"),
-            HealthStatusItem(name="agent", status="OK"),
-            HealthStatusItem(name="pg", status="OK"),
-        )
 
-    def fetch_active_trace(self) -> TraceView:
-        """Return one placeholder active trace summary."""
-        return TraceView(
-            trace_id="trace_stub",
-            title="operator -> switchboard -> agent",
-            current_step="language_model.chat_with_tools",
-            events=(
-                TraceEventView(
-                    timestamp="14:31:58.102",
-                    kind="event",
-                    name="switchboard.ingest_signal",
-                ),
-                TraceEventView(
-                    timestamp="14:31:58.140",
-                    kind="call",
-                    name="memory.assemble_context",
-                ),
-                TraceEventView(
-                    timestamp="14:31:59.021",
-                    kind="call",
-                    name="language_model.chat_with_tools",
-                ),
-            ),
-        )
+class BasePostgresDataSource(BasePollingDataSource[T], Generic[T]):
+    def __init__(
+        self,
+        config: PostgresConnectionConfig,
+        poll_interval: float,
+        retention: RetentionPolicy,
+    ) -> None:
+        super().__init__(poll_interval, retention)
+        self._config = config
+        self._conn = None
 
-    def fetch_turn_view(self) -> TurnView:
-        """Return one placeholder turn summary."""
-        return TurnView(
-            inbound_text="text Chris back about tomorrow",
-            phase="tool execution",
-            model_name="gpt-5.4",
-            provider="openai",
-            context_turn_count=10,
-            summary_count=24,
-        )
+    def _get_connection(self):
+        import psycopg  # noqa: PLC0415
 
-    def fetch_policy_view(self) -> PolicyDecisionView:
-        """Return one placeholder policy summary."""
-        return PolicyDecisionView(
-            capability_id="send-message-draft",
-            autonomy_level="L1",
-            decision="allowed",
-            reason_codes=("in_policy", "reversible", "operator_owned"),
-            approval_required=False,
-        )
+        if self._conn is None or self._conn.closed:
+            self._conn = psycopg.connect(
+                self._config.url,
+                autocommit=True,
+                options="-c default_transaction_read_only=on",
+            )
+        return self._conn
+
+    def _fetch(self) -> T | None:
+        conn = self._get_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        return None  # subclasses override with real queries
+
+    def close(self) -> None:
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None

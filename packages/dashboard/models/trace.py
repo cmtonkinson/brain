@@ -2,25 +2,46 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
 
 
-class TraceEventView(BaseModel):
-    """One concise event in the active trace timeline."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    timestamp: str = Field(min_length=1)
-    kind: str = Field(min_length=1)
-    name: str = Field(min_length=1)
-
-
-class TraceView(BaseModel):
-    """Compact representation of the currently selected trace."""
+class TraceTreeNode(BaseModel):
+    """One node in the trace tree, representing a single envelope."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    trace_id: str = Field(min_length=1)
-    title: str = Field(min_length=1)
-    current_step: str = Field(min_length=1)
-    events: tuple[TraceEventView, ...] = ()
+    envelope_id: str
+    kind: str
+    source: str
+    timestamp: datetime
+    parent_id: str | None = None
+    children: tuple[TraceTreeNode, ...] = ()
+    depth: int = 0
+
+
+TraceTreeNode.model_rebuild()
+
+
+class TraceTreeView(BaseModel):
+    """Tree of trace nodes for the selected trace."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    trace_id: str
+    root_nodes: tuple[TraceTreeNode, ...] = ()
+
+
+class TraceDetailView(BaseModel):
+    """Full detail for a single selected envelope."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    envelope_id: str
+    kind: str
+    source: str
+    component: str | None = None
+    timestamp: datetime
+    payload_summary: str | None = None
+    error: str | None = None

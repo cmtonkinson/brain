@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 
 class DashboardLogEvent(BaseModel):
@@ -10,6 +13,11 @@ class DashboardLogEvent(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    timestamp: str = Field(min_length=1)
-    level: str = Field(min_length=1)
-    message: str = Field(min_length=1)
+    timestamp: datetime
+    level: str
+    component: str
+    source: str
+    message: str
+    trace_id: str | None = None
+    envelope_id: str | None = None
+    raw_payload: Any | None = None
