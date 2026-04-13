@@ -52,7 +52,7 @@ _Invoke by package ``capability_id`` (no version arg) and return normalized poli
 - Module: `services/action/language_model/service.py`
 - Summary: Public API for chat and embedding operations.
 
-`chat(*, meta: EnvelopeMeta, prompt: str, profile: ReasoningLevel = ReasoningLevel.STANDARD) -> Envelope[ChatResponse]`  
+`chat(*, meta: EnvelopeMeta, system_prompt: str = '', prompt: str, profile: ReasoningLevel = ReasoningLevel.STANDARD) -> Envelope[ChatResponse]`  
 _Generate one chat completion._
 
 `embed(*, meta: EnvelopeMeta, text: str, profile: EmbeddingProfile = EmbeddingProfile.DOCUMENT_EMBEDDING) -> Envelope[EmbeddingVector]`  

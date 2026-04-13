@@ -383,6 +383,7 @@ def call_lms_chat(
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
+    system_prompt: str = "",
     prompt: str,
     profile: str = "standard",
 ) -> LmsChatResult:
@@ -391,7 +392,12 @@ def call_lms_chat(
         operation="lms.chat",
         http=http,
         url="/lms/chat",
-        body={**metadata, "prompt": prompt, "profile": profile},
+        body={
+            **metadata,
+            "system_prompt": system_prompt,
+            "prompt": prompt,
+            "profile": profile,
+        },
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
@@ -1182,6 +1188,7 @@ def invoke_capability(
 def lms_chat(
     *,
     client: object,
+    system_prompt: str = "",
     prompt: str,
     profile: str = "standard",
     principal: str = "",
@@ -1191,6 +1198,7 @@ def lms_chat(
 ) -> LmsChatResult:
     """High-level SDK wrapper for direct LMS chat."""
     return client.lms_chat(  # type: ignore[union-attr]
+        system_prompt=system_prompt,
         prompt=prompt,
         profile=profile,
         meta=_meta_overrides(

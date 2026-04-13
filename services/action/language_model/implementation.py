@@ -114,6 +114,7 @@ class DefaultLanguageModelService(LanguageModelService):
         self,
         *,
         meta: EnvelopeMeta,
+        system_prompt: str = "",
         prompt: str,
         profile: ReasoningLevel = ReasoningLevel.STANDARD,
     ) -> Envelope[ChatResponse]:
@@ -121,7 +122,11 @@ class DefaultLanguageModelService(LanguageModelService):
         request, errors = self._validate_request(
             meta=meta,
             model=ChatRequest,
-            payload={"prompt": prompt, "profile": profile},
+            payload={
+                "system_prompt": system_prompt,
+                "prompt": prompt,
+                "profile": profile,
+            },
         )
         if errors:
             return failure(meta=meta, errors=errors)
@@ -132,6 +137,7 @@ class DefaultLanguageModelService(LanguageModelService):
             result = self._adapter.chat(
                 provider=resolved.provider,
                 model=resolved.model,
+                system_prompt=request.system_prompt,
                 prompt=request.prompt,
             )
         except AdapterDependencyError as exc:

@@ -59,8 +59,15 @@ def _require_text_items(values: Sequence[str], *, field_name: str) -> tuple[str,
 class ChatRequest(_ValidationModel):
     """Validated request shape for single chat generation."""
 
+    system_prompt: str = ""
     prompt: str
     profile: ReasoningLevel
+
+    @field_validator("system_prompt")
+    @classmethod
+    def _normalize_system_prompt(cls, value: str) -> str:
+        """Normalize optional system prompt text."""
+        return value.strip()
 
     @field_validator("prompt")
     @classmethod

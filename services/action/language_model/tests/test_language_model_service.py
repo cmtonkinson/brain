@@ -45,6 +45,7 @@ class _Call:
 
 @dataclass
 class _ChatCall(_Call):
+    system_prompt: str
     prompt: str
 
 
@@ -92,9 +93,17 @@ class _FakeAdapter(LiteLlmAdapter):
         *,
         provider: str,
         model: str,
+        system_prompt: str = "",
         prompt: str,
     ) -> AdapterChatResult:
-        self.chat_calls.append(_ChatCall(provider=provider, model=model, prompt=prompt))
+        self.chat_calls.append(
+            _ChatCall(
+                provider=provider,
+                model=model,
+                system_prompt=system_prompt,
+                prompt=prompt,
+            )
+        )
         if self.raise_chat is not None:
             raise self.raise_chat
         return AdapterChatResult(text=f"ok:{prompt}", provider=provider, model=model)
@@ -225,7 +234,12 @@ def test_chat_uses_default_profile_by_default() -> None:
     assert result.payload.value.text == "ok:hello"
     assert result.payload.value.model == "chat-a"
     assert adapter.chat_calls == [
-        _ChatCall(provider="ollama", model="chat-a", prompt="hello")
+        _ChatCall(
+            provider="ollama",
+            model="chat-a",
+            system_prompt="",
+            prompt="hello",
+        )
     ]
 
 
@@ -242,7 +256,12 @@ def test_chat_deep_uses_deep_profile_when_set() -> None:
 
     assert result.ok is True
     assert adapter.chat_calls == [
-        _ChatCall(provider="openai", model="chat-d", prompt="hello")
+        _ChatCall(
+            provider="openai",
+            model="chat-d",
+            system_prompt="",
+            prompt="hello",
+        )
     ]
 
 
@@ -255,7 +274,34 @@ def test_chat_quick_uses_quick_profile_when_set() -> None:
 
     assert result.ok is True
     assert adapter.chat_calls == [
-        _ChatCall(provider="openai", model="chat-q", prompt="hello")
+        _ChatCall(
+            provider="openai",
+            model="chat-q",
+            system_prompt="",
+            prompt="hello",
+        )
+    ]
+
+
+def test_chat_passes_system_prompt_separately() -> None:
+    """Single chat should preserve optional system prompt role separation."""
+    adapter = _FakeAdapter()
+    service = DefaultLanguageModelService(settings=_settings(), adapter=adapter)
+
+    result = service.chat(
+        meta=_meta(),
+        system_prompt="compress carefully",
+        prompt="hello",
+    )
+
+    assert result.ok is True
+    assert adapter.chat_calls == [
+        _ChatCall(
+            provider="ollama",
+            model="chat-a",
+            system_prompt="compress carefully",
+            prompt="hello",
+        )
     ]
 
 

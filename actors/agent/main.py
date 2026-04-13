@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 import inspect
 import json
 import logging
 import os
-from pathlib import Path
 import re
 import signal
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from pydantic_ai import Agent, RunContext, Tool
@@ -23,8 +23,8 @@ from pydantic_ai.messages import (
     TextPart,
     ToolCallPart,
     ToolReturnPart,
-    UserPromptPart,
     UserContent,
+    UserPromptPart,
 )
 from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.profiles import ModelProfile
@@ -38,16 +38,16 @@ from packages.brain_sdk import (
     BrainInternalError,
     BrainNotFoundError,
     BrainPolicyError,
-    BrainTransportError,
     BrainSdkConfig,
+    BrainTransportError,
     BrainValidationError,
     CapabilityDescriptor,
     LmsChatMessage,
     LmsChatToolCall,
     LmsChatToolDefinition,
     LmsToolChatResult,
-    MetaOverrides,
     MemoryContextBlock,
+    MetaOverrides,
     SwitchboardOperatorInstruction,
 )
 from packages.brain_shared.config import (
@@ -1099,11 +1099,7 @@ async def _compress_tool_return(
     max_chars: int,
     timeout_seconds: float | None = None,
 ) -> _CompressedToolReturn:
-    """Call Haiku to compress one large tool return to relevant content only.
-
-    Uses lms_chat_with_tools (no tools, text-only) so the call is captured in
-    the audit table alongside all other LMS calls for observability.
-    """
+    """Call quick chat to compress one large tool return."""
     intent_hint = response_detail.strip() or f"tool call: {tool_name}"
     user_content = _render_prompt_template(
         _COMPRESS_USER_PROMPT_TEMPLATE,
@@ -1112,20 +1108,15 @@ async def _compress_tool_return(
         intent=intent_hint,
         raw_output=raw_content[:max_chars],
     )
-    messages = (
-        LmsChatMessage(role="system", content=_COMPRESS_SYSTEM_PROMPT),
-        LmsChatMessage(role="user", content=user_content),
-    )
     try:
         result = await asyncio.to_thread(
-            client.lms_chat_with_tools,
-            messages=messages,
-            tools=(),
-            allow_text_output=True,
+            client.lms_chat,
+            system_prompt=_COMPRESS_SYSTEM_PROMPT,
+            prompt=user_content,
             profile="quick",
             timeout_seconds=timeout_seconds,
         )
-        compressed = (result.text or "").strip()
+        compressed = result.text.strip()
         if compressed:
             return _CompressedToolReturn(
                 content=compressed,

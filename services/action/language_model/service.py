@@ -27,6 +27,7 @@ class LanguageModelService(ABC):
         self,
         *,
         meta: EnvelopeMeta,
+        system_prompt: str = "",
         prompt: str,
         profile: ReasoningLevel = ReasoningLevel.STANDARD,
     ) -> Envelope[ChatResponse]:

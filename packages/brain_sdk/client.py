@@ -163,6 +163,7 @@ class BrainClient:
     def lms_chat(
         self,
         *,
+        system_prompt: str = "",
         prompt: str,
         profile: str = "standard",
         timeout_seconds: float | None = None,
@@ -177,6 +178,7 @@ class BrainClient:
                 if timeout_seconds is None
                 else timeout_seconds
             ),
+            system_prompt=system_prompt,
             prompt=prompt,
             profile=profile,
         )

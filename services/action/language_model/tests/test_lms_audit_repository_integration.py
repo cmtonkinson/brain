@@ -47,7 +47,15 @@ class _AuditAdapter(LiteLlmAdapter):
     def __init__(self, *, fail: bool = False) -> None:
         self._fail = fail
 
-    def chat(self, *, provider: str, model: str, prompt: str):
+    def chat(
+        self,
+        *,
+        provider: str,
+        model: str,
+        system_prompt: str = "",
+        prompt: str,
+    ):
+        del system_prompt
         raise NotImplementedError
 
     def chat_batch(self, *, provider: str, model: str, prompts: Sequence[str]):

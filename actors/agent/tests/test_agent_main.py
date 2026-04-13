@@ -484,31 +484,31 @@ def test_compress_tool_return_uses_file_backed_user_template() -> None:
 
     class _FakeClient:
         def __init__(self) -> None:
-            self.messages: tuple[LmsChatMessage, ...] | None = None
-            self.tools: tuple[object, ...] | None = None
+            self.system_prompt: str | None = None
+            self.prompt: str | None = None
             self.profile: str | None = None
 
-        def lms_chat_with_tools(
+        def lms_chat(
             self,
             *,
-            messages: tuple[LmsChatMessage, ...],
-            tools: tuple[object, ...],
-            allow_text_output: bool = True,
+            system_prompt: str = "",
+            prompt: str,
             profile: str = "standard",
             timeout_seconds: float | None = None,
-        ) -> LmsToolChatResult:
-            assert allow_text_output is True
+        ):
             assert timeout_seconds is None
-            self.messages = messages
-            self.tools = tools
+            self.system_prompt = system_prompt
+            self.prompt = prompt
             self.profile = profile
-            return LmsToolChatResult(
-                provider="anthropic",
-                model="claude-haiku-4-5-20251001",
-                finish_reason="stop",
-                text="compressed result",
-                tool_calls=(),
-            )
+            return type(
+                "ChatResult",
+                (),
+                {
+                    "text": "compressed result",
+                    "provider": "anthropic",
+                    "model": "claude-haiku-4-5-20251001",
+                },
+            )()
 
     client = _FakeClient()
     result = asyncio.run(
@@ -528,23 +528,17 @@ def test_compress_tool_return_uses_file_backed_user_template() -> None:
         provider="anthropic",
     )
     assert client.profile == "quick"
-    assert client.tools == ()
-    assert client.messages == (
-        LmsChatMessage(role="system", content=main._COMPRESS_SYSTEM_PROMPT),
-        LmsChatMessage(
-            role="user",
-            content=(
-                "<metadata>\n"
-                "* These results come from the `vault-search-files` tool.\n"
-                '* The tool was invoked in "decide" mode.\n'
-                "* The model stated its intent as: "
-                "<intent>Find Claire's birthday.</intent>\n"
-                "</metadata>\n\n"
-                "<raw_result>\n"
-                '{"items":[]}\n'
-                "</raw_result>"
-            ),
-        ),
+    assert client.system_prompt == main._COMPRESS_SYSTEM_PROMPT
+    assert client.prompt == (
+        "<metadata>\n"
+        "* These results come from the `vault-search-files` tool.\n"
+        '* The tool was invoked in "decide" mode.\n'
+        "* The model stated its intent as: "
+        "<intent>Find Claire's birthday.</intent>\n"
+        "</metadata>\n\n"
+        "<raw_result>\n"
+        '{"items":[]}\n'
+        "</raw_result>"
     )
 
 

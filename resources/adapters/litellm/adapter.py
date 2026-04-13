@@ -128,6 +128,7 @@ class LiteLlmAdapter(Protocol):
         *,
         provider: str,
         model: str,
+        system_prompt: str = "",
         prompt: str,
     ) -> AdapterChatResult:
         """Generate one chat completion."""

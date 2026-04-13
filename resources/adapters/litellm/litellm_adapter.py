@@ -64,13 +64,18 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         *,
         provider: str,
         model: str,
+        system_prompt: str = "",
         prompt: str,
     ) -> AdapterChatResult:
         """Generate one chat completion using the LiteLLM Python API."""
+        messages: list[dict[str, Any]] = []
+        if system_prompt.strip() != "":
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
         response, raw_call = self._call_completion(
             provider=provider,
             model=model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
         )
         content = _extract_chat_content(response)
         return AdapterChatResult(

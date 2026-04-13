@@ -23,6 +23,7 @@ class _ChatRequest(BaseModel):
     trace_id: str | None = None
     envelope_id: str | None = None
     parent_id: str = ""
+    system_prompt: str = ""
     prompt: str
     profile: str = "standard"
 
@@ -109,6 +110,7 @@ def register_routes(*, router: APIRouter, service: LanguageModelService) -> None
         result = await run_in_threadpool(
             service.chat,
             meta=meta,
+            system_prompt=req.system_prompt,
             prompt=req.prompt,
             profile=profile,
         )
