@@ -20,6 +20,7 @@ from packages.brain_shared.envelope import (
     EnvelopeKind,
 )
 from packages.brain_shared.errors import (
+    ErrorCategory,
     ErrorDetail,
     codes,
     internal_error,
@@ -84,6 +85,8 @@ from services.state.embedding_authority.service import EmbeddingAuthorityService
 
 _LOGGER = get_logger(__name__)
 _REASON_AUTONOMY_EXCEEDS_ENGINE_LIMIT = "autonomy_exceeds_engine_limit"
+_REASON_DEPENDENCY_ERROR = "dependency_error"
+_REASON_NOT_FOUND = "not_found"
 _CAPABILITY_DISCOVERY_SOURCE_REFERENCE = "capability-engine:discovery"
 _CAPABILITY_DISCOVERY_SOURCE_TYPE = "capability_catalog"
 _CAPABILITY_DISCOVERY_PRINCIPAL = "system"
@@ -898,11 +901,16 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
             try:
                 result = handler(allowed_request, runtime)
             except OpHandlerBridgeError as exc:
+                reason_codes = tuple(
+                    _error_category_to_reason_code(e.category) for e in exc.errors
+                )
                 return PolicyExecutionResult(
                     allowed=False,
                     output=None,
                     errors=exc.errors,
-                    decision=self._placeholder_allow_decision(),
+                    decision=self._placeholder_allow_decision().model_copy(
+                        update={"allowed": False, "reason_codes": reason_codes}
+                    ),
                     proposal=None,
                 )
             except ValueError as exc:
@@ -1032,6 +1040,19 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
             ),
             proposal=None,
         )
+
+
+def _error_category_to_reason_code(category: ErrorCategory) -> str:
+    """Map an ErrorCategory to a capability-engine reason code."""
+    _MAP = {
+        ErrorCategory.NOT_FOUND: _REASON_NOT_FOUND,
+        ErrorCategory.DEPENDENCY: _REASON_DEPENDENCY_ERROR,
+        ErrorCategory.CONFLICT: "conflict",
+        ErrorCategory.VALIDATION: "validation_error",
+        ErrorCategory.INTERNAL: "internal_error",
+        ErrorCategory.POLICY: "policy_error",
+    }
+    return _MAP.get(category, "internal_error")
 
 
 def _resolve_capability_embedding_profile_fingerprint(
