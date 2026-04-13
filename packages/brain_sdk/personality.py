@@ -3,13 +3,28 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 _PERSONALITIES_DIR = Path(__file__).parent / "personalities"
 _TEMPLATE_PATH = _PERSONALITIES_DIR / "_template.txt"
+_TEMPLATE_VAR_RE = re.compile(r"\{\{([a-z_][a-z0-9_]*)\}\}")
 
 
 class PersonalityNotFoundError(Exception):
     """Raised when the requested personality file does not exist."""
+
+
+def _render_template(template: str, /, **values: str) -> str:
+    """Render one double-brace template and reject unresolved placeholders."""
+    rendered = template
+    for key, value in values.items():
+        rendered = rendered.replace(f"{{{{{key}}}}}", value)
+    unresolved = _TEMPLATE_VAR_RE.findall(rendered)
+    if unresolved:
+        raise ValueError(
+            f"unresolved personality template placeholders: {', '.join(sorted(unresolved))}"
+        )
+    return rendered
 
 
 def render_system_prompt(personality: str = "default") -> str:
@@ -24,4 +39,4 @@ def render_system_prompt(personality: str = "default") -> str:
         )
     identity = personality_path.read_text(encoding="utf-8").strip()
     template = _TEMPLATE_PATH.read_text(encoding="utf-8")
-    return template.format_map({"identity": identity})
+    return _render_template(template, identity=identity)

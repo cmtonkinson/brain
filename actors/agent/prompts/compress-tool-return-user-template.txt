@@ -1,0 +1,11 @@
+
+<metadata>
+* These results come from the `{{tool_name}}` tool.
+* The tool was invoked in "{{call_mode}}" mode.
+* The model stated its intent as: <intent>{{intent}}</intent>
+</metadata>
+
+<raw_result>
+{{raw_output}}
+</raw_result>
+

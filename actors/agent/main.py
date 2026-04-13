@@ -9,6 +9,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import signal
 from dataclasses import dataclass, field
 from typing import Any
@@ -67,12 +68,16 @@ _LMS_THROTTLE_RESPONSE = (
 _AGENT_DIR = Path(__file__).resolve().parent
 _PROMPTS_DIR = _AGENT_DIR / "prompts"
 _COMPRESS_SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "compress-tool-return.txt"
+_COMPRESS_USER_PROMPT_TEMPLATE_PATH = (
+    _PROMPTS_DIR / "compress-tool-return-user-template.txt"
+)
 _AGENT_CONTEXT_PROPERTIES_PATH = _AGENT_DIR / "tool-context-properties.json"
 _DISCOVER_CAPABILITIES_TOOL_NAME = "discover_capabilities"
 _DESCRIBE_CAPABILITY_TOOL_NAME = "describe_capability"
 _MAX_PENDING_INVOCATIONS = 128
 _HEARTBEAT_FILE_ENV = "BRAIN_AGENT_HEARTBEAT_FILE"
 _HEARTBEAT_PATH = Path("/run/brain/agent-heartbeat")
+_PROMPT_TEMPLATE_VAR_RE = re.compile(r"\{\{([a-z_][a-z0-9_]*)\}\}")
 
 
 def _load_prompt_file(path: Path) -> str:
@@ -92,6 +97,35 @@ def _load_agent_context_properties(
 
 _AGENT_CONTEXT_PROPERTIES = _load_agent_context_properties()
 _COMPRESS_SYSTEM_PROMPT = _load_prompt_file(_COMPRESS_SYSTEM_PROMPT_PATH)
+_COMPRESS_USER_PROMPT_TEMPLATE = _load_prompt_file(
+    _COMPRESS_USER_PROMPT_TEMPLATE_PATH
+)
+_COMPRESS_USER_PROMPT_TEMPLATE_KEYS = frozenset(
+    _PROMPT_TEMPLATE_VAR_RE.findall(_COMPRESS_USER_PROMPT_TEMPLATE)
+)
+if _COMPRESS_USER_PROMPT_TEMPLATE_KEYS != {
+    "tool_name",
+    "call_mode",
+    "intent",
+    "raw_output",
+}:
+    raise ValueError(
+        "compress-tool-return-user-template.txt must contain exactly "
+        "{{tool_name}}, {{call_mode}}, {{intent}}, and {{raw_output}}"
+    )
+
+
+def _render_prompt_template(template: str, /, **values: str) -> str:
+    """Render one simple prompt template using explicit string replacement."""
+    rendered = template
+    for key, value in values.items():
+        rendered = rendered.replace(f"{{{{{key}}}}}", value)
+    unresolved = _PROMPT_TEMPLATE_VAR_RE.findall(rendered)
+    if unresolved:
+        raise ValueError(
+            f"unresolved prompt template placeholders: {', '.join(sorted(unresolved))}"
+        )
+    return rendered
 
 
 def _call_with_optional_meta(func, /, *, meta: MetaOverrides | None, **kwargs: Any):
@@ -1006,11 +1040,12 @@ async def _compress_tool_return(
     the audit table alongside all other LMS calls for observability.
     """
     intent_hint = response_detail.strip() or f"tool call: {tool_name}"
-    user_content = (
-        f"Tool: {tool_name}\n"
-        f"Mode: {call_mode}\n"
-        f"Intent: {intent_hint}\n\n"
-        f"Raw output:\n{raw_content[:max_chars]}"
+    user_content = _render_prompt_template(
+        _COMPRESS_USER_PROMPT_TEMPLATE,
+        tool_name=tool_name,
+        call_mode=call_mode,
+        intent=intent_hint,
+        raw_output=raw_content[:max_chars],
     )
     messages = (
         LmsChatMessage(role="system", content=_COMPRESS_SYSTEM_PROMPT),

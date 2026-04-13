@@ -94,13 +94,28 @@ def test_write_heartbeat_creates_parent_and_updates_file(tmp_path) -> None:
 
 def test_render_system_prompt_returns_rendered_default_personality() -> None:
     """render_system_prompt should render the default personality template."""
-    from packages.brain_sdk.personality import render_system_prompt
+    from packages.brain_sdk.personality import _TEMPLATE_PATH, render_system_prompt
+
+    template = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert "{{identity}}" in template
+    assert "{identity}" not in template.replace("{{identity}}", "")
 
     prompt = render_system_prompt("default")
 
     assert prompt != ""
     assert "tool" in prompt.lower()
     assert "Brain" in prompt
+
+
+def test_render_system_prompt_template_rejects_unresolved_placeholders() -> None:
+    """System prompt template renderer should reject unresolved double-brace vars."""
+    from packages.brain_sdk.personality import _render_template
+
+    try:
+        _render_template("Hello {{identity}} {{missing}}", identity="Brain")
+        assert False, "expected unresolved placeholder validation"
+    except ValueError as exc:
+        assert "missing" in str(exc)
 
 
 def test_render_system_prompt_raises_for_unknown_personality() -> None:
@@ -125,6 +140,41 @@ def test_load_prompt_file_reads_compressor_prompt_from_disk() -> None:
 
     assert prompt == main._COMPRESS_SYSTEM_PROMPT
     assert "tool result compressor" in prompt.lower()
+
+
+def test_load_prompt_file_reads_compressor_user_template_from_disk() -> None:
+    """Prompt-file helper should load the colocated compressor user template."""
+    from actors.agent import main
+
+    prompt = main._load_prompt_file(main._COMPRESS_USER_PROMPT_TEMPLATE_PATH)
+
+    assert prompt == main._COMPRESS_USER_PROMPT_TEMPLATE
+    assert "{{tool_name}}" in prompt
+    assert "{{raw_output}}" in prompt
+
+
+def test_render_prompt_template_replaces_named_placeholders() -> None:
+    """Prompt renderer should replace each named placeholder verbatim."""
+    from actors.agent import main
+
+    rendered = main._render_prompt_template(
+        "Tool: {{tool_name}}\nRaw output:\n{{raw_output}}",
+        tool_name="vault-search-files",
+        raw_output='{"items":[]}',
+    )
+
+    assert rendered == 'Tool: vault-search-files\nRaw output:\n{"items":[]}'
+
+
+def test_render_prompt_template_raises_for_unresolved_placeholders() -> None:
+    """Prompt renderer should fail when a placeholder remains unresolved."""
+    from actors.agent import main
+
+    try:
+        main._render_prompt_template("Tool: {{tool_name}}\nMode: {{call_mode}}")
+        assert False, "expected unresolved placeholder validation"
+    except ValueError as exc:
+        assert "call_mode" in str(exc)
 
 
 def test_load_agent_context_properties_reads_json_from_disk() -> None:
@@ -426,6 +476,74 @@ def test_normalize_tool_return_truncates_large_explore_results() -> None:
     )
     debug.assert_called_once()
     assert debug.call_args.kwargs["extra"]["normalization_kind"] == "truncate"
+
+
+def test_compress_tool_return_uses_file_backed_user_template() -> None:
+    """Compression call should render the editable prompt template into LMS input."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.messages: tuple[LmsChatMessage, ...] | None = None
+            self.tools: tuple[object, ...] | None = None
+            self.profile: str | None = None
+
+        def lms_chat_with_tools(
+            self,
+            *,
+            messages: tuple[LmsChatMessage, ...],
+            tools: tuple[object, ...],
+            allow_text_output: bool = True,
+            profile: str = "standard",
+        ) -> LmsToolChatResult:
+            assert allow_text_output is True
+            self.messages = messages
+            self.tools = tools
+            self.profile = profile
+            return LmsToolChatResult(
+                provider="anthropic",
+                model="claude-haiku-4-5-20251001",
+                finish_reason="stop",
+                text="compressed result",
+                tool_calls=(),
+            )
+
+    client = _FakeClient()
+    result = asyncio.run(
+        main._compress_tool_return(
+            client=client,  # type: ignore[arg-type]
+            tool_name="vault-search-files",
+            call_mode="decide",
+            response_detail="Find Claire's birthday.",
+            raw_content='{"items":[]}',
+            max_chars=400,
+        )
+    )
+
+    assert result == main._CompressedToolReturn(
+        content="compressed result",
+        model="claude-haiku-4-5-20251001",
+        provider="anthropic",
+    )
+    assert client.profile == "quick"
+    assert client.tools == ()
+    assert client.messages == (
+        LmsChatMessage(role="system", content=main._COMPRESS_SYSTEM_PROMPT),
+        LmsChatMessage(
+            role="user",
+            content=(
+                "<metadata>\n"
+                "* These results come from the `vault-search-files` tool.\n"
+                '* The tool was invoked in "decide" mode.\n'
+                "* The model stated its intent as: "
+                "<intent>Find Claire's birthday.</intent>\n"
+                "</metadata>\n\n"
+                "<raw_result>\n"
+                '{"items":[]}\n'
+                "</raw_result>"
+            ),
+        ),
+    )
 
 
 def test_create_runtime_uses_personality_system_prompt() -> None:
