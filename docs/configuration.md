@@ -72,6 +72,15 @@ Agent runtime settings loaded from `actors.yaml`.
 | `tool_return_max_chars` | `8000` | Hard ceiling for tool return content retained in turn history before truncation fallback. |
 | `tool_loop_tier2_hop_threshold` | `3` | Number of intra-turn model-response hops required before the agent inserts the Tier 2 prompt-cache checkpoint. |
 
+### `actors.core`
+Actor->Core connection settings.
+
+| Key | Default | Description |
+|---|---|---|
+| `host` | `127.0.0.1` | Core host used for actor SDK calls. |
+| `port` | `8898` | Core port used for actor SDK calls. |
+| `timeout_seconds` | `30.0` | Default per-request actor->Core timeout. LMS chat/tool-chat calls may use a larger derived timeout based on LiteLLM timeout-retry budget. |
+
 ------------------------------------------------------------------------
 ## `logging`
 Controls structured log output.
@@ -193,6 +202,11 @@ LiteLLM adapter connection defaults.
 | `api_key` | `""` | Optional API token sent as `Authorization: Bearer <token>`. |
 | `timeout_seconds` | `30.0` | Per-request HTTP timeout. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
+| `timeout_retry_attempts` | `2` | Additional timeout-only retry attempts applied by Brain around chat/tool-chat provider calls. Must be >= 0. |
+| `timeout_retry_initial_delay_seconds` | `0.5` | Initial delay before the first timeout retry. Must be >= 0. |
+| `timeout_retry_max_delay_seconds` | `2.0` | Maximum capped delay between timeout retries. Must be > 0. |
+| `timeout_retry_backoff_multiplier` | `2.0` | Exponential multiplier applied between timeout retries. Must be > 1.0. |
+| `timeout_retry_jitter_ratio` | `0.2` | Symmetric random jitter ratio applied to timeout retry delays. Must be in `[0,1)`. |
 
 ### `resources.substrate.obsidian`
 Obsidian Local REST API substrate defaults.

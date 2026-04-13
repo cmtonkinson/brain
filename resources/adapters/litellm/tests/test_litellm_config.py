@@ -10,7 +10,9 @@ from packages.brain_shared.config import (
 from resources.adapters.litellm.config import (
     LiteLlmAdapterSettings,
     LiteLlmProviderSettings,
+    max_timeout_retry_budget_seconds,
     resolve_litellm_adapter_settings,
+    timeout_retry_backoff_schedule_seconds,
 )
 
 
@@ -53,6 +55,7 @@ def test_resolve_litellm_adapter_settings_component_override() -> None:
 
     assert resolved.timeout_seconds == 5.5
     assert resolved.max_retries == 1
+    assert resolved.timeout_retry_attempts == 2
     assert resolved.providers == {
         "ollama": LiteLlmProviderSettings(api_base="http://host.docker.internal:11434"),
         "openai": LiteLlmProviderSettings(
@@ -61,3 +64,27 @@ def test_resolve_litellm_adapter_settings_component_override() -> None:
             max_retries=4,
         ),
     }
+
+
+def test_timeout_retry_budget_helpers_reflect_backoff_and_margin() -> None:
+    """Timeout budget helpers should include retries, backoff, and margin."""
+    settings = LiteLlmAdapterSettings(
+        timeout_seconds=10.0,
+        timeout_retry_attempts=2,
+        timeout_retry_initial_delay_seconds=0.5,
+        timeout_retry_max_delay_seconds=2.0,
+        timeout_retry_backoff_multiplier=2.0,
+        providers={
+            "anthropic": LiteLlmProviderSettings(timeout_seconds=12.0),
+        },
+    )
+
+    assert timeout_retry_backoff_schedule_seconds(settings) == (0.5, 1.0)
+    assert (
+        max_timeout_retry_budget_seconds(
+            settings=settings,
+            providers=("anthropic",),
+            margin_seconds=2.0,
+        )
+        == 39.5
+    )

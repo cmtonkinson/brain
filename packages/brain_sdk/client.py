@@ -165,13 +165,18 @@ class BrainClient:
         *,
         prompt: str,
         profile: str = "standard",
+        timeout_seconds: float | None = None,
         meta: MetaOverrides | None = None,
     ) -> LmsChatResult:
         """Execute one direct LMS chat request."""
         return call_lms_chat(
             http=self._http,
             metadata=self._meta(meta),
-            timeout_seconds=self._config.timeout_seconds,
+            timeout_seconds=(
+                self._config.timeout_seconds
+                if timeout_seconds is None
+                else timeout_seconds
+            ),
             prompt=prompt,
             profile=profile,
         )
@@ -185,13 +190,18 @@ class BrainClient:
         parallel_tool_calls: bool | None = None,
         allow_text_output: bool = True,
         profile: str = "standard",
+        timeout_seconds: float | None = None,
         meta: MetaOverrides | None = None,
     ) -> LmsToolChatResult:
         """Execute one tool-capable LMS chat request."""
         return call_lms_chat_with_tools(
             http=self._http,
             metadata=self._meta(meta),
-            timeout_seconds=self._config.timeout_seconds,
+            timeout_seconds=(
+                self._config.timeout_seconds
+                if timeout_seconds is None
+                else timeout_seconds
+            ),
             messages=messages,
             tools=tools,
             tool_choice=tool_choice,

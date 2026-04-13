@@ -38,6 +38,7 @@ from packages.brain_sdk import (
     BrainInternalError,
     BrainNotFoundError,
     BrainPolicyError,
+    BrainTransportError,
     BrainSdkConfig,
     BrainValidationError,
     CapabilityDescriptor,
@@ -53,9 +54,13 @@ from packages.brain_shared.config import (
     ActorSettings,
     CoreSettings,
     load_actor_settings,
-    load_core_settings,
+    load_core_runtime_settings,
 )
 from packages.brain_shared.ids import generate_ulid_str
+from resources.adapters.litellm.config import (
+    max_timeout_retry_budget_seconds,
+    resolve_litellm_adapter_settings,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _RUNNING = True
@@ -65,6 +70,11 @@ _LMS_THROTTLE_RESPONSE = (
     "I'm temporarily rate limited by the language model provider. "
     "Please try again in a minute."
 )
+_LMS_TIMEOUT_RESPONSE = (
+    "I'm temporarily having trouble reaching the language model provider. "
+    "Please try again in a minute."
+)
+_LMS_TIMEOUT_MARGIN_SECONDS = 2.0
 _AGENT_DIR = Path(__file__).resolve().parent
 _PROMPTS_DIR = _AGENT_DIR / "prompts"
 _COMPRESS_SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "compress-tool-return.txt"
@@ -97,9 +107,7 @@ def _load_agent_context_properties(
 
 _AGENT_CONTEXT_PROPERTIES = _load_agent_context_properties()
 _COMPRESS_SYSTEM_PROMPT = _load_prompt_file(_COMPRESS_SYSTEM_PROMPT_PATH)
-_COMPRESS_USER_PROMPT_TEMPLATE = _load_prompt_file(
-    _COMPRESS_USER_PROMPT_TEMPLATE_PATH
-)
+_COMPRESS_USER_PROMPT_TEMPLATE = _load_prompt_file(_COMPRESS_USER_PROMPT_TEMPLATE_PATH)
 _COMPRESS_USER_PROMPT_TEMPLATE_KEYS = frozenset(
     _PROMPT_TEMPLATE_VAR_RE.findall(_COMPRESS_USER_PROMPT_TEMPLATE)
 )
@@ -316,6 +324,7 @@ class _AgentRuntime:
     turn_state: _TurnState
     model: "_BrainSdkToolModel"
     agent: Agent[None, str]
+    lms_request_timeout_seconds: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -393,11 +402,13 @@ class _BrainSdkToolModel(Model):
         client: BrainClient,
         turn_state: _TurnState | None = None,
         profile_name: str = "standard",
+        timeout_seconds: float | None = None,
     ) -> None:
         super().__init__(profile=ModelProfile(supports_tools=True))
         self._client = client
         self._turn_state = _TurnState() if turn_state is None else turn_state
         self._profile_name = profile_name
+        self._timeout_seconds = timeout_seconds
         self.last_result: LmsToolChatResult | None = None
 
     async def request(
@@ -422,6 +433,7 @@ class _BrainSdkToolModel(Model):
             ),
             allow_text_output=prepared_params.allow_text_output,
             profile=self._profile_name,
+            timeout_seconds=self._timeout_seconds,
         )
         self.last_result = result
         parts: list[TextPart | ToolCallPart] = []
@@ -919,11 +931,55 @@ def _brain_sdk_config_from_settings(settings: ActorSettings) -> BrainSdkConfig:
     )
 
 
+def _derive_lms_request_timeout_seconds(core_runtime_settings) -> float:
+    """Return one derived agent->core timeout for LMS chat requests only."""
+    adapter_settings = resolve_litellm_adapter_settings(core_runtime_settings)
+    service_settings = core_runtime_settings.core.service.model_dump(mode="python")
+    language_model = service_settings.get("language_model", {})
+    standard = (
+        language_model.get("standard", {}) if isinstance(language_model, dict) else {}
+    )
+    standard_provider = (
+        str(standard.get("provider", "")).strip() if isinstance(standard, dict) else ""
+    )
+
+    def _profile_provider(name: str) -> str:
+        profile = (
+            language_model.get(name, {}) if isinstance(language_model, dict) else {}
+        )
+        if not isinstance(profile, dict):
+            return standard_provider
+        provider = str(profile.get("provider", "")).strip()
+        return provider if provider != "" else standard_provider
+
+    providers = tuple(
+        dict.fromkeys(
+            [
+                provider
+                for provider in (
+                    _profile_provider("quick"),
+                    standard_provider,
+                    _profile_provider("deep"),
+                )
+                if provider != ""
+            ]
+        )
+    )
+    if len(providers) == 0:
+        providers = tuple(adapter_settings.providers.keys())
+    return max_timeout_retry_budget_seconds(
+        settings=adapter_settings,
+        providers=providers,
+        margin_seconds=_LMS_TIMEOUT_MARGIN_SECONDS,
+    )
+
+
 def _create_runtime(
     *,
     client: BrainClient,
     settings: ActorSettings,
     core_settings: CoreSettings | None = None,
+    lms_request_timeout_seconds: float | None = None,
 ) -> _AgentRuntime:
     """Create one fully wired agent runtime from the published Core surface."""
     effective_core_settings = CoreSettings() if core_settings is None else core_settings
@@ -946,7 +1002,11 @@ def _create_runtime(
         denied_capability_ids=denied_capability_ids,
     )
     turn_state.reset_active_tools()
-    model = _BrainSdkToolModel(client=client, turn_state=turn_state)
+    model = _BrainSdkToolModel(
+        client=client,
+        turn_state=turn_state,
+        timeout_seconds=lms_request_timeout_seconds,
+    )
     capability_tools = _build_capability_tools(
         client=client,
         capabilities=capabilities,
@@ -955,6 +1015,7 @@ def _create_runtime(
     runtime_tools = _build_runtime_tools(client=client, turn_state=turn_state)
     history_processor = _build_history_processor(
         client=client,
+        timeout_seconds=lms_request_timeout_seconds,
         compress_threshold=settings.agent.tool_return_compress_threshold,
         max_chars=settings.agent.tool_return_max_chars,
         tier2_hop_threshold=settings.agent.tool_loop_tier2_hop_threshold,
@@ -974,6 +1035,9 @@ def _create_runtime(
         turn_state=turn_state,
         model=model,
         agent=agent,
+        lms_request_timeout_seconds=(
+            0.0 if lms_request_timeout_seconds is None else lms_request_timeout_seconds
+        ),
     )
 
 
@@ -1033,6 +1097,7 @@ async def _compress_tool_return(
     response_detail: str,
     raw_content: str,
     max_chars: int,
+    timeout_seconds: float | None = None,
 ) -> _CompressedToolReturn:
     """Call Haiku to compress one large tool return to relevant content only.
 
@@ -1058,6 +1123,7 @@ async def _compress_tool_return(
             tools=(),
             allow_text_output=True,
             profile="quick",
+            timeout_seconds=timeout_seconds,
         )
         compressed = (result.text or "").strip()
         if compressed:
@@ -1106,6 +1172,7 @@ def _log_tool_return_audit(
 async def _normalize_tool_return(
     *,
     client: BrainClient,
+    timeout_seconds: float | None = None,
     tool_name: str,
     tool_call_id: str,
     tool_args: dict[str, object],
@@ -1142,6 +1209,7 @@ async def _normalize_tool_return(
             response_detail=response_detail,
             raw_content=raw_content,
             max_chars=max_chars,
+            timeout_seconds=timeout_seconds,
         )
         normalized = _NormalizedToolReturn(
             content=compressed.content,
@@ -1196,6 +1264,7 @@ async def _normalize_tool_return(
 def _build_history_processor(
     *,
     client: BrainClient,
+    timeout_seconds: float | None,
     compress_threshold: int,
     max_chars: int,
     tier2_hop_threshold: int,
@@ -1264,6 +1333,7 @@ def _build_history_processor(
                     call_args = call_args_by_id.get(part.tool_call_id, {})
                     normalized = await _normalize_tool_return(
                         client=client,
+                        timeout_seconds=timeout_seconds,
                         tool_name=part.tool_name,
                         tool_call_id=part.tool_call_id,
                         tool_args=call_args,
@@ -1330,6 +1400,28 @@ def _is_retryable_lms_throttle(exc: BrainDependencyError) -> bool:
     return any(token in message for token in throttle_tokens)
 
 
+def _is_retryable_lms_timeout(exc: BrainDependencyError) -> bool:
+    """Return True when one LMS dependency failure represents timeout exhaustion."""
+    if exc.operation not in {"lms.chat", "lms.chat_with_tools"}:
+        return False
+    if not any(detail.retryable for detail in exc.details):
+        return False
+    message = str(exc).lower()
+    timeout_tokens = ("timed out", "timeout", "readtimeout")
+    return any(token in message for token in timeout_tokens)
+
+
+def _is_retryable_lms_transport_timeout(exc: BrainTransportError) -> bool:
+    """Return True when one LMS transport failure represents timeout exhaustion."""
+    if exc.operation not in {"lms.chat", "lms.chat_with_tools"}:
+        return False
+    if not exc.retryable:
+        return False
+    message = str(exc).lower()
+    timeout_tokens = ("timed out", "timeout", "readtimeout")
+    return any(token in message for token in timeout_tokens)
+
+
 async def _process_instruction(
     *,
     runtime: _AgentRuntime,
@@ -1374,13 +1466,28 @@ async def _process_instruction(
         if response_text == "":
             response_text = "I do not have a response yet."
     except BrainDependencyError as exc:
-        if not _is_retryable_lms_throttle(exc):
+        if _is_retryable_lms_throttle(exc):
+            _LOGGER.warning(
+                "brain agent lms throttled; returning fallback response",
+                extra={"operation": exc.operation},
+            )
+            response_text = _LMS_THROTTLE_RESPONSE
+        elif _is_retryable_lms_timeout(exc):
+            _LOGGER.warning(
+                "brain agent lms timed out; returning fallback response",
+                extra={"operation": exc.operation},
+            )
+            response_text = _LMS_TIMEOUT_RESPONSE
+        else:
+            raise
+    except BrainTransportError as exc:
+        if not _is_retryable_lms_transport_timeout(exc):
             raise
         _LOGGER.warning(
-            "brain agent lms throttled; returning fallback response",
+            "brain agent lms transport timed out; returning fallback response",
             extra={"operation": exc.operation},
         )
-        response_text = _LMS_THROTTLE_RESPONSE
+        response_text = _LMS_TIMEOUT_RESPONSE
     chat = runtime.model.last_result
     candidate_turn = await asyncio.to_thread(
         _call_with_optional_meta,
@@ -1450,7 +1557,8 @@ async def _run_main() -> None:
     _RUNNING = True
 
     settings = load_actor_settings(config_path=_resolve_config_path())
-    core_settings = load_core_settings()
+    core_runtime_settings = load_core_runtime_settings()
+    core_settings = core_runtime_settings.core
     _configure_logging(settings=settings)
     heartbeat_path = _resolve_heartbeat_path()
     _write_heartbeat(path=heartbeat_path)
@@ -1464,6 +1572,9 @@ async def _run_main() -> None:
             client=client,
             settings=settings,
             core_settings=core_settings,
+            lms_request_timeout_seconds=_derive_lms_request_timeout_seconds(
+                core_runtime_settings
+            ),
         )
         _LOGGER.info(
             "brain agent started",
@@ -1471,6 +1582,7 @@ async def _run_main() -> None:
                 "core_host": settings.core.host,
                 "core_port": settings.core.port,
                 "timeout_seconds": settings.core.timeout_seconds,
+                "lms_request_timeout_seconds": runtime.lms_request_timeout_seconds,
                 "source": settings.agent.source,
                 "principal": settings.agent.principal,
                 "session_id": runtime.session_id,

@@ -37,6 +37,11 @@ class LiteLlmAdapterSettings(BaseModel):
 
     timeout_seconds: float = Field(default=30.0, gt=0)
     max_retries: int = Field(default=2, ge=0)
+    timeout_retry_attempts: int = Field(default=2, ge=0)
+    timeout_retry_initial_delay_seconds: float = Field(default=0.5, ge=0)
+    timeout_retry_max_delay_seconds: float = Field(default=2.0, gt=0)
+    timeout_retry_backoff_multiplier: float = Field(default=2.0, gt=1.0)
+    timeout_retry_jitter_ratio: float = Field(default=0.2, ge=0, lt=1.0)
     providers: dict[str, LiteLlmProviderSettings] = Field(
         default_factory=lambda: {
             "ollama": LiteLlmProviderSettings(
@@ -51,6 +56,15 @@ class LiteLlmAdapterSettings(BaseModel):
         for provider_name in self.providers:
             if provider_name.strip() == "":
                 raise ValueError("providers keys must be non-empty")
+        if (
+            self.timeout_retry_attempts > 0
+            and self.timeout_retry_max_delay_seconds
+            < self.timeout_retry_initial_delay_seconds
+        ):
+            raise ValueError(
+                "timeout_retry_max_delay_seconds must be >= "
+                "timeout_retry_initial_delay_seconds when retries are enabled"
+            )
         return self
 
 
@@ -62,4 +76,66 @@ def resolve_litellm_adapter_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),
         model=LiteLlmAdapterSettings,
+    )
+
+
+def resolve_litellm_provider_timeout_seconds(
+    *,
+    settings: LiteLlmAdapterSettings,
+    provider: str,
+) -> float:
+    """Resolve one provider timeout with adapter-level fallback."""
+    provider_config = settings.providers.get(provider)
+    if provider_config is None or provider_config.timeout_seconds is None:
+        return settings.timeout_seconds
+    return provider_config.timeout_seconds
+
+
+def timeout_retry_backoff_schedule_seconds(
+    settings: LiteLlmAdapterSettings,
+) -> tuple[float, ...]:
+    """Return the bounded pre-attempt backoff schedule for timeout retries."""
+    delays: list[float] = []
+    delay = settings.timeout_retry_initial_delay_seconds
+    for _ in range(settings.timeout_retry_attempts):
+        delays.append(min(delay, settings.timeout_retry_max_delay_seconds))
+        delay *= settings.timeout_retry_backoff_multiplier
+    return tuple(delays)
+
+
+def timeout_retry_budget_seconds(
+    *,
+    settings: LiteLlmAdapterSettings,
+    provider: str,
+    margin_seconds: float = 0.0,
+) -> float:
+    """Return one full timeout budget for a provider call including retries."""
+    timeout_seconds = resolve_litellm_provider_timeout_seconds(
+        settings=settings,
+        provider=provider,
+    )
+    attempts = 1 + settings.timeout_retry_attempts
+    return (
+        timeout_seconds * attempts
+        + sum(timeout_retry_backoff_schedule_seconds(settings))
+        + max(0.0, margin_seconds)
+    )
+
+
+def max_timeout_retry_budget_seconds(
+    *,
+    settings: LiteLlmAdapterSettings,
+    providers: tuple[str, ...],
+    margin_seconds: float = 0.0,
+) -> float:
+    """Return the largest timeout budget across one or more providers."""
+    if len(providers) == 0:
+        return margin_seconds
+    return max(
+        timeout_retry_budget_seconds(
+            settings=settings,
+            provider=provider,
+            margin_seconds=margin_seconds,
+        )
+        for provider in providers
     )

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+from random import random
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from http import HTTPStatus
-from time import perf_counter
+from time import perf_counter, sleep
 from typing import Any, Mapping, Sequence
 
+import httpx
 import litellm
 
 from packages.brain_shared.logging import get_logger, public_api_instrumented
@@ -30,6 +32,7 @@ from resources.adapters.litellm.component import RESOURCE_COMPONENT_ID
 from resources.adapters.litellm.config import (
     LiteLlmAdapterSettings,
     LiteLlmProviderSettings,
+    timeout_retry_backoff_schedule_seconds,
 )
 
 _LOGGER = get_logger(__name__)
@@ -224,17 +227,13 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
                 "api_base": resolved.api_base,
             },
         )
-        try:
-            response = litellm.completion(**kwargs)
-        except Exception as exc:
-            self._raise_mapped_exception(
-                exc,
-                raw_call=_finalize_exception_raw_call(
-                    exc,
-                    capture=raw_call,
-                    fallback_request=_fallback_request_audit(kwargs=kwargs),
-                ),
-            )
+        response = self._call_completion_with_timeout_retry(
+            litellm=litellm,
+            provider=provider,
+            model=model,
+            kwargs=kwargs,
+            raw_call=raw_call,
+        )
         audit = _finalize_success_raw_call(
             response=response,
             capture=raw_call,
@@ -250,6 +249,51 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
             },
         )
         return response, audit
+
+    def _call_completion_with_timeout_retry(
+        self,
+        *,
+        litellm: Any,
+        provider: str,
+        model: str,
+        kwargs: dict[str, Any],
+        raw_call: "_RawCallCapture",
+    ) -> object:
+        """Invoke completion with bounded retry/backoff on timeout-like failures."""
+        backoff_schedule = timeout_retry_backoff_schedule_seconds(self._settings)
+        max_attempts = 1 + len(backoff_schedule)
+        for attempt_index in range(max_attempts):
+            try:
+                return litellm.completion(**kwargs)
+            except Exception as exc:
+                if attempt_index >= len(backoff_schedule) or not _is_timeout_exception(
+                    exc
+                ):
+                    self._raise_mapped_exception(
+                        exc,
+                        raw_call=_finalize_exception_raw_call(
+                            exc,
+                            capture=raw_call,
+                            fallback_request=_fallback_request_audit(kwargs=kwargs),
+                        ),
+                    )
+                delay = _jittered_delay(
+                    base_delay=backoff_schedule[attempt_index],
+                    jitter_ratio=self._settings.timeout_retry_jitter_ratio,
+                )
+                _LOGGER.warning(
+                    "LiteLLM provider timeout; retrying completion",
+                    extra={
+                        "provider": provider,
+                        "model": model,
+                        "attempt": attempt_index + 1,
+                        "max_attempts": max_attempts,
+                        "delay_seconds": round(delay, 3),
+                    },
+                )
+                if delay > 0:
+                    sleep(delay)
+        raise AssertionError("unreachable completion retry state")
 
     def _call_embedding(
         self,
@@ -638,6 +682,36 @@ def _response_payload_from_httpx(response: object) -> object | None:
         "reason": reason,
         "headers": headers,
     }
+
+
+def _jittered_delay(*, base_delay: float, jitter_ratio: float) -> float:
+    """Return one bounded delay with optional symmetric jitter."""
+    if base_delay <= 0 or jitter_ratio <= 0:
+        return max(0.0, base_delay)
+    jitter = base_delay * jitter_ratio * (random() * 2 - 1)
+    return max(0.0, base_delay + jitter)
+
+
+def _is_timeout_exception(exc: Exception) -> bool:
+    """Return True when one provider exception represents a timeout."""
+    litellm_timeout = getattr(litellm, "Timeout", None)
+    timeout_types = (
+        (TimeoutError,)
+        if litellm_timeout is None
+        else (
+            TimeoutError,
+            litellm_timeout,
+        )
+    )
+    if isinstance(exc, timeout_types):
+        return True
+    if isinstance(exc, httpx.TimeoutException):
+        return True
+    class_names = [cls.__name__.lower() for cls in type(exc).mro()]
+    if any("timeout" in name for name in class_names):
+        return True
+    message = str(exc).lower()
+    return "timed out" in message or "timeout" in message
 
 
 @dataclass

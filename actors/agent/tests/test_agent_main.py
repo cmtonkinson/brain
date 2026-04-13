@@ -495,8 +495,10 @@ def test_compress_tool_return_uses_file_backed_user_template() -> None:
             tools: tuple[object, ...],
             allow_text_output: bool = True,
             profile: str = "standard",
+            timeout_seconds: float | None = None,
         ) -> LmsToolChatResult:
             assert allow_text_output is True
+            assert timeout_seconds is None
             self.messages = messages
             self.tools = tools
             self.profile = profile
@@ -1317,6 +1319,7 @@ def test_tool_model_requests_lms_chat_with_tools() -> None:
         def __init__(self) -> None:
             self.messages: tuple[LmsChatMessage, ...] | None = None
             self.tools: tuple[LmsChatToolDefinition, ...] | None = None
+            self.timeout_seconds: float | None = None
 
         def lms_chat_with_tools(
             self,
@@ -1327,11 +1330,13 @@ def test_tool_model_requests_lms_chat_with_tools() -> None:
             parallel_tool_calls: bool | None = None,
             allow_text_output: bool = True,
             profile: str = "standard",
+            timeout_seconds: float | None = None,
             meta: object | None = None,
         ) -> LmsToolChatResult:
             del tool_choice, parallel_tool_calls, allow_text_output, profile, meta
             self.messages = messages
             self.tools = tools
+            self.timeout_seconds = timeout_seconds
             return LmsToolChatResult(
                 provider="unit",
                 model="test-model",
@@ -1346,7 +1351,11 @@ def test_tool_model_requests_lms_chat_with_tools() -> None:
                 ),
             )
 
-    model = main._BrainSdkToolModel(client=_FakeClient())  # type: ignore[arg-type]
+    client = _FakeClient()
+    model = main._BrainSdkToolModel(  # type: ignore[arg-type]
+        client=client,
+        timeout_seconds=45.0,
+    )
     response = asyncio.run(
         model.request(
             messages=[
@@ -1379,6 +1388,7 @@ def test_tool_model_requests_lms_chat_with_tools() -> None:
 
     assert model.last_result is not None
     assert model.last_result.model == "test-model"
+    assert client.timeout_seconds == 45.0
     assert model._client.messages == (  # type: ignore[attr-defined]
         LmsChatMessage(role="system", content="system"),
         LmsChatMessage(role="user", content="hello"),
@@ -1531,6 +1541,7 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
         turn_state=main._TurnState(),
         model=main._BrainSdkToolModel.__new__(main._BrainSdkToolModel),
         agent=None,  # type: ignore[arg-type]
+        lms_request_timeout_seconds=45.0,
     )
     runtime.model.last_result = None
     runtime.agent = _FakeAgent(runtime)  # type: ignore[assignment]
@@ -1704,6 +1715,7 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
         turn_state=main._TurnState(),
         model=main._BrainSdkToolModel.__new__(main._BrainSdkToolModel),
         agent=_FakeAgent(),  # type: ignore[arg-type]
+        lms_request_timeout_seconds=45.0,
     )
     runtime.model.last_result = None
 
@@ -1748,6 +1760,187 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
             "signal",
         )
     ]
+
+
+def test_process_instruction_handles_lms_timeout_gracefully() -> None:
+    """Retryable LMS timeout should produce a fallback operator response."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.recorded: list[tuple[str, str, str, str, int, str]] = []
+            self.invoked: list[tuple[str, dict[str, object], str, str]] = []
+
+        def memory_record_inbound_turn(
+            self,
+            *,
+            session_id: str,
+            message: str,
+            instruction: SwitchboardOperatorInstruction | None = None,
+        ):
+            del message, instruction
+            return type("TurnRecord", (), {"id": f"{session_id}-inbound"})()
+
+        def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
+            del session_id
+            return MemoryContextBlock(
+                system_prompt="",
+                profile=MemoryProfileContext(
+                    operator_name="Operator",
+                    brain_name="Brain",
+                    brain_verbosity="normal",
+                ),
+                focus="current focus",
+                dialogue=(),
+                reference_snippets=(),
+            )
+
+        def memory_record_outbound_candidate(
+            self,
+            *,
+            session_id: str,
+            content: str,
+            model: str,
+            provider: str,
+            token_count: int,
+            reasoning_level: str,
+        ):
+            self.recorded.append(
+                (session_id, content, model, provider, token_count, reasoning_level)
+            )
+            return type("TurnRecord", (), {"id": "turn-outbound"})()
+
+        def memory_record_outbound_delivery(
+            self,
+            *,
+            session_id: str,
+            turn_id: str,
+            delivered: bool,
+        ) -> bool:
+            del session_id, turn_id
+            return delivered
+
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+        ):
+            self.invoked.append((capability_id, input_payload, actor, channel))
+            return type("InvokeResult", (), {"output": {"decision": "sent"}})()
+
+    class _FakeAgent:
+        async def run(self, _prompt: str):
+            raise BrainDependencyError(
+                message="lms.chat_with_tools domain failure: provider timed out",
+                operation="lms.chat_with_tools",
+                details=(
+                    SdkErrorDetail(
+                        code="dependency_unavailable",
+                        message="provider timed out",
+                        category="dependency",
+                        retryable=True,
+                    ),
+                ),
+            )
+
+    client = _FakeClient()
+    runtime = main._AgentRuntime(
+        client=client,  # type: ignore[arg-type]
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        turn_state=main._TurnState(),
+        model=main._BrainSdkToolModel.__new__(main._BrainSdkToolModel),
+        agent=_FakeAgent(),  # type: ignore[arg-type]
+        lms_request_timeout_seconds=45.0,
+    )
+    runtime.model.last_result = None
+
+    response = asyncio.run(
+        main._process_instruction(
+            runtime=runtime,
+            instruction=SwitchboardOperatorInstruction(
+                sender_e164="+12025550100",
+                message_text="hello",
+                timestamp_ms=1,
+                source_device="1",
+                source="signal",
+                group_id=None,
+                quote_target_timestamp_ms=None,
+                reaction_target_timestamp_ms=None,
+                reaction_emoji=None,
+                approval_intent=None,
+            ),
+        )
+    )
+
+    assert response == main._LMS_TIMEOUT_RESPONSE
+    assert client.recorded == [
+        (
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            main._LMS_TIMEOUT_RESPONSE,
+            "brain-sdk-lms",
+            "brain-sdk",
+            main._estimate_token_count(main._LMS_TIMEOUT_RESPONSE),
+            "standard",
+        )
+    ]
+    assert client.invoked == [
+        (
+            "attention-notify",
+            {
+                "actor": "operator",
+                "channel": "signal",
+                "message": main._LMS_TIMEOUT_RESPONSE,
+            },
+            "operator",
+            "signal",
+        )
+    ]
+
+
+def test_derive_lms_request_timeout_seconds_uses_largest_chat_provider_budget() -> None:
+    """Derived LMS timeout should reflect retry budget plus margin across profiles."""
+    from actors.agent import main
+    from packages.brain_shared.config import (
+        CoreRuntimeSettings,
+        CoreSettings,
+        ResourcesSettings,
+    )
+
+    runtime_settings = CoreRuntimeSettings(
+        core=CoreSettings.model_validate(
+            {
+                "service": {
+                    "language_model": {
+                        "quick": {"provider": "anthropic", "model": "haiku"},
+                        "standard": {"provider": "anthropic", "model": "sonnet"},
+                        "deep": {"provider": "openai", "model": "gpt-5"},
+                    }
+                }
+            }
+        ),
+        resources=ResourcesSettings.model_validate(
+            {
+                "adapter": {
+                    "litellm": {
+                        "timeout_seconds": 20.0,
+                        "timeout_retry_attempts": 2,
+                        "timeout_retry_initial_delay_seconds": 0.5,
+                        "timeout_retry_max_delay_seconds": 2.0,
+                        "timeout_retry_backoff_multiplier": 2.0,
+                        "providers": {
+                            "anthropic": {"timeout_seconds": 30.0},
+                            "openai": {"timeout_seconds": 15.0},
+                        },
+                    }
+                }
+            }
+        ),
+    )
+
+    assert main._derive_lms_request_timeout_seconds(runtime_settings) == 93.5
 
 
 def test_create_runtime_creates_session_and_registers_tools() -> None:

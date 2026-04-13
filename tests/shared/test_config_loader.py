@@ -443,6 +443,11 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
             "litellm": {
                 "timeout_seconds": LiteLlmAdapterSettings().timeout_seconds,
                 "max_retries": LiteLlmAdapterSettings().max_retries,
+                "timeout_retry_attempts": LiteLlmAdapterSettings().timeout_retry_attempts,
+                "timeout_retry_initial_delay_seconds": LiteLlmAdapterSettings().timeout_retry_initial_delay_seconds,
+                "timeout_retry_max_delay_seconds": LiteLlmAdapterSettings().timeout_retry_max_delay_seconds,
+                "timeout_retry_backoff_multiplier": LiteLlmAdapterSettings().timeout_retry_backoff_multiplier,
+                "timeout_retry_jitter_ratio": LiteLlmAdapterSettings().timeout_retry_jitter_ratio,
                 "providers": {
                     "ollama": {
                         "api_base": LiteLlmAdapterSettings()

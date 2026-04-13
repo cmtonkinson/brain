@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 import litellm
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import resources.adapters.litellm.litellm_adapter as adapter_module
 from resources.adapters.litellm.adapter import (
@@ -36,12 +36,15 @@ class _FakeLiteLlmModule:
         default_factory=lambda: {"data": [{"embedding": [0.1, 0.2]}]}
     )
     completion_exception: Exception | None = None
+    completion_exceptions: list[Exception] = field(default_factory=list)
     embedding_exception: Exception | None = None
     completion_calls: list[dict[str, Any]] = field(default_factory=list)
     embedding_calls: list[dict[str, Any]] = field(default_factory=list)
 
     def completion(self, **kwargs: Any) -> object:
         self.completion_calls.append(kwargs)
+        if self.completion_exceptions:
+            raise self.completion_exceptions.pop(0)
         if self.completion_exception is not None:
             raise self.completion_exception
         return self.completion_response
@@ -348,6 +351,61 @@ def test_chat_raises_dependency_error_for_timeout_exception(
 
     with pytest.raises(AdapterDependencyError, match="timed out"):
         adapter.chat(provider="ollama", model="gpt-oss", prompt="hi")
+
+
+def test_chat_retries_timeout_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Timeout-like failures should retry with the configured backoff policy."""
+    fake_module = _FakeLiteLlmModule(
+        completion_exceptions=[TimeoutError("timed out"), TimeoutError("timed out")]
+    )
+    monkeypatch.setattr(adapter_module, "_load_litellm_module", lambda: fake_module)
+    sleep = MagicMock()
+    monkeypatch.setattr(adapter_module, "sleep", sleep)
+    monkeypatch.setattr(adapter_module, "random", lambda: 0.5)
+    adapter = LiteLlmLibraryAdapter(settings=_settings())
+
+    result = adapter.chat(provider="ollama", model="gpt-oss", prompt="hi")
+
+    assert result.text == "hello"
+    assert len(fake_module.completion_calls) == 3
+    assert sleep.call_args_list == [call(0.5), call(1.0)]
+
+
+def test_chat_with_tools_exhausts_timeout_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tool chat should raise after exhausting the timeout retry budget."""
+    fake_module = _FakeLiteLlmModule(
+        completion_exceptions=[
+            TimeoutError("timed out"),
+            TimeoutError("timed out"),
+            TimeoutError("timed out"),
+        ]
+    )
+    monkeypatch.setattr(adapter_module, "_load_litellm_module", lambda: fake_module)
+    sleep = MagicMock()
+    monkeypatch.setattr(adapter_module, "sleep", sleep)
+    monkeypatch.setattr(adapter_module, "random", lambda: 0.5)
+    adapter = LiteLlmLibraryAdapter(settings=_settings())
+
+    with pytest.raises(AdapterDependencyError, match="timed out"):
+        adapter.chat_with_tools(
+            provider="ollama",
+            model="gpt-oss",
+            messages=(AdapterChatMessage(role="user", content="hello"),),
+            tools=(
+                AdapterChatToolDefinition(
+                    name="demo-tool",
+                    description="Do a thing.",
+                    parameters_json_schema={"type": "object"},
+                ),
+            ),
+        )
+
+    assert len(fake_module.completion_calls) == 3
+    assert sleep.call_args_list == [call(0.5), call(1.0)]
 
 
 def test_chat_with_tools_preserves_request_and_error_payload_on_rate_limit(
