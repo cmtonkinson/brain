@@ -20,7 +20,7 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
 
     assert result.response_text == "assistant reply"
     assert [call.path for call in result.calls] == [
-        "/memory/create_session",
+        "/memory/get_latest_or_create_session",
         "/capabilities/describe",
         "/capabilities/always-on",
         "/memory/record_inbound_turn",
@@ -98,8 +98,8 @@ def test_agent_turn_harness_logs_notify_failures_without_failing_turn() -> None:
     assert exception_log.call_args.args[0] == "brain agent outbound notify failed"
 
 
-def test_agent_turn_harness_runs_discovery_activate_and_tool_use_flow() -> None:
-    """One turn should discover a tool, expose it next round, then invoke it."""
+def test_agent_turn_harness_keeps_tool_set_stable_after_discovery() -> None:
+    """One turn should keep the callable tool set stable after discovery."""
     vault_search = CapabilityDescriptor(
         capability_id="vault-search-files",
         kind="native_op",
@@ -153,22 +153,9 @@ def test_agent_turn_harness_runs_discovery_activate_and_tool_use_flow() -> None:
                 text=None,
                 tool_calls=(
                     LmsChatToolCall(
-                        tool_name="discover_capabilities",
+                        tool_name="search_tools",
                         args_json='{"query":"find the resume file","limit":5}',
                         tool_call_id="call-discover",
-                    ),
-                ),
-            ),
-            LmsToolChatResult(
-                provider="unit",
-                model="test-model",
-                finish_reason="tool_call",
-                text=None,
-                tool_calls=(
-                    LmsChatToolCall(
-                        tool_name="vault-get-file",
-                        args_json='{"file_path":"professional/resume.md"}',
-                        tool_call_id="call-read",
                     ),
                 ),
             ),
@@ -190,7 +177,7 @@ def test_agent_turn_harness_runs_discovery_activate_and_tool_use_flow() -> None:
 
     assert result.response_text == "assistant reply"
     assert [call.path for call in result.calls] == [
-        "/memory/create_session",
+        "/memory/get_latest_or_create_session",
         "/capabilities/describe",
         "/capabilities/always-on",
         "/memory/record_inbound_turn",
@@ -198,36 +185,31 @@ def test_agent_turn_harness_runs_discovery_activate_and_tool_use_flow() -> None:
         "/lms/chat-with-tools",
         "/capabilities/search",
         "/lms/chat-with-tools",
-        "/capabilities/invoke",
-        "/lms/chat-with-tools",
         "/memory/record_outbound_candidate",
         "/capabilities/invoke",
         "/memory/record_outbound_delivery",
     ]
     first_lms_call = result.calls[5]
     second_lms_call = result.calls[7]
-    third_lms_call = result.calls[9]
-    assert [tool["name"] for tool in first_lms_call.body["tools"]] == [
+    assert [
+        tool["name"] for tool in first_lms_call.body["inference_request"]["tools"]
+    ] == [
         "vault-search-files",
-        "discover_capabilities",
-        "describe_capability",
+        "search_tools",
+        "get_tool_info",
     ]
-    assert [tool["name"] for tool in second_lms_call.body["tools"]] == [
+    assert [
+        tool["name"] for tool in second_lms_call.body["inference_request"]["tools"]
+    ] == [
         "vault-search-files",
-        "vault-get-file",
-        "discover_capabilities",
-        "describe_capability",
+        "search_tools",
+        "get_tool_info",
     ]
-    assert [tool["name"] for tool in third_lms_call.body["tools"]] == [
-        "vault-search-files",
-        "vault-get-file",
-        "discover_capabilities",
-        "describe_capability",
-    ]
-    assert result.calls[8].body["capability_id"] == "vault-get-file"
-    assert result.calls[8].body["input_payload"] == {
-        "file_path": "professional/resume.md"
-    }
+    assert not any(
+        call.path == "/capabilities/invoke"
+        and call.body.get("capability_id") == "vault-get-file"
+        for call in result.calls
+    )
 
 
 def test_agent_turn_harness_keeps_deny_listed_capabilities_out_of_next_round_tools() -> (
@@ -282,7 +264,7 @@ def test_agent_turn_harness_keeps_deny_listed_capabilities_out_of_next_round_too
                 text=None,
                 tool_calls=(
                     LmsChatToolCall(
-                        tool_name="discover_capabilities",
+                        tool_name="search_tools",
                         args_json='{"query":"send signal message","limit":5}',
                         tool_call_id="call-discover",
                     ),
@@ -302,6 +284,8 @@ def test_agent_turn_harness_keeps_deny_listed_capabilities_out_of_next_round_too
 
     assert result.response_text == "assistant reply"
     second_lms_call = result.calls[7]
-    tool_names = [tool["name"] for tool in second_lms_call.body["tools"]]
+    tool_names = [
+        tool["name"] for tool in second_lms_call.body["inference_request"]["tools"]
+    ]
     assert "attention-notify" not in tool_names
-    assert "vault-get-file" in tool_names
+    assert "vault-get-file" not in tool_names

@@ -14,6 +14,10 @@ from packages.brain_sdk.errors import (
     map_transport_error,
     raise_for_domain_errors,
 )
+from packages.brain_shared.language_model import (
+    InferenceRequest,
+    dump_inference_request,
+)
 from packages.brain_shared.ids import generate_ulid_str
 from packages.brain_shared.http.errors import HttpRequestError, HttpStatusError
 
@@ -90,34 +94,12 @@ class LmsChatResult:
 
 
 @dataclass(frozen=True, slots=True)
-class LmsChatToolDefinition:
-    """One tool definition sent through the tool-capable LMS SDK surface."""
-
-    name: str
-    parameters_json_schema: dict[str, Any]
-    description: str | None = None
-    strict: bool | None = None
-    sequential: bool = False
-
-
-@dataclass(frozen=True, slots=True)
 class LmsChatToolCall:
     """One normalized tool call returned from the tool-capable LMS SDK surface."""
 
     tool_name: str
     args_json: str
     tool_call_id: str
-
-
-@dataclass(frozen=True, slots=True)
-class LmsChatMessage:
-    """One normalized chat message used by the tool-capable LMS SDK surface."""
-
-    role: str
-    content: str = ""
-    tool_name: str = ""
-    tool_call_id: str = ""
-    tool_calls: tuple[LmsChatToolCall, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,15 +111,6 @@ class LmsToolChatResult:
     finish_reason: str
     text: str | None
     tool_calls: tuple[LmsChatToolCall, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class MemoryProfileContext:
-    """Read-only profile context from MAS assembled context."""
-
-    operator_name: str
-    brain_name: str
-    brain_verbosity: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,10 +126,9 @@ class MemoryDialogueTurn:
 class MemoryContextBlock:
     """Full MAS assembled context payload."""
 
-    system_prompt: str
-    profile: MemoryProfileContext
-    focus: str | None
-    dialogue: tuple[MemoryDialogueTurn, ...]
+    current_focus: str | None
+    recent_conversation_summary: str
+    recent_turns: tuple[MemoryDialogueTurn, ...]
     reference_snippets: tuple[str, ...]
 
 
@@ -183,7 +155,6 @@ class MemorySessionRef:
     """Minimal MAS session reference returned to SDK callers."""
 
     session_id: str
-    system_prompt: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -422,12 +393,7 @@ def call_lms_chat_with_tools(
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
-    messages: tuple[LmsChatMessage, ...],
-    tools: tuple[LmsChatToolDefinition, ...] = (),
-    tool_choice: str | dict[str, object] | None = None,
-    parallel_tool_calls: bool | None = None,
-    allow_text_output: bool = True,
-    profile: str = "standard",
+    inference_request: InferenceRequest,
 ) -> LmsToolChatResult:
     """Execute one tool-capable LMS chat call through Core HTTP."""
     data = _post_json(
@@ -436,12 +402,7 @@ def call_lms_chat_with_tools(
         url="/lms/chat-with-tools",
         body={
             **metadata,
-            "messages": [_lms_chat_message(item) for item in messages],
-            "tools": [_lms_tool_definition(item) for item in tools],
-            "tool_choice": tool_choice,
-            "parallel_tool_calls": parallel_tool_calls,
-            "allow_text_output": allow_text_output,
-            "profile": profile,
+            "inference_request": dump_inference_request(inference_request),
         },
         timeout_seconds=timeout_seconds,
     )
@@ -660,14 +621,13 @@ def call_memory_create_session(
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
-    system_prompt: str,
 ) -> MemorySessionRef:
     """Create one MAS session and return the new session identifier."""
     data = _post_json(
         operation="memory.create_session",
         http=http,
         url="/memory/create_session",
-        body={**metadata, "system_prompt": system_prompt},
+        body=metadata,
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
@@ -920,28 +880,6 @@ def _lms_chat_tool_call_payload(value: LmsChatToolCall) -> dict[str, object]:
     }
 
 
-def _lms_chat_message(value: LmsChatMessage) -> dict[str, object]:
-    """Serialize one tool-capable SDK chat message for transport."""
-    return {
-        "role": value.role,
-        "content": value.content,
-        "tool_name": value.tool_name,
-        "tool_call_id": value.tool_call_id,
-        "tool_calls": [_lms_chat_tool_call_payload(item) for item in value.tool_calls],
-    }
-
-
-def _lms_tool_definition(value: LmsChatToolDefinition) -> dict[str, object]:
-    """Serialize one tool definition dataclass for transport."""
-    return {
-        "name": value.name,
-        "parameters_json_schema": value.parameters_json_schema,
-        "description": value.description,
-        "strict": value.strict,
-        "sequential": value.sequential,
-    }
-
-
 def _memory_turn_record(value: dict[str, Any]) -> MemoryTurnRecord:
     """Map one raw MAS turn payload into the SDK dataclass."""
     return MemoryTurnRecord(
@@ -968,21 +906,18 @@ def _memory_turn_record(value: dict[str, Any]) -> MemoryTurnRecord:
 
 def _memory_context_block(value: dict[str, Any]) -> MemoryContextBlock:
     """Map one raw MAS assembled-context payload into the SDK dataclass."""
-    profile = value.get("profile", {})
-    profile_dict = profile if isinstance(profile, dict) else {}
-    dialogue = value.get("dialogue", [])
-    dialogue_items = dialogue if isinstance(dialogue, list) else []
+    recent_turns = value.get("recent_turns", [])
+    recent_turn_items = recent_turns if isinstance(recent_turns, list) else []
     snippets = value.get("reference_snippets", [])
     snippet_items = snippets if isinstance(snippets, list) else []
     return MemoryContextBlock(
-        system_prompt=str(value.get("system_prompt", "")),
-        profile=MemoryProfileContext(
-            operator_name=str(profile_dict.get("operator_name", "")),
-            brain_name=str(profile_dict.get("brain_name", "")),
-            brain_verbosity=str(profile_dict.get("brain_verbosity", "")),
+        current_focus=(
+            None
+            if value.get("current_focus") is None
+            else str(value.get("current_focus"))
         ),
-        focus=None if value.get("focus") is None else str(value.get("focus")),
-        dialogue=tuple(_memory_dialogue_turn(item) for item in dialogue_items),
+        recent_conversation_summary=str(value.get("recent_conversation_summary", "")),
+        recent_turns=tuple(_memory_dialogue_turn(item) for item in recent_turn_items),
         reference_snippets=tuple(str(item) for item in snippet_items),
     )
 
@@ -1213,12 +1148,7 @@ def lms_chat(
 def lms_chat_with_tools(
     *,
     client: object,
-    messages: tuple[LmsChatMessage, ...],
-    tools: tuple[LmsChatToolDefinition, ...] = (),
-    tool_choice: str | dict[str, object] | None = None,
-    parallel_tool_calls: bool | None = None,
-    allow_text_output: bool = True,
-    profile: str = "standard",
+    inference_request: InferenceRequest,
     principal: str = "",
     source: str = "",
     trace_id: str | None = None,
@@ -1226,12 +1156,7 @@ def lms_chat_with_tools(
 ) -> LmsToolChatResult:
     """High-level SDK wrapper for tool-capable LMS chat."""
     return client.lms_chat_with_tools(  # type: ignore[union-attr]
-        messages=messages,
-        tools=tools,
-        tool_choice=tool_choice,
-        parallel_tool_calls=parallel_tool_calls,
-        allow_text_output=allow_text_output,
-        profile=profile,
+        inference_request=inference_request,
         meta=_meta_overrides(
             principal=principal,
             source=source,

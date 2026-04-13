@@ -19,10 +19,22 @@ DOC_GENERATED_NOTE = (
 DOC_EMPTY_MESSAGE = "No enabled capabilities were found."
 CHECK_OUT_OF_DATE_MESSAGE = "Capability docs are out of date. Run: make docs"
 
-_GROUP_FALLBACK = "Capability Engine Service"
+_GROUP_PIPELINE = "Pipeline Skills"
+_GROUP_LOGIC = "Logic Skills"
+
+_DIR_SERVICE_LABELS = {
+    "attention": "Attention Router Service",
+    "cache": "Cache Authority Service",
+    "embedding": "Embedding Authority Service",
+    "object": "Object Authority Service",
+    "utility": "Utility Service",
+    "vault": "Vault Authority Service",
+}
+
 _SERVICE_LABELS = {
     "service_attention_router": "Attention Router Service",
     "service_cache_authority": "Cache Authority Service",
+    "service_capability_engine": "Capability Engine Service",
     "service_embedding_authority": "Embedding Authority Service",
     "service_language_model": "Language Model Service",
     "service_memory_authority": "Memory Authority Service",
@@ -32,6 +44,7 @@ _SERVICE_LABELS = {
     "service_utility_service": "Utility Service",
     "service_vault_authority": "Vault Authority Service",
 }
+
 _KIND_LABELS = {
     "logic_skill": "Logic Skill",
     "mcp_op": "MCP Op",
@@ -73,14 +86,22 @@ def _collect_manifests(repo_root: Path) -> tuple[object, ...]:
     return registry.list_manifests()
 
 
-def _service_label(manifest: object) -> str:
-    """Return the human-readable service group for one capability."""
-    if getattr(manifest, "kind", "") == "native_op" and hasattr(
-        manifest, "call_target"
-    ):
-        component_id, _method_name = getattr(manifest, "call_target").split(".", 1)
-        return _SERVICE_LABELS.get(component_id, component_id)
-    return _GROUP_FALLBACK
+def _manifest_path(manifest: object, repo_root: Path) -> Path | None:
+    """Return the capability.json path for one manifest, if resolvable."""
+    capability_id = getattr(manifest, "capability_id", "")
+    for path in (repo_root / CAPABILITY_ROOT).rglob("capability.json"):
+        if path.parent.name == capability_id:
+            return path
+    return None
+
+
+def _service_group(manifest: object, repo_root: Path) -> str | None:
+    """Return the service group label for a native_op, inferred from directory."""
+    path = _manifest_path(manifest, repo_root)
+    if path is None:
+        return None
+    service_dir = path.parent.parent.name
+    return _DIR_SERVICE_LABELS.get(service_dir) or _SERVICE_LABELS.get(service_dir)
 
 
 def _tag_line(manifest: object) -> str:
@@ -91,10 +112,10 @@ def _tag_line(manifest: object) -> str:
     autonomy = getattr(manifest, "autonomy")
     if autonomy >= 1:
         tags.append(f"autonomy: {autonomy}")
-    return " ".join(f"`{tag}`" for tag in tags)
+    return " ".join(f"`{tag}`" for tag in tags) + "  "
 
 
-def _implementation_lines(manifest: object) -> list[str]:
+def _implementation_lines(manifest: object, repo_root: Path) -> list[str]:
     """Render one capability's implementation summary lines."""
     kind = getattr(manifest, "kind")
     kind_label = _KIND_LABELS.get(kind, kind)
@@ -103,19 +124,19 @@ def _implementation_lines(manifest: object) -> list[str]:
         if kind == "native_op":
             component_id, method_name = call_target.split(".", 1)
             service_label = _SERVICE_LABELS.get(component_id, component_id)
-            return [f"{kind_label} over `{service_label} {method_name}()`"]
-        return [kind_label]
+            return [f"{kind_label} over `{service_label} {method_name}()`  "]
+        return [f"{kind_label}  "]
 
     if kind == "pipeline_skill":
-        lines = [f"{kind_label} over:"]
+        lines = [f"{kind_label}:  "]
         for index, entry in enumerate(getattr(manifest, "pipeline"), start=1):
             step = _pipeline_step(entry)
             lines.append(
-                f"{index}. `{step['capability']}`{_pipeline_mapping_suffix(step)}"
+                f"{index}. `{step['capability']}`{_pipeline_mapping_suffix(step)}  "
             )
         return lines
 
-    return [f"{kind_label} executed by `{_GROUP_FALLBACK}`"]
+    return [f"{kind_label}  "]
 
 
 def _pipeline_step(entry: object) -> dict[str, Any]:
@@ -236,36 +257,66 @@ def _schema_label(schema: dict[str, Any]) -> str:
     return "any"
 
 
-def _render_markdown(manifests: tuple[object, ...]) -> str:
+def _render_capability(manifest: object, repo_root: Path, lines: list[str]) -> None:
+    """Append one capability's markdown block to lines."""
+    lines.append(f"### `{getattr(manifest, 'capability_id')}")
+    lines.append(f"{getattr(manifest, 'summary')}  ")
+    lines.append(_tag_line(manifest))
+    lines.extend(_implementation_lines(manifest, repo_root))
+    lines.append("")
+    lines.extend(_render_schema_block("Inputs", getattr(manifest, "input_schema")))
+    lines.extend(_render_schema_block("Outputs", getattr(manifest, "output_schema")))
+
+
+def _render_markdown(manifests: tuple[object, ...], repo_root: Path) -> str:
     """Render deterministic capability catalog markdown."""
     lines: list[str] = [DOC_TITLE, DOC_GENERATED_NOTE, ""]
     if not manifests:
         lines.append(DOC_EMPTY_MESSAGE)
     else:
-        grouped: dict[str, list[object]] = {}
-        for manifest in manifests:
-            grouped.setdefault(_service_label(manifest), []).append(manifest)
+        service_groups: dict[str, list[object]] = {}
+        pipeline_skills: list[object] = []
+        logic_skills: list[object] = []
 
-        for service_label in sorted(grouped):
+        for manifest in manifests:
+            kind = getattr(manifest, "kind", "")
+            if kind == "pipeline_skill":
+                pipeline_skills.append(manifest)
+            elif kind == "logic_skill":
+                logic_skills.append(manifest)
+            else:
+                label = _service_group(manifest, repo_root)
+                if label is None:
+                    raise ValueError(
+                        f"cannot determine service group for native_op capability "
+                        f"{getattr(manifest, 'capability_id', '<unknown>')}"
+                    )
+                service_groups.setdefault(label, []).append(manifest)
+
+        for service_label in sorted(service_groups):
             lines.append(HR)
             lines.append(f"## `{service_label}`")
-            manifests_for_service = sorted(
-                grouped[service_label],
-                key=lambda item: item.capability_id,
-            )
-            for manifest in manifests_for_service:
-                lines.append(
-                    f"### `{getattr(manifest, 'capability_id')}` - {getattr(manifest, 'summary')}"
-                )
-                lines.append(_tag_line(manifest))
-                lines.extend(_implementation_lines(manifest))
-                lines.append("")
-                lines.extend(
-                    _render_schema_block("Inputs", getattr(manifest, "input_schema"))
-                )
-                lines.extend(
-                    _render_schema_block("Outputs", getattr(manifest, "output_schema"))
-                )
+            for manifest in sorted(
+                service_groups[service_label],
+                key=lambda m: getattr(m, "capability_id"),
+            ):
+                _render_capability(manifest, repo_root, lines)
+
+        if pipeline_skills:
+            lines.append(HR)
+            lines.append(f"## `{_GROUP_PIPELINE}`")
+            for manifest in sorted(
+                pipeline_skills, key=lambda m: getattr(m, "capability_id")
+            ):
+                _render_capability(manifest, repo_root, lines)
+
+        if logic_skills:
+            lines.append(HR)
+            lines.append(f"## `{_GROUP_LOGIC}`")
+            for manifest in sorted(
+                logic_skills, key=lambda m: getattr(m, "capability_id")
+            ):
+                _render_capability(manifest, repo_root, lines)
 
     while lines and lines[-1] == "":
         lines.pop()
@@ -280,7 +331,7 @@ def main() -> int:
     output_path = (repo_root / args.output).resolve()
 
     manifests = _collect_manifests(repo_root)
-    markdown = _render_markdown(manifests)
+    markdown = _render_markdown(manifests, repo_root)
     if not markdown.endswith("\n"):
         markdown += "\n"
 

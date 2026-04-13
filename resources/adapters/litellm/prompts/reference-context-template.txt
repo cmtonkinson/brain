@@ -1,0 +1,3 @@
+<reference_context>
+{{ snippets }}
+</reference_context>

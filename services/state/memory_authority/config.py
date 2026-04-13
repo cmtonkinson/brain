@@ -13,9 +13,14 @@ class MemoryAuthoritySettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    dialogue_recent_turns: int = Field(default=10, gt=0)
-    dialogue_older_turns: int = Field(default=20, ge=0)
+    min_turns_to_keep: int = Field(default=10, ge=0)
+    max_turns_to_keep: int = Field(default=20, gt=0)
     focus_token_budget: int = Field(default=512, gt=0)
+
+    def model_post_init(self, __context: object) -> None:
+        """Require the moving summary threshold to be >= the retained minimum."""
+        if self.max_turns_to_keep < self.min_turns_to_keep:
+            raise ValueError("max_turns_to_keep must be >= min_turns_to_keep")
 
 
 def resolve_memory_authority_settings(

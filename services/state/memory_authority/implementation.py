@@ -5,7 +5,6 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.config.models import ProfileSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeMeta,
@@ -45,7 +44,6 @@ from services.state.memory_authority.domain import (
     TurnRecord,
 )
 from services.state.memory_authority.focus import FocusCompactionError, FocusModule
-from services.state.memory_authority.profile import ProfileModule
 from services.state.memory_authority.service import MemoryAuthorityService
 
 _LOGGER = get_logger(__name__)
@@ -124,7 +122,6 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         runtime: MemoryPostgresRuntime,
         language_model: LanguageModelService,
         repository: MemoryRepository | None = None,
-        profile: ProfileSettings | None = None,
     ) -> None:
         self._settings = settings
         self._runtime = runtime
@@ -132,9 +129,6 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             PostgresMemoryRepository(runtime.schema_sessions)
             if repository is None
             else repository
-        )
-        self._profile = ProfileModule(
-            profile if profile is not None else ProfileSettings()
         )
         self._dialogue = DialogueModule(
             repository=self._repository,
@@ -147,7 +141,6 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             settings=settings,
         )
         self._assembler = ContextAssembler(
-            profile=self._profile,
             focus=self._focus,
             dialogue=self._dialogue,
         )
@@ -166,7 +159,6 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             settings=service_settings,
             runtime=runtime,
             language_model=language_model,
-            profile=settings.core.profile,
         )
 
     @public_api_instrumented(
@@ -240,7 +232,6 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             context = self._assembler.assemble(
                 meta=meta,
                 session_id=request.session_id,
-                system_prompt=session.system_prompt,
                 exclude_turn_id=None if latest is None else latest.id,
             )
             return success(meta=meta, payload=context)
@@ -481,16 +472,14 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
     )
-    def create_session(
-        self, *, meta: EnvelopeMeta, system_prompt: str
-    ) -> Envelope[SessionRecord]:
-        """Create and return one new session with the rendered system prompt."""
+    def create_session(self, *, meta: EnvelopeMeta) -> Envelope[SessionRecord]:
+        """Create and return one new session."""
         errors = self._validate_meta(meta)
         if errors:
             return failure(meta=meta, errors=errors)
 
         try:
-            record = self._repository.create_session(system_prompt=system_prompt)
+            record = self._repository.create_session()
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
             return self._handle_exception(
@@ -512,7 +501,7 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         try:
             record = self._repository.get_latest_session()
             if record is None:
-                record = self._repository.create_session(system_prompt="")
+                record = self._repository.create_session()
             return success(meta=meta, payload=record)
         except Exception as exc:  # noqa: BLE001
             return self._handle_exception(

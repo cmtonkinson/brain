@@ -8,6 +8,8 @@ import pytest
 
 from packages.brain_sdk.errors import BrainTransportError, BrainValidationError
 from packages.brain_shared.http.errors import HttpStatusError
+from packages.brain_shared.language_model import InferenceToolDefinition
+from tests.helpers.inference_request import make_inference_request
 
 
 def _meta() -> dict[str, object]:
@@ -334,11 +336,7 @@ def test_call_lms_chat_success() -> None:
 
 def test_call_lms_chat_with_tools_success() -> None:
     """Tool-capable LMS chat wrapper should return typed tool call payloads."""
-    from packages.brain_sdk.calls import (
-        LmsChatMessage,
-        LmsChatToolDefinition,
-        call_lms_chat_with_tools,
-    )
+    from packages.brain_sdk.calls import call_lms_chat_with_tools
 
     http = _fake_http(
         {
@@ -363,15 +361,14 @@ def test_call_lms_chat_with_tools_success() -> None:
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
-        messages=(LmsChatMessage(role="user", content="hello"),),
-        tools=(
-            LmsChatToolDefinition(
-                name="demo-tool",
-                parameters_json_schema={"type": "object"},
-            ),
+        inference_request=make_inference_request(
+            tools=(
+                InferenceToolDefinition(
+                    name="demo-tool",
+                    input_schema={"type": "object"},
+                ),
+            )
         ),
-        tool_choice="auto",
-        parallel_tool_calls=True,
     )
 
     assert result.provider == "openai"
@@ -386,13 +383,11 @@ def test_call_memory_assemble_context_success() -> None:
     http = _fake_http(
         {
             "payload": {
-                "profile": {
-                    "operator_name": "Operator",
-                    "brain_name": "Brain",
-                    "brain_verbosity": "normal",
-                },
-                "focus": "current focus",
-                "dialogue": [{"role": "user", "content": "hello", "is_summary": False}],
+                "current_focus": "current focus",
+                "recent_conversation_summary": "prior summary",
+                "recent_turns": [
+                    {"role": "user", "content": "hello", "is_summary": False}
+                ],
                 "reference_snippets": ["snippet"],
             },
             "errors": [],
@@ -407,9 +402,9 @@ def test_call_memory_assemble_context_success() -> None:
         message="hello",
     )
 
-    assert result.profile.brain_name == "Brain"
-    assert result.focus == "current focus"
-    assert result.dialogue[0].content == "hello"
+    assert result.current_focus == "current focus"
+    assert result.recent_conversation_summary == "prior summary"
+    assert result.recent_turns[0].content == "hello"
     assert result.reference_snippets == ("snippet",)
 
 
@@ -476,13 +471,9 @@ def test_call_memory_assemble_snapshot_success() -> None:
     http = _fake_http(
         {
             "payload": {
-                "profile": {
-                    "operator_name": "Operator",
-                    "brain_name": "Brain",
-                    "brain_verbosity": "normal",
-                },
-                "focus": "current focus",
-                "dialogue": [
+                "current_focus": "current focus",
+                "recent_conversation_summary": "prior summary",
+                "recent_turns": [
                     {"role": "assistant", "content": "prior", "is_summary": False}
                 ],
                 "reference_snippets": ["snippet"],
@@ -498,8 +489,9 @@ def test_call_memory_assemble_snapshot_success() -> None:
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
     )
 
-    assert result.profile.brain_name == "Brain"
-    assert result.dialogue[0].content == "prior"
+    assert result.current_focus == "current focus"
+    assert result.recent_conversation_summary == "prior summary"
+    assert result.recent_turns[0].content == "prior"
     assert result.reference_snippets == ("snippet",)
 
 
@@ -518,7 +510,6 @@ def test_call_memory_create_session_success() -> None:
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
-        system_prompt="",
     )
 
     assert result.session_id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"

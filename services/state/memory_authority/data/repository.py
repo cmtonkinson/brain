@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from sqlalchemy import desc, insert, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from packages.brain_shared.ids import (
     generate_ulid_bytes,
@@ -21,16 +20,15 @@ from services.state.memory_authority.domain import (
     TurnDirection,
     OutboundDeliveryRecord,
     TurnRecord,
-    TurnSummaryRecord,
 )
 
-from .schema import sessions, turn_summaries, turns
+from .schema import sessions, turns
 
 
 class MemoryRepository(Protocol):
     """Protocol for MAS authoritative persistence operations."""
 
-    def create_session(self, *, system_prompt: str) -> SessionRecord:
+    def create_session(self) -> SessionRecord:
         """Create and return one session row."""
 
     def get_latest_session(self) -> SessionRecord | None:
@@ -55,6 +53,16 @@ class MemoryRepository(Protocol):
         dialogue_start_turn_id: str | None,
     ) -> SessionRecord | None:
         """Advance dialogue pointer and clear focus fields for one session."""
+
+    def update_dialogue_summary(
+        self,
+        *,
+        session_id: str,
+        dialogue_summary: str | None,
+        dialogue_summary_token_count: int | None,
+        dialogue_start_turn_id: str | None,
+    ) -> SessionRecord | None:
+        """Update rolling summary text and checkpoint for one session."""
 
     def insert_turn(
         self,
@@ -89,29 +97,6 @@ class MemoryRepository(Protocol):
     ) -> TurnRecord | None:
         """Update one outbound turn with final delivery state."""
 
-    def list_turn_summaries(self, *, session_id: str) -> list[TurnSummaryRecord]:
-        """List persisted turn summaries for one session."""
-
-    def get_turn_summary_by_range(
-        self,
-        *,
-        session_id: str,
-        start_turn_id: str,
-        end_turn_id: str,
-    ) -> TurnSummaryRecord | None:
-        """Read one summary row by exact turn range."""
-
-    def create_turn_summary(
-        self,
-        *,
-        session_id: str,
-        start_turn_id: str,
-        end_turn_id: str,
-        content: str,
-        token_count: int,
-    ) -> TurnSummaryRecord:
-        """Create summary row for one turn range and return persisted value."""
-
 
 class PostgresMemoryRepository:
     """SQL repository over MAS-owned schema tables."""
@@ -119,16 +104,17 @@ class PostgresMemoryRepository:
     def __init__(self, sessions_provider: ServiceSchemaSessionProvider) -> None:
         self._sessions = sessions_provider
 
-    def create_session(self, *, system_prompt: str) -> SessionRecord:
+    def create_session(self) -> SessionRecord:
         """Create and return one new session row."""
         session_id = generate_ulid_bytes()
         with self._sessions.session() as session:
             session.execute(
                 insert(sessions).values(
                     id=session_id,
-                    system_prompt=system_prompt,
                     focus=None,
                     focus_token_count=None,
+                    dialogue_summary=None,
+                    dialogue_summary_token_count=None,
                     dialogue_start_turn_id=None,
                 )
             )
@@ -215,8 +201,47 @@ class PostgresMemoryRepository:
                 .where(sessions.c.id == session_id_bytes)
                 .values(
                     dialogue_start_turn_id=pointer,
+                    dialogue_summary=None,
+                    dialogue_summary_token_count=None,
                     focus=None,
                     focus_token_count=None,
+                    updated_at=datetime.now(UTC),
+                )
+            )
+            if int(result.rowcount or 0) == 0:
+                return None
+            row = (
+                session.execute(
+                    select(sessions).where(sessions.c.id == session_id_bytes)
+                )
+                .mappings()
+                .one()
+            )
+            return _to_session(row)
+
+    def update_dialogue_summary(
+        self,
+        *,
+        session_id: str,
+        dialogue_summary: str | None,
+        dialogue_summary_token_count: int | None,
+        dialogue_start_turn_id: str | None,
+    ) -> SessionRecord | None:
+        """Update rolling summary text and checkpoint for one session."""
+        session_id_bytes = ulid_str_to_bytes(session_id)
+        pointer = (
+            None
+            if dialogue_start_turn_id is None
+            else ulid_str_to_bytes(dialogue_start_turn_id)
+        )
+        with self._sessions.session() as session:
+            result = session.execute(
+                update(sessions)
+                .where(sessions.c.id == session_id_bytes)
+                .values(
+                    dialogue_summary=dialogue_summary,
+                    dialogue_summary_token_count=dialogue_summary_token_count,
+                    dialogue_start_turn_id=pointer,
                     updated_at=datetime.now(UTC),
                 )
             )
@@ -336,101 +361,27 @@ class PostgresMemoryRepository:
             )
             return _to_turn(row)
 
-    def list_turn_summaries(self, *, session_id: str) -> list[TurnSummaryRecord]:
-        """List summary rows for one session ordered by create timestamp."""
-        session_id_bytes = ulid_str_to_bytes(session_id)
-        with self._sessions.session() as session:
-            rows = (
-                session.execute(
-                    select(turn_summaries)
-                    .where(turn_summaries.c.session_id == session_id_bytes)
-                    .order_by(
-                        turn_summaries.c.created_at.asc(),
-                        turn_summaries.c.id.asc(),
-                    )
-                )
-                .mappings()
-                .all()
-            )
-            return [_to_turn_summary(row) for row in rows]
-
-    def get_turn_summary_by_range(
-        self,
-        *,
-        session_id: str,
-        start_turn_id: str,
-        end_turn_id: str,
-    ) -> TurnSummaryRecord | None:
-        """Read one summary row by exact range keys."""
-        session_id_bytes = ulid_str_to_bytes(session_id)
-        start_id_bytes = ulid_str_to_bytes(start_turn_id)
-        end_id_bytes = ulid_str_to_bytes(end_turn_id)
-        with self._sessions.session() as session:
-            row = (
-                session.execute(
-                    select(turn_summaries).where(
-                        turn_summaries.c.session_id == session_id_bytes,
-                        turn_summaries.c.start_turn_id == start_id_bytes,
-                        turn_summaries.c.end_turn_id == end_id_bytes,
-                    )
-                )
-                .mappings()
-                .one_or_none()
-            )
-            return None if row is None else _to_turn_summary(row)
-
-    def create_turn_summary(
-        self,
-        *,
-        session_id: str,
-        start_turn_id: str,
-        end_turn_id: str,
-        content: str,
-        token_count: int,
-    ) -> TurnSummaryRecord:
-        """Create one summary row idempotently by ``(session,start,end)``."""
-        session_id_bytes = ulid_str_to_bytes(session_id)
-        start_id_bytes = ulid_str_to_bytes(start_turn_id)
-        end_id_bytes = ulid_str_to_bytes(end_turn_id)
-        with self._sessions.session() as session:
-            stmt = pg_insert(turn_summaries).values(
-                id=generate_ulid_bytes(),
-                session_id=session_id_bytes,
-                start_turn_id=start_id_bytes,
-                end_turn_id=end_id_bytes,
-                content=content,
-                token_count=token_count,
-            )
-            stmt = stmt.on_conflict_do_nothing(
-                constraint="uq_turn_summary_session_range"
-            )
-            session.execute(stmt)
-
-            row = (
-                session.execute(
-                    select(turn_summaries).where(
-                        turn_summaries.c.session_id == session_id_bytes,
-                        turn_summaries.c.start_turn_id == start_id_bytes,
-                        turn_summaries.c.end_turn_id == end_id_bytes,
-                    )
-                )
-                .mappings()
-                .one()
-            )
-            return _to_turn_summary(row)
-
 
 def _to_session(row: Mapping[str, object]) -> SessionRecord:
     """Map SQL row to ``SessionRecord``."""
     pointer = row.get("dialogue_start_turn_id")
     return SessionRecord(
         id=ulid_bytes_to_str(_row_bytes(row, "id")),
-        system_prompt=str(row.get("system_prompt") or ""),
         focus=(None if row.get("focus") is None else str(row["focus"])),
         focus_token_count=(
             None
             if row.get("focus_token_count") is None
             else int(row["focus_token_count"])
+        ),
+        dialogue_summary=(
+            None
+            if row.get("dialogue_summary") is None
+            else str(row["dialogue_summary"])
+        ),
+        dialogue_summary_token_count=(
+            None
+            if row.get("dialogue_summary_token_count") is None
+            else int(row["dialogue_summary_token_count"])
         ),
         dialogue_start_turn_id=(
             None
@@ -539,19 +490,6 @@ def _delivery_row_values(delivery: OutboundDeliveryRecord | None) -> dict[str, o
         "delivery_timestamp_ms": delivery.delivered_at_ms,
         "delivery_detail": delivery.detail,
     }
-
-
-def _to_turn_summary(row: Mapping[str, object]) -> TurnSummaryRecord:
-    """Map SQL row to ``TurnSummaryRecord``."""
-    return TurnSummaryRecord(
-        id=ulid_bytes_to_str(_row_bytes(row, "id")),
-        session_id=ulid_bytes_to_str(_row_bytes(row, "session_id")),
-        start_turn_id=ulid_bytes_to_str(_row_bytes(row, "start_turn_id")),
-        end_turn_id=ulid_bytes_to_str(_row_bytes(row, "end_turn_id")),
-        content=str(row["content"]),
-        token_count=int(row["token_count"]),
-        created_at=_row_dt(row, "created_at"),
-    )
 
 
 def _row_dt(row: Mapping[str, object], key: str) -> datetime:

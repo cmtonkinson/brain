@@ -4,16 +4,45 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from random import random
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from http import HTTPStatus
+from pathlib import Path
 from time import perf_counter, sleep
 from typing import Any, Mapping, Sequence
 
 import httpx
 import litellm
 
+from packages.brain_shared.language_model import (
+    CachePointContentPart,
+    ChatContentPart,
+    ConversationSummaryContentPart,
+    DialogueTurnContentPart,
+    FocusContentPart,
+    InferenceAssistantTextEvent,
+    InferenceCache,
+    InferenceCurrentTurn,
+    InferenceLiveEvent,
+    InferenceMemoryContext,
+    InferenceOperatorMessage,
+    InferenceParallelToolCalls,
+    InferenceRequest,
+    InferenceSystemBlock,
+    InferenceToolCall,
+    InferenceToolCallBatchEvent,
+    InferenceToolChoice,
+    InferenceToolDefinition,
+    InferenceToolResult,
+    InferenceToolResultBatchEvent,
+    InferenceToolResultPayload,
+    MetadataFieldContentPart,
+    OperatorMessageContentPart,
+    ReferenceSnippetContentPart,
+    TextContentPart,
+)
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.adapters.litellm.adapter import (
     AdapterChatResult,
@@ -36,6 +65,89 @@ from resources.adapters.litellm.config import (
 )
 
 _LOGGER = get_logger(__name__)
+_RESOURCE_DIR = Path(__file__).resolve().parent
+_PROMPTS_DIR = _RESOURCE_DIR / "prompts"
+_FOCUS_TEMPLATE_PATH = _PROMPTS_DIR / "focus-template.txt"
+_CONVERSATION_SUMMARY_TEMPLATE_PATH = _PROMPTS_DIR / "conversation-summary-template.txt"
+_DIALOGUE_TEMPLATE_PATH = _PROMPTS_DIR / "dialogue-template.txt"
+_REFERENCE_CONTEXT_TEMPLATE_PATH = _PROMPTS_DIR / "reference-context-template.txt"
+_METADATA_FIELD_TEMPLATE_PATH = _PROMPTS_DIR / "metadata-field-template.txt"
+_OPERATOR_MESSAGE_TEMPLATE_PATH = _PROMPTS_DIR / "operator-message-template.txt"
+_PROMPT_TEMPLATE_VAR_RE = re.compile(r"\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}")
+
+
+def _load_prompt_file(path: Path) -> str:
+    """Load one prompt text file from disk without altering its contents."""
+    return path.read_text(encoding="utf-8")
+
+
+def _render_prompt_template(template: str, /, **values: str) -> str:
+    """Render one prompt template and reject unresolved placeholders."""
+
+    def _replace(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key not in values:
+            return match.group(0)
+        return values[key]
+
+    rendered = _PROMPT_TEMPLATE_VAR_RE.sub(_replace, template)
+    unresolved = _PROMPT_TEMPLATE_VAR_RE.findall(rendered)
+    if unresolved:
+        raise ValueError(
+            f"unresolved prompt template placeholders: {', '.join(sorted(unresolved))}"
+        )
+    return rendered
+
+
+_FOCUS_TEMPLATE = _load_prompt_file(_FOCUS_TEMPLATE_PATH)
+_CONVERSATION_SUMMARY_TEMPLATE = _load_prompt_file(_CONVERSATION_SUMMARY_TEMPLATE_PATH)
+_DIALOGUE_TEMPLATE = _load_prompt_file(_DIALOGUE_TEMPLATE_PATH)
+_REFERENCE_CONTEXT_TEMPLATE = _load_prompt_file(_REFERENCE_CONTEXT_TEMPLATE_PATH)
+_METADATA_FIELD_TEMPLATE = _load_prompt_file(_METADATA_FIELD_TEMPLATE_PATH)
+_OPERATOR_MESSAGE_TEMPLATE = _load_prompt_file(_OPERATOR_MESSAGE_TEMPLATE_PATH)
+
+if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_FOCUS_TEMPLATE)) != {"text"}:
+    raise ValueError("focus-template.txt must contain exactly {{ text }}")
+if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_CONVERSATION_SUMMARY_TEMPLATE)) != {
+    "text"
+}:
+    raise ValueError(
+        "conversation-summary-template.txt must contain exactly {{ text }}"
+    )
+if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_DIALOGUE_TEMPLATE)) != {"turns"}:
+    raise ValueError("dialogue-template.txt must contain exactly {{ turns }}")
+if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_REFERENCE_CONTEXT_TEMPLATE)) != {
+    "snippets"
+}:
+    raise ValueError(
+        "reference-context-template.txt must contain exactly {{ snippets }}"
+    )
+if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_METADATA_FIELD_TEMPLATE)) != {
+    "name",
+    "value",
+}:
+    raise ValueError(
+        "metadata-field-template.txt must contain exactly {{ name }} and {{ value }}"
+    )
+if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_OPERATOR_MESSAGE_TEMPLATE)) != {
+    "metadata",
+    "message_text",
+}:
+    raise ValueError(
+        "operator-message-template.txt must contain exactly "
+        "{{ metadata }} and {{ message_text }}"
+    )
+
+
+@dataclass(frozen=True)
+class _LoweredToolInferenceRequest:
+    """Provider-ready LiteLLM completion kwargs derived from one inference request."""
+
+    messages: list[dict[str, Any]]
+    tools: list[dict[str, Any]]
+    tool_choice: str | dict[str, object] | None
+    parallel_tool_calls: bool | None
+    extra_kwargs: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -68,14 +180,16 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         prompt: str,
     ) -> AdapterChatResult:
         """Generate one chat completion using the LiteLLM Python API."""
-        messages: list[dict[str, Any]] = []
-        if system_prompt.strip() != "":
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
+        messages, extra_kwargs = _serialize_simple_prompt_for_provider(
+            provider=provider,
+            system_prompt=system_prompt,
+            prompt=prompt,
+        )
         response, raw_call = self._call_completion(
             provider=provider,
             model=model,
             messages=messages,
+            extra_kwargs=extra_kwargs,
         )
         content = _extract_chat_content(response)
         return AdapterChatResult(
@@ -110,19 +224,21 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         *,
         provider: str,
         model: str,
-        messages: Sequence[AdapterChatMessage],
-        tools: Sequence[AdapterChatToolDefinition],
-        tool_choice: str | dict[str, object] | None = None,
-        parallel_tool_calls: bool | None = None,
+        inference_request: InferenceRequest,
     ) -> AdapterToolChatResult:
         """Generate one tool-capable completion using the LiteLLM Python API."""
+        lowered = _lower_inference_request_for_provider(
+            provider=provider,
+            inference_request=inference_request,
+        )
         response, raw_call = self._call_completion(
             provider=provider,
             model=model,
-            messages=[_to_litellm_message(item) for item in messages],
-            tools=[_to_litellm_tool(item) for item in tools],
-            tool_choice=tool_choice,
-            parallel_tool_calls=parallel_tool_calls,
+            messages=lowered.messages,
+            tools=lowered.tools,
+            tool_choice=lowered.tool_choice,
+            parallel_tool_calls=lowered.parallel_tool_calls,
+            extra_kwargs=lowered.extra_kwargs,
         )
         return AdapterToolChatResult(
             text=_extract_optional_chat_content(response),
@@ -201,6 +317,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         tools: list[dict[str, Any]] | None = None,
         tool_choice: str | dict[str, object] | None = None,
         parallel_tool_calls: bool | None = None,
+        extra_kwargs: dict[str, Any] | None = None,
     ) -> tuple[object, AdapterProviderCallAudit | None]:
         """Invoke `litellm.completion` with resolved provider settings."""
         litellm = _load_litellm_module()
@@ -209,6 +326,8 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
         raw_call = _RawCallCapture()
         kwargs = self._request_kwargs(provider=provider, model=model, resolved=resolved)
         kwargs["messages"] = messages
+        if extra_kwargs is not None:
+            kwargs.update(extra_kwargs)
         kwargs["logger_fn"] = _provider_raw_json_logger(
             logger=_LOGGER,
             provider=provider,
@@ -230,6 +349,7 @@ class LiteLlmLibraryAdapter(LiteLlmAdapter):
                 "model": model,
                 "operation": "completion",
                 "api_base": resolved.api_base,
+                "messages": _json_safe_value(messages),
             },
         )
         response = self._call_completion_with_timeout_retry(
@@ -911,9 +1031,10 @@ def _to_litellm_tool(value: AdapterChatToolDefinition) -> dict[str, Any]:
 
 def _to_litellm_message(value: AdapterChatMessage) -> dict[str, Any]:
     """Convert one normalized chat message into LiteLLM/OpenAI message shape."""
+    content = _render_content_parts(value.content_parts)
     if value.role == "assistant":
         payload: dict[str, Any] = {"role": "assistant"}
-        payload["content"] = None if value.content == "" else value.content
+        payload["content"] = None if content == "" else content
         if value.tool_calls:
             payload["tool_calls"] = [
                 {
@@ -931,6 +1052,992 @@ def _to_litellm_message(value: AdapterChatMessage) -> dict[str, Any]:
         return {
             "role": "tool",
             "tool_call_id": value.tool_call_id,
-            "content": value.content,
+            "content": content,
         }
-    return {"role": value.role, "content": value.content}
+    return {"role": value.role, "content": content}
+
+
+def _serialize_simple_prompt_for_provider(
+    *,
+    provider: str,
+    system_prompt: str,
+    prompt: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Serialize one direct chat prompt into provider-specific completion kwargs."""
+    if provider == "anthropic":
+        messages = [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": prompt}],
+            }
+        ]
+        extra_kwargs: dict[str, Any] = {}
+        if system_prompt != "":
+            extra_kwargs["system"] = [{"type": "text", "text": system_prompt}]
+        return messages, extra_kwargs
+    if provider == "openai":
+        messages: list[dict[str, Any]] = []
+        if system_prompt != "":
+            messages.append(
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": system_prompt}],
+                }
+            )
+        messages.append({"role": "user", "content": [{"type": "text", "text": prompt}]})
+        return messages, {}
+    if provider == "gemini":
+        messages: list[dict[str, Any]] = []
+        if system_prompt != "":
+            messages.append(
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": system_prompt}],
+                }
+            )
+        messages.append({"role": "user", "content": [{"type": "text", "text": prompt}]})
+        return messages, {}
+
+    messages: list[dict[str, Any]] = []
+    if system_prompt != "":
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+    return messages, {}
+
+
+def _lower_inference_request_for_provider(
+    *,
+    provider: str,
+    inference_request: InferenceRequest,
+) -> _LoweredToolInferenceRequest:
+    """Lower one canonical inference request into provider-ready LiteLLM kwargs."""
+    if provider == "anthropic":
+        adapter_messages = _inference_request_to_adapter_messages(inference_request)
+        adapter_tools = _inference_tools_to_adapter_tools(inference_request.tools)
+        serialized_messages, extra_kwargs = _serialize_messages_for_provider(
+            provider=provider,
+            messages=adapter_messages,
+        )
+        serialized_tool_choice, serialized_parallel_tool_calls = (
+            _serialize_tool_selection_for_provider(
+                provider=provider,
+                tool_choice=_tool_choice_to_generic_selector(
+                    inference_request.controls.tool_choice
+                ),
+                parallel_tool_calls=_parallel_tool_calls_to_generic_flag(
+                    inference_request.controls.parallel_tool_calls
+                ),
+            )
+        )
+        return _LoweredToolInferenceRequest(
+            messages=serialized_messages,
+            tools=[_to_anthropic_tool(item) for item in adapter_tools],
+            tool_choice=_to_anthropic_tool_choice(
+                tool_choice=serialized_tool_choice,
+                parallel_tool_calls=serialized_parallel_tool_calls,
+            ),
+            parallel_tool_calls=None,
+            extra_kwargs=extra_kwargs,
+        )
+
+    adapter_messages = _inference_request_to_adapter_messages(inference_request)
+    adapter_tools = _inference_tools_to_adapter_tools(inference_request.tools)
+    serialized_messages, extra_kwargs = _serialize_messages_for_provider(
+        provider=provider,
+        messages=adapter_messages,
+    )
+    serialized_tools = _serialize_tools_for_provider(
+        provider=provider,
+        tools=adapter_tools,
+    )
+    serialized_tool_choice, serialized_parallel_tool_calls = (
+        _serialize_tool_selection_for_provider(
+            provider=provider,
+            tool_choice=_tool_choice_to_generic_selector(
+                inference_request.controls.tool_choice
+            ),
+            parallel_tool_calls=_parallel_tool_calls_to_generic_flag(
+                inference_request.controls.parallel_tool_calls
+            ),
+        )
+    )
+    return _LoweredToolInferenceRequest(
+        messages=serialized_messages,
+        tools=serialized_tools,
+        tool_choice=serialized_tool_choice,
+        parallel_tool_calls=serialized_parallel_tool_calls,
+        extra_kwargs=extra_kwargs,
+    )
+
+
+def _lower_anthropic_inference_request(
+    inference_request: InferenceRequest,
+) -> _LoweredToolInferenceRequest:
+    """Lower one canonical inference request into Anthropic Messages API kwargs."""
+    system_blocks = _serialize_anthropic_system_blocks(
+        inference_request.system.blocks,
+        cache=inference_request.cache,
+    )
+    messages = _serialize_anthropic_inference_messages(inference_request)
+    extra_kwargs: dict[str, Any] = {}
+    if len(system_blocks) > 0:
+        extra_kwargs["system"] = system_blocks
+    if inference_request.cache.mode == "automatic":
+        extra_kwargs["cache_control"] = _anthropic_cache_control(
+            ttl=inference_request.cache.ttl
+        )
+    return _LoweredToolInferenceRequest(
+        messages=messages,
+        tools=[
+            _to_anthropic_tool(item)
+            for item in _inference_tools_to_adapter_tools(inference_request.tools)
+        ],
+        tool_choice=_to_anthropic_tool_choice(
+            tool_choice=_tool_choice_to_generic_selector(
+                inference_request.controls.tool_choice
+            ),
+            parallel_tool_calls=_parallel_tool_calls_to_generic_flag(
+                inference_request.controls.parallel_tool_calls
+            ),
+        ),
+        parallel_tool_calls=None,
+        extra_kwargs=extra_kwargs,
+    )
+
+
+def _inference_request_to_adapter_messages(
+    inference_request: InferenceRequest,
+) -> tuple[AdapterChatMessage, ...]:
+    """Convert one inference request into normalized helper transcript messages."""
+    messages: list[AdapterChatMessage] = []
+    system_parts = _system_blocks_to_content_parts(
+        inference_request.system.blocks,
+        cache=inference_request.cache,
+    )
+    if len(system_parts) > 0:
+        messages.append(
+            AdapterChatMessage(role="system", content_parts=tuple(system_parts))
+        )
+    messages.append(
+        AdapterChatMessage(
+            role="user",
+            content_parts=_context_to_content_parts(
+                memory_context=inference_request.memory_context,
+                current_turn=inference_request.current_turn,
+                cache=inference_request.cache,
+            ),
+        )
+    )
+    messages.extend(_live_events_to_adapter_messages(inference_request.live_events))
+    return tuple(messages)
+
+
+def _live_events_to_adapter_messages(
+    events: Sequence[InferenceLiveEvent],
+) -> list[AdapterChatMessage]:
+    """Convert the ordered live event stream into helper transcript messages."""
+    messages: list[AdapterChatMessage] = []
+    pending_assistant_parts: list[ChatContentPart] = []
+
+    def flush_assistant() -> None:
+        if len(pending_assistant_parts) == 0:
+            return
+        messages.append(
+            AdapterChatMessage(
+                role="assistant",
+                content_parts=tuple(pending_assistant_parts),
+            )
+        )
+        pending_assistant_parts.clear()
+
+    for event in events:
+        if isinstance(event, InferenceAssistantTextEvent):
+            pending_assistant_parts.append(TextContentPart(text=event.text))
+            if event.cache_after:
+                pending_assistant_parts.append(CachePointContentPart())
+            continue
+        if isinstance(event, InferenceToolCallBatchEvent):
+            if event.cache_after and len(pending_assistant_parts) > 0:
+                pending_assistant_parts.append(CachePointContentPart())
+            messages.append(
+                AdapterChatMessage(
+                    role="assistant",
+                    content_parts=tuple(pending_assistant_parts),
+                    tool_calls=tuple(
+                        _inference_tool_call_to_adapter_tool_call(item)
+                        for item in event.calls
+                    ),
+                )
+            )
+            pending_assistant_parts.clear()
+            continue
+        if isinstance(event, InferenceToolResultBatchEvent):
+            flush_assistant()
+            for item in event.results:
+                tool_parts = _tool_result_payload_to_content_parts(item.result)
+                if event.cache_after:
+                    tool_parts = (*tool_parts, CachePointContentPart())
+                messages.append(
+                    AdapterChatMessage(
+                        role="tool",
+                        content_parts=tool_parts,
+                        tool_name=item.tool_name,
+                        tool_call_id=item.call_id,
+                    )
+                )
+            continue
+        raise TypeError(f"unsupported inference live event: {type(event)!r}")
+
+    flush_assistant()
+    return messages
+
+
+def _inference_tools_to_adapter_tools(
+    tools: Sequence[InferenceToolDefinition],
+) -> tuple[AdapterChatToolDefinition, ...]:
+    """Convert canonical tools into normalized helper tool definitions."""
+    return tuple(
+        AdapterChatToolDefinition(
+            name=item.name,
+            description=item.description,
+            parameters_json_schema=item.input_schema,
+            strict=item.strict_schema,
+            sequential=item.execution_hints.sequential,
+        )
+        for item in tools
+    )
+
+
+def _inference_tool_call_to_adapter_tool_call(
+    value: InferenceToolCall,
+) -> AdapterChatToolCall:
+    """Convert one canonical tool call into helper transcript form."""
+    return AdapterChatToolCall(
+        tool_name=value.tool_name,
+        args_json=json.dumps(value.arguments, sort_keys=True),
+        tool_call_id=value.call_id,
+    )
+
+
+def _tool_choice_to_generic_selector(
+    value: InferenceToolChoice,
+) -> str | dict[str, object] | None:
+    """Convert canonical tool-choice policy into generic adapter selector form."""
+    if value.mode == "auto":
+        return "auto"
+    if value.mode == "none":
+        return "none"
+    if value.mode == "require_any":
+        return "required"
+    if value.mode == "require_one":
+        return {"type": "function", "function": {"name": value.tool_name}}
+    raise ValueError(f"unsupported tool choice mode: {value.mode!r}")
+
+
+def _parallel_tool_calls_to_generic_flag(
+    value: InferenceParallelToolCalls,
+) -> bool | None:
+    """Convert canonical parallel-tool policy into generic adapter boolean form."""
+    if value.mode == "allow":
+        return True
+    if value.mode == "forbid":
+        return False
+    raise ValueError(f"unsupported parallel tool mode: {value.mode!r}")
+
+
+def _system_blocks_to_content_parts(
+    blocks: Sequence[InferenceSystemBlock],
+    *,
+    cache: InferenceCache,
+) -> tuple[ChatContentPart, ...]:
+    """Convert canonical system blocks into helper content parts."""
+    parts: list[ChatContentPart] = []
+    for block in blocks:
+        parts.append(TextContentPart(text=block.text))
+        if cache.mode == "explicit" and block.cache_after:
+            parts.append(CachePointContentPart())
+    return tuple(parts)
+
+
+def _context_to_content_parts(
+    *,
+    memory_context: InferenceMemoryContext,
+    current_turn: InferenceCurrentTurn,
+    cache: InferenceCache,
+) -> tuple[ChatContentPart, ...]:
+    """Convert canonical memory + current-turn state into helper content parts."""
+    parts: list[ChatContentPart] = [
+        FocusContentPart(
+            text=""
+            if memory_context.current_focus is None
+            else memory_context.current_focus
+        ),
+        ConversationSummaryContentPart(text=memory_context.recent_conversation_summary),
+    ]
+    if cache.mode == "explicit":
+        parts.append(CachePointContentPart())
+    parts.extend(
+        DialogueTurnContentPart(
+            role=item.role,
+            text=item.text,
+            is_summary=item.is_summary,
+        )
+        for item in memory_context.recent_turns
+    )
+    parts.extend(
+        ReferenceSnippetContentPart(text=item.text)
+        for item in memory_context.reference_snippets
+    )
+    parts.append(_operator_message_to_content_part(current_turn.operator_message))
+    return tuple(parts)
+
+
+def _operator_message_to_content_part(
+    value: InferenceOperatorMessage,
+) -> OperatorMessageContentPart:
+    """Convert one canonical operator message into helper content-part form."""
+    return OperatorMessageContentPart(
+        channel=value.channel,
+        sender_e164=value.sender_e164,
+        message_text=value.message_text,
+        approval_intent=value.approval_intent,
+        reaction_emoji=value.reaction_emoji,
+        quote_target_timestamp_ms=value.quote_target_timestamp_ms,
+        reaction_target_timestamp_ms=value.reaction_target_timestamp_ms,
+        reply_to_proposal_token=value.reply_to_proposal_token,
+        reaction_to_proposal_token=value.reaction_to_proposal_token,
+    )
+
+
+def _tool_result_payload_to_content_parts(
+    value: InferenceToolResultPayload,
+) -> tuple[ChatContentPart, ...]:
+    """Convert one canonical tool-result payload into helper content parts."""
+    if value.text is not None:
+        return (TextContentPart(text=value.text),)
+    if value.data is not None:
+        return (TextContentPart(text=_json_dumps_or_str(value.data)),)
+    return ()
+
+
+def _json_dumps_or_str(value: object) -> str:
+    """Return canonical JSON text when possible, otherwise a stable string form."""
+    try:
+        return json.dumps(value, sort_keys=True)
+    except TypeError:
+        return str(value)
+
+
+def _serialize_messages_for_provider(
+    *,
+    provider: str,
+    messages: Sequence[AdapterChatMessage],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Serialize one chat history into provider-specific message kwargs."""
+    if provider == "openai":
+        return _serialize_openai_messages(messages), {}
+    if provider == "gemini":
+        return _serialize_gemini_messages(messages), {}
+    if provider == "anthropic":
+        return _serialize_anthropic_compat_messages(messages)
+    return ([_to_litellm_message(item) for item in messages], {})
+
+
+def _serialize_tools_for_provider(
+    *,
+    provider: str,
+    tools: Sequence[AdapterChatToolDefinition],
+) -> list[dict[str, Any]]:
+    """Serialize one tool set into provider-specific tool definitions."""
+    return [_to_litellm_tool(item) for item in tools]
+
+
+def _serialize_tool_selection_for_provider(
+    *,
+    provider: str,
+    tool_choice: str | dict[str, object] | None,
+    parallel_tool_calls: bool | None,
+) -> tuple[str | dict[str, object] | None, bool | None]:
+    """Serialize tool-choice and parallelism settings for one provider."""
+    return tool_choice, parallel_tool_calls
+
+
+def _serialize_anthropic_inference_messages(
+    inference_request: InferenceRequest,
+) -> list[dict[str, Any]]:
+    """Lower one canonical inference request into Anthropic message blocks."""
+    messages: list[dict[str, Any]] = [
+        {
+            "role": "user",
+            "content": _serialize_anthropic_context_message(
+                memory_context=inference_request.memory_context,
+                current_turn=inference_request.current_turn,
+                cache=inference_request.cache,
+            ),
+        }
+    ]
+    pending_assistant_parts: list[ChatContentPart] = []
+
+    def flush_assistant() -> None:
+        if len(pending_assistant_parts) == 0:
+            return
+        messages.append(
+            {
+                "role": "assistant",
+                "content": _serialize_anthropic_content_parts(
+                    pending_assistant_parts,
+                    ttl=inference_request.cache.ttl,
+                ),
+            }
+        )
+        pending_assistant_parts.clear()
+
+    for event in inference_request.live_events:
+        if isinstance(event, InferenceAssistantTextEvent):
+            pending_assistant_parts.append(TextContentPart(text=event.text))
+            if inference_request.cache.mode == "explicit" and event.cache_after:
+                pending_assistant_parts.append(CachePointContentPart())
+            continue
+        if isinstance(event, InferenceToolCallBatchEvent):
+            content = _serialize_anthropic_content_parts(
+                pending_assistant_parts,
+                ttl=inference_request.cache.ttl,
+            )
+            pending_assistant_parts.clear()
+            content.extend(
+                _to_anthropic_tool_use(_inference_tool_call_to_adapter_tool_call(item))
+                for item in event.calls
+            )
+            if inference_request.cache.mode == "explicit" and event.cache_after:
+                content.append(
+                    _anthropic_cache_breaker_block(ttl=inference_request.cache.ttl)
+                )
+            messages.append({"role": "assistant", "content": content})
+            continue
+        if isinstance(event, InferenceToolResultBatchEvent):
+            flush_assistant()
+            content = [_to_anthropic_tool_result(item) for item in event.results]
+            if inference_request.cache.mode == "explicit" and event.cache_after:
+                content.append(
+                    _anthropic_cache_breaker_block(ttl=inference_request.cache.ttl)
+                )
+            messages.append({"role": "user", "content": content})
+            continue
+        raise TypeError(f"unsupported inference live event: {type(event)!r}")
+
+    flush_assistant()
+    return messages
+
+
+def _serialize_anthropic_context_message(
+    *,
+    memory_context: InferenceMemoryContext,
+    current_turn: InferenceCurrentTurn,
+    cache: InferenceCache,
+) -> list[dict[str, Any]]:
+    """Serialize the canonical memory + current-turn context for Anthropic."""
+    return _serialize_anthropic_content_parts(
+        _context_to_content_parts(
+            memory_context=memory_context,
+            current_turn=current_turn,
+            cache=cache,
+        ),
+        ttl=cache.ttl,
+    )
+
+
+def _serialize_anthropic_system_blocks(
+    blocks: Sequence[InferenceSystemBlock],
+    *,
+    cache: InferenceCache,
+) -> list[dict[str, Any]]:
+    """Serialize canonical system blocks into Anthropic top-level system blocks."""
+    return _serialize_anthropic_content_parts(
+        _system_blocks_to_content_parts(blocks, cache=cache),
+        ttl=cache.ttl,
+    )
+
+
+def _serialize_anthropic_messages(
+    messages: Sequence[AdapterChatMessage],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Serialize chat history into Anthropic Messages API shape."""
+    system_blocks: list[dict[str, Any]] = []
+    serialized_messages: list[dict[str, Any]] = []
+    pending_tool_result_blocks: list[dict[str, Any]] = []
+
+    def flush_pending_tool_results() -> None:
+        if len(pending_tool_result_blocks) == 0:
+            return
+        serialized_messages.append(
+            {"role": "user", "content": list(pending_tool_result_blocks)}
+        )
+        pending_tool_result_blocks.clear()
+
+    for message in messages:
+        if message.role == "system":
+            system_blocks.extend(
+                _serialize_anthropic_content_parts(message.content_parts)
+            )
+            continue
+        if message.role == "tool":
+            pending_tool_result_blocks.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": message.tool_call_id,
+                    "content": _render_content_parts(message.content_parts),
+                }
+            )
+            continue
+        flush_pending_tool_results()
+        content = _serialize_anthropic_content_parts(message.content_parts)
+        if message.role == "assistant" and message.tool_calls:
+            content.extend(_to_anthropic_tool_use(item) for item in message.tool_calls)
+        serialized_messages.append({"role": message.role, "content": content})
+    flush_pending_tool_results()
+    extra_kwargs: dict[str, Any] = {}
+    if system_blocks:
+        extra_kwargs["system"] = system_blocks
+    return serialized_messages, extra_kwargs
+
+
+def _serialize_openai_messages(
+    messages: Sequence[AdapterChatMessage],
+) -> list[dict[str, Any]]:
+    """Serialize chat history into OpenAI Chat Completions native shape."""
+    serialized_messages: list[dict[str, Any]] = []
+    for message in messages:
+        if message.role == "assistant":
+            payload: dict[str, Any] = {"role": "assistant"}
+            content = _serialize_openai_content_parts(message.content_parts)
+            payload["content"] = None if len(content) == 0 else content
+            if message.tool_calls:
+                payload["tool_calls"] = [
+                    {
+                        "id": item.tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": item.tool_name,
+                            "arguments": item.args_json,
+                        },
+                    }
+                    for item in message.tool_calls
+                ]
+            serialized_messages.append(payload)
+            continue
+        if message.role == "tool":
+            content = _serialize_openai_content_parts(message.content_parts)
+            text = (
+                ""
+                if len(content) == 0
+                else "".join(
+                    str(item.get("text", ""))
+                    for item in content
+                    if isinstance(item, dict)
+                )
+            )
+            serialized_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": message.tool_call_id,
+                    "content": text,
+                }
+            )
+            continue
+        content = _serialize_openai_content_parts(message.content_parts)
+        serialized_messages.append(
+            {
+                "role": message.role,
+                "content": [] if len(content) == 0 else content,
+            }
+        )
+    return serialized_messages
+
+
+def _serialize_gemini_messages(
+    messages: Sequence[AdapterChatMessage],
+) -> list[dict[str, Any]]:
+    """Serialize chat history into Gemini-friendly structured chat messages."""
+    serialized_messages: list[dict[str, Any]] = []
+    for message in messages:
+        if message.role == "assistant":
+            payload: dict[str, Any] = {"role": "assistant"}
+            content = _serialize_gemini_content_parts(message.content_parts)
+            payload["content"] = "" if len(content) == 0 else content
+            if message.tool_calls:
+                payload["tool_calls"] = [
+                    {
+                        "id": item.tool_call_id,
+                        "type": "function",
+                        "function": {
+                            "name": item.tool_name,
+                            "arguments": item.args_json,
+                        },
+                    }
+                    for item in message.tool_calls
+                ]
+            serialized_messages.append(payload)
+            continue
+        if message.role == "tool":
+            content = _serialize_gemini_content_parts(message.content_parts)
+            text = (
+                ""
+                if len(content) == 0
+                else "".join(
+                    str(item.get("text", ""))
+                    for item in content
+                    if isinstance(item, dict)
+                )
+            )
+            serialized_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": message.tool_call_id,
+                    "content": text,
+                }
+            )
+            continue
+        content = _serialize_gemini_content_parts(message.content_parts)
+        serialized_messages.append(
+            {
+                "role": message.role,
+                "content": "" if len(content) == 0 else content,
+            }
+        )
+    return serialized_messages
+
+
+def _serialize_anthropic_compat_messages(
+    messages: Sequence[AdapterChatMessage],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Serialize chat history for Anthropic: extract system blocks, pass rest as OpenAI format.
+
+    LiteLLM translates OpenAI-format messages to Anthropic wire format internally.
+    This function only handles what LiteLLM does NOT do reliably: extracting system
+    messages into the top-level ``system`` param so they never appear inline mid-turn.
+    Tool messages stay as ``role=tool`` (OpenAI format); LiteLLM groups them correctly.
+    """
+    system_blocks: list[dict[str, Any]] = []
+    serialized_messages: list[dict[str, Any]] = []
+    for message in messages:
+        if message.role == "system":
+            system_blocks.extend(
+                _serialize_anthropic_content_parts(message.content_parts)
+            )
+            continue
+        serialized_messages.append(_to_litellm_message(message))
+    extra_kwargs: dict[str, Any] = {}
+    if system_blocks:
+        extra_kwargs["system"] = system_blocks
+    return serialized_messages, extra_kwargs
+
+
+def _serialize_openai_content_parts(
+    parts: Sequence[ChatContentPart],
+) -> list[dict[str, Any]]:
+    """Serialize structured parts into OpenAI native text content blocks."""
+    blocks: list[dict[str, Any]] = []
+    run: list[ChatContentPart] = []
+
+    def flush() -> None:
+        if len(run) == 0:
+            return
+        text = _render_content_parts(tuple(run))
+        run.clear()
+        if text != "":
+            blocks.append({"type": "text", "text": text})
+
+    for part in parts:
+        if isinstance(part, CachePointContentPart):
+            flush()
+            continue
+        run.append(part)
+    flush()
+    return blocks
+
+
+def _serialize_gemini_content_parts(
+    parts: Sequence[ChatContentPart],
+) -> list[dict[str, Any]]:
+    """Serialize structured parts into Gemini-friendly text content blocks."""
+    blocks: list[dict[str, Any]] = []
+    run: list[ChatContentPart] = []
+
+    def flush() -> None:
+        if len(run) == 0:
+            return
+        text = _render_content_parts(tuple(run))
+        run.clear()
+        if text != "":
+            blocks.append({"type": "text", "text": text})
+
+    for part in parts:
+        if isinstance(part, CachePointContentPart):
+            flush()
+            continue
+        run.append(part)
+    flush()
+    return blocks
+
+
+def _serialize_anthropic_content_parts(
+    parts: Sequence[ChatContentPart],
+    *,
+    ttl: str | None = None,
+) -> list[dict[str, Any]]:
+    """Serialize structured parts into Anthropic text blocks with cache markers."""
+    blocks: list[dict[str, Any]] = []
+    run: list[ChatContentPart] = []
+
+    def flush(*, cache_breakpoint: bool) -> None:
+        if run:
+            text = _render_content_parts(tuple(run))
+            run.clear()
+            if text != "":
+                block: dict[str, Any] = {"type": "text", "text": text}
+                if cache_breakpoint:
+                    block["cache_control"] = _anthropic_cache_control(ttl=ttl)
+                blocks.append(block)
+                return
+        if cache_breakpoint and blocks:
+            blocks[-1]["cache_control"] = _anthropic_cache_control(ttl=ttl)
+
+    for part in parts:
+        if isinstance(part, CachePointContentPart):
+            flush(cache_breakpoint=True)
+            continue
+        run.append(part)
+    flush(cache_breakpoint=False)
+    return blocks
+
+
+def _to_anthropic_tool(value: AdapterChatToolDefinition) -> dict[str, Any]:
+    """Convert one normalized tool definition into Anthropic Messages API shape."""
+    payload: dict[str, Any] = {
+        "name": value.name,
+        "input_schema": value.parameters_json_schema,
+    }
+    if value.description is not None:
+        payload["description"] = value.description
+    return payload
+
+
+def _to_anthropic_tool_result(value: InferenceToolResult) -> dict[str, Any]:
+    """Convert one canonical tool result into Anthropic `tool_result` content."""
+    payload: dict[str, Any] = {
+        "type": "tool_result",
+        "tool_use_id": value.call_id,
+        "content": _anthropic_tool_result_content(value),
+    }
+    if value.status == "error" or value.is_error:
+        payload["is_error"] = True
+    return payload
+
+
+def _anthropic_tool_result_content(value: InferenceToolResult) -> str:
+    """Render one canonical tool result into Anthropic tool-result text."""
+    if value.result.text is not None:
+        return value.result.text
+    if value.result.data is not None:
+        return _json_dumps_or_str(value.result.data)
+    return ""
+
+
+def _anthropic_cache_control(*, ttl: str | None) -> dict[str, Any]:
+    """Return one Anthropic cache-control payload."""
+    payload: dict[str, Any] = {"type": "ephemeral"}
+    if ttl is not None and ttl != "":
+        payload["ttl"] = ttl
+    return payload
+
+
+def _anthropic_cache_breaker_block(*, ttl: str | None) -> dict[str, Any]:
+    """Return one minimal cacheable text block to anchor a cache boundary."""
+    return {
+        "type": "text",
+        "text": " ",
+        "cache_control": _anthropic_cache_control(ttl=ttl),
+    }
+
+
+def _to_anthropic_tool_use(value: AdapterChatToolCall) -> dict[str, Any]:
+    """Convert one normalized tool call into Anthropic `tool_use` content."""
+    return {
+        "type": "tool_use",
+        "id": value.tool_call_id,
+        "name": value.tool_name,
+        "input": _decode_tool_input_json(value.args_json),
+    }
+
+
+def _decode_tool_input_json(value: str) -> object:
+    """Decode one tool args JSON string into structured Anthropic tool input."""
+    try:
+        payload = json.loads(value)
+    except ValueError:
+        return {"raw_args_json": value}
+    return payload
+
+
+def _to_anthropic_tool_choice(
+    *,
+    tool_choice: str | dict[str, object] | None,
+    parallel_tool_calls: bool | None,
+) -> dict[str, object] | None:
+    """Convert generic tool-choice settings into Anthropic Messages API shape."""
+    if tool_choice is None and parallel_tool_calls is None:
+        return None
+    if tool_choice is None:
+        result: dict[str, object] = {"type": "auto"}
+    elif isinstance(tool_choice, str):
+        result = {"type": _map_anthropic_tool_choice_type(tool_choice)}
+    else:
+        result = _normalize_anthropic_tool_choice_dict(tool_choice)
+    if parallel_tool_calls is False and result.get("type") in {"auto", "any", "tool"}:
+        result["disable_parallel_tool_use"] = True
+    return result
+
+
+def _map_anthropic_tool_choice_type(value: str) -> str:
+    """Map one generic string tool-choice selector into Anthropic form."""
+    lowered = value.strip().lower()
+    if lowered == "required":
+        return "any"
+    if lowered in {"auto", "any", "tool", "none"}:
+        return lowered
+    raise ValueError(f"unsupported anthropic tool_choice string: {value!r}")
+
+
+def _normalize_anthropic_tool_choice_dict(
+    value: dict[str, object],
+) -> dict[str, object]:
+    """Normalize one generic dict tool_choice into Anthropic shape."""
+    raw_type = value.get("type")
+    if raw_type == "function":
+        function = value.get("function")
+        if isinstance(function, dict) and function.get("name"):
+            return {"type": "tool", "name": str(function["name"])}
+        raise ValueError("anthropic function tool_choice requires function.name")
+    if raw_type in {"auto", "any", "tool", "none"}:
+        result = dict(value)
+        if raw_type == "tool" and "name" not in result:
+            function = value.get("function")
+            if isinstance(function, dict) and function.get("name"):
+                result["name"] = str(function["name"])
+        return result
+    raise ValueError(f"unsupported anthropic tool_choice payload: {value!r}")
+
+
+def _render_content_parts(parts: Sequence[ChatContentPart]) -> str:
+    """Render structured content parts into one stable fallback text payload."""
+    rendered: list[str] = []
+    text_parts: list[str] = []
+    dialogue_turns: list[DialogueTurnContentPart] = []
+    reference_snippets: list[ReferenceSnippetContentPart] = []
+
+    def flush_text() -> None:
+        if len(text_parts) == 0:
+            return
+        rendered.append("\n".join(text_parts))
+        text_parts.clear()
+
+    def flush_dialogue() -> None:
+        if len(dialogue_turns) == 0:
+            return
+        body = "\n".join(f"- {item.role}: {item.text}" for item in dialogue_turns)
+        rendered.append(_render_prompt_template(_DIALOGUE_TEMPLATE, turns=body))
+        dialogue_turns.clear()
+
+    def flush_reference_snippets() -> None:
+        if len(reference_snippets) == 0:
+            return
+        body = "\n".join(f"- {item.text}" for item in reference_snippets)
+        rendered.append(
+            _render_prompt_template(_REFERENCE_CONTEXT_TEMPLATE, snippets=body)
+        )
+        reference_snippets.clear()
+
+    for part in parts:
+        if isinstance(part, CachePointContentPart):
+            continue
+        if isinstance(part, DialogueTurnContentPart):
+            flush_text()
+            dialogue_turns.append(part)
+            continue
+        if isinstance(part, ReferenceSnippetContentPart):
+            flush_text()
+            reference_snippets.append(part)
+            continue
+        flush_text()
+        flush_dialogue()
+        flush_reference_snippets()
+        if isinstance(part, TextContentPart):
+            text_parts.append(part.text)
+        elif isinstance(part, FocusContentPart):
+            rendered.append(_render_prompt_template(_FOCUS_TEMPLATE, text=part.text))
+        elif isinstance(part, ConversationSummaryContentPart):
+            rendered.append(
+                _render_prompt_template(_CONVERSATION_SUMMARY_TEMPLATE, text=part.text)
+            )
+        elif isinstance(part, MetadataFieldContentPart):
+            rendered.append(
+                _render_prompt_template(
+                    _METADATA_FIELD_TEMPLATE,
+                    name=part.name,
+                    value=part.value,
+                )
+            )
+        elif isinstance(part, OperatorMessageContentPart):
+            rendered.append(_render_operator_message(part))
+        else:
+            raise TypeError(f"unsupported chat content part: {type(part)!r}")
+
+    flush_text()
+    flush_dialogue()
+    flush_reference_snippets()
+    return "".join(rendered)
+
+
+def _render_operator_message(part: OperatorMessageContentPart) -> str:
+    """Render one operator instruction part into the stable fallback block."""
+    fields = [
+        ("channel", part.channel),
+        ("sender", part.sender_e164),
+        ("approval_intent", _optional_text(part.approval_intent)),
+        ("reaction_emoji", _optional_text(part.reaction_emoji)),
+        (
+            "quote_target_timestamp_ms",
+            _optional_int(part.quote_target_timestamp_ms),
+        ),
+        (
+            "reaction_target_timestamp_ms",
+            _optional_int(part.reaction_target_timestamp_ms),
+        ),
+        (
+            "reply_to_proposal_token",
+            _optional_text(part.reply_to_proposal_token),
+        ),
+        (
+            "reaction_to_proposal_token",
+            _optional_text(part.reaction_to_proposal_token),
+        ),
+    ]
+    metadata = "\n".join(
+        _render_prompt_template(_METADATA_FIELD_TEMPLATE, name=name, value=value)
+        for name, value in fields
+    )
+    return _render_prompt_template(
+        _OPERATOR_MESSAGE_TEMPLATE,
+        metadata=metadata,
+        message_text=part.message_text,
+    )
+
+
+def _optional_text(value: str | None) -> str:
+    """Render one optional text field for fallback serialization."""
+    return "" if value is None else value
+
+
+def _optional_int(value: int | None) -> str:
+    """Render one optional integer field for fallback serialization."""
+    return "" if value is None else str(value)

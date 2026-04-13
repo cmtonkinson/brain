@@ -14,7 +14,6 @@ from sqlalchemy import (
     String,
     Table,
     Text,
-    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects import postgresql
@@ -50,9 +49,10 @@ sessions = Table(
     "session",
     metadata,
     ulid_primary_key_column("id", schema_name=memory_postgres_schema()),
-    Column("system_prompt", Text, nullable=False),
     Column("focus", Text, nullable=True),
     Column("focus_token_count", Integer, nullable=True),
+    Column("dialogue_summary", Text, nullable=True),
+    Column("dialogue_summary_token_count", Integer, nullable=True),
     Column(
         "dialogue_start_turn_id",
         _ulid_domain(),
@@ -77,6 +77,10 @@ sessions = Table(
     CheckConstraint(
         "focus_token_count IS NULL OR focus_token_count >= 0",
         name="ck_session_focus_token_count_nonnegative",
+    ),
+    CheckConstraint(
+        "dialogue_summary_token_count IS NULL OR dialogue_summary_token_count >= 0",
+        name="ck_session_dialogue_summary_token_count_nonnegative",
     ),
 )
 
@@ -134,45 +138,4 @@ turns = Table(
     ),
 )
 
-turn_summaries = Table(
-    "turn_summary",
-    metadata,
-    ulid_primary_key_column("id", schema_name=memory_postgres_schema()),
-    Column(
-        "session_id",
-        _ulid_domain(),
-        ForeignKey(f"{memory_postgres_schema()}.session.id", ondelete="RESTRICT"),
-        nullable=False,
-    ),
-    Column(
-        "start_turn_id",
-        _ulid_domain(),
-        ForeignKey(f"{memory_postgres_schema()}.turn.id", ondelete="RESTRICT"),
-        nullable=False,
-    ),
-    Column(
-        "end_turn_id",
-        _ulid_domain(),
-        ForeignKey(f"{memory_postgres_schema()}.turn.id", ondelete="RESTRICT"),
-        nullable=False,
-    ),
-    Column("content", Text, nullable=False),
-    Column("token_count", Integer, nullable=False),
-    Column(
-        "created_at", DateTime(timezone=True), nullable=False, server_default=func.now()
-    ),
-    UniqueConstraint(
-        "session_id",
-        "start_turn_id",
-        "end_turn_id",
-        name="uq_turn_summary_session_range",
-    ),
-    CheckConstraint("token_count >= 0", name="ck_turn_summary_token_count_nonnegative"),
-)
-
 Index("ix_turn_session_created", turns.c.session_id, turns.c.created_at)
-Index(
-    "ix_turn_summary_session_created",
-    turn_summaries.c.session_id,
-    turn_summaries.c.created_at,
-)

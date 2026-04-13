@@ -9,9 +9,7 @@ from sqlalchemy import select
 
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from resources.adapters.litellm import (
-    AdapterChatMessage,
     AdapterChatToolCall,
-    AdapterChatToolDefinition,
     AdapterDependencyError,
     AdapterEmbeddingResult,
     AdapterHealthResult,
@@ -28,9 +26,9 @@ from services.action.language_model.data.repository import (
 )
 from services.action.language_model.data.runtime import LanguageModelPostgresRuntime
 from services.action.language_model.data.schema import call_audits
-from services.action.language_model.domain import ChatMessage, ChatToolDefinition
 from services.action.language_model.implementation import DefaultLanguageModelService
 from tests.integration.helpers import real_provider_tests_enabled
+from tests.helpers.inference_request import make_inference_request
 
 pytest_plugins = ("tests.integration.fixtures",)
 
@@ -66,22 +64,15 @@ class _AuditAdapter(LiteLlmAdapter):
         *,
         provider: str,
         model: str,
-        messages: Sequence[AdapterChatMessage],
-        tools: Sequence[AdapterChatToolDefinition],
-        tool_choice: str | dict[str, object] | None = None,
-        parallel_tool_calls: bool | None = None,
+        inference_request,
     ) -> AdapterToolChatResult:
-        del tool_choice, parallel_tool_calls
         raw_call = AdapterProviderCallAudit(
             request_api_base="https://api.example.test/v1/messages",
             request_headers={"x-trace": "test"},
             request_body={
                 "provider": provider,
                 "model": model,
-                "messages": [
-                    {"role": item.role, "content": item.content} for item in messages
-                ],
-                "tools": [item.name for item in tools],
+                "inference_request": inference_request.model_dump(mode="python"),
             },
             response_body={"id": "resp_123", "stop_reason": "tool_use"},
         )
@@ -147,12 +138,7 @@ def test_chat_with_tools_persists_postgres_audit_rows(
 
     result = service.chat_with_tools(
         meta=_meta(),
-        messages=[ChatMessage(role="user", content="find the resume")],
-        tools=[
-            ChatToolDefinition(
-                name="demo-tool", parameters_json_schema={"type": "object"}
-            )
-        ],
+        inference_request=make_inference_request(),
     )
 
     assert result.ok is True
@@ -172,7 +158,12 @@ def test_chat_with_tools_persists_postgres_audit_rows(
     assert row.call_index == 1
     assert row.request_phase == "initial"
     assert row.outcome_kind == "tool_call"
-    assert row.request_json["body"]["messages"][0]["content"] == "find the resume"
+    assert (
+        row.request_json["body"]["inference_request"]["current_turn"][
+            "operator_message"
+        ]["message_text"]
+        == "hello"
+    )
     assert row.response_json["body"]["id"] == "resp_123"
 
 
@@ -191,12 +182,7 @@ def test_chat_with_tools_failure_persists_non_empty_postgres_audit_rows(
 
     result = service.chat_with_tools(
         meta=_meta(),
-        messages=[ChatMessage(role="user", content="find the resume")],
-        tools=[
-            ChatToolDefinition(
-                name="demo-tool", parameters_json_schema={"type": "object"}
-            )
-        ],
+        inference_request=make_inference_request(),
     )
 
     assert result.ok is False
@@ -213,5 +199,8 @@ def test_chat_with_tools_failure_persists_non_empty_postgres_audit_rows(
     assert error_rows
     row = error_rows[-1]
     assert row.error_message == "rate limited"
-    assert row.request_json["body"]["tools"] == ["demo-tool"]
+    assert (
+        row.request_json["body"]["inference_request"]["meta"]["session_id"]
+        == "session-1"
+    )
     assert row.response_json["body"]["id"] == "resp_123"

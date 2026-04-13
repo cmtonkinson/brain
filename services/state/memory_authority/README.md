@@ -1,5 +1,5 @@
 # Memory Authority Service
-State _Service_ that owns session-scoped Profile, Dialogue, and Focus context assembly for the Brain Agent.
+State _Service_ that owns session-scoped Dialogue and Focus context assembly for the Brain Agent.
 ------------------------------------------------------------------------
 ## What This Component Is
 `services/state/memory_authority/` is the authoritative Layer 1 _Service_ for agent recall and context assembly behavior.
@@ -9,10 +9,9 @@ Core module roles:
 - `service.py`: authoritative in-process public API contract
 - `implementation.py`: concrete MAS behavior (`DefaultMemoryAuthorityService`)
 - `domain.py`: strict payload contracts for session/context models
-- `profile.py`: read-only profile context loader from MAS settings
-- `dialogue.py`: turn storage and dialogue assembly with lazy summary generation
+- `dialogue.py`: turn storage and dialogue assembly with rolling-summary compaction
 - `focus.py`: focus persistence and budget-aware compaction
-- `assembler.py`: Profile/Focus/Dialogue context orchestration
+- `assembler.py`: Focus/Dialogue context orchestration
 - `data/`: Postgres runtime, schema, and repository implementation
 - `migrations/`: Alembic environment and schema migrations
 ------------------------------------------------------------------------
@@ -20,10 +19,12 @@ Core module roles:
 MAS is a State-System _Service_ (`layer=1`, `system="state"`) and does not declare ownership of a dedicated L0 _Resource_ component; it uses shared Postgres infrastructure for authoritative state.
 
 Authority boundaries:
-- MAS owns Profile configuration projection for context assembly.
-- MAS owns Dialogue turn/session/summary records in its own Postgres schema (`service_memory_authority`).
+- MAS owns Dialogue turn/session rows plus rolling summary state in its own Postgres schema (`service_memory_authority`).
 - MAS owns Focus state and compaction policy.
 - MAS does not own durable Reference memory in the vault; integration is TODO-marked in context assembly.
+- MAS does not own system prompt or provider/tool semantics; it returns only the
+  memory-owned `memory_context` slice used by the Agent to assemble the full
+  inference request.
 ------------------------------------------------------------------------
 ## Interactions
 Primary interactions:
@@ -34,7 +35,7 @@ Primary interactions:
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
 1. `create_session` creates a new MAS session with null focus and null dialogue pointer.
-2. `assemble_context` appends inbound turn, lazily summarizes older dialogue segments as needed, then assembles Profile + Focus + Dialogue into `ContextBlock`.
+2. `assemble_context` appends inbound turn, rolls older unsummarized dialogue into the session summary when the verbatim backlog crosses threshold, then assembles Focus + rolling summary + recent verbatim Dialogue into the MAS-owned context block returned to the Agent.
 3. `record_response` appends outbound turn metadata after inference completes.
 4. `update_focus` persists focus text and compacts via LMS when token budget is exceeded (one retry max).
 5. `clear_session` advances dialogue pointer to latest turn and clears focus without deleting historical rows.
@@ -43,16 +44,13 @@ Primary interactions:
 - Invalid metadata/request fields return validation-category errors.
 - Missing sessions return not-found-category errors.
 - Postgres errors normalize via shared `normalize_postgres_error(...)`.
-- LMS failures during summary/compaction surface as dependency-category failures (compaction is explicit failure; summary generation degrades to verbatim turns).
+- LMS failures during summary/compaction surface as dependency-category failures (focus compaction is explicit failure; dialogue summary generation degrades to leaving more turns verbatim).
 ------------------------------------------------------------------------
 ## Configuration Surface
 MAS settings are sourced from `components.service.memory_authority`:
-- `dialogue_recent_turns`
-- `dialogue_older_turns`
+- `min_turns_to_keep`
+- `max_turns_to_keep`
 - `focus_token_budget`
-- `profile.operator_name`
-- `profile.brain_name`
-- `profile.brain_verbosity`
 ------------------------------------------------------------------------
 ## Testing and Validation
 Component tests:

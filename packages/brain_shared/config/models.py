@@ -80,7 +80,7 @@ class ApprovalResponseSettings(BaseModel):
 
 
 class ProfileSettings(BaseModel):
-    """Root profile settings for operator identity and agent behavior."""
+    """Root profile settings shared across services for operator identity."""
 
     operator: OperatorProfileSettings = Field(default_factory=OperatorProfileSettings)
     approval_responses: ApprovalResponseSettings = Field(
@@ -90,7 +90,6 @@ class ProfileSettings(BaseModel):
     operator_name: str = "Operator"
     brain_name: str = "Brain"
     brain_verbosity: str = "normal"
-    personality: str = "default"
 
 
 class CoreBootSettings(BaseModel):
@@ -249,9 +248,13 @@ class CliActorSettings(ActorNamespaceSettings):
 
 
 class AgentActorSettings(ActorNamespaceSettings):
-    """Agent-specific settings for tool exposure and runtime identity."""
+    """Agent-specific settings for prompt rendering, tools, and runtime identity."""
 
     source: str = "agent"
+    session_start_mode: Literal["new", "existing"] = "existing"
+    personality: str = "default"
+    profile_context: str = "Refer to me as 'boss'"
+    system_prompt_append: str = ""
     capability_discovery_deny_list: tuple[str, ...] = ("attention-notify",)
     tool_return_max_chars: int = 8000
     tool_return_compress_threshold: int = 4000

@@ -5,18 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from packages.brain_shared.config.models import ProfileSettings
 from packages.brain_shared.envelope import EnvelopeKind, new_meta, success
 from packages.brain_shared.ids import generate_ulid_str
 from services.action.language_model.service import LanguageModelService
 from services.state.memory_authority.config import MemoryAuthoritySettings
 from services.state.memory_authority.domain import (
-    BrainVerbosity,
     InboundInstructionRecord,
     SessionRecord,
     TurnDirection,
     TurnRecord,
-    TurnSummaryRecord,
     estimate_token_count,
 )
 from services.state.memory_authority.implementation import DefaultMemoryAuthorityService
@@ -39,23 +36,22 @@ class _FakeMemoryRepository:
     def __init__(self) -> None:
         self.sessions: dict[str, SessionRecord] = {}
         self.turns: dict[str, list[TurnRecord]] = {}
-        self.summaries: dict[str, list[TurnSummaryRecord]] = {}
 
-    def create_session(self, *, system_prompt: str = "") -> SessionRecord:
+    def create_session(self) -> SessionRecord:
         """Create one session row."""
         now = _now()
         session = SessionRecord(
             id=generate_ulid_str(),
-            system_prompt=system_prompt,
             focus=None,
             focus_token_count=None,
+            dialogue_summary=None,
+            dialogue_summary_token_count=None,
             dialogue_start_turn_id=None,
             created_at=now,
             updated_at=now,
         )
         self.sessions[session.id] = session
         self.turns[session.id] = []
-        self.summaries[session.id] = []
         return session
 
     def get_latest_session(self) -> SessionRecord | None:
@@ -103,6 +99,31 @@ class _FakeMemoryRepository:
             update={
                 "focus": None,
                 "focus_token_count": None,
+                "dialogue_summary": None,
+                "dialogue_summary_token_count": None,
+                "dialogue_start_turn_id": dialogue_start_turn_id,
+                "updated_at": _now(),
+            }
+        )
+        self.sessions[session_id] = updated
+        return updated
+
+    def update_dialogue_summary(
+        self,
+        *,
+        session_id: str,
+        dialogue_summary: str | None,
+        dialogue_summary_token_count: int | None,
+        dialogue_start_turn_id: str | None,
+    ) -> SessionRecord | None:
+        """Update rolling summary state and checkpoint."""
+        session = self.sessions.get(session_id)
+        if session is None:
+            return None
+        updated = session.model_copy(
+            update={
+                "dialogue_summary": dialogue_summary,
+                "dialogue_summary_token_count": dialogue_summary_token_count,
                 "dialogue_start_turn_id": dialogue_start_turn_id,
                 "updated_at": _now(),
             }
@@ -177,55 +198,6 @@ class _FakeMemoryRepository:
         if not rows:
             return None
         return rows[-1]
-
-    def list_turn_summaries(self, *, session_id: str) -> list[TurnSummaryRecord]:
-        """List summary rows for one session."""
-        return list(self.summaries.get(session_id, []))
-
-    def get_turn_summary_by_range(
-        self,
-        *,
-        session_id: str,
-        start_turn_id: str,
-        end_turn_id: str,
-    ) -> TurnSummaryRecord | None:
-        """Read one summary by exact turn range."""
-        for summary in self.summaries.get(session_id, []):
-            if (
-                summary.start_turn_id == start_turn_id
-                and summary.end_turn_id == end_turn_id
-            ):
-                return summary
-        return None
-
-    def create_turn_summary(
-        self,
-        *,
-        session_id: str,
-        start_turn_id: str,
-        end_turn_id: str,
-        content: str,
-        token_count: int,
-    ) -> TurnSummaryRecord:
-        """Create one summary row idempotently."""
-        existing = self.get_turn_summary_by_range(
-            session_id=session_id,
-            start_turn_id=start_turn_id,
-            end_turn_id=end_turn_id,
-        )
-        if existing is not None:
-            return existing
-        record = TurnSummaryRecord(
-            id=generate_ulid_str(),
-            session_id=session_id,
-            start_turn_id=start_turn_id,
-            end_turn_id=end_turn_id,
-            content=content,
-            token_count=token_count,
-            created_at=_now(),
-        )
-        self.summaries.setdefault(session_id, []).append(record)
-        return record
 
 
 class _FakeLanguageModelService(LanguageModelService):
@@ -353,16 +325,16 @@ def _meta() -> object:
 
 def _build_service(
     *,
-    dialogue_recent_turns: int = 10,
-    dialogue_older_turns: int = 20,
+    min_turns_to_keep: int = 10,
+    max_turns_to_keep: int = 20,
     focus_token_budget: int = 512,
 ) -> tuple[
     DefaultMemoryAuthorityService, _FakeMemoryRepository, _FakeLanguageModelService
 ]:
     """Create MAS instance with in-memory repository and LMS fakes."""
     settings = MemoryAuthoritySettings(
-        dialogue_recent_turns=dialogue_recent_turns,
-        dialogue_older_turns=dialogue_older_turns,
+        min_turns_to_keep=min_turns_to_keep,
+        max_turns_to_keep=max_turns_to_keep,
         focus_token_budget=focus_token_budget,
     )
     repository = _FakeMemoryRepository()
@@ -372,11 +344,6 @@ def _build_service(
         runtime=_FakeRuntime(),
         language_model=language_model,
         repository=repository,
-        profile=ProfileSettings(
-            operator_name="Operator",
-            brain_name="Brain",
-            brain_verbosity=BrainVerbosity.NORMAL,
-        ),
     )
     return service, repository, language_model
 
@@ -385,7 +352,7 @@ def test_session_create_clear_and_get() -> None:
     """MAS should create, clear, and read session state consistently."""
     service, repository, _ = _build_service()
 
-    created = service.create_session(meta=_meta(), system_prompt="")
+    created = service.create_session(meta=_meta())
     assert created.ok
     assert created.payload is not None
     session_id = created.payload.value.id
@@ -412,7 +379,7 @@ def test_session_create_clear_and_get() -> None:
 def test_assemble_context_returns_expected_shape() -> None:
     """Assembled context should return the historical snapshot before the new turn."""
     service, repository, _ = _build_service()
-    created = service.create_session(meta=_meta(), system_prompt="")
+    created = service.create_session(meta=_meta())
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -431,11 +398,9 @@ def test_assemble_context_returns_expected_shape() -> None:
     assert result.ok
     assert result.payload is not None
     block = result.payload.value
-    assert block.profile.operator_name == "Operator"
-    assert block.profile.brain_name == "Brain"
-    assert block.profile.brain_verbosity == BrainVerbosity.NORMAL
-    assert block.focus == "focus state"
-    assert [turn.content for turn in block.dialogue] == ["prior assistant"]
+    assert block.current_focus == "focus state"
+    assert block.recent_conversation_summary == ""
+    assert [turn.content for turn in block.recent_turns] == ["prior assistant"]
     assert block.reference_snippets == []
     assert repository.turns[session_id][-1].content == "hi"
 
@@ -443,8 +408,8 @@ def test_assemble_context_returns_expected_shape() -> None:
 def test_get_latest_or_create_session_prefers_existing_session() -> None:
     """MAS should return the newest existing session before creating another."""
     service, repository, _ = _build_service()
-    first = repository.create_session(system_prompt="")
-    second = repository.create_session(system_prompt="")
+    first = repository.create_session()
+    second = repository.create_session()
     repository.update_focus(
         session_id=second.id,
         focus="active",
@@ -472,9 +437,9 @@ def test_get_latest_or_create_session_creates_when_empty() -> None:
 
 
 def test_dialogue_respects_recent_and_older_boundaries() -> None:
-    """Dialogue assembly should keep recent verbatim turns and cap older coverage."""
-    service, _, _ = _build_service(dialogue_recent_turns=2, dialogue_older_turns=3)
-    created = service.create_session(meta=_meta(), system_prompt="")
+    """Dialogue assembly should roll older turns into session summary at threshold."""
+    service, repository, _ = _build_service(min_turns_to_keep=2, max_turns_to_keep=3)
+    created = service.create_session(meta=_meta())
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -497,18 +462,20 @@ def test_dialogue_respects_recent_and_older_boundaries() -> None:
     assert context.ok
     assert context.payload is not None
 
-    dialogue = context.payload.value.dialogue
-    assert len(dialogue) >= 3
-    assert dialogue[-1].content == "assistant-4"
-    assert dialogue[-1].is_summary is False
-    assert all(item.content != "latest-user" for item in dialogue)
-    assert any(item.is_summary for item in dialogue[:-2])
+    recent_turns = context.payload.value.recent_turns
+    assert len(recent_turns) == 2
+    assert recent_turns[-1].content == "assistant-4"
+    assert recent_turns[-1].is_summary is False
+    assert all(item.content != "latest-user" for item in recent_turns)
+    assert context.payload.value.recent_conversation_summary != ""
+    assert repository.sessions[session_id].dialogue_start_turn_id is not None
+    assert repository.sessions[session_id].dialogue_summary is not None
 
 
 def test_focus_compaction_triggers_when_budget_exceeded() -> None:
     """Focus updates above budget should invoke LMS quick compaction."""
     service, _, language_model = _build_service(focus_token_budget=4)
-    created = service.create_session(meta=_meta(), system_prompt="")
+    created = service.create_session(meta=_meta())
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -528,7 +495,7 @@ def test_focus_compaction_triggers_when_budget_exceeded() -> None:
 def test_record_response_persists_turn_metadata() -> None:
     """record_response should persist outbound turn metadata exactly."""
     service, repository, _ = _build_service()
-    created = service.create_session(meta=_meta(), system_prompt="")
+    created = service.create_session(meta=_meta())
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -557,7 +524,7 @@ def test_record_response_persists_turn_metadata() -> None:
 def test_record_inbound_turn_persists_turn_metadata() -> None:
     """record_inbound_turn should persist inbound turn metadata exactly."""
     service, repository, _ = _build_service()
-    created = service.create_session(meta=_meta(), system_prompt="")
+    created = service.create_session(meta=_meta())
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -580,7 +547,7 @@ def test_record_inbound_turn_persists_turn_metadata() -> None:
 def test_assemble_snapshot_excludes_current_live_turn() -> None:
     """assemble_snapshot should omit the current live inbound turn from dialogue."""
     service, _, _ = _build_service()
-    created = service.create_session(meta=_meta(), system_prompt="")
+    created = service.create_session(meta=_meta())
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -602,17 +569,16 @@ def test_assemble_snapshot_excludes_current_live_turn() -> None:
     snapshot = service.assemble_snapshot(meta=_meta(), session_id=session_id)
     assert snapshot.ok
     assert snapshot.payload is not None
-    assert [turn.content for turn in snapshot.payload.value.dialogue] == [
+    assert snapshot.payload.value.recent_conversation_summary == ""
+    assert [turn.content for turn in snapshot.payload.value.recent_turns] == [
         "prior assistant"
     ]
 
 
-def test_turn_summary_range_uses_distinct_endpoints_for_multi_turn_summary() -> None:
-    """Multi-turn summary ranges should persist distinct start/end turn ids."""
-    service, repository, _ = _build_service(
-        dialogue_recent_turns=1, dialogue_older_turns=10
-    )
-    created = service.create_session(meta=_meta(), system_prompt="")
+def test_summary_rolls_forward_without_dropping_older_history() -> None:
+    """Rolling summary should absorb older turns and retain newest minimum verbatim."""
+    service, repository, _ = _build_service(min_turns_to_keep=1, max_turns_to_keep=2)
+    created = service.create_session(meta=_meta())
     assert created.payload is not None
     session_id = created.payload.value.id
 
@@ -632,7 +598,9 @@ def test_turn_summary_range_uses_distinct_endpoints_for_multi_turn_summary() -> 
     )
     assert assembled.ok
 
-    summaries = repository.summaries[session_id]
-    assert summaries
-    first = summaries[0]
-    assert first.start_turn_id != first.end_turn_id
+    session = repository.sessions[session_id]
+    assert session.dialogue_summary is not None
+    assert session.dialogue_start_turn_id is not None
+    assert [turn.content for turn in assembled.payload.value.recent_turns] == [
+        "assistant-3"
+    ]

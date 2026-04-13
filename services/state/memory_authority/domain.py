@@ -9,29 +9,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 
-class BrainVerbosity(StrEnum):
-    """Operator-facing verbosity profile options for assembled context."""
-
-    TERSE = "terse"
-    NORMAL = "normal"
-    VERBOSE = "verbose"
-
-
 class TurnDirection(StrEnum):
     """Dialogue turn direction values persisted by MAS."""
 
     INBOUND = "inbound"
     OUTBOUND = "outbound"
-
-
-class ProfileContext(BaseModel):
-    """Read-only profile context injected into each assembled context block."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    operator_name: str
-    brain_name: str
-    brain_verbosity: BrainVerbosity
 
 
 class DialogueTurn(BaseModel):
@@ -49,10 +31,9 @@ class ContextBlock(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    system_prompt: str
-    profile: ProfileContext
-    focus: str | None
-    dialogue: list[DialogueTurn]
+    current_focus: str | None
+    recent_conversation_summary: str
+    recent_turns: list[DialogueTurn]
     reference_snippets: list[str]
 
 
@@ -91,9 +72,10 @@ class SessionRecord(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: str
-    system_prompt: str
     focus: str | None
     focus_token_count: int | None
+    dialogue_summary: str | None
+    dialogue_summary_token_count: int | None
     dialogue_start_turn_id: str | None
     created_at: datetime
     updated_at: datetime
@@ -140,20 +122,6 @@ class TurnRecord(BaseModel):
     delivery_state: Literal["candidate", "delivered", "failed"] | None = None
     delivery_timestamp_ms: int | None = None
     delivery_detail: str | None = None
-    created_at: datetime
-
-
-class TurnSummaryRecord(BaseModel):
-    """Authoritative summary row covering one inclusive turn range."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    id: str
-    session_id: str
-    start_turn_id: str
-    end_turn_id: str
-    content: str
-    token_count: int
     created_at: datetime
 
 

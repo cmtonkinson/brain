@@ -12,14 +12,13 @@ import signal
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic_ai import Agent, RunContext, Tool
 from pydantic_ai.messages import (
     CachePoint,
     ModelRequest,
     ModelResponse,
-    SystemPromptPart,
     TextPart,
     ToolCallPart,
     ToolReturnPart,
@@ -42,21 +41,54 @@ from packages.brain_sdk import (
     BrainTransportError,
     BrainValidationError,
     CapabilityDescriptor,
-    LmsChatMessage,
     LmsChatToolCall,
-    LmsChatToolDefinition,
     LmsToolChatResult,
     MemoryContextBlock,
     MetaOverrides,
     SwitchboardOperatorInstruction,
+    render_system_prompt,
+    render_system_prompt_blocks,
 )
+from packages.brain_sdk.errors import BrainSdkError
 from packages.brain_shared.config import (
     ActorSettings,
+    CoreRuntimeSettings,
     CoreSettings,
     load_actor_settings,
     load_core_runtime_settings,
 )
 from packages.brain_shared.ids import generate_ulid_str
+from packages.brain_shared.language_model import (
+    CachePointContentPart,
+    ChatContentPart,
+    ConversationSummaryContentPart,
+    DialogueTurnContentPart,
+    FocusContentPart,
+    InferenceAssistantTextEvent,
+    InferenceCache,
+    InferenceControls,
+    InferenceCurrentTurn,
+    InferenceMemoryContext,
+    InferenceMemoryTurn,
+    InferenceMeta,
+    InferenceOperatorMessage,
+    InferenceParallelToolCalls,
+    InferenceReferenceSnippet,
+    InferenceRequest,
+    InferenceSystem,
+    InferenceSystemBlock,
+    InferenceToolCall,
+    InferenceToolCallBatchEvent,
+    InferenceToolChoice,
+    InferenceToolDefinition,
+    InferenceToolExecutionHints,
+    InferenceToolResult,
+    InferenceToolResultBatchEvent,
+    InferenceToolResultPayload,
+    OperatorMessageContentPart,
+    ReferenceSnippetContentPart,
+    TextContentPart,
+)
 from resources.adapters.litellm.config import (
     max_timeout_retry_budget_seconds,
     resolve_litellm_adapter_settings,
@@ -74,6 +106,9 @@ _LMS_TIMEOUT_RESPONSE = (
     "I'm temporarily having trouble reaching the language model provider. "
     "Please try again in a minute."
 )
+_LMS_GENERIC_ERROR_RESPONSE = (
+    "I hit an internal language-model error while working on that. Please try again."
+)
 _LMS_TIMEOUT_MARGIN_SECONDS = 2.0
 _AGENT_DIR = Path(__file__).resolve().parent
 _PROMPTS_DIR = _AGENT_DIR / "prompts"
@@ -82,17 +117,17 @@ _COMPRESS_USER_PROMPT_TEMPLATE_PATH = (
     _PROMPTS_DIR / "compress-tool-return-user-template.txt"
 )
 _AGENT_CONTEXT_PROPERTIES_PATH = _AGENT_DIR / "tool-context-properties.json"
-_DISCOVER_CAPABILITIES_TOOL_NAME = "discover_capabilities"
-_DESCRIBE_CAPABILITY_TOOL_NAME = "describe_capability"
+_SEARCH_TOOLS_TOOL_NAME = "search_tools"
+_GET_TOOL_INFO_TOOL_NAME = "get_tool_info"
 _MAX_PENDING_INVOCATIONS = 128
 _HEARTBEAT_FILE_ENV = "BRAIN_AGENT_HEARTBEAT_FILE"
 _HEARTBEAT_PATH = Path("/run/brain/agent-heartbeat")
-_PROMPT_TEMPLATE_VAR_RE = re.compile(r"\{\{([a-z_][a-z0-9_]*)\}\}")
+_PROMPT_TEMPLATE_VAR_RE = re.compile(r"\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}")
 
 
 def _load_prompt_file(path: Path) -> str:
-    """Load one prompt text file from disk and strip outer whitespace."""
-    return path.read_text(encoding="utf-8").strip()
+    """Load one prompt text file from disk without altering its contents."""
+    return path.read_text(encoding="utf-8")
 
 
 def _load_agent_context_properties(
@@ -124,10 +159,15 @@ if _COMPRESS_USER_PROMPT_TEMPLATE_KEYS != {
 
 
 def _render_prompt_template(template: str, /, **values: str) -> str:
-    """Render one simple prompt template using explicit string replacement."""
-    rendered = template
-    for key, value in values.items():
-        rendered = rendered.replace(f"{{{{{key}}}}}", value)
+    """Render one prompt template and reject unresolved placeholders."""
+
+    def _replace(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key not in values:
+            return match.group(0)
+        return values[key]
+
+    rendered = _PROMPT_TEMPLATE_VAR_RE.sub(_replace, template)
     unresolved = _PROMPT_TEMPLATE_VAR_RE.findall(rendered)
     if unresolved:
         raise ValueError(
@@ -174,6 +214,7 @@ class _TurnState:
     always_on_capability_ids: frozenset[str] = frozenset()
     denied_capability_ids: frozenset[str] = frozenset()
     active_tool_names: set[str] = field(default_factory=set)
+    frozen_tool_names: tuple[str, ...] = ()
     tools_frozen: bool = False
     pending_invocations: dict[str, _PendingInvocation] = field(default_factory=dict)
     reply_to_proposal_token: str = ""
@@ -182,14 +223,15 @@ class _TurnState:
     def reset_active_tools(self) -> None:
         """Reset the active tool set to the always-on CES tools plus runtime tools."""
         self.tools_frozen = False
+        self.frozen_tool_names = ()
         self.active_tool_names = {
             *(
                 capability_id
                 for capability_id in self.always_on_capability_ids
                 if capability_id not in self.denied_capability_ids
             ),
-            _DISCOVER_CAPABILITIES_TOOL_NAME,
-            _DESCRIBE_CAPABILITY_TOOL_NAME,
+            _SEARCH_TOOLS_TOOL_NAME,
+            _GET_TOOL_INFO_TOOL_NAME,
         }
 
     def prune_pending_invocations(self, *, now: datetime | None = None) -> None:
@@ -363,6 +405,32 @@ def _resolve_config_path() -> Path | None:
     return Path(value)
 
 
+def _resolve_core_config_path() -> Path | None:
+    """Return an explicit core config path when the env override is set."""
+    value = os.getenv("BRAIN_CORE_CONFIG_FILE", "").strip()
+    if value == "":
+        return None
+    return Path(value)
+
+
+def _resolve_resources_config_path() -> Path | None:
+    """Return an explicit resources config path when the env override is set."""
+    value = os.getenv("BRAIN_RESOURCES_CONFIG_FILE", "").strip()
+    if value == "":
+        return None
+    return Path(value)
+
+
+def _load_startup_settings() -> tuple[ActorSettings, CoreRuntimeSettings]:
+    """Load actor and core/resources settings using explicit env-overridden paths."""
+    settings = load_actor_settings(config_path=_resolve_config_path())
+    core_runtime_settings = load_core_runtime_settings(
+        core_config_path=_resolve_core_config_path(),
+        resources_config_path=_resolve_resources_config_path(),
+    )
+    return settings, core_runtime_settings
+
+
 def _resolve_heartbeat_path() -> Path:
     """Return the heartbeat file path used by container health checks."""
     value = os.getenv(_HEARTBEAT_FILE_ENV, "").strip()
@@ -403,12 +471,24 @@ class _BrainSdkToolModel(Model):
         turn_state: _TurnState | None = None,
         profile_name: str = "standard",
         timeout_seconds: float | None = None,
+        session_id: str,
+        source: str,
+        principal: str,
+        system_blocks: tuple[InferenceSystemBlock, ...],
+        tool_requires_approval: dict[str, bool | None] | None = None,
     ) -> None:
         super().__init__(profile=ModelProfile(supports_tools=True))
         self._client = client
         self._turn_state = _TurnState() if turn_state is None else turn_state
         self._profile_name = profile_name
         self._timeout_seconds = timeout_seconds
+        self._session_id = session_id
+        self._source = source
+        self._principal = principal
+        self._system_blocks = system_blocks
+        self._tool_requires_approval = (
+            {} if tool_requires_approval is None else dict(tool_requires_approval)
+        )
         self.last_result: LmsToolChatResult | None = None
 
     async def request(
@@ -423,16 +503,24 @@ class _BrainSdkToolModel(Model):
             None, model_request_parameters
         )
         del prepared_settings
+        request_meta = self._turn_state.next_model_meta()
+        inference_request = _build_inference_request(
+            session_id=self._session_id,
+            source=self._source,
+            principal=self._principal,
+            meta=request_meta,
+            system_blocks=self._system_blocks,
+            messages=messages,
+            tool_defs=prepared_params.function_tools,
+            allow_text_output=prepared_params.allow_text_output,
+            profile=self._profile_name,
+            tool_requires_approval=self._tool_requires_approval,
+        )
         result = await asyncio.to_thread(
             _call_with_optional_meta,
             self._client.lms_chat_with_tools,
-            meta=self._turn_state.next_model_meta(),
-            messages=tuple(_to_sdk_messages(messages)),
-            tools=tuple(
-                _to_sdk_tool_definition(item) for item in prepared_params.function_tools
-            ),
-            allow_text_output=prepared_params.allow_text_output,
-            profile=self._profile_name,
+            meta=request_meta,
+            inference_request=inference_request,
             timeout_seconds=self._timeout_seconds,
         )
         self.last_result = result
@@ -460,17 +548,35 @@ class _BrainSdkToolModel(Model):
         return "brain"
 
 
+_CONTENT_PART_TYPES = (
+    str,
+    CachePoint,
+    TextContentPart,
+    CachePointContentPart,
+    FocusContentPart,
+    ConversationSummaryContentPart,
+    DialogueTurnContentPart,
+    ReferenceSnippetContentPart,
+    OperatorMessageContentPart,
+)
+
+
 def _stringify_content(value: object) -> str:
     """Render one structured content value into a stable compact string."""
     if isinstance(value, str):
         return value
     if isinstance(value, list | tuple):
-        parts: list[str] = []
-        for item in value:
-            if isinstance(item, CachePoint):
-                continue
-            parts.append(_stringify_content(item))
-        return "".join(parts)
+        if all(isinstance(item, _CONTENT_PART_TYPES) for item in value):
+            parts: list[str] = []
+            for item in value:
+                if isinstance(item, CachePoint):
+                    continue
+                parts.append(_stringify_content(item))
+            return "".join(parts)
+        try:
+            return json.dumps(value, sort_keys=True)
+        except TypeError:
+            return str(value)
     try:
         return json.dumps(value, sort_keys=True)
     except TypeError:
@@ -486,75 +592,280 @@ def _content_has_cache_point(value: object) -> bool:
     return False
 
 
-def _to_sdk_messages(
+def _build_inference_request(
+    *,
+    session_id: str,
+    source: str,
+    principal: str,
+    meta: MetaOverrides | None,
+    system_blocks: tuple[InferenceSystemBlock, ...],
     messages: list[ModelRequest | ModelResponse],
-) -> list[LmsChatMessage]:
-    """Convert PydanticAI message history into SDK LMS chat messages."""
-    result: list[LmsChatMessage] = []
+    tool_defs: list[ToolDefinition],
+    allow_text_output: bool,
+    profile: str,
+    tool_requires_approval: dict[str, bool | None],
+) -> InferenceRequest:
+    """Build one canonical inference request from PydanticAI history + runtime state."""
+    explicit_cache = False
+    context_found = False
+    current_focus: str | None = None
+    recent_conversation_summary = ""
+    recent_turns: list[InferenceMemoryTurn] = []
+    reference_snippets: list[InferenceReferenceSnippet] = []
+    operator_message: InferenceOperatorMessage | None = None
+    live_events: list[
+        InferenceAssistantTextEvent
+        | InferenceToolCallBatchEvent
+        | InferenceToolResultBatchEvent
+    ] = []
+
     for message in messages:
-        result.extend(_to_sdk_message_parts(message))
-    return result
-
-
-def _to_sdk_message_parts(
-    message: ModelRequest | ModelResponse,
-) -> list[LmsChatMessage]:
-    """Convert one PydanticAI message into one or more SDK LMS messages."""
-    if isinstance(message, ModelRequest):
-        result: list[LmsChatMessage] = []
-        for part in message.parts:
-            if isinstance(part, SystemPromptPart):
-                result.append(LmsChatMessage(role="system", content=part.content))
-            elif isinstance(part, UserPromptPart):
-                content = _stringify_content(part.content)
-                if content == "":
+        if isinstance(message, ModelRequest):
+            tool_results: list[InferenceToolResult] = []
+            for part in message.parts:
+                if isinstance(part, UserPromptPart):
+                    content_parts = _to_content_parts(part.content)
+                    if any(
+                        isinstance(item, CachePointContentPart)
+                        for item in content_parts
+                    ):
+                        explicit_cache = True
+                    if not context_found and _contains_context_content_parts(
+                        content_parts
+                    ):
+                        (
+                            current_focus,
+                            recent_conversation_summary,
+                            recent_turns,
+                            reference_snippets,
+                            operator_message,
+                        ) = _extract_context_from_content_parts(content_parts)
+                        context_found = True
+                        continue
+                    if _content_parts_are_only_cache_points(content_parts):
+                        _mark_cache_after_last_live_event(live_events)
+                        continue
+                    if operator_message is None and len(content_parts) > 0:
+                        fallback_text = _text_from_content_parts(content_parts).strip()
+                        if fallback_text != "":
+                            operator_message = InferenceOperatorMessage(
+                                channel="",
+                                sender_e164="",
+                                message_text=fallback_text,
+                            )
                     continue
-                result.append(
-                    LmsChatMessage(
-                        role="user",
-                        content=content,
-                    )
+                if isinstance(part, ToolReturnPart):
+                    tool_results.append(_tool_return_part_to_inference_result(part))
+            if len(tool_results) > 0:
+                live_events.append(
+                    InferenceToolResultBatchEvent(results=tuple(tool_results))
                 )
-            elif isinstance(part, ToolReturnPart):
-                result.append(
-                    LmsChatMessage(
-                        role="tool",
-                        content=_stringify_content(part.content),
-                        tool_name=part.tool_name,
-                        tool_call_id=part.tool_call_id,
-                    )
-                )
-            else:
-                result.append(
-                    LmsChatMessage(
-                        role="user",
-                        content=_stringify_content(getattr(part, "content", "")),
-                    )
-                )
-        return result
+            continue
 
-    text_parts: list[str] = []
-    tool_calls: list[LmsChatToolCall] = []
-    for part in message.parts:
-        if isinstance(part, TextPart):
-            text_parts.append(part.content)
-        elif isinstance(part, ToolCallPart):
-            tool_calls.append(
-                LmsChatToolCall(
-                    tool_name=part.tool_name,
-                    args_json=_tool_args_json(part.args),
-                    tool_call_id=part.tool_call_id,
+        text_segments: list[str] = []
+        tool_calls: list[InferenceToolCall] = []
+        for part in message.parts:
+            if isinstance(part, TextPart):
+                text_segments.append(part.content)
+            elif isinstance(part, ToolCallPart):
+                tool_calls.append(
+                    InferenceToolCall(
+                        call_id=part.tool_call_id,
+                        tool_name=part.tool_name,
+                        arguments=_tool_args_object(part.args),
+                    )
                 )
+        if len(text_segments) > 0:
+            live_events.append(
+                InferenceAssistantTextEvent(text="\n".join(text_segments))
             )
-    if len(text_parts) == 0 and len(tool_calls) == 0:
-        return []
-    return [
-        LmsChatMessage(
-            role="assistant",
-            content="\n".join(part for part in text_parts if part != ""),
-            tool_calls=tuple(tool_calls),
+        if len(tool_calls) > 0:
+            live_events.append(InferenceToolCallBatchEvent(calls=tuple(tool_calls)))
+
+    if operator_message is None:
+        operator_message = InferenceOperatorMessage(
+            channel="",
+            sender_e164="",
+            message_text="",
         )
-    ]
+
+    return InferenceRequest(
+        meta=InferenceMeta(
+            trace_id="" if meta is None or meta.trace_id is None else meta.trace_id,
+            session_id=session_id,
+            source=source,
+            principal=principal,
+            envelope_id=""
+            if meta is None or meta.envelope_id is None
+            else meta.envelope_id,
+            parent_id="" if meta is None or meta.parent_id is None else meta.parent_id,
+        ),
+        system=InferenceSystem(blocks=system_blocks),
+        memory_context=InferenceMemoryContext(
+            current_focus=current_focus,
+            recent_conversation_summary=recent_conversation_summary,
+            recent_turns=tuple(recent_turns),
+            reference_snippets=tuple(reference_snippets),
+        ),
+        current_turn=InferenceCurrentTurn(operator_message=operator_message),
+        tools=tuple(
+            _to_inference_tool_definition(
+                item,
+                requires_approval=tool_requires_approval.get(item.name),
+            )
+            for item in tool_defs
+        ),
+        live_events=tuple(live_events),
+        controls=InferenceControls(
+            allow_text_output=allow_text_output,
+            tool_choice=InferenceToolChoice(mode="auto"),
+            parallel_tool_calls=InferenceParallelToolCalls(mode="allow"),
+            profile=profile if profile in {"quick", "standard", "deep"} else None,
+        ),
+        cache=InferenceCache(mode="explicit" if explicit_cache else "none"),
+    )
+
+
+def _contains_context_content_parts(parts: tuple[ChatContentPart, ...]) -> bool:
+    """Return True when one content-part tuple encodes the initial context payload."""
+    return any(
+        isinstance(
+            item,
+            FocusContentPart
+            | ConversationSummaryContentPart
+            | DialogueTurnContentPart
+            | ReferenceSnippetContentPart
+            | OperatorMessageContentPart,
+        )
+        for item in parts
+    )
+
+
+def _content_parts_are_only_cache_points(parts: tuple[ChatContentPart, ...]) -> bool:
+    """Return True when a user prompt contains only structural cache markers."""
+    return len(parts) > 0 and all(
+        isinstance(item, CachePointContentPart) for item in parts
+    )
+
+
+def _extract_context_from_content_parts(
+    parts: tuple[ChatContentPart, ...],
+) -> tuple[
+    str | None,
+    str,
+    list[InferenceMemoryTurn],
+    list[InferenceReferenceSnippet],
+    InferenceOperatorMessage | None,
+]:
+    """Extract canonical memory + current-turn data from structured prompt parts."""
+    current_focus: str | None = None
+    recent_conversation_summary = ""
+    recent_turns: list[InferenceMemoryTurn] = []
+    reference_snippets: list[InferenceReferenceSnippet] = []
+    operator_message: InferenceOperatorMessage | None = None
+    fallback_text_parts: list[str] = []
+
+    for item in parts:
+        if isinstance(item, FocusContentPart):
+            current_focus = None if item.text == "" else item.text
+        elif isinstance(item, ConversationSummaryContentPart):
+            recent_conversation_summary = item.text
+        elif isinstance(item, DialogueTurnContentPart):
+            if item.role in {"user", "assistant"}:
+                recent_turns.append(
+                    InferenceMemoryTurn(
+                        role=item.role,
+                        text=item.text,
+                        is_summary=item.is_summary,
+                    )
+                )
+        elif isinstance(item, ReferenceSnippetContentPart):
+            reference_snippets.append(InferenceReferenceSnippet(text=item.text))
+        elif isinstance(item, OperatorMessageContentPart):
+            operator_message = InferenceOperatorMessage(
+                channel=item.channel,
+                sender_e164=item.sender_e164,
+                message_text=item.message_text,
+                approval_intent=item.approval_intent,
+                reaction_emoji=item.reaction_emoji,
+                quote_target_timestamp_ms=item.quote_target_timestamp_ms,
+                reaction_target_timestamp_ms=item.reaction_target_timestamp_ms,
+                reply_to_proposal_token=item.reply_to_proposal_token,
+                reaction_to_proposal_token=item.reaction_to_proposal_token,
+            )
+        elif isinstance(item, TextContentPart):
+            fallback_text_parts.append(item.text)
+
+    if operator_message is None and len(fallback_text_parts) > 0:
+        operator_message = InferenceOperatorMessage(
+            channel="",
+            sender_e164="",
+            message_text="\n".join(fallback_text_parts),
+        )
+    return (
+        current_focus,
+        recent_conversation_summary,
+        recent_turns,
+        reference_snippets,
+        operator_message,
+    )
+
+
+def _text_from_content_parts(parts: tuple[ChatContentPart, ...]) -> str:
+    """Render only text-bearing content parts into one fallback string."""
+    segments: list[str] = []
+    for item in parts:
+        if isinstance(item, TextContentPart):
+            segments.append(item.text)
+    return "\n".join(segment for segment in segments if segment != "")
+
+
+def _mark_cache_after_last_live_event(
+    events: list[
+        InferenceAssistantTextEvent
+        | InferenceToolCallBatchEvent
+        | InferenceToolResultBatchEvent
+    ],
+) -> None:
+    """Mark the last live event as a cache boundary when one exists."""
+    if len(events) == 0:
+        return
+    events[-1] = events[-1].model_copy(update={"cache_after": True})
+
+
+def _to_content_parts(value: object) -> tuple[ChatContentPart, ...]:
+    """Convert one PydanticAI content payload into canonical chat content parts."""
+    if isinstance(value, str):
+        if value == "":
+            return ()
+        return (TextContentPart(text=value),)
+    if isinstance(value, CachePoint):
+        return (CachePointContentPart(),)
+    if isinstance(
+        value,
+        TextContentPart
+        | CachePointContentPart
+        | FocusContentPart
+        | ConversationSummaryContentPart
+        | DialogueTurnContentPart
+        | ReferenceSnippetContentPart
+        | OperatorMessageContentPart,
+    ):
+        return (value,)
+    if isinstance(value, list | tuple):
+        if all(isinstance(item, _CONTENT_PART_TYPES) for item in value):
+            parts: list[ChatContentPart] = []
+            for item in value:
+                parts.extend(_to_content_parts(item))
+            return tuple(parts)
+        rendered = _stringify_content(value)
+        if rendered == "":
+            return ()
+        return (TextContentPart(text=rendered),)
+    rendered = _stringify_content(value)
+    if rendered == "":
+        return ()
+    return (TextContentPart(text=rendered),)
 
 
 def _tool_args_json(value: str | dict[str, object] | None) -> str:
@@ -564,6 +875,95 @@ def _tool_args_json(value: str | dict[str, object] | None) -> str:
     if isinstance(value, str):
         return value
     return json.dumps(value, sort_keys=True)
+
+
+def _tool_args_object(value: str | dict[str, object] | None) -> dict[str, object]:
+    """Convert one tool-call args payload into canonical structured object form."""
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return dict(value)
+    try:
+        payload = json.loads(value)
+    except ValueError:
+        return {"raw_args_json": value}
+    return payload if isinstance(payload, dict) else {"raw_args_json": value}
+
+
+def _tool_return_part_to_inference_result(part: ToolReturnPart) -> InferenceToolResult:
+    """Convert one tool return part into a canonical structured tool result."""
+    status = _classify_tool_result_status(part.content)
+    payload = _tool_result_payload_from_content(part.content)
+    return InferenceToolResult(
+        call_id=part.tool_call_id,
+        tool_name=part.tool_name,
+        status=status,
+        is_error=(status == "error"),
+        result=payload,
+    )
+
+
+def _classify_tool_result_status(
+    value: object,
+) -> Literal["success", "empty", "error"]:
+    """Classify one tool result as success, empty, or error."""
+    if _is_tool_error_payload(value):
+        return "error"
+    if _is_empty_tool_result(value):
+        return "empty"
+    return "success"
+
+
+def _is_tool_error_payload(value: object) -> bool:
+    """Return True when one tool result matches the agent error payload shape."""
+    if isinstance(value, dict):
+        return (
+            isinstance(value.get("error"), str)
+            and isinstance(value.get("message"), str)
+            and isinstance(value.get("capability_id"), str)
+        )
+    if not isinstance(value, str):
+        return False
+    try:
+        payload = json.loads(value)
+    except ValueError:
+        return False
+    return isinstance(payload, dict) and _is_tool_error_payload(payload)
+
+
+def _is_empty_tool_result(value: object) -> bool:
+    """Return True when one tool result is semantically empty but not erroneous."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() in {"", "null", "[]", "{}"}
+    if isinstance(value, list | tuple | dict | set | frozenset):
+        return len(value) == 0
+    return False
+
+
+def _tool_result_payload_from_content(value: object) -> InferenceToolResultPayload:
+    """Convert one arbitrary tool result into canonical structured payload fields."""
+    if value is None:
+        return InferenceToolResultPayload(mime_type="text/plain", text="")
+    if isinstance(value, str):
+        if _is_empty_tool_result(value):
+            return InferenceToolResultPayload(mime_type="text/plain", text="")
+        return InferenceToolResultPayload(mime_type="text/plain", text=value)
+    if isinstance(value, dict | list | tuple):
+        if _is_empty_tool_result(value):
+            return InferenceToolResultPayload(
+                mime_type="application/json",
+                data=value,
+            )
+        return InferenceToolResultPayload(
+            mime_type="application/json",
+            data=value,
+        )
+    return InferenceToolResultPayload(
+        mime_type="text/plain",
+        text=_stringify_content(value),
+    )
 
 
 def _tool_schema_with_agent_context(schema: dict[str, object]) -> dict[str, object]:
@@ -581,16 +981,23 @@ def _tool_schema_with_agent_context(schema: dict[str, object]) -> dict[str, obje
     }
 
 
-def _to_sdk_tool_definition(value: ToolDefinition) -> LmsChatToolDefinition:
-    """Convert one PydanticAI tool definition into an SDK LMS tool definition."""
-    return LmsChatToolDefinition(
+def _to_inference_tool_definition(
+    value: ToolDefinition,
+    *,
+    requires_approval: bool | None,
+) -> InferenceToolDefinition:
+    """Convert one PydanticAI tool definition into a canonical inference tool."""
+    return InferenceToolDefinition(
         name=value.name,
-        parameters_json_schema=_tool_schema_with_agent_context(
+        input_schema=_tool_schema_with_agent_context(
             dict(value.parameters_json_schema)
         ),
         description=value.description,
-        strict=value.strict,
-        sequential=value.sequential,
+        strict_schema=value.strict,
+        execution_hints=InferenceToolExecutionHints(
+            sequential=value.sequential,
+            requires_approval=requires_approval,
+        ),
     )
 
 
@@ -797,7 +1204,7 @@ def _build_runtime_tools(
 ) -> list[Tool[None]]:
     """Create hardcoded runtime discovery tools for dynamic capability exposure."""
 
-    def _discover_capabilities(
+    def _search_tools(
         query: str,
         limit: int | None = None,
         call_mode: str = "explore",
@@ -815,37 +1222,38 @@ def _build_runtime_tools(
             for item in results
             if item.capability_id not in turn_state.denied_capability_ids
         ]
-        for item in visible_results:
-            turn_state.active_tool_names.add(item.capability_id)
         return [
             {
-                "capability_id": item.capability_id,
+                "tool_id": item.capability_id,
                 "required_params": list(item.required_params),
                 "summary": item.summary,
             }
             for item in visible_results
         ]
 
-    def _describe_capability(
-        capability_id: str,
+    def _get_tool_info(
+        tool_id: str,
         call_mode: str = "explore",
         response_detail: str = "",
     ) -> dict[str, object]:
         del call_mode, response_detail
-        if capability_id in turn_state.denied_capability_ids:
+        if tool_id in turn_state.denied_capability_ids:
             return {
-                "capability_id": capability_id,
+                "tool_id": tool_id,
                 "available": False,
-                "reason": "capability is denied for this agent",
+                "reason": "tool is not available to this agent",
             }
         descriptor = _call_with_optional_meta(
             client.describe_capability,
             meta=turn_state.nested_call_meta(),
-            capability_id=capability_id,
+            capability_id=tool_id,
         )
+        # Activate the tool so the model can call it on the next hop.
+        # Unfreeze so _prepare_tools re-evaluates with the expanded set.
         turn_state.active_tool_names.add(descriptor.capability_id)
+        turn_state.tools_frozen = False
         return {
-            "capability_id": descriptor.capability_id,
+            "tool_id": descriptor.capability_id,
             "available": True,
             "kind": descriptor.kind,
             "version": descriptor.version,
@@ -860,12 +1268,9 @@ def _build_runtime_tools(
 
     return [
         Tool.from_schema(
-            _discover_capabilities,
-            name=_DISCOVER_CAPABILITIES_TOOL_NAME,
-            description=(
-                "Search the capability catalog semantically and activate matching "
-                "capability tools for the next model step."
-            ),
+            _search_tools,
+            name=_SEARCH_TOOLS_TOOL_NAME,
+            description="Search available tools by concept and return matches.",
             json_schema={
                 "type": "object",
                 "properties": {
@@ -878,19 +1283,16 @@ def _build_runtime_tools(
             },
         ),
         Tool.from_schema(
-            _describe_capability,
-            name=_DESCRIBE_CAPABILITY_TOOL_NAME,
-            description=(
-                "Return the full descriptor for one capability id and activate "
-                "that tool for the next model step."
-            ),
+            _get_tool_info,
+            name=_GET_TOOL_INFO_TOOL_NAME,
+            description="Return the full schema and metadata for one tool by its ID.",
             json_schema={
                 "type": "object",
                 "properties": {
-                    "capability_id": {"type": "string"},
+                    "tool_id": {"type": "string"},
                     **_AGENT_CONTEXT_PROPERTIES,
                 },
-                "required": ["capability_id"],
+                "required": ["tool_id"],
                 "additionalProperties": False,
             },
         ),
@@ -904,18 +1306,13 @@ def _build_prepare_tools(*, turn_state: _TurnState):
         _ctx: Any, tool_defs: list[ToolDefinition]
     ) -> list[ToolDefinition]:
         if not turn_state.tools_frozen:
-            # First LLM call of the turn: build the active set normally and freeze it.
-            # Any capability names added by discovery tools between hops are ignored
-            # until the next turn — this keeps the tools array byte-stable for caching.
-            active = [
+            active = tuple(
                 item for item in tool_defs if item.name in turn_state.active_tool_names
-            ]
-            turn_state.active_tool_names = {t.name for t in active}
+            )
+            turn_state.frozen_tool_names = tuple(item.name for item in active)
             turn_state.tools_frozen = True
-            return active
-        # Subsequent hops: return exactly the frozen set, ignoring any names added
-        # by discovery tool execution since the first hop.
-        return [item for item in tool_defs if item.name in turn_state.active_tool_names]
+            return list(active)
+        return [item for item in tool_defs if item.name in turn_state.frozen_tool_names]
 
     return _prepare_tools
 
@@ -982,9 +1379,29 @@ def _create_runtime(
     lms_request_timeout_seconds: float | None = None,
 ) -> _AgentRuntime:
     """Create one fully wired agent runtime from the published Core surface."""
-    effective_core_settings = CoreSettings() if core_settings is None else core_settings
-    session = client.memory_start_session(
-        personality=effective_core_settings.profile.personality
+    del core_settings
+    personality = str(getattr(settings.agent, "personality", "default"))
+    profile_context = str(
+        getattr(settings.agent, "profile_context", "Refer to me as 'boss'")
+    )
+    system_prompt_append = str(getattr(settings.agent, "system_prompt_append", ""))
+    session_start_mode = getattr(settings.agent, "session_start_mode", "existing")
+    if session_start_mode == "new":
+        session = client.memory_create_session()
+    else:
+        try:
+            session = client.memory_get_latest_or_create_session()
+        except Exception:
+            session = client.memory_create_session()
+    system_prompt = render_system_prompt(
+        personality,
+        operator_profile=profile_context,
+        system_prompt_append=system_prompt_append,
+    )
+    system_blocks = render_system_prompt_blocks(
+        personality,
+        operator_profile=profile_context,
+        system_prompt_append=system_prompt_append,
     )
     capabilities = client.describe_capabilities()
     always_on_capabilities = client.list_always_on_capabilities()
@@ -1006,6 +1423,15 @@ def _create_runtime(
         client=client,
         turn_state=turn_state,
         timeout_seconds=lms_request_timeout_seconds,
+        session_id=session.session_id,
+        source=str(settings.agent.source),
+        principal=str(settings.agent.principal),
+        system_blocks=system_blocks,
+        tool_requires_approval={
+            **{item.capability_id: item.requires_approval for item in capabilities},
+            _SEARCH_TOOLS_TOOL_NAME: False,
+            _GET_TOOL_INFO_TOOL_NAME: False,
+        },
     )
     capability_tools = _build_capability_tools(
         client=client,
@@ -1022,7 +1448,7 @@ def _create_runtime(
     )
     agent = Agent(
         model,
-        system_prompt=session.system_prompt,
+        system_prompt=system_prompt,
         retries=3,
         max_concurrency=1,
         tools=[*capability_tools, *runtime_tools],
@@ -1051,33 +1477,40 @@ def _format_user_prompt(
     instruction: SwitchboardOperatorInstruction,
     context: MemoryContextBlock,
 ) -> list[UserContent]:
-    """Render one full prompt with stable context before the current instruction."""
-    dialogue_lines = [f"- {turn.role}: {turn.content}" for turn in context.dialogue]
-    snippet_lines = [f"- {snippet}" for snippet in context.reference_snippets]
-    return [
-        "MAS Context",
-        "profile:",
-        f"operator_name: {context.profile.operator_name}",
-        f"brain_name: {context.profile.brain_name}",
-        f"brain_verbosity: {context.profile.brain_verbosity}",
-        "focus:",
-        f"focus: {'' if context.focus is None else context.focus}",
-        "historical_snapshot:",
-        *(dialogue_lines or ["- (none)"]),
+    """Build one structured user-context payload before the current instruction."""
+    parts: list[UserContent] = [
+        FocusContentPart(
+            text="" if context.current_focus is None else context.current_focus
+        ),
+        ConversationSummaryContentPart(text=context.recent_conversation_summary),
         CachePoint(),
-        "reference_snippets:",
-        *(snippet_lines or ["- (none)"]),
-        "Current Instruction:",
-        f"channel: {instruction.source}",
-        f"sender: {instruction.sender_e164}",
-        f"message: {instruction.message_text}",
-        f"approval_intent: {'' if instruction.approval_intent is None else instruction.approval_intent}",
-        f"reaction_emoji: {'' if instruction.reaction_emoji is None else instruction.reaction_emoji}",
-        f"quote_target_timestamp_ms: {'' if instruction.quote_target_timestamp_ms is None else instruction.quote_target_timestamp_ms}",
-        f"reaction_target_timestamp_ms: {'' if instruction.reaction_target_timestamp_ms is None else instruction.reaction_target_timestamp_ms}",
-        f"reply_to_proposal_token: {'' if instruction.reply_to_proposal_token is None else instruction.reply_to_proposal_token}",
-        f"reaction_to_proposal_token: {'' if instruction.reaction_to_proposal_token is None else instruction.reaction_to_proposal_token}",
     ]
+    parts.extend(
+        DialogueTurnContentPart(
+            role=turn.role,
+            text=turn.content,
+            is_summary=turn.is_summary,
+        )
+        for turn in context.recent_turns
+    )
+    parts.extend(
+        ReferenceSnippetContentPart(text=snippet)
+        for snippet in context.reference_snippets
+    )
+    parts.append(
+        OperatorMessageContentPart(
+            channel=instruction.source,
+            sender_e164=instruction.sender_e164,
+            message_text=instruction.message_text,
+            approval_intent=instruction.approval_intent,
+            reaction_emoji=instruction.reaction_emoji,
+            quote_target_timestamp_ms=instruction.quote_target_timestamp_ms,
+            reaction_target_timestamp_ms=instruction.reaction_target_timestamp_ms,
+            reply_to_proposal_token=instruction.reply_to_proposal_token,
+            reaction_to_proposal_token=instruction.reaction_to_proposal_token,
+        )
+    )
+    return parts
 
 
 def _estimate_token_count(text: str) -> int:
@@ -1368,7 +1801,7 @@ def _build_history_processor(
 
 def _instruction_context_message(instruction: SwitchboardOperatorInstruction) -> str:
     """Return the best available text surrogate for one inbound operator instruction."""
-    message_text = instruction.message_text.strip()
+    message_text = instruction.message_text
     if message_text != "":
         return message_text
     if instruction.approval_intent is not None:
@@ -1411,6 +1844,31 @@ def _is_retryable_lms_transport_timeout(exc: BrainTransportError) -> bool:
     message = str(exc).lower()
     timeout_tokens = ("timed out", "timeout", "readtimeout")
     return any(token in message for token in timeout_tokens)
+
+
+def _is_lms_operation(operation: str) -> bool:
+    """Return True when one SDK operation is an LMS generation call."""
+    return operation in {"lms.chat", "lms.chat_with_tools"}
+
+
+def _classify_lms_failure_response(exc: BrainSdkError) -> str | None:
+    """Return one fallback operator response for handled LMS failures."""
+    operation = getattr(exc, "operation", "")
+    if not isinstance(operation, str) or not _is_lms_operation(operation):
+        return None
+    if isinstance(exc, BrainDependencyError):
+        if _is_retryable_lms_throttle(exc):
+            return _LMS_THROTTLE_RESPONSE
+        if _is_retryable_lms_timeout(exc):
+            return _LMS_TIMEOUT_RESPONSE
+        return _LMS_GENERIC_ERROR_RESPONSE
+    if isinstance(exc, BrainTransportError):
+        if _is_retryable_lms_transport_timeout(exc):
+            return _LMS_TIMEOUT_RESPONSE
+        return _LMS_GENERIC_ERROR_RESPONSE
+    if isinstance(exc, BrainDomainError):
+        return _LMS_GENERIC_ERROR_RESPONSE
+    return None
 
 
 async def _process_instruction(
@@ -1456,29 +1914,26 @@ async def _process_instruction(
         response_text = str(result.output).strip()
         if response_text == "":
             response_text = "I do not have a response yet."
-    except BrainDependencyError as exc:
-        if _is_retryable_lms_throttle(exc):
-            _LOGGER.warning(
-                "brain agent lms throttled; returning fallback response",
-                extra={"operation": exc.operation},
-            )
-            response_text = _LMS_THROTTLE_RESPONSE
-        elif _is_retryable_lms_timeout(exc):
-            _LOGGER.warning(
-                "brain agent lms timed out; returning fallback response",
-                extra={"operation": exc.operation},
-            )
-            response_text = _LMS_TIMEOUT_RESPONSE
-        else:
-            raise
-    except BrainTransportError as exc:
-        if not _is_retryable_lms_transport_timeout(exc):
+    except BrainSdkError as exc:
+        fallback_response = _classify_lms_failure_response(exc)
+        if fallback_response is None:
             raise
         _LOGGER.warning(
-            "brain agent lms transport timed out; returning fallback response",
-            extra={"operation": exc.operation},
+            "brain agent lms request failed; returning fallback response",
+            extra={
+                "operation": getattr(exc, "operation", ""),
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+                "fallback_kind": (
+                    "throttle"
+                    if fallback_response == _LMS_THROTTLE_RESPONSE
+                    else "timeout"
+                    if fallback_response == _LMS_TIMEOUT_RESPONSE
+                    else "generic"
+                ),
+            },
         )
-        response_text = _LMS_TIMEOUT_RESPONSE
+        response_text = fallback_response
     chat = runtime.model.last_result
     candidate_turn = await asyncio.to_thread(
         _call_with_optional_meta,
@@ -1547,8 +2002,7 @@ async def _run_main() -> None:
     global _RUNNING
     _RUNNING = True
 
-    settings = load_actor_settings(config_path=_resolve_config_path())
-    core_runtime_settings = load_core_runtime_settings()
+    settings, core_runtime_settings = _load_startup_settings()
     core_settings = core_runtime_settings.core
     _configure_logging(settings=settings)
     heartbeat_path = _resolve_heartbeat_path()

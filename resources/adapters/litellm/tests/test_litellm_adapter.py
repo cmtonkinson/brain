@@ -10,10 +10,22 @@ import litellm
 import pytest
 from unittest.mock import MagicMock, call
 
+from packages.brain_shared.language_model import (
+    InferenceAssistantTextEvent,
+    InferenceCache,
+    InferenceMemoryContext,
+    InferenceSystemBlock,
+    InferenceToolCall,
+    InferenceToolCallBatchEvent,
+    InferenceToolDefinition,
+    InferenceToolResult,
+    InferenceToolResultBatchEvent,
+    InferenceToolResultPayload,
+    TextContentPart,
+)
 import resources.adapters.litellm.litellm_adapter as adapter_module
 from resources.adapters.litellm.adapter import (
     AdapterChatMessage,
-    AdapterChatToolDefinition,
     AdapterDependencyError,
     AdapterInternalError,
     AdapterProviderCallAudit,
@@ -23,6 +35,7 @@ from resources.adapters.litellm.config import (
     LiteLlmProviderSettings,
 )
 from resources.adapters.litellm.litellm_adapter import LiteLlmLibraryAdapter
+from tests.helpers.inference_request import make_inference_request
 
 
 @dataclass
@@ -68,6 +81,169 @@ def _settings() -> LiteLlmAdapterSettings:
             )
         },
     )
+
+
+def _anthropic_settings() -> LiteLlmAdapterSettings:
+    """Build deterministic adapter settings for Anthropic serializer coverage."""
+    return LiteLlmAdapterSettings(
+        timeout_seconds=9.0,
+        max_retries=2,
+        providers={
+            "anthropic": LiteLlmProviderSettings(
+                api_base="https://api.anthropic.com",
+                options={"temperature": 0.0},
+            )
+        },
+    )
+
+
+def _openai_settings() -> LiteLlmAdapterSettings:
+    """Build deterministic adapter settings for OpenAI serializer coverage."""
+    return LiteLlmAdapterSettings(
+        timeout_seconds=9.0,
+        max_retries=2,
+        providers={
+            "openai": LiteLlmProviderSettings(
+                api_base="https://api.openai.com/v1",
+                options={"temperature": 0.0},
+            )
+        },
+    )
+
+
+def _gemini_settings() -> LiteLlmAdapterSettings:
+    """Build deterministic adapter settings for Gemini serializer coverage."""
+    return LiteLlmAdapterSettings(
+        timeout_seconds=9.0,
+        max_retries=2,
+        providers={
+            "gemini": LiteLlmProviderSettings(
+                api_base="https://generativelanguage.googleapis.com",
+                options={"temperature": 0.0},
+            )
+        },
+    )
+
+
+def _tool_inference_request(
+    *,
+    system_text: str = "Static context",
+    user_text: str = "Find the resume",
+    assistant_text: str = "Checking",
+    tool_name: str = "demo-tool",
+    tool_args: dict[str, object] | None = None,
+    tool_result_text: str = "search results",
+    cache_mode: str = "explicit",
+) -> object:
+    """Build one canonical inference request for adapter tool-chat tests."""
+    return make_inference_request(
+        system_blocks=(
+            InferenceSystemBlock(
+                kind="assistant_persona",
+                text=system_text,
+                cache_after=(cache_mode == "explicit"),
+            ),
+        ),
+        memory_context=InferenceMemoryContext(
+            current_focus=None,
+            recent_conversation_summary="",
+            recent_turns=(),
+            reference_snippets=(),
+        ),
+        live_events=(
+            InferenceAssistantTextEvent(text=assistant_text),
+            InferenceToolCallBatchEvent(
+                calls=(
+                    InferenceToolCall(
+                        call_id="call-1",
+                        tool_name=tool_name,
+                        arguments={} if tool_args is None else tool_args,
+                    ),
+                )
+            ),
+            InferenceToolResultBatchEvent(
+                results=(
+                    InferenceToolResult(
+                        call_id="call-1",
+                        tool_name=tool_name,
+                        result=InferenceToolResultPayload(
+                            mime_type="text/plain",
+                            text=tool_result_text,
+                        ),
+                    ),
+                )
+            ),
+        ),
+        tools=(
+            InferenceToolDefinition(
+                name=tool_name,
+                description="Do a thing.",
+                input_schema={"type": "object"},
+            ),
+        ),
+        cache=InferenceCache(mode=cache_mode),
+        operator_message=make_inference_request().current_turn.operator_message.model_copy(
+            update={"message_text": user_text}
+        ),
+    )
+
+
+def _content_text(value: object) -> str:
+    """Render one serialized provider content payload into plain text for assertions."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(
+            str(item.get("text", "")) for item in value if isinstance(item, dict)
+        )
+    return str(value)
+
+
+def test_load_prompt_file_reads_fallback_focus_template_from_disk() -> None:
+    """Fallback prompt renderer should load authored focus wording from disk."""
+    prompt = adapter_module._load_prompt_file(adapter_module._FOCUS_TEMPLATE_PATH)
+
+    assert prompt == adapter_module._FOCUS_TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert prompt == adapter_module._FOCUS_TEMPLATE
+    assert "{{ text }}" in prompt
+
+
+def test_render_content_parts_uses_file_backed_fallback_templates() -> None:
+    """Fallback prompt wording should come from adapter prompt assets, not code."""
+    rendered = adapter_module._render_content_parts(
+        (
+            adapter_module.FocusContentPart(text="focus"),
+            adapter_module.ConversationSummaryContentPart(text="summary"),
+            adapter_module.DialogueTurnContentPart(
+                role="user",
+                text="hello",
+                is_summary=False,
+            ),
+            adapter_module.ReferenceSnippetContentPart(text="snippet"),
+            adapter_module.OperatorMessageContentPart(
+                channel="signal",
+                sender_e164="+12025550100",
+                message_text="ping",
+                approval_intent=None,
+                reaction_emoji=None,
+                quote_target_timestamp_ms=None,
+                reaction_target_timestamp_ms=None,
+                reply_to_proposal_token=None,
+                reaction_to_proposal_token=None,
+            ),
+        )
+    )
+
+    assert "<areas_of_focus>\nfocus\n</areas_of_focus>" in rendered
+    assert (
+        "<recent_conversation_summary>\nsummary\n</recent_conversation_summary>"
+        in rendered
+    )
+    assert "<dialogue>\n- user: hello\n</dialogue>" in rendered
+    assert "<reference_context>\n- snippet\n</reference_context>" in rendered
+    assert "<operator_message>" in rendered
+    assert "channel: signal" in rendered
+    assert "sender: +12025550100" in rendered
 
 
 def test_chat_calls_litellm_completion_with_resolved_provider_settings(
@@ -148,17 +324,19 @@ def test_chat_with_tools_passes_tools_and_maps_tool_calls(
     result = adapter.chat_with_tools(
         provider="ollama",
         model="gpt-oss",
-        messages=(AdapterChatMessage(role="user", content="hello"),),
-        tools=(
-            AdapterChatToolDefinition(
-                name="demo-tool",
-                description="Do a thing.",
-                parameters_json_schema={"type": "object"},
-                strict=True,
+        inference_request=make_inference_request(
+            operator_message=make_inference_request().current_turn.operator_message.model_copy(
+                update={"message_text": "hello"}
+            ),
+            tools=(
+                InferenceToolDefinition(
+                    name="demo-tool",
+                    description="Do a thing.",
+                    input_schema={"type": "object"},
+                    strict_schema=True,
+                ),
             ),
         ),
-        tool_choice="auto",
-        parallel_tool_calls=True,
     )
 
     assert result.finish_reason == "tool_call"
@@ -177,28 +355,67 @@ def test_chat_with_tools_passes_tools_and_maps_tool_calls(
             },
         }
     ]
-    assert result.raw_call == AdapterProviderCallAudit(
-        request_api_base="http://localhost:11434",
-        request_headers={},
-        request_body={
-            "model": "ollama/gpt-oss",
-            "temperature": 0.0,
-            "messages": [{"role": "user", "content": "hello"}],
-            "tools": [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "demo-tool",
-                        "description": "Do a thing.",
-                        "parameters": {"type": "object"},
-                        "strict": True,
-                    },
-                }
-            ],
-            "tool_choice": "auto",
-            "parallel_tool_calls": True,
-        },
-        response_body={
+    assert result.raw_call is not None
+    assert result.raw_call.request_api_base == "http://localhost:11434"
+    assert result.raw_call.request_body is not None
+    assert result.raw_call.request_body["model"] == "ollama/gpt-oss"
+    assert result.raw_call.request_body["tool_choice"] == "auto"
+    assert result.raw_call.request_body["parallel_tool_calls"] is True
+    assert "hello" in _content_text(
+        result.raw_call.request_body["messages"][-1]["content"]
+    )
+    assert result.raw_call.response_body == {
+        "choices": [
+            {
+                "finish_reason": "tool_calls",
+                "message": {
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "function": {
+                                "name": "demo-tool",
+                                "arguments": '{"value":"x"}',
+                            },
+                        }
+                    ],
+                },
+            }
+        ]
+    }
+
+
+def test_chat_uses_anthropic_system_blocks_for_direct_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Anthropic chat should serialize system prompt outside the messages array."""
+    fake_module = _FakeLiteLlmModule()
+    monkeypatch.setattr(adapter_module, "_load_litellm_module", lambda: fake_module)
+    adapter = LiteLlmLibraryAdapter(settings=_anthropic_settings())
+
+    result = adapter.chat(
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        system_prompt="You are Brain.",
+        prompt="Hello",
+    )
+
+    assert result.text == "hello"
+    assert fake_module.completion_calls[0]["model"] == "anthropic/claude-sonnet-4-6"
+    assert fake_module.completion_calls[0]["system"] == [
+        {"type": "text", "text": "You are Brain."}
+    ]
+    assert fake_module.completion_calls[0]["messages"] == [
+        {"role": "user", "content": [{"type": "text", "text": "Hello"}]}
+    ]
+
+
+def test_chat_with_tools_uses_openai_format_for_anthropic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Anthropic tool chat should pass OpenAI-format messages and let LiteLLM translate."""
+    fake_module = _FakeLiteLlmModule(
+        completion_response={
             "choices": [
                 {
                     "finish_reason": "tool_calls",
@@ -216,8 +433,456 @@ def test_chat_with_tools_passes_tools_and_maps_tool_calls(
                     },
                 }
             ]
-        },
+        }
     )
+    monkeypatch.setattr(adapter_module, "_load_litellm_module", lambda: fake_module)
+    adapter = LiteLlmLibraryAdapter(settings=_anthropic_settings())
+
+    result = adapter.chat_with_tools(
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        inference_request=_tool_inference_request(
+            tool_args={"value": "x"},
+            cache_mode="explicit",
+        ),
+    )
+
+    assert result.finish_reason == "tool_call"
+    assert fake_module.completion_calls[0]["system"] == [
+        {
+            "type": "text",
+            "text": "Static context",
+            "cache_control": {"type": "ephemeral"},
+        },
+    ]
+    assert fake_module.completion_calls[0]["messages"][0]["role"] == "user"
+    assert "Find the resume" in _content_text(
+        fake_module.completion_calls[0]["messages"][0]["content"]
+    )
+    assert fake_module.completion_calls[0]["messages"][1] == {
+        "role": "assistant",
+        "content": "Checking",
+        "tool_calls": [
+            {
+                "id": "call-1",
+                "type": "function",
+                "function": {
+                    "name": "demo-tool",
+                    "arguments": '{"value": "x"}',
+                },
+            }
+        ],
+    }
+    assert fake_module.completion_calls[0]["messages"][2] == {
+        "role": "tool",
+        "tool_call_id": "call-1",
+        "content": "search results",
+    }
+    assert fake_module.completion_calls[0]["tools"] == [
+        {
+            "name": "demo-tool",
+            "input_schema": {"type": "object"},
+            "description": "Do a thing.",
+        }
+    ]
+    assert fake_module.completion_calls[0]["tool_choice"] == {"type": "auto"}
+    assert "parallel_tool_calls" not in fake_module.completion_calls[0]
+
+
+def test_lower_inference_request_for_anthropic_uses_litellm_compat_tool_messages() -> (
+    None
+):
+    """Anthropic lowering should emit OpenAI-format tool messages for LiteLLM."""
+    lowered = adapter_module._lower_inference_request_for_provider(
+        provider="anthropic",
+        inference_request=_tool_inference_request(
+            tool_args={"value": "x"},
+            cache_mode="explicit",
+        ),
+    )
+
+    assert lowered.messages[0]["role"] == "user"
+    assert lowered.messages[1] == {
+        "role": "assistant",
+        "content": "Checking",
+        "tool_calls": [
+            {
+                "id": "call-1",
+                "type": "function",
+                "function": {
+                    "name": "demo-tool",
+                    "arguments": '{"value": "x"}',
+                },
+            }
+        ],
+    }
+    assert lowered.messages[2] == {
+        "role": "tool",
+        "tool_call_id": "call-1",
+        "content": "search results",
+    }
+    assert lowered.extra_kwargs["system"] == [
+        {
+            "type": "text",
+            "text": "Static context",
+            "cache_control": {"type": "ephemeral"},
+        },
+    ]
+
+
+def test_anthropic_serializer_groups_adjacent_tool_results_immediately_after_tool_use() -> (
+    None
+):
+    """Anthropic serializer must place tool_result blocks in the next user message."""
+    messages, extra_kwargs = adapter_module._serialize_anthropic_messages(
+        (
+            AdapterChatMessage(
+                role="system",
+                content_parts=(TextContentPart(text="Static context"),),
+            ),
+            AdapterChatMessage(
+                role="assistant",
+                content_parts=(TextContentPart(text="Searching"),),
+                tool_calls=(
+                    adapter_module.AdapterChatToolCall(
+                        tool_name="vault-search-files",
+                        args_json='{"query":"Heidi"}',
+                        tool_call_id="call-1",
+                    ),
+                ),
+            ),
+            AdapterChatMessage(
+                role="tool",
+                content_parts=(TextContentPart(text='{"items":[]}'),),
+                tool_name="vault-search-files",
+                tool_call_id="call-1",
+            ),
+            AdapterChatMessage(
+                role="assistant",
+                content_parts=(TextContentPart(text="No matches found."),),
+            ),
+        )
+    )
+
+    assert extra_kwargs["system"] == [{"type": "text", "text": "Static context"}]
+    assert messages == [
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "Searching"},
+                {
+                    "type": "tool_use",
+                    "id": "call-1",
+                    "name": "vault-search-files",
+                    "input": {"query": "Heidi"},
+                },
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "call-1",
+                    "content": '{"items":[]}',
+                }
+            ],
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "No matches found."}],
+        },
+    ]
+
+
+def test_anthropic_lowering_marks_error_tool_results() -> None:
+    """Anthropic lowering should emit `is_error` when the IR marks a result as error."""
+    lowered = adapter_module._serialize_anthropic_inference_messages(
+        make_inference_request(
+            live_events=(
+                InferenceToolCallBatchEvent(
+                    calls=(
+                        InferenceToolCall(
+                            call_id="call-1",
+                            tool_name="demo-tool",
+                            arguments={"value": "x"},
+                        ),
+                    )
+                ),
+                InferenceToolResultBatchEvent(
+                    results=(
+                        InferenceToolResult(
+                            call_id="call-1",
+                            tool_name="demo-tool",
+                            status="error",
+                            is_error=True,
+                            result=InferenceToolResultPayload(
+                                mime_type="application/json",
+                                data={"error": "not_found"},
+                            ),
+                        ),
+                    )
+                ),
+            )
+        )
+    )
+
+    assert lowered[2]["content"] == [
+        {
+            "type": "tool_result",
+            "tool_use_id": "call-1",
+            "content": '{"error": "not_found"}',
+            "is_error": True,
+        }
+    ]
+
+
+def test_chat_uses_openai_native_content_blocks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OpenAI chat should use native message content arrays."""
+    fake_module = _FakeLiteLlmModule()
+    monkeypatch.setattr(adapter_module, "_load_litellm_module", lambda: fake_module)
+    adapter = LiteLlmLibraryAdapter(settings=_openai_settings())
+
+    result = adapter.chat(
+        provider="openai",
+        model="gpt-5.4",
+        system_prompt="You are Brain.",
+        prompt="Hello",
+    )
+
+    assert result.text == "hello"
+    assert fake_module.completion_calls[0]["model"] == "openai/gpt-5.4"
+    assert fake_module.completion_calls[0]["messages"] == [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": "You are Brain."}],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": "Hello"}],
+        },
+    ]
+
+
+def test_chat_with_tools_uses_openai_native_serializer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OpenAI tool chat should use native content arrays and tool call messages."""
+    fake_module = _FakeLiteLlmModule(
+        completion_response={
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call-1",
+                                "function": {
+                                    "name": "demo-tool",
+                                    "arguments": '{"value":"x"}',
+                                },
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(adapter_module, "_load_litellm_module", lambda: fake_module)
+    adapter = LiteLlmLibraryAdapter(settings=_openai_settings())
+
+    result = adapter.chat_with_tools(
+        provider="openai",
+        model="gpt-5.4",
+        inference_request=make_inference_request(
+            system_blocks=(
+                InferenceSystemBlock(
+                    kind="assistant_persona",
+                    text="Static context",
+                    cache_after=True,
+                ),
+            ),
+            operator_message=make_inference_request().current_turn.operator_message.model_copy(
+                update={"message_text": "Find the resume"}
+            ),
+            tools=(
+                InferenceToolDefinition(
+                    name="demo-tool",
+                    description="Do a thing.",
+                    input_schema={"type": "object"},
+                    strict_schema=True,
+                ),
+            ),
+            live_events=(
+                InferenceAssistantTextEvent(text="Checking"),
+                InferenceToolCallBatchEvent(
+                    calls=(
+                        InferenceToolCall(
+                            call_id="call-1",
+                            tool_name="demo-tool",
+                            arguments={"value": "x"},
+                        ),
+                    )
+                ),
+                InferenceToolResultBatchEvent(
+                    results=(
+                        InferenceToolResult(
+                            call_id="call-1",
+                            tool_name="demo-tool",
+                            result=InferenceToolResultPayload(
+                                mime_type="text/plain",
+                                text="search results",
+                            ),
+                        ),
+                    )
+                ),
+            ),
+            cache=InferenceCache(mode="explicit"),
+        ),
+    )
+
+    assert result.finish_reason == "tool_call"
+    assert fake_module.completion_calls[0]["messages"][0] == {
+        "role": "system",
+        "content": [{"type": "text", "text": "Static context"}],
+    }
+    assert "Find the resume" in _content_text(
+        fake_module.completion_calls[0]["messages"][1]["content"]
+    )
+    assert fake_module.completion_calls[0]["messages"][2]["tool_calls"] == [
+        {
+            "id": "call-1",
+            "type": "function",
+            "function": {
+                "name": "demo-tool",
+                "arguments": '{"value": "x"}',
+            },
+        }
+    ]
+    assert fake_module.completion_calls[0]["messages"][3] == {
+        "role": "tool",
+        "tool_call_id": "call-1",
+        "content": "search results",
+    }
+    assert fake_module.completion_calls[0]["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "demo-tool",
+                "description": "Do a thing.",
+                "parameters": {"type": "object"},
+                "strict": True,
+            },
+        }
+    ]
+    assert fake_module.completion_calls[0]["tool_choice"] == "auto"
+    assert fake_module.completion_calls[0]["parallel_tool_calls"] is True
+
+
+def test_chat_uses_gemini_structured_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gemini chat should use structured message content arrays for LiteLLM conversion."""
+    fake_module = _FakeLiteLlmModule()
+    monkeypatch.setattr(adapter_module, "_load_litellm_module", lambda: fake_module)
+    adapter = LiteLlmLibraryAdapter(settings=_gemini_settings())
+
+    result = adapter.chat(
+        provider="gemini",
+        model="gemini-2.5-flash",
+        system_prompt="You are Brain.",
+        prompt="Hello",
+    )
+
+    assert result.text == "hello"
+    assert fake_module.completion_calls[0]["model"] == "gemini/gemini-2.5-flash"
+    assert fake_module.completion_calls[0]["messages"] == [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": "You are Brain."}],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": "Hello"}],
+        },
+    ]
+
+
+def test_chat_with_tools_uses_gemini_structured_serializer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gemini tool chat should emit structured messages for LiteLLM's Gemini transform."""
+    fake_module = _FakeLiteLlmModule(
+        completion_response={
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call-1",
+                                "function": {
+                                    "name": "demo-tool",
+                                    "arguments": '{"value":"x"}',
+                                },
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(adapter_module, "_load_litellm_module", lambda: fake_module)
+    adapter = LiteLlmLibraryAdapter(settings=_gemini_settings())
+
+    result = adapter.chat_with_tools(
+        provider="gemini",
+        model="gemini-2.5-flash",
+        inference_request=_tool_inference_request(
+            tool_args={"value": "x"},
+            cache_mode="explicit",
+        ),
+    )
+
+    assert result.finish_reason == "tool_call"
+    assert fake_module.completion_calls[0]["messages"][0] == {
+        "role": "system",
+        "content": [{"type": "text", "text": "Static context"}],
+    }
+    assert "Find the resume" in _content_text(
+        fake_module.completion_calls[0]["messages"][1]["content"]
+    )
+    assert fake_module.completion_calls[0]["messages"][2]["tool_calls"] == [
+        {
+            "id": "call-1",
+            "type": "function",
+            "function": {
+                "name": "demo-tool",
+                "arguments": '{"value": "x"}',
+            },
+        }
+    ]
+    assert fake_module.completion_calls[0]["messages"][3] == {
+        "role": "tool",
+        "tool_call_id": "call-1",
+        "content": "search results",
+    }
+    assert fake_module.completion_calls[0]["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "demo-tool",
+                "description": "Do a thing.",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
+    assert fake_module.completion_calls[0]["tool_choice"] == "auto"
+    assert fake_module.completion_calls[0]["parallel_tool_calls"] is True
 
 
 def test_embed_batch_maps_vectors_from_litellm_response(
@@ -394,12 +1059,13 @@ def test_chat_with_tools_exhausts_timeout_retries(
         adapter.chat_with_tools(
             provider="ollama",
             model="gpt-oss",
-            messages=(AdapterChatMessage(role="user", content="hello"),),
-            tools=(
-                AdapterChatToolDefinition(
-                    name="demo-tool",
-                    description="Do a thing.",
-                    parameters_json_schema={"type": "object"},
+            inference_request=make_inference_request(
+                tools=(
+                    InferenceToolDefinition(
+                        name="demo-tool",
+                        description="Do a thing.",
+                        input_schema={"type": "object"},
+                    ),
                 ),
             ),
         )
@@ -431,33 +1097,33 @@ def test_chat_with_tools_preserves_request_and_error_payload_on_rate_limit(
         adapter.chat_with_tools(
             provider="ollama",
             model="gpt-oss",
-            messages=(AdapterChatMessage(role="user", content="hello"),),
-            tools=(
-                AdapterChatToolDefinition(
-                    name="demo-tool",
-                    description="Do a thing.",
-                    parameters_json_schema={"type": "object"},
+            inference_request=make_inference_request(
+                tools=(
+                    InferenceToolDefinition(
+                        name="demo-tool",
+                        description="Do a thing.",
+                        input_schema={"type": "object"},
+                    ),
                 ),
             ),
         )
 
     raw_call = exc_info.value.raw_call
     assert raw_call is not None
-    assert raw_call.request_body == {
-        "model": "ollama/gpt-oss",
-        "temperature": 0.0,
-        "messages": [{"role": "user", "content": "hello"}],
-        "tools": [
-            {
-                "type": "function",
-                "function": {
-                    "name": "demo-tool",
-                    "description": "Do a thing.",
-                    "parameters": {"type": "object"},
-                },
-            }
-        ],
-    }
+    assert raw_call.request_body["model"] == "ollama/gpt-oss"
+    assert raw_call.request_body["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "demo-tool",
+                "description": "Do a thing.",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
+    assert raw_call.request_body["tool_choice"] == "auto"
+    assert raw_call.request_body["parallel_tool_calls"] is True
+    assert "hello" in _content_text(raw_call.request_body["messages"][-1]["content"])
     assert raw_call.response_body == {
         "status_code": 429,
         "reason": "Too Many Requests",

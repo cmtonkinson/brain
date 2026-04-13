@@ -1,0 +1,9 @@
+<operator_message>
+<metadata>
+{{ metadata }}
+</metadata>
+
+<body>
+{{ message_text }}
+</body>
+</operator_message>

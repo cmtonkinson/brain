@@ -9,20 +9,42 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from packages.brain_shared.language_model import (
+    ConversationSummaryContentPart,
+    DialogueTurnContentPart,
+    FocusContentPart,
+    InferenceAssistantTextEvent,
+    InferenceCurrentTurn,
+    InferenceMemoryContext,
+    InferenceMeta,
+    InferenceOperatorMessage,
+    InferenceParallelToolCalls,
+    InferenceRequest,
+    InferenceSystem,
+    InferenceSystemBlock,
+    InferenceToolCall,
+    InferenceToolCallBatchEvent,
+    InferenceToolChoice,
+    InferenceToolDefinition,
+    InferenceToolExecutionHints,
+    InferenceToolResult,
+    InferenceToolResultBatchEvent,
+    InferenceToolResultPayload,
+    OperatorMessageContentPart,
+    ReferenceSnippetContentPart,
+)
 from packages.brain_sdk import (
     BrainDependencyError,
     BrainInternalError,
     BrainNotFoundError,
     BrainPolicyError,
+    BrainTransportError,
     CapabilityDescriptor,
     CapabilitySearchHit,
-    LmsChatMessage,
     LmsChatToolCall,
-    LmsChatToolDefinition,
     LmsToolChatResult,
     MemoryContextBlock,
     MemoryDialogueTurn,
-    MemoryProfileContext,
     MemorySessionRef,
     SwitchboardOperatorInstruction,
 )
@@ -30,6 +52,19 @@ from packages.brain_sdk.errors import SdkErrorDetail
 
 
 def _actor_settings_stub(**agent_overrides):
+    agent_defaults = {
+        "session_start_mode": "existing",
+        "personality": "default",
+        "profile_context": "Refer to me as 'boss'",
+        "system_prompt_append": "",
+        "source": "agent",
+        "principal": "operator",
+        "capability_discovery_deny_list": (),
+        "tool_return_compress_threshold": 4000,
+        "tool_return_max_chars": 8000,
+        "tool_loop_tier2_hop_threshold": 3,
+    }
+    agent_defaults.update(agent_overrides)
     return SimpleNamespace(
         logging=SimpleNamespace(
             level="INFO",
@@ -40,18 +75,18 @@ def _actor_settings_stub(**agent_overrides):
             process_name="agent",
             environment="dev",
         ),
-        agent=SimpleNamespace(
-            capability_discovery_deny_list=(),
-            tool_return_compress_threshold=4000,
-            tool_return_max_chars=8000,
-            tool_loop_tier2_hop_threshold=3,
-            **agent_overrides,
-        ),
+        agent=SimpleNamespace(**agent_defaults),
     )
 
 
-def _core_settings_stub(personality: str = "default"):
-    return SimpleNamespace(profile=SimpleNamespace(personality=personality))
+def _core_settings_stub(personality: str = "default", system_prompt_append: str = ""):
+    return SimpleNamespace(
+        profile=SimpleNamespace(
+            personality=personality,
+            operator=SimpleNamespace(profile_context="Refer to me as 'boss'"),
+            system_prompt_append=system_prompt_append,
+        )
+    )
 
 
 def test_resolve_config_path_uses_env_override(monkeypatch) -> None:
@@ -61,6 +96,57 @@ def test_resolve_config_path_uses_env_override(monkeypatch) -> None:
     monkeypatch.setenv("BRAIN_ACTORS_CONFIG_FILE", "/tmp/actors.yaml")
 
     assert main._resolve_config_path() == Path("/tmp/actors.yaml")
+
+
+def test_resolve_core_config_path_uses_env_override(monkeypatch) -> None:
+    """Core-config helper should return a Path only when the env var is set."""
+    from actors.agent import main
+
+    monkeypatch.setenv("BRAIN_CORE_CONFIG_FILE", "/tmp/core.yaml")
+
+    assert main._resolve_core_config_path() == Path("/tmp/core.yaml")
+
+
+def test_resolve_resources_config_path_uses_env_override(monkeypatch) -> None:
+    """Resources-config helper should return a Path only when the env var is set."""
+    from actors.agent import main
+
+    monkeypatch.setenv("BRAIN_RESOURCES_CONFIG_FILE", "/tmp/resources.yaml")
+
+    assert main._resolve_resources_config_path() == Path("/tmp/resources.yaml")
+
+
+def test_load_startup_settings_passes_explicit_config_paths(monkeypatch) -> None:
+    """Startup settings loader should honor actor/core/resources env path overrides."""
+    from actors.agent import main
+
+    actor_calls: list[Path | None] = []
+    runtime_calls: list[tuple[Path | None, Path | None]] = []
+
+    def _fake_load_actor_settings(*, config_path=None, **_kwargs):
+        actor_calls.append(config_path)
+        return "actors"
+
+    def _fake_load_core_runtime_settings(
+        *, core_config_path=None, resources_config_path=None, **_kwargs
+    ):
+        runtime_calls.append((core_config_path, resources_config_path))
+        return "runtime"
+
+    monkeypatch.setenv("BRAIN_ACTORS_CONFIG_FILE", "/tmp/actors.yaml")
+    monkeypatch.setenv("BRAIN_CORE_CONFIG_FILE", "/tmp/core.yaml")
+    monkeypatch.setenv("BRAIN_RESOURCES_CONFIG_FILE", "/tmp/resources.yaml")
+    monkeypatch.setattr(main, "load_actor_settings", _fake_load_actor_settings)
+    monkeypatch.setattr(
+        main, "load_core_runtime_settings", _fake_load_core_runtime_settings
+    )
+
+    settings, runtime = main._load_startup_settings()
+
+    assert settings == "actors"
+    assert runtime == "runtime"
+    assert actor_calls == [Path("/tmp/actors.yaml")]
+    assert runtime_calls == [(Path("/tmp/core.yaml"), Path("/tmp/resources.yaml"))]
 
 
 def test_resolve_heartbeat_path_uses_default_when_env_missing(monkeypatch) -> None:
@@ -94,17 +180,27 @@ def test_write_heartbeat_creates_parent_and_updates_file(tmp_path) -> None:
 
 def test_render_system_prompt_returns_rendered_default_personality() -> None:
     """render_system_prompt should render the default personality template."""
-    from packages.brain_sdk.personality import _TEMPLATE_PATH, render_system_prompt
+    from packages.brain_sdk.personality import (
+        _SYSTEM_PROMPT_TEMPLATE_PATH,
+        render_system_prompt,
+    )
 
-    template = _TEMPLATE_PATH.read_text(encoding="utf-8")
-    assert "{{identity}}" in template
-    assert "{identity}" not in template.replace("{{identity}}", "")
+    template = _SYSTEM_PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert "{{ personality }}" in template
+    assert "system_prompt_append" in template
 
-    prompt = render_system_prompt("default")
+    prompt = render_system_prompt(
+        "default",
+        operator_profile="Refer to me as 'boss'",
+        system_prompt_append="Appendix",
+    )
 
     assert prompt != ""
     assert "tool" in prompt.lower()
     assert "Brain" in prompt
+    assert "Refer to me as 'boss'" in prompt
+    assert "Appendix" in prompt
+    assert "system_prompt_append" not in prompt
 
 
 def test_render_system_prompt_template_rejects_unresolved_placeholders() -> None:
@@ -112,10 +208,28 @@ def test_render_system_prompt_template_rejects_unresolved_placeholders() -> None
     from packages.brain_sdk.personality import _render_template
 
     try:
-        _render_template("Hello {{identity}} {{missing}}", identity="Brain")
+        _render_template(
+            "Hello {{ personality }} {{ missing }}",
+            personality="Brain",
+        )
         assert False, "expected unresolved placeholder validation"
     except ValueError as exc:
         assert "missing" in str(exc)
+
+
+def test_render_system_prompt_template_supports_spaced_and_unspaced_placeholders() -> (
+    None
+):
+    """System prompt template renderer should accept both brace-spacing styles."""
+    from packages.brain_sdk.personality import _render_template
+
+    rendered = _render_template(
+        "A={{personality}} B={{ personality }} C={{system_prompt_append}} D={{ system_prompt_append }}",
+        personality="Brain",
+        system_prompt_append="tail",
+    )
+
+    assert rendered == "A=Brain B=Brain C=tail D=tail"
 
 
 def test_render_system_prompt_raises_for_unknown_personality() -> None:
@@ -138,6 +252,7 @@ def test_load_prompt_file_reads_compressor_prompt_from_disk() -> None:
 
     prompt = main._load_prompt_file(main._COMPRESS_SYSTEM_PROMPT_PATH)
 
+    assert prompt == main._COMPRESS_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
     assert prompt == main._COMPRESS_SYSTEM_PROMPT
     assert "tool result compressor" in prompt.lower()
 
@@ -148,6 +263,9 @@ def test_load_prompt_file_reads_compressor_user_template_from_disk() -> None:
 
     prompt = main._load_prompt_file(main._COMPRESS_USER_PROMPT_TEMPLATE_PATH)
 
+    assert prompt == main._COMPRESS_USER_PROMPT_TEMPLATE_PATH.read_text(
+        encoding="utf-8"
+    )
     assert prompt == main._COMPRESS_USER_PROMPT_TEMPLATE
     assert "{{tool_name}}" in prompt
     assert "{{raw_output}}" in prompt
@@ -218,8 +336,8 @@ def test_configure_logging_uses_shared_dual_path_settings(monkeypatch) -> None:
     )
 
 
-def test_to_sdk_messages_translates_tool_loop_history() -> None:
-    """Message translation should preserve assistant tool calls and tool returns."""
+def test_build_inference_request_translates_tool_loop_history() -> None:
+    """Inference-request assembly should preserve tool loop state as live events."""
     from actors.agent import main
     from pydantic_ai.messages import (
         ModelRequest,
@@ -254,33 +372,83 @@ def test_to_sdk_messages_translates_tool_loop_history() -> None:
         ),
     ]
 
-    result = main._to_sdk_messages(messages)
+    result = main._build_inference_request(
+        session_id="session-1",
+        source="agent",
+        principal="operator",
+        meta=None,
+        system_blocks=(InferenceSystemBlock(kind="assistant_persona", text="system"),),
+        messages=messages,
+        tool_defs=[],
+        allow_text_output=True,
+        profile="standard",
+        tool_requires_approval={},
+    )
 
-    assert result == [
-        LmsChatMessage(role="system", content="system"),
-        LmsChatMessage(role="user", content="hello"),
-        LmsChatMessage(
-            role="assistant",
-            content="checking",
-            tool_calls=(
-                LmsChatToolCall(
-                    tool_name="vault-get-file",
-                    args_json='{"input_payload": {"file_path": "resume.md"}}',
-                    tool_call_id="call-1",
-                ),
+    assert result == InferenceRequest(
+        meta=InferenceMeta(
+            trace_id="",
+            session_id="session-1",
+            source="agent",
+            principal="operator",
+            envelope_id="",
+            parent_id="",
+        ),
+        system=InferenceSystem(
+            blocks=(InferenceSystemBlock(kind="assistant_persona", text="system"),)
+        ),
+        memory_context=InferenceMemoryContext(
+            current_focus=None,
+            recent_conversation_summary="",
+            recent_turns=(),
+            reference_snippets=(),
+        ),
+        current_turn=InferenceCurrentTurn(
+            operator_message=InferenceOperatorMessage(
+                channel="",
+                sender_e164="",
+                message_text="hello",
+            )
+        ),
+        tools=(),
+        live_events=(
+            InferenceAssistantTextEvent(text="checking"),
+            InferenceToolCallBatchEvent(
+                calls=(
+                    InferenceToolCall(
+                        call_id="call-1",
+                        tool_name="vault-get-file",
+                        arguments={"input_payload": {"file_path": "resume.md"}},
+                    ),
+                )
+            ),
+            InferenceToolResultBatchEvent(
+                results=(
+                    InferenceToolResult(
+                        call_id="call-1",
+                        tool_name="vault-get-file",
+                        status="success",
+                        is_error=False,
+                        result=InferenceToolResultPayload(
+                            mime_type="application/json",
+                            data={"path": "resume.md"},
+                        ),
+                    ),
+                )
             ),
         ),
-        LmsChatMessage(
-            role="tool",
-            content='{"path": "resume.md"}',
-            tool_name="vault-get-file",
-            tool_call_id="call-1",
+        controls=main.InferenceControls(
+            allow_text_output=True,
+            tool_choice=InferenceToolChoice(mode="auto"),
+            parallel_tool_calls=InferenceParallelToolCalls(mode="allow"),
+            profile="standard",
         ),
-    ]
+        cache=main.InferenceCache(mode="none"),
+    )
 
 
-def test_to_sdk_messages_omits_cache_points_from_user_content() -> None:
-    """Prompt-cache markers should not leak into LMS-visible user text."""
+def test_build_inference_request_marks_explicit_cache_mode() -> None:
+    """Prompt-cache markers should become explicit cache intent in the IR."""
     from actors.agent import main
     from pydantic_ai.messages import CachePoint, ModelRequest, UserPromptPart
 
@@ -289,13 +457,96 @@ def test_to_sdk_messages_omits_cache_points_from_user_content() -> None:
         ModelRequest(parts=[UserPromptPart(content=[CachePoint()])]),
     ]
 
-    result = main._to_sdk_messages(messages)
+    result = main._build_inference_request(
+        session_id="session-1",
+        source="agent",
+        principal="operator",
+        meta=None,
+        system_blocks=(),
+        messages=messages,
+        tool_defs=[],
+        allow_text_output=True,
+        profile="standard",
+        tool_requires_approval={},
+    )
 
-    assert result == [LmsChatMessage(role="user", content="hello")]
+    assert result.current_turn.operator_message.message_text == "hello"
+    assert result.cache.mode == "explicit"
+
+
+def test_build_inference_request_batches_tool_returns_and_sets_status() -> None:
+    """Tool returns from one request should become one batch with explicit statuses."""
+    from actors.agent import main
+    from pydantic_ai.messages import ModelRequest, ToolReturnPart
+
+    messages = [
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="vault-search-files",
+                    content="",
+                    tool_call_id="call-empty",
+                ),
+                ToolReturnPart(
+                    tool_name="vault-get-file",
+                    content={
+                        "error": "not_found",
+                        "message": "missing",
+                        "capability_id": "vault-get-file",
+                    },
+                    tool_call_id="call-error",
+                ),
+            ]
+        )
+    ]
+
+    result = main._build_inference_request(
+        session_id="session-1",
+        source="agent",
+        principal="operator",
+        meta=None,
+        system_blocks=(),
+        messages=messages,
+        tool_defs=[],
+        allow_text_output=True,
+        profile="standard",
+        tool_requires_approval={},
+    )
+
+    assert result.live_events == (
+        InferenceToolResultBatchEvent(
+            results=(
+                InferenceToolResult(
+                    call_id="call-empty",
+                    tool_name="vault-search-files",
+                    status="empty",
+                    is_error=False,
+                    result=InferenceToolResultPayload(
+                        mime_type="text/plain",
+                        text="",
+                    ),
+                ),
+                InferenceToolResult(
+                    call_id="call-error",
+                    tool_name="vault-get-file",
+                    status="error",
+                    is_error=True,
+                    result=InferenceToolResultPayload(
+                        mime_type="application/json",
+                        data={
+                            "error": "not_found",
+                            "message": "missing",
+                            "capability_id": "vault-get-file",
+                        },
+                    ),
+                ),
+            )
+        ),
+    )
 
 
 def test_format_user_prompt_places_cachepoint_before_current_instruction() -> None:
-    """The current instruction should come after the historical snapshot cache cut."""
+    """The operator-message block should come after the historical snapshot cache cut."""
     from actors.agent import main
     from pydantic_ai.messages import CachePoint
 
@@ -313,14 +564,9 @@ def test_format_user_prompt_places_cachepoint_before_current_instruction() -> No
             approval_intent=None,
         ),
         context=MemoryContextBlock(
-            system_prompt="",
-            profile=MemoryProfileContext(
-                operator_name="Operator",
-                brain_name="Brain",
-                brain_verbosity="normal",
-            ),
-            focus="current focus",
-            dialogue=(
+            current_focus="current focus",
+            recent_conversation_summary="prior summary",
+            recent_turns=(
                 MemoryDialogueTurn(
                     role="assistant",
                     content="prior turn",
@@ -334,15 +580,26 @@ def test_format_user_prompt_places_cachepoint_before_current_instruction() -> No
     cache_index = next(
         index for index, item in enumerate(prompt) if isinstance(item, CachePoint)
     )
-    historical_index = prompt.index("historical_snapshot:")
-    reference_index = prompt.index("reference_snippets:")
-    current_index = prompt.index("Current Instruction:")
-
-    assert prompt[0] == "MAS Context"
-    assert prompt.index("profile:") < prompt.index("focus:")
-    assert historical_index < cache_index < reference_index < current_index
-    assert prompt[-1] == "reaction_to_proposal_token: "
-    assert prompt[current_index + 3] == "message: hello"
+    assert cache_index == 2
+    assert prompt[0] == FocusContentPart(text="current focus")
+    assert prompt[1] == ConversationSummaryContentPart(text="prior summary")
+    assert prompt[3] == DialogueTurnContentPart(
+        role="assistant",
+        text="prior turn",
+        is_summary=False,
+    )
+    assert prompt[4] == ReferenceSnippetContentPart(text="snippet")
+    assert prompt[5] == OperatorMessageContentPart(
+        channel="signal",
+        sender_e164="+12025550100",
+        message_text="hello",
+        approval_intent=None,
+        reaction_emoji=None,
+        quote_target_timestamp_ms=None,
+        reaction_target_timestamp_ms=None,
+        reply_to_proposal_token=None,
+        reaction_to_proposal_token=None,
+    )
 
 
 def test_normalize_tool_return_passes_through_small_results_and_logs() -> None:
@@ -529,16 +786,12 @@ def test_compress_tool_return_uses_file_backed_user_template() -> None:
     )
     assert client.profile == "quick"
     assert client.system_prompt == main._COMPRESS_SYSTEM_PROMPT
-    assert client.prompt == (
-        "<metadata>\n"
-        "* These results come from the `vault-search-files` tool.\n"
-        '* The tool was invoked in "decide" mode.\n'
-        "* The model stated its intent as: "
-        "<intent>Find Claire's birthday.</intent>\n"
-        "</metadata>\n\n"
-        "<raw_result>\n"
-        '{"items":[]}\n'
-        "</raw_result>"
+    assert client.prompt == main._render_prompt_template(
+        main._COMPRESS_USER_PROMPT_TEMPLATE,
+        tool_name="vault-search-files",
+        call_mode="decide",
+        intent="Find Claire's birthday.",
+        raw_output='{"items":[]}',
     )
 
 
@@ -547,11 +800,11 @@ def test_create_runtime_uses_personality_system_prompt() -> None:
     from actors.agent import main
 
     class _FakeClient:
-        def memory_start_session(self, *, personality: str = "default"):
-            return MemorySessionRef(
-                session_id="session-1",
-                system_prompt="You are Brain, a personal AI system.",
-            )
+        def memory_create_session(self):
+            return MemorySessionRef(session_id="session-1")
+
+        def memory_get_latest_or_create_session(self):
+            return MemorySessionRef(session_id="session-1")
 
         def describe_capabilities(self):
             return ()
@@ -561,8 +814,7 @@ def test_create_runtime_uses_personality_system_prompt() -> None:
 
     runtime = main._create_runtime(
         client=_FakeClient(),
-        settings=_actor_settings_stub(),
-        core_settings=_core_settings_stub("default"),
+        settings=_actor_settings_stub(personality="default"),
     )
 
     assert any(
@@ -571,13 +823,49 @@ def test_create_runtime_uses_personality_system_prompt() -> None:
     )
 
 
+def test_create_runtime_includes_system_prompt_append_in_prompt_and_blocks() -> None:
+    """Runtime creation should preserve agent.system_prompt_append in both prompt forms."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def memory_create_session(self):
+            return MemorySessionRef(session_id="session-1")
+
+        def memory_get_latest_or_create_session(self):
+            return MemorySessionRef(session_id="session-1")
+
+        def describe_capabilities(self):
+            return ()
+
+        def list_always_on_capabilities(self):
+            return ()
+
+    append_text = "APPEND_MARKER_123"
+    runtime = main._create_runtime(
+        client=_FakeClient(),
+        settings=_actor_settings_stub(system_prompt_append=append_text),
+    )
+
+    assert any(
+        append_text in str(item)
+        for item in runtime.agent._system_prompts  # pyright: ignore[reportPrivateUsage]
+    )
+    assert any(
+        append_text in block.text
+        for block in runtime.model._system_blocks  # pyright: ignore[reportPrivateUsage]
+    )
+
+
 def test_create_runtime_uses_configured_tier2_hop_threshold() -> None:
     """Runtime creation should wire the configured Tier 2 hop threshold."""
     from actors.agent import main
 
     class _FakeClient:
-        def memory_start_session(self, *, personality: str = "default"):
-            return MemorySessionRef(session_id="session-1", system_prompt="")
+        def memory_create_session(self):
+            return MemorySessionRef(session_id="session-1")
+
+        def memory_get_latest_or_create_session(self):
+            return MemorySessionRef(session_id="session-1")
 
         def describe_capabilities(self):
             return ()
@@ -603,7 +891,6 @@ def test_create_runtime_uses_configured_tier2_hop_threshold() -> None:
         main._create_runtime(
             client=_FakeClient(),
             settings=settings,
-            core_settings=_core_settings_stub(),
         )
     finally:
         main._build_history_processor = original  # type: ignore[assignment]
@@ -1311,25 +1598,18 @@ def test_tool_model_requests_lms_chat_with_tools() -> None:
 
     class _FakeClient:
         def __init__(self) -> None:
-            self.messages: tuple[LmsChatMessage, ...] | None = None
-            self.tools: tuple[LmsChatToolDefinition, ...] | None = None
+            self.inference_request: InferenceRequest | None = None
             self.timeout_seconds: float | None = None
 
         def lms_chat_with_tools(
             self,
             *,
-            messages: tuple[LmsChatMessage, ...],
-            tools: tuple[LmsChatToolDefinition, ...],
-            tool_choice: str | dict[str, object] | None = None,
-            parallel_tool_calls: bool | None = None,
-            allow_text_output: bool = True,
-            profile: str = "standard",
+            inference_request: InferenceRequest,
             timeout_seconds: float | None = None,
             meta: object | None = None,
         ) -> LmsToolChatResult:
-            del tool_choice, parallel_tool_calls, allow_text_output, profile, meta
-            self.messages = messages
-            self.tools = tools
+            del meta
+            self.inference_request = inference_request
             self.timeout_seconds = timeout_seconds
             return LmsToolChatResult(
                 provider="unit",
@@ -1349,6 +1629,10 @@ def test_tool_model_requests_lms_chat_with_tools() -> None:
     model = main._BrainSdkToolModel(  # type: ignore[arg-type]
         client=client,
         timeout_seconds=45.0,
+        session_id="session-1",
+        source="agent",
+        principal="operator",
+        system_blocks=(InferenceSystemBlock(kind="assistant_persona", text="system"),),
     )
     response = asyncio.run(
         model.request(
@@ -1383,15 +1667,26 @@ def test_tool_model_requests_lms_chat_with_tools() -> None:
     assert model.last_result is not None
     assert model.last_result.model == "test-model"
     assert client.timeout_seconds == 45.0
-    assert model._client.messages == (  # type: ignore[attr-defined]
-        LmsChatMessage(role="system", content="system"),
-        LmsChatMessage(role="user", content="hello"),
+    assert client.inference_request is not None
+    assert client.inference_request.meta.session_id == "session-1"
+    assert client.inference_request.meta.source == "agent"
+    assert client.inference_request.meta.principal == "operator"
+    assert client.inference_request.meta.envelope_id is not None
+    assert client.inference_request.system == InferenceSystem(
+        blocks=(InferenceSystemBlock(kind="assistant_persona", text="system"),)
     )
-    assert model._client.tools == (  # type: ignore[attr-defined]
-        LmsChatToolDefinition(
+    assert client.inference_request.current_turn == InferenceCurrentTurn(
+        operator_message=InferenceOperatorMessage(
+            channel="",
+            sender_e164="",
+            message_text="hello",
+        )
+    )
+    assert client.inference_request.tools == (
+        InferenceToolDefinition(
             name="vault-get-file",
             description="Read a file.",
-            parameters_json_schema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "input_payload": {
@@ -1421,8 +1716,11 @@ def test_tool_model_requests_lms_chat_with_tools() -> None:
                 "required": ["input_payload"],
                 "additionalProperties": False,
             },
-            strict=None,
-            sequential=False,
+            strict_schema=None,
+            execution_hints=InferenceToolExecutionHints(
+                sequential=False,
+                requires_approval=None,
+            ),
         ),
     )
     assert isinstance(response.parts[0], ToolCallPart)
@@ -1457,14 +1755,9 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
         def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
             self.snapshots.append(session_id)
             return MemoryContextBlock(
-                system_prompt="",
-                profile=MemoryProfileContext(
-                    operator_name="Operator",
-                    brain_name="Brain",
-                    brain_verbosity="normal",
-                ),
-                focus="current focus",
-                dialogue=(
+                current_focus="current focus",
+                recent_conversation_summary="prior summary",
+                recent_turns=(
                     MemoryDialogueTurn(
                         role="assistant",
                         content="prior turn",
@@ -1632,14 +1925,9 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
         def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
             self.snapshots.append(session_id)
             return MemoryContextBlock(
-                system_prompt="",
-                profile=MemoryProfileContext(
-                    operator_name="Operator",
-                    brain_name="Brain",
-                    brain_verbosity="normal",
-                ),
-                focus="current focus",
-                dialogue=(
+                current_focus="current focus",
+                recent_conversation_summary="prior summary",
+                recent_turns=(
                     MemoryDialogueTurn(
                         role="assistant",
                         content="prior turn",
@@ -1778,14 +2066,9 @@ def test_process_instruction_handles_lms_timeout_gracefully() -> None:
         def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
             del session_id
             return MemoryContextBlock(
-                system_prompt="",
-                profile=MemoryProfileContext(
-                    operator_name="Operator",
-                    brain_name="Brain",
-                    brain_verbosity="normal",
-                ),
-                focus="current focus",
-                dialogue=(),
+                current_focus="current focus",
+                recent_conversation_summary="prior summary",
+                recent_turns=(),
                 reference_snippets=(),
             )
 
@@ -1894,6 +2177,266 @@ def test_process_instruction_handles_lms_timeout_gracefully() -> None:
     ]
 
 
+def test_process_instruction_handles_lms_internal_error_gracefully() -> None:
+    """Non-timeout LMS domain errors should produce the generic fallback response."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.recorded: list[tuple[str, str, str, str, int, str]] = []
+            self.invoked: list[tuple[str, dict[str, object], str, str]] = []
+
+        def memory_record_inbound_turn(
+            self,
+            *,
+            session_id: str,
+            message: str,
+            instruction: SwitchboardOperatorInstruction | None = None,
+        ):
+            del message, instruction
+            return type("TurnRecord", (), {"id": f"{session_id}-inbound"})()
+
+        def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
+            del session_id
+            return MemoryContextBlock(
+                current_focus="current focus",
+                recent_conversation_summary="prior summary",
+                recent_turns=(),
+                reference_snippets=(),
+            )
+
+        def memory_record_outbound_candidate(
+            self,
+            *,
+            session_id: str,
+            content: str,
+            model: str,
+            provider: str,
+            token_count: int,
+            reasoning_level: str,
+        ):
+            self.recorded.append(
+                (session_id, content, model, provider, token_count, reasoning_level)
+            )
+            return type("TurnRecord", (), {"id": "turn-outbound"})()
+
+        def memory_record_outbound_delivery(
+            self,
+            *,
+            session_id: str,
+            turn_id: str,
+            delivered: bool,
+        ) -> bool:
+            del session_id, turn_id
+            return delivered
+
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+        ):
+            self.invoked.append((capability_id, input_payload, actor, channel))
+            return type("InvokeResult", (), {"output": {"decision": "sent"}})()
+
+    class _FakeAgent:
+        async def run(self, _prompt: str):
+            raise BrainInternalError(
+                message="lms.chat_with_tools domain failure: invalid request transcript",
+                operation="lms.chat_with_tools",
+                details=(
+                    SdkErrorDetail(
+                        code="internal_error",
+                        message="invalid request transcript",
+                        category="internal",
+                        retryable=False,
+                    ),
+                ),
+            )
+
+    client = _FakeClient()
+    runtime = main._AgentRuntime(
+        client=client,  # type: ignore[arg-type]
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        turn_state=main._TurnState(),
+        model=main._BrainSdkToolModel.__new__(main._BrainSdkToolModel),
+        agent=_FakeAgent(),  # type: ignore[arg-type]
+        lms_request_timeout_seconds=45.0,
+    )
+    runtime.model.last_result = None
+
+    response = asyncio.run(
+        main._process_instruction(
+            runtime=runtime,
+            instruction=SwitchboardOperatorInstruction(
+                sender_e164="+12025550100",
+                message_text="hello",
+                timestamp_ms=1,
+                source_device="1",
+                source="signal",
+                group_id=None,
+                quote_target_timestamp_ms=None,
+                reaction_target_timestamp_ms=None,
+                reaction_emoji=None,
+                approval_intent=None,
+            ),
+        )
+    )
+
+    assert response == main._LMS_GENERIC_ERROR_RESPONSE
+    assert client.recorded == [
+        (
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            main._LMS_GENERIC_ERROR_RESPONSE,
+            "brain-sdk-lms",
+            "brain-sdk",
+            main._estimate_token_count(main._LMS_GENERIC_ERROR_RESPONSE),
+            "standard",
+        )
+    ]
+    assert client.invoked == [
+        (
+            "attention-notify",
+            {
+                "actor": "operator",
+                "channel": "signal",
+                "message": main._LMS_GENERIC_ERROR_RESPONSE,
+            },
+            "operator",
+            "signal",
+        )
+    ]
+
+
+def test_process_instruction_handles_lms_transport_5xx_gracefully() -> None:
+    """LMS transport failures should produce the generic fallback response."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.recorded: list[tuple[str, str, str, str, int, str]] = []
+            self.invoked: list[tuple[str, dict[str, object], str, str]] = []
+
+        def memory_record_inbound_turn(
+            self,
+            *,
+            session_id: str,
+            message: str,
+            instruction: SwitchboardOperatorInstruction | None = None,
+        ):
+            del message, instruction
+            return type("TurnRecord", (), {"id": f"{session_id}-inbound"})()
+
+        def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
+            del session_id
+            return MemoryContextBlock(
+                current_focus="current focus",
+                recent_conversation_summary="prior summary",
+                recent_turns=(),
+                reference_snippets=(),
+            )
+
+        def memory_record_outbound_candidate(
+            self,
+            *,
+            session_id: str,
+            content: str,
+            model: str,
+            provider: str,
+            token_count: int,
+            reasoning_level: str,
+        ):
+            self.recorded.append(
+                (session_id, content, model, provider, token_count, reasoning_level)
+            )
+            return type("TurnRecord", (), {"id": "turn-outbound"})()
+
+        def memory_record_outbound_delivery(
+            self,
+            *,
+            session_id: str,
+            turn_id: str,
+            delivered: bool,
+        ) -> bool:
+            del session_id, turn_id
+            return delivered
+
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+        ):
+            self.invoked.append((capability_id, input_payload, actor, channel))
+            return type("InvokeResult", (), {"output": {"decision": "sent"}})()
+
+    class _FakeAgent:
+        async def run(self, _prompt: str):
+            raise BrainTransportError(
+                message="lms.chat_with_tools transport failure (HTTP 502): bad gateway",
+                operation="lms.chat_with_tools",
+                status_code=502,
+                retryable=False,
+            )
+
+    client = _FakeClient()
+    runtime = main._AgentRuntime(
+        client=client,  # type: ignore[arg-type]
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        turn_state=main._TurnState(),
+        model=main._BrainSdkToolModel.__new__(main._BrainSdkToolModel),
+        agent=_FakeAgent(),  # type: ignore[arg-type]
+        lms_request_timeout_seconds=45.0,
+    )
+    runtime.model.last_result = None
+
+    response = asyncio.run(
+        main._process_instruction(
+            runtime=runtime,
+            instruction=SwitchboardOperatorInstruction(
+                sender_e164="+12025550100",
+                message_text="hello",
+                timestamp_ms=1,
+                source_device="1",
+                source="signal",
+                group_id=None,
+                quote_target_timestamp_ms=None,
+                reaction_target_timestamp_ms=None,
+                reaction_emoji=None,
+                approval_intent=None,
+            ),
+        )
+    )
+
+    assert response == main._LMS_GENERIC_ERROR_RESPONSE
+    assert client.recorded == [
+        (
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            main._LMS_GENERIC_ERROR_RESPONSE,
+            "brain-sdk-lms",
+            "brain-sdk",
+            main._estimate_token_count(main._LMS_GENERIC_ERROR_RESPONSE),
+            "standard",
+        )
+    ]
+    assert client.invoked == [
+        (
+            "attention-notify",
+            {
+                "actor": "operator",
+                "channel": "signal",
+                "message": main._LMS_GENERIC_ERROR_RESPONSE,
+            },
+            "operator",
+            "signal",
+        )
+    ]
+
+
 def test_derive_lms_request_timeout_seconds_uses_largest_chat_provider_budget() -> None:
     """Derived LMS timeout should reflect retry budget plus margin across profiles."""
     from actors.agent import main
@@ -1937,23 +2480,24 @@ def test_derive_lms_request_timeout_seconds_uses_largest_chat_provider_budget() 
     assert main._derive_lms_request_timeout_seconds(runtime_settings) == 93.5
 
 
-def test_create_runtime_creates_session_and_registers_tools() -> None:
-    """Runtime creation should create one session and register all active tools."""
+def test_create_runtime_reuses_existing_session_and_registers_tools() -> None:
+    """Runtime creation should reuse-or-create by default and register tools."""
     from actors.agent import main
 
     class _FakeClient:
         def __init__(self) -> None:
             self.created = 0
+            self.reused = 0
             self.described = 0
             self.always_on = 0
 
-        def memory_start_session(
-            self, *, personality: str = "default"
-        ) -> MemorySessionRef:
+        def memory_create_session(self) -> MemorySessionRef:
             self.created += 1
-            return MemorySessionRef(
-                session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV", system_prompt=""
-            )
+            return MemorySessionRef(session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV")
+
+        def memory_get_latest_or_create_session(self) -> MemorySessionRef:
+            self.reused += 1
+            return MemorySessionRef(session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV")
 
         def describe_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
             self.described += 1
@@ -1976,20 +2520,127 @@ def test_create_runtime_creates_session_and_registers_tools() -> None:
             self.always_on += 1
             return ()
 
+    client = _FakeClient()
     runtime = main._create_runtime(
-        client=_FakeClient(),  # type: ignore[arg-type]
+        client=client,  # type: ignore[arg-type]
         settings=_actor_settings_stub(),
         core_settings=_core_settings_stub(),
     )
 
+    assert client.reused == 1
+    assert client.created == 0
     assert runtime.session_id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
     assert isinstance(runtime.model, main._BrainSdkToolModel)
     assert len(runtime.agent._function_toolset.tools) == 3
     assert "attention-notify" not in runtime.turn_state.active_tool_names
 
 
-def test_runtime_discovery_tools_activate_capabilities_for_prepare_tools() -> None:
-    """Discovery should activate matched capabilities for the next prepare_tools call."""
+def test_create_runtime_uses_new_session_mode_when_configured() -> None:
+    """Runtime creation should always create a new session in new mode."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.created = 0
+            self.reused = 0
+
+        def memory_create_session(self) -> MemorySessionRef:
+            self.created += 1
+            return MemorySessionRef(session_id="new-session")
+
+        def memory_get_latest_or_create_session(self) -> MemorySessionRef:
+            self.reused += 1
+            return MemorySessionRef(session_id="existing-session")
+
+        def describe_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
+            return ()
+
+        def list_always_on_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
+            return ()
+
+    settings = _actor_settings_stub()
+    settings.agent.session_start_mode = "new"
+    client = _FakeClient()
+
+    runtime = main._create_runtime(
+        client=client,  # type: ignore[arg-type],
+        settings=settings,
+        core_settings=_core_settings_stub(),
+    )
+
+    assert client.created == 1
+    assert client.reused == 0
+    assert runtime.session_id == "new-session"
+
+
+def test_create_runtime_falls_back_to_new_session_when_existing_lookup_fails() -> None:
+    """Runtime creation should create a new session when existing-mode lookup fails."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.created = 0
+            self.reused = 0
+
+        def memory_create_session(self) -> MemorySessionRef:
+            self.created += 1
+            return MemorySessionRef(session_id="new-session")
+
+        def memory_get_latest_or_create_session(self) -> MemorySessionRef:
+            self.reused += 1
+            raise RuntimeError("lookup failed")
+
+        def describe_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
+            return ()
+
+        def list_always_on_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
+            return ()
+
+    client = _FakeClient()
+
+    runtime = main._create_runtime(
+        client=client,  # type: ignore[arg-type],
+        settings=_actor_settings_stub(),
+        core_settings=_core_settings_stub(),
+    )
+
+    assert client.reused == 1
+    assert client.created == 1
+    assert runtime.session_id == "new-session"
+
+
+def test_create_runtime_aborts_when_new_session_creation_fails() -> None:
+    """Runtime creation should fail when the create-session path fails."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def memory_create_session(self) -> MemorySessionRef:
+            raise RuntimeError("create failed")
+
+        def memory_get_latest_or_create_session(self) -> MemorySessionRef:
+            raise RuntimeError("lookup failed")
+
+        def describe_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
+            return ()
+
+        def list_always_on_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
+            return ()
+
+    try:
+        main._create_runtime(
+            client=_FakeClient(),  # type: ignore[arg-type]
+            settings=_actor_settings_stub(),
+            core_settings=_core_settings_stub(),
+        )
+        assert False, "expected create-session failure to abort runtime creation"
+    except RuntimeError as exc:
+        assert str(exc) == "create failed"
+
+
+def test_runtime_discovery_tools_do_not_activate_capabilities_for_prepare_tools() -> (
+    None
+):
+    """Discovery should not mutate the callable tool set within the current turn."""
     from actors.agent import main
     from pydantic_ai.tools import ToolDefinition
 
@@ -2044,12 +2695,12 @@ def test_runtime_discovery_tools_activate_capabilities_for_prepare_tools() -> No
     )
     assert discover_result == [
         {
-            "capability_id": "vault-get-file",
+            "tool_id": "vault-get-file",
             "required_params": ["file_path"],
             "summary": "Read one markdown file by path.",
         }
     ]
-    assert "vault-get-file" in turn_state.active_tool_names
+    assert "vault-get-file" not in turn_state.active_tool_names
 
     prepare_tools = main._build_prepare_tools(turn_state=turn_state)
     prepared = asyncio.run(
@@ -2059,14 +2710,13 @@ def test_runtime_discovery_tools_activate_capabilities_for_prepare_tools() -> No
                 ToolDefinition(name="vault-search-files"),
                 ToolDefinition(name="vault-get-file"),
                 ToolDefinition(name="attention-notify"),
-                ToolDefinition(name=main._DISCOVER_CAPABILITIES_TOOL_NAME),
+                ToolDefinition(name=main._SEARCH_TOOLS_TOOL_NAME),
             ],
         )
     )
     assert [item.name for item in prepared] == [
         "vault-search-files",
-        "vault-get-file",
-        main._DISCOVER_CAPABILITIES_TOOL_NAME,
+        main._SEARCH_TOOLS_TOOL_NAME,
     ]
 
 
@@ -2126,7 +2776,7 @@ def test_runtime_discovery_tools_filter_denied_capabilities() -> None:
     )
     assert discover_result == [
         {
-            "capability_id": "vault-get-file",
+            "tool_id": "vault-get-file",
             "required_params": ["file_path"],
             "summary": "Read one markdown file by path.",
         }
@@ -2134,13 +2784,13 @@ def test_runtime_discovery_tools_filter_denied_capabilities() -> None:
     assert "attention-notify" not in turn_state.active_tool_names
 
     describe_result = runtime_tools[1].function(
-        capability_id="attention-notify",
+        tool_id="attention-notify",
         call_mode="decide",
         response_detail="Inspect whether this capability can be used right now.",
     )
     assert describe_result == {
-        "capability_id": "attention-notify",
+        "tool_id": "attention-notify",
         "available": False,
-        "reason": "capability is denied for this agent",
+        "reason": "tool is not available to this agent",
     }
     assert "attention-notify" not in turn_state.active_tool_names

@@ -67,6 +67,9 @@ Agent runtime settings loaded from `actors.yaml`.
 |---|---|---|
 | `principal` | `operator` | Principal identity attached to outbound SDK calls from the agent actor. |
 | `source` | `agent` | Source identity attached to outbound SDK calls from the agent actor. |
+| `personality` | `default` | Named personality bundle used to render the agent system prompt at boot. Must match a file in `packages/brain_sdk/personalities/`. |
+| `profile_context` | `Refer to me as 'boss'` | Operator-facing profile text injected into the agent system prompt. |
+| `system_prompt_append` | `""` | Optional additional prompt text appended to the agent instruction block at boot. |
 | `capability_discovery_deny_list` | `["attention-notify"]` | Capability ids excluded from dynamic discovery and activation. |
 | `tool_return_compress_threshold` | `4000` | Character threshold above which decide-mode tool returns are eligible for compressor prompt reduction. |
 | `tool_return_max_chars` | `8000` | Hard ceiling for tool return content retained in turn history before truncation fallback. |
@@ -103,7 +106,6 @@ Root profile and operator identity settings.
 | `operator_name` | `Operator` | Operator display name injected into assembled memory context. |
 | `brain_name` | `Brain` | Brain display name injected into assembled memory context. |
 | `brain_verbosity` | `normal` | Context verbosity selector. One of `terse`, `normal`, `verbose`. |
-| `personality` | `default` | Named personality bundle used to render the agent system prompt at boot. Must match a file in `packages/brain_sdk/personalities/`. |
 
 ------------------------------------------------------------------------
 ## Runtime Settings Namespaces
@@ -256,8 +258,8 @@ Memory Authority Service runtime settings.
 
 | Key | Default | Description |
 |---|---|---|
-| `dialogue_recent_turns` | `10` | Number of recent dialogue turns included verbatim in assembled context. Must be > 0. |
-| `dialogue_older_turns` | `20` | Maximum number of older turns considered for summarized dialogue context. Must be >= 0. |
+| `min_turns_to_keep` | `10` | Minimum number of unsummarized dialogue turns retained verbatim after rolling summary compaction. Must be >= 0. |
+| `max_turns_to_keep` | `20` | Threshold at which inline rolling-summary compaction triggers for the unsummarized verbatim backlog. Must be > 0 and >= `min_turns_to_keep`. |
 | `focus_token_budget` | `512` | Hard token ceiling for session focus content. Must be > 0. |
 
 ### `core.service.object_authority`

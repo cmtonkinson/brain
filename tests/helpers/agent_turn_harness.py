@@ -19,7 +19,6 @@ from packages.brain_sdk import (
     LmsToolChatResult,
     MemoryContextBlock,
     MemoryDialogueTurn,
-    MemoryProfileContext,
     SwitchboardOperatorInstruction,
 )
 from packages.brain_shared.http.client import HttpClient
@@ -62,14 +61,9 @@ class AgentTurnScenario:
     )
     context: MemoryContextBlock = field(
         default_factory=lambda: MemoryContextBlock(
-            system_prompt="",
-            profile=MemoryProfileContext(
-                operator_name="Operator",
-                brain_name="Brain",
-                brain_verbosity="normal",
-            ),
-            focus="current focus",
-            dialogue=(
+            current_focus="current focus",
+            recent_conversation_summary="prior summary",
+            recent_turns=(
                 MemoryDialogueTurn(
                     role="user",
                     content="hello",
@@ -219,19 +213,17 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                 request,
                 {
                     "payload": {
-                        "profile": {
-                            "operator_name": scenario.context.profile.operator_name,
-                            "brain_name": scenario.context.profile.brain_name,
-                            "brain_verbosity": scenario.context.profile.brain_verbosity,
-                        },
-                        "focus": scenario.context.focus,
-                        "dialogue": [
+                        "current_focus": scenario.context.current_focus,
+                        "recent_conversation_summary": (
+                            scenario.context.recent_conversation_summary
+                        ),
+                        "recent_turns": [
                             {
                                 "role": turn.role,
                                 "content": turn.content,
                                 "is_summary": turn.is_summary,
                             }
-                            for turn in scenario.context.dialogue
+                            for turn in scenario.context.recent_turns
                         ],
                         "reference_snippets": list(scenario.context.reference_snippets),
                     },
@@ -264,19 +256,17 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                 request,
                 {
                     "payload": {
-                        "profile": {
-                            "operator_name": scenario.context.profile.operator_name,
-                            "brain_name": scenario.context.profile.brain_name,
-                            "brain_verbosity": scenario.context.profile.brain_verbosity,
-                        },
-                        "focus": scenario.context.focus,
-                        "dialogue": [
+                        "current_focus": scenario.context.current_focus,
+                        "recent_conversation_summary": (
+                            scenario.context.recent_conversation_summary
+                        ),
+                        "recent_turns": [
                             {
                                 "role": turn.role,
                                 "content": turn.content,
                                 "is_summary": turn.is_summary,
                             }
-                            for turn in scenario.context.dialogue
+                            for turn in scenario.context.recent_turns
                         ],
                         "reference_snippets": list(scenario.context.reference_snippets),
                     },
@@ -369,6 +359,12 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
     )
     settings = SimpleNamespace(
         agent=SimpleNamespace(
+            session_start_mode="existing",
+            personality="default",
+            profile_context="Refer to me as 'boss'",
+            system_prompt_append="",
+            source="agent",
+            principal="operator",
             capability_discovery_deny_list=(),
             tool_return_compress_threshold=4000,
             tool_return_max_chars=8000,
@@ -376,7 +372,11 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
         )
     )
     core_settings = SimpleNamespace(
-        profile=SimpleNamespace(personality="default"),
+        profile=SimpleNamespace(
+            personality="default",
+            operator=SimpleNamespace(profile_context="Refer to me as 'boss'"),
+            system_prompt_append="",
+        ),
     )
     runtime = agent_main._create_runtime(
         client=client,

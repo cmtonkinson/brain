@@ -10,13 +10,12 @@ from services.action.language_model.config import (
     resolve_language_model_service_settings,
 )
 from services.action.language_model.domain import (
-    ChatMessage,
     ChatResponse,
     ChatToolCall,
-    ChatToolDefinition,
     ChatWithToolsResponse,
     EmbeddingVector,
     HealthStatus,
+    InferenceRequest,
 )
 from services.action.language_model.implementation import DefaultLanguageModelService
 from services.action.language_model.service import LanguageModelService
@@ -24,9 +23,7 @@ from services.action.language_model.validation import EmbeddingProfile, Reasonin
 
 __all__ = [
     "ChatResponse",
-    "ChatMessage",
     "ChatToolCall",
-    "ChatToolDefinition",
     "ChatWithToolsResponse",
     "DefaultLanguageModelService",
     "EmbeddingVector",
@@ -36,6 +33,7 @@ __all__ = [
     "ErrorCategory",
     "ErrorDetail",
     "HealthStatus",
+    "InferenceRequest",
     "EmbeddingProfile",
     "LanguageModelOptionalProfileSettings",
     "LanguageModelProfileSettings",

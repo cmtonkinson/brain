@@ -25,6 +25,8 @@ Boundary rules:
 - LMS owns request validation and profile selection semantics.
 - LMS does not persist chat state or embeddings.
 - External provider/network details are delegated to the adapter resource.
+- The canonical tool-capable request contract is one provider-agnostic
+  `InferenceRequest`, not a provider-shaped transcript.
 
 ------------------------------------------------------------------------
 ## Interactions
@@ -42,11 +44,14 @@ Primary system interactions:
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
 1. LMS receives envelope metadata plus typed request parameters.
-2. LMS validates metadata and request shape using Pydantic request models.
-3. LMS resolves one model profile (`embedding`, `quick`, `standard`, `deep`)
+2. For tool-capable generation, LMS receives one provider-agnostic
+   `InferenceRequest` assembled by the Agent.
+3. LMS validates metadata and request shape using Pydantic request models.
+4. LMS resolves one model profile (`embedding`, `quick`, `standard`, `deep`)
    with fallback from `quick`/`deep` to `standard`.
-4. LMS dispatches to the LiteLLM adapter resource.
-5. LMS returns typed envelope payloads (`ChatResponse`, `EmbeddingVector`,
+5. LMS dispatches to the LiteLLM adapter resource.
+6. The adapter lowers the canonical request into provider-specific request JSON.
+7. LMS returns typed envelope payloads (`ChatResponse`, `EmbeddingVector`,
    `HealthStatus`) or structured errors.
 
 ------------------------------------------------------------------------
@@ -90,6 +95,8 @@ make test
 - Keep profile resolution logic in LMS; keep provider transport logic in the
   adapter resource.
 - Keep boundary request/response contracts in Pydantic models.
+- Keep provider-specific wire-shape decisions isolated to the adapter; do not
+  reintroduce provider-specific transcript semantics into LMS.
 - Keep transport mapping concerns in `api.py` and service logic in
   `implementation.py`.
 - Do not introduce persistence/session state into LMS without an explicit

@@ -25,8 +25,6 @@ from packages.brain_shared.errors import (
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.adapters.litellm import (
-    AdapterChatMessage,
-    AdapterChatToolDefinition,
     AdapterDependencyError,
     AdapterInternalError,
     AdapterProviderCallAudit,
@@ -44,13 +42,12 @@ from services.action.language_model.data.repository import (
     InMemoryLanguageModelCallAuditRepository,
 )
 from services.action.language_model.domain import (
-    ChatMessage,
     ChatResponse,
     ChatToolCall,
-    ChatToolDefinition,
     ChatWithToolsResponse,
     EmbeddingVector,
     HealthStatus,
+    InferenceRequest,
     LanguageModelCallAuditRow,
 )
 from services.action.language_model.interfaces import LanguageModelCallAuditRepository
@@ -308,65 +305,37 @@ class DefaultLanguageModelService(LanguageModelService):
         self,
         *,
         meta: EnvelopeMeta,
-        messages: Sequence[ChatMessage],
-        tools: Sequence[ChatToolDefinition] = (),
-        tool_choice: str | dict[str, object] | None = None,
-        parallel_tool_calls: bool | None = None,
-        allow_text_output: bool = True,
-        profile: ReasoningLevel = ReasoningLevel.STANDARD,
+        inference_request: InferenceRequest,
     ) -> Envelope[ChatWithToolsResponse]:
         """Generate one tool-capable completion using the resolved chat profile."""
         request, errors = self._validate_request(
             meta=meta,
             model=ChatWithToolsRequest,
-            payload={
-                "messages": [
-                    item.model_dump(mode="python")
-                    if isinstance(item, BaseModel)
-                    else item
-                    for item in messages
-                ],
-                "tools": [
-                    item.model_dump(mode="python")
-                    if isinstance(item, BaseModel)
-                    else item
-                    for item in tools
-                ],
-                "tool_choice": tool_choice,
-                "parallel_tool_calls": parallel_tool_calls,
-                "allow_text_output": allow_text_output,
-                "profile": profile,
-            },
+            payload={"inference_request": inference_request},
         )
         if errors:
             return failure(meta=meta, errors=errors)
         assert request is not None
 
-        resolved = self._resolve_chat_profile(profile=request.profile)
-        request_phase = _request_phase_for_messages(request.messages)
+        effective_profile = (
+            ReasoningLevel.STANDARD
+            if request.inference_request.controls.profile is None
+            else ReasoningLevel(request.inference_request.controls.profile)
+        )
+        resolved = self._resolve_chat_profile(profile=effective_profile)
+        request_phase = _request_phase_for_inference_request(request.inference_request)
         try:
             result = self._adapter.chat_with_tools(
                 provider=resolved.provider,
                 model=resolved.model,
-                messages=[
-                    AdapterChatMessage.model_validate(item.model_dump(mode="python"))
-                    for item in request.messages
-                ],
-                tools=[
-                    AdapterChatToolDefinition.model_validate(
-                        item.model_dump(mode="python")
-                    )
-                    for item in request.tools
-                ],
-                tool_choice=request.tool_choice,
-                parallel_tool_calls=request.parallel_tool_calls,
+                inference_request=request.inference_request,
             )
         except AdapterDependencyError as exc:
             self._append_call_audit(
                 meta=meta,
                 provider=resolved.provider,
                 model=resolved.model,
-                profile=request.profile.value,
+                profile=effective_profile.value,
                 operation="chat_with_tools",
                 request_phase=request_phase,
                 outcome_kind="error",
@@ -388,7 +357,7 @@ class DefaultLanguageModelService(LanguageModelService):
                 meta=meta,
                 provider=resolved.provider,
                 model=resolved.model,
-                profile=request.profile.value,
+                profile=effective_profile.value,
                 operation="chat_with_tools",
                 request_phase=request_phase,
                 outcome_kind="error",
@@ -406,12 +375,15 @@ class DefaultLanguageModelService(LanguageModelService):
                 ],
             )
 
-        if not request.allow_text_output and len(result.tool_calls) == 0:
+        if (
+            not request.inference_request.controls.allow_text_output
+            and len(result.tool_calls) == 0
+        ):
             self._append_call_audit(
                 meta=meta,
                 provider=result.provider,
                 model=result.model,
-                profile=request.profile.value,
+                profile=effective_profile.value,
                 operation="chat_with_tools",
                 request_phase=request_phase,
                 outcome_kind="error",
@@ -434,7 +406,7 @@ class DefaultLanguageModelService(LanguageModelService):
             meta=meta,
             provider=result.provider,
             model=result.model,
-            profile=request.profile.value,
+            profile=effective_profile.value,
             operation="chat_with_tools",
             request_phase=request_phase,
             outcome_kind=_tool_chat_outcome_kind(result=result),
@@ -749,12 +721,10 @@ def _from_settings(settings: LanguageModelProfileSettings) -> _ResolvedProfile:
     return _ResolvedProfile(provider=settings.provider, model=settings.model)
 
 
-def _request_phase_for_messages(messages: Sequence[ChatMessage]) -> str:
+def _request_phase_for_inference_request(request: InferenceRequest) -> str:
     """Classify one tool-capable request as initial or tool follow-up."""
-    for message in messages:
-        if message.role == "tool":
-            return "tool_followup"
-        if message.role == "assistant" and len(message.tool_calls) > 0:
+    for event in request.live_events:
+        if event.kind in {"tool_call_batch", "tool_result_batch"}:
             return "tool_followup"
     return "initial"
 

@@ -3,9 +3,10 @@ _This document is generated from `capabilities/**/capability.json`. Do not edit 
 
 ------------------------------------------------------------------------
 ## `Attention Router Service`
-### `attention-flush-batch` - Flush one pending batch by key and deliver consolidated summary.
-`native_op` `1.0.0`
-Native Op over `Attention Router Service flush_batch()`
+### `attention-flush-batch
+Flush one pending batch by key and deliver consolidated summary.  
+`native_op` `1.0.0`  
+Native Op over `Attention Router Service flush_batch()`  
 
 **Inputs:**
 - `batch_key` _(string)_ The batch key to flush.
@@ -23,9 +24,10 @@ Native Op over `Attention Router Service flush_batch()`
 - `batched_count` _(integer, optional)_ Pending item count when relevant.
 - `notification` _(object, optional)_ Normalized routed notification payload.
 
-### `attention-notify` - Route one outbound notification and decide suppress/send/batch.
-`native_op` `1.0.0`
-Native Op over `Attention Router Service route_notification()`
+### `attention-notify
+Route one outbound notification and decide suppress/send/batch.  
+`native_op` `1.0.0`  
+Native Op over `Attention Router Service route_notification()`  
 
 **Inputs:**
 - `actor` _(string, optional)_ Actor identity for routing context. Defaults to 'operator'.
@@ -46,9 +48,10 @@ Native Op over `Attention Router Service route_notification()`
 
 ------------------------------------------------------------------------
 ## `Cache Authority Service`
-### `cache-delete-value` - Delete one component-scoped cache value.
-`native_op` `1.0.0` `approval: required`
-Native Op over `Cache Authority Service delete_value()`
+### `cache-delete-value
+Delete one component-scoped cache value.  
+`native_op` `1.0.0` `approval: required`  
+Native Op over `Cache Authority Service delete_value()`  
 
 **Inputs:**
 - `component_id` _(string)_ The canonical component id namespace for the cache key.
@@ -57,9 +60,10 @@ Native Op over `Cache Authority Service delete_value()`
 **Outputs:**
 - `boolean`: True when the cache delete operation completes.
 
-### `cache-get-value` - Get one component-scoped cache value by key.
-`native_op` `1.0.0`
-Native Op over `Cache Authority Service get_value()`
+### `cache-get-value
+Get one component-scoped cache value by key.  
+`native_op` `1.0.0`  
+Native Op over `Cache Authority Service get_value()`  
 
 **Inputs:**
 - `component_id` _(string)_ The canonical component id namespace for the cache key.
@@ -68,9 +72,10 @@ Native Op over `Cache Authority Service get_value()`
 **Outputs:**
 - `object | null`
 
-### `cache-peek-queue` - Peek next component-scoped queue value without removal.
-`native_op` `1.0.0`
-Native Op over `Cache Authority Service peek_queue()`
+### `cache-peek-queue
+Peek next component-scoped queue value without removal.  
+`native_op` `1.0.0`  
+Native Op over `Cache Authority Service peek_queue()`  
 
 **Inputs:**
 - `component_id` _(string)_ The canonical component id namespace for the queue.
@@ -79,9 +84,10 @@ Native Op over `Cache Authority Service peek_queue()`
 **Outputs:**
 - `object | null`
 
-### `cache-pop-queue` - Pop one component-scoped queue value using FIFO order.
-`native_op` `1.0.0`
-Native Op over `Cache Authority Service pop_queue()`
+### `cache-pop-queue
+Pop one component-scoped queue value using FIFO order.  
+`native_op` `1.0.0`  
+Native Op over `Cache Authority Service pop_queue()`  
 
 **Inputs:**
 - `component_id` _(string)_ The canonical component id namespace for the queue.
@@ -90,9 +96,10 @@ Native Op over `Cache Authority Service pop_queue()`
 **Outputs:**
 - `object | null`
 
-### `cache-push-queue` - Push one component-scoped queue value.
-`native_op` `1.0.0` `approval: required`
-Native Op over `Cache Authority Service push_queue()`
+### `cache-push-queue
+Push one component-scoped queue value.  
+`native_op` `1.0.0` `approval: required`  
+Native Op over `Cache Authority Service push_queue()`  
 
 **Inputs:**
 - `component_id` _(string)_ The canonical component id namespace for the queue.
@@ -104,9 +111,10 @@ Native Op over `Cache Authority Service push_queue()`
 - `queue` _(string)_ The queue name within the component namespace.
 - `size` _(integer)_ The queue depth after the enqueue operation.
 
-### `cache-set-value` - Set one component-scoped cache value.
-`native_op` `1.0.0` `approval: required`
-Native Op over `Cache Authority Service set_value()`
+### `cache-set-value
+Set one component-scoped cache value.  
+`native_op` `1.0.0` `approval: required`  
+Native Op over `Cache Authority Service set_value()`  
 
 **Inputs:**
 - `component_id` _(string)_ The canonical component id namespace for the cache key.
@@ -121,76 +129,11 @@ Native Op over `Cache Authority Service set_value()`
 - `ttl_seconds` _(integer | null)_ The effective TTL applied to the key; null means the key does not expire.
 
 ------------------------------------------------------------------------
-## `Capability Engine Service`
-### `demo-echo` - Returns the static string 'Hello, World!'.
-`logic_skill` `1.0.0`
-Logic Skill executed by `Capability Engine Service`
-
-**Inputs:** None
-
-**Outputs:**
-- `string`: Returns the static string 'Hello, World!'.
-
-### `object-get-base64` - Read one object and return metadata plus base64-encoded content.
-`logic_skill` `1.0.0`
-Logic Skill executed by `Capability Engine Service`
-
-**Inputs:**
-- `object_key` _(string)_ The canonical object key to read.
-
-**Outputs:**
-- `object` _(object)_ The authoritative object record.
-- `content_base64` _(string)_ The base64-encoded blob content.
-
-### `object-get-text` - Read one text object and return metadata plus decoded content.
-`logic_skill` `1.0.0`
-Logic Skill executed by `Capability Engine Service`
-
-**Inputs:**
-- `object_key` _(string)_ The canonical object key to read.
-- `encoding` _(string, optional)_ Text encoding used to decode stored bytes. Defaults to 'utf-8'.
-
-**Outputs:**
-- `object` _(object)_ The authoritative object record.
-- `content` _(string)_ The decoded text content.
-- `encoding` _(string)_ The text encoding used for decoding.
-
-### `object-put-base64` - Persist one base64-encoded blob and return the authoritative object record.
-`logic_skill` `1.0.0`
-Logic Skill executed by `Capability Engine Service`
-
-**Inputs:**
-- `content_base64` _(string)_ The base64-encoded blob content to persist.
-- `extension` _(string)_ The file extension recorded for the object.
-- `content_type` _(string)_ The MIME type recorded for the object.
-- `original_filename` _(string, optional)_ Optional original filename metadata.
-- `source_uri` _(string, optional)_ Optional source URI metadata.
-
-**Outputs:**
-- `ref` _(object)_
-- `metadata` _(object)_
-
-### `object-put-text` - Persist one text blob and return the authoritative object record.
-`logic_skill` `1.0.0`
-Logic Skill executed by `Capability Engine Service`
-
-**Inputs:**
-- `content` _(string)_ The text content to persist.
-- `extension` _(string, optional)_ File extension recorded for the object. Defaults to 'txt'.
-- `content_type` _(string, optional)_ MIME type recorded for the object. Defaults to 'text/plain; charset=utf-8'.
-- `original_filename` _(string, optional)_ Optional original filename metadata.
-- `source_uri` _(string, optional)_ Optional source URI metadata.
-- `encoding` _(string, optional)_ Text encoding used before persistence. Defaults to 'utf-8'.
-
-**Outputs:**
-- `ref` _(object)_
-- `metadata` _(object)_
-
-------------------------------------------------------------------------
 ## `Embedding Authority Service`
-### `embedding-upsert-document-batch` - Persist a batch of embedding vectors for chunk and spec pairs.
-`native_op` `1.0.0`
-Native Op over `Embedding Authority Service upsert_embedding_vectors()`
+### `embedding-upsert-document-batch
+Persist a batch of embedding vectors for chunk and spec pairs.  
+`native_op` `1.0.0`  
+Native Op over `Embedding Authority Service upsert_embedding_vectors()`  
 
 **Inputs:**
 - `items` _(array[object])_ Batch of chunk/spec/vector inputs to persist.
@@ -198,11 +141,10 @@ Native Op over `Embedding Authority Service upsert_embedding_vectors()`
 **Outputs:**
 - `array[object]`: Persisted embedding materialization records.
 
-------------------------------------------------------------------------
-## `Language Model Service`
-### `language-model-embed-chunks` - Generate embedding vectors for a batch of text chunks.
-`native_op` `1.0.0`
-Native Op over `Language Model Service embed_batch()`
+### `language-model-embed-chunks
+Generate embedding vectors for a batch of text chunks.  
+`native_op` `1.0.0`  
+Native Op over `Language Model Service embed_batch()`  
 
 **Inputs:**
 - `texts` _(array[string])_ The text chunks to embed.
@@ -213,9 +155,10 @@ Native Op over `Language Model Service embed_batch()`
 
 ------------------------------------------------------------------------
 ## `Object Authority Service`
-### `object-delete` - Delete one persisted object by canonical object key.
-`native_op` `1.0.0` `approval: required`
-Native Op over `Object Authority Service delete_object()`
+### `object-delete
+Delete one persisted object by canonical object key.  
+`native_op` `1.0.0` `approval: required`  
+Native Op over `Object Authority Service delete_object()`  
 
 **Inputs:**
 - `object_key` _(string)_ The canonical object key to delete.
@@ -223,9 +166,10 @@ Native Op over `Object Authority Service delete_object()`
 **Outputs:**
 - `boolean`: True when the object delete operation completes.
 
-### `object-stat` - Read metadata for one persisted object by canonical object key.
-`native_op` `1.0.0`
-Native Op over `Object Authority Service stat_object()`
+### `object-stat
+Read metadata for one persisted object by canonical object key.  
+`native_op` `1.0.0`  
+Native Op over `Object Authority Service stat_object()`  
 
 **Inputs:**
 - `object_key` _(string)_ The canonical object key to inspect.
@@ -236,9 +180,10 @@ Native Op over `Object Authority Service stat_object()`
 
 ------------------------------------------------------------------------
 ## `Utility Service`
-### `chunk-text` - Split text into ordered chunks.
-`native_op` `1.0.0`
-Native Op over `Utility Service chunk_text()`
+### `chunk-text
+Split text into ordered chunks.  
+`native_op` `1.0.0`  
+Native Op over `Utility Service chunk_text()`  
 
 **Inputs:**
 - `text` _(string)_ The text to chunk.
@@ -246,9 +191,10 @@ Native Op over `Utility Service chunk_text()`
 **Outputs:**
 - `array[object]`: Ordered chunks derived from the input text.
 
-### `current-datetime` - Return the current UTC datetime.
-`native_op` `1.0.0`
-Native Op over `Utility Service current_datetime()`
+### `current-datetime
+Return the current UTC datetime.  
+`native_op` `1.0.0`  
+Native Op over `Utility Service current_datetime()`  
 
 **Inputs:** None
 
@@ -257,9 +203,10 @@ Native Op over `Utility Service current_datetime()`
 
 ------------------------------------------------------------------------
 ## `Vault Authority Service`
-### `vault-append-file` - Append content to one markdown file.
-`native_op` `1.0.0`
-Native Op over `Vault Authority Service append_file()`
+### `vault-append-file
+Append content to one markdown file.  
+`native_op` `1.0.0`  
+Native Op over `Vault Authority Service append_file()`  
 
 **Inputs:**
 - `file_path` _(string)_ The full path of the file to append to.
@@ -275,9 +222,10 @@ Native Op over `Vault Authority Service append_file()`
 - `updated_at` _(date-time | null, optional)_ The timestamp when the file was last updated.
 - `revision` _(string)_ The revision identifier for the file.
 
-### `vault-create-directory` - Create one directory in the vault.
-`native_op` `1.0.0`
-Native Op over `Vault Authority Service create_directory()`
+### `vault-create-directory
+Create one directory in the vault.  
+`native_op` `1.0.0`  
+Native Op over `Vault Authority Service create_directory()`  
 
 **Inputs:**
 - `directory_path` _(string)_ The full path of the directory to create.
@@ -292,9 +240,10 @@ Native Op over `Vault Authority Service create_directory()`
 - `updated_at` _(date-time | null, optional)_ The timestamp when the directory was last updated.
 - `revision` _(string)_ The revision identifier for the entry.
 
-### `vault-create-file` - Create one markdown file; fails when it already exists.
-`native_op` `1.0.0`
-Native Op over `Vault Authority Service create_file()`
+### `vault-create-file
+Create one markdown file; fails when it already exists.  
+`native_op` `1.0.0`  
+Native Op over `Vault Authority Service create_file()`  
 
 **Inputs:**
 - `file_path` _(string)_ The full path of the file to create.
@@ -308,9 +257,10 @@ Native Op over `Vault Authority Service create_file()`
 - `updated_at` _(date-time | null, optional)_ The timestamp when the file was last updated.
 - `revision` _(string)_ The revision identifier for the file.
 
-### `vault-delete-directory` - Delete one directory, optionally recursively.
-`native_op` `1.0.0` `approval: required`
-Native Op over `Vault Authority Service delete_directory()`
+### `vault-delete-directory
+Delete one directory, optionally recursively.  
+`native_op` `1.0.0` `approval: required`  
+Native Op over `Vault Authority Service delete_directory()`  
 
 **Inputs:**
 - `directory_path` _(string)_ The full path of the directory to delete.
@@ -321,9 +271,10 @@ Native Op over `Vault Authority Service delete_directory()`
 **Outputs:**
 - `boolean`: True if the directory was deleted, False otherwise.
 
-### `vault-delete-file` - Delete one markdown file.
-`native_op` `1.0.0` `approval: required`
-Native Op over `Vault Authority Service delete_file()`
+### `vault-delete-file
+Delete one markdown file.  
+`native_op` `1.0.0` `approval: required`  
+Native Op over `Vault Authority Service delete_file()`  
 
 **Inputs:**
 - `file_path` _(string)_ The full path of the file to delete.
@@ -335,9 +286,10 @@ Native Op over `Vault Authority Service delete_file()`
 **Outputs:**
 - `boolean`: True if the file was deleted, False otherwise.
 
-### `vault-edit-file` - Apply one or more line-range edits to a markdown file.
-`native_op` `1.0.0`
-Native Op over `Vault Authority Service edit_file()`
+### `vault-edit-file
+Apply one or more line-range edits to a markdown file.  
+`native_op` `1.0.0`  
+Native Op over `Vault Authority Service edit_file()`  
 
 **Inputs:**
 - `file_path` _(string)_ The full path of the file to edit.
@@ -353,9 +305,10 @@ Native Op over `Vault Authority Service edit_file()`
 - `updated_at` _(date-time | null, optional)_ The timestamp when the file was last updated.
 - `revision` _(string)_ The revision identifier for the file.
 
-### `vault-get-file` - Read one markdown file by path.
-`native_op` `1.0.0`
-Native Op over `Vault Authority Service get_file()`
+### `vault-get-file
+Read one markdown file by path.  
+`native_op` `1.0.0`  
+Native Op over `Vault Authority Service get_file()`  
 
 **Inputs:**
 - `file_path` _(string)_ The full path of the file to read.
@@ -368,9 +321,10 @@ Native Op over `Vault Authority Service get_file()`
 - `updated_at` _(date-time | null, optional)_ The timestamp when the file was last updated.
 - `revision` _(string)_ The revision identifier for the file.
 
-### `vault-list-directory` - List file and directory entries under one vault-relative path.
-`native_op` `1.0.0`
-Native Op over `Vault Authority Service list_directory()`
+### `vault-list-directory
+List file and directory entries under one vault-relative path.  
+`native_op` `1.0.0`  
+Native Op over `Vault Authority Service list_directory()`  
 
 **Inputs:**
 - `directory_path` _(string)_ The path of the directory to list. Use '.' for the vault root.
@@ -378,9 +332,10 @@ Native Op over `Vault Authority Service list_directory()`
 **Outputs:**
 - `array[object]`: A list of files and directories in the specified path.
 
-### `vault-move-path` - Move one file or directory path.
-`native_op` `1.0.0` `approval: required`
-Native Op over `Vault Authority Service move_path()`
+### `vault-move-path
+Move one file or directory path.  
+`native_op` `1.0.0` `approval: required`  
+Native Op over `Vault Authority Service move_path()`  
 
 **Inputs:**
 - `source_path` _(string)_ The full path of the file or directory to move.
@@ -397,9 +352,10 @@ Native Op over `Vault Authority Service move_path()`
 - `updated_at` _(date-time | null, optional)_ The timestamp when the entry was last updated.
 - `revision` _(string)_ The revision identifier for the entry.
 
-### `vault-search-files` - Search markdown files lexically through Obsidian Local REST API.
-`native_op` `1.0.0`
-Native Op over `Vault Authority Service search_files()`
+### `vault-search-files
+Search markdown files lexically through Obsidian Local REST API.  
+`native_op` `1.0.0`  
+Native Op over `Vault Authority Service search_files()`  
 
 **Inputs:**
 - `query` _(string)_ The search query.
@@ -409,9 +365,10 @@ Native Op over `Vault Authority Service search_files()`
 **Outputs:**
 - `array[object]`: A list of files matching the search query.
 
-### `vault-update-file` - Replace markdown file content with optional optimistic precondition.
-`native_op` `1.0.0`
-Native Op over `Vault Authority Service update_file()`
+### `vault-update-file
+Replace markdown file content with optional optimistic precondition.  
+`native_op` `1.0.0`  
+Native Op over `Vault Authority Service update_file()`  
 
 **Inputs:**
 - `file_path` _(string)_ The full path of the file to update.
@@ -426,6 +383,77 @@ Native Op over `Vault Authority Service update_file()`
 - `created_at` _(date-time | null, optional)_ The timestamp when the file was created.
 - `updated_at` _(date-time | null, optional)_ The timestamp when the file was last updated.
 - `revision` _(string)_ The revision identifier for the file.
+
+------------------------------------------------------------------------
+## `Logic Skills`
+### `demo-echo
+Returns the static string 'Hello, World!'.  
+`logic_skill` `1.0.0`  
+Logic Skill  
+
+**Inputs:** None
+
+**Outputs:**
+- `string`: Returns the static string 'Hello, World!'.
+
+### `object-get-base64
+Read one object and return metadata plus base64-encoded content.  
+`logic_skill` `1.0.0`  
+Logic Skill  
+
+**Inputs:**
+- `object_key` _(string)_ The canonical object key to read.
+
+**Outputs:**
+- `object` _(object)_ The authoritative object record.
+- `content_base64` _(string)_ The base64-encoded blob content.
+
+### `object-get-text
+Read one text object and return metadata plus decoded content.  
+`logic_skill` `1.0.0`  
+Logic Skill  
+
+**Inputs:**
+- `object_key` _(string)_ The canonical object key to read.
+- `encoding` _(string, optional)_ Text encoding used to decode stored bytes. Defaults to 'utf-8'.
+
+**Outputs:**
+- `object` _(object)_ The authoritative object record.
+- `content` _(string)_ The decoded text content.
+- `encoding` _(string)_ The text encoding used for decoding.
+
+### `object-put-base64
+Persist one base64-encoded blob and return the authoritative object record.  
+`logic_skill` `1.0.0`  
+Logic Skill  
+
+**Inputs:**
+- `content_base64` _(string)_ The base64-encoded blob content to persist.
+- `extension` _(string)_ The file extension recorded for the object.
+- `content_type` _(string)_ The MIME type recorded for the object.
+- `original_filename` _(string, optional)_ Optional original filename metadata.
+- `source_uri` _(string, optional)_ Optional source URI metadata.
+
+**Outputs:**
+- `ref` _(object)_
+- `metadata` _(object)_
+
+### `object-put-text
+Persist one text blob and return the authoritative object record.  
+`logic_skill` `1.0.0`  
+Logic Skill  
+
+**Inputs:**
+- `content` _(string)_ The text content to persist.
+- `extension` _(string, optional)_ File extension recorded for the object. Defaults to 'txt'.
+- `content_type` _(string, optional)_ MIME type recorded for the object. Defaults to 'text/plain; charset=utf-8'.
+- `original_filename` _(string, optional)_ Optional original filename metadata.
+- `source_uri` _(string, optional)_ Optional source URI metadata.
+- `encoding` _(string, optional)_ Text encoding used before persistence. Defaults to 'utf-8'.
+
+**Outputs:**
+- `ref` _(object)_
+- `metadata` _(object)_
 
 
 ------------------------------------------------------------------------

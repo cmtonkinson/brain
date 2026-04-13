@@ -24,10 +24,8 @@ def test_agent_e2e_smoke_runs_inbound_message_to_outbound_reply(tmp_path) -> Non
     )
 
 
-def test_agent_e2e_smoke_runs_discovery_turn_with_dynamic_tool_exposure(
-    tmp_path,
-) -> None:
-    """In-process smoke should support discovery, activation, and discovered tool use."""
+def test_agent_e2e_smoke_keeps_tool_set_stable_during_discovery(tmp_path) -> None:
+    """In-process smoke should keep the callable tool set stable during discovery."""
     result = run_agent_e2e_smoke(
         tmp_path=tmp_path,
         tool_chat_results=(
@@ -38,22 +36,9 @@ def test_agent_e2e_smoke_runs_discovery_turn_with_dynamic_tool_exposure(
                 text=None,
                 tool_calls=(
                     AdapterChatToolCall(
-                        tool_name="discover_capabilities",
+                        tool_name="search_tools",
                         args_json='{"query":"find the resume file","limit":5}',
                         tool_call_id="call-discover",
-                    ),
-                ),
-            ),
-            AdapterToolChatResult(
-                provider="unit",
-                model="test-model",
-                finish_reason="tool_call",
-                text=None,
-                tool_calls=(
-                    AdapterChatToolCall(
-                        tool_name="vault-get-file",
-                        args_json='{"file_path":"professional/resume.md"}',
-                        tool_call_id="call-read",
                     ),
                 ),
             ),
@@ -96,9 +81,8 @@ def test_agent_e2e_smoke_runs_discovery_turn_with_dynamic_tool_exposure(
 
     assert result.response_text == "assistant reply"
     assert result.tool_request_tool_names == (
-        ("discover_capabilities", "describe_capability"),
-        ("vault-get-file", "discover_capabilities", "describe_capability"),
-        ("vault-get-file", "discover_capabilities", "describe_capability"),
+        ("search_tools", "get_tool_info"),
+        ("search_tools", "get_tool_info"),
     )
     assert result.outbound_signal_messages == (
         {

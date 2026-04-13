@@ -67,7 +67,7 @@ _Generate a batch of chat completions._
 `embed_batch(*, meta: EnvelopeMeta, texts: Sequence[str], profile: EmbeddingProfile = EmbeddingProfile.DOCUMENT_EMBEDDING) -> Envelope[list[EmbeddingVector]]`  
 _Generate a batch of embedding vectors._
 
-`chat_with_tools(*, meta: EnvelopeMeta, messages: Sequence[ChatMessage], tools: Sequence[ChatToolDefinition] = (), tool_choice: str | dict[str, object] | None = None, parallel_tool_calls: bool | None = None, allow_text_output: bool = True, profile: ReasoningLevel = ReasoningLevel.STANDARD) -> Envelope[ChatWithToolsResponse]`  
+`chat_with_tools(*, meta: EnvelopeMeta, inference_request: InferenceRequest) -> Envelope[ChatWithToolsResponse]`  
 _Generate one tool-capable chat completion._
 
 ------------------------------------------------------------------------
@@ -241,8 +241,8 @@ _Read one MAS session by id._
 `clear_session(*, meta: EnvelopeMeta, session_id: str) -> Envelope[bool]`  
 _Advance dialogue pointer and clear focus without deleting historical data._
 
-`create_session(*, meta: EnvelopeMeta, system_prompt: str) -> Envelope[SessionRecord]`  
-_Create and return one new MAS session with the rendered system prompt._
+`create_session(*, meta: EnvelopeMeta) -> Envelope[SessionRecord]`  
+_Create and return one new MAS session._
 
 `assemble_snapshot(*, meta: EnvelopeMeta, session_id: str) -> Envelope[ContextBlock]`  
 _Return the historical MAS context snapshot for one session._

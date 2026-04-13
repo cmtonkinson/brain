@@ -1,0 +1,3 @@
+<recent_conversation_summary>
+{{ text }}
+</recent_conversation_summary>

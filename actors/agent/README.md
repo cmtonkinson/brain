@@ -16,17 +16,22 @@ The Agent sends the new inbound message to `memory/assemble_context`.
 
 MAS appends that inbound turn to the session and returns the authoritative
 session context block:
-- profile
 - focus
-- prior dialogue
-- any compaction summaries
+- recent conversation summary
+- recent dialogue turns
 - reference snippets
 
 This is the durable cross-turn conversational state.
 
 ### 2. Turn-local orchestration state
-The Agent formats the MAS context plus the new inbound message into the current
-turn prompt for inference.
+The Agent assembles the canonical inference request for LMS. That request is
+provider-agnostic and contains:
+- system blocks (assistant persona, operator profile, instructions)
+- MAS-owned `memory_context`
+- current operator message
+- available tools
+- ordered intra-turn live events (assistant text, tool calls, tool results)
+- controls and cache hints
 
 Within that single turn, the model may:
 - request one or more tool calls
@@ -40,7 +45,8 @@ stored by MAS.
 
 In other words:
 - MAS owns durable cross-turn memory
-- the Agent runtime owns only the ephemeral intra-turn tool loop
+- the Agent runtime owns the full inference request assembly and the ephemeral
+  intra-turn tool loop
 
 ### Turn Finalization
 After the model returns a final answer, the Agent sends that outbound response
@@ -62,13 +68,14 @@ Left unmanaged, this causes two problems:
    Sonnet allowance on its own.
 
 ### Context window structure per call
-Every intra-turn Sonnet request contains these components, in order:
+Every intra-turn Sonnet request is lowered from one canonical inference request.
+At Anthropic wire level the dominant sections are:
 
 ```
 [tools array]  ← top-level, before messages; ~1,400-7,000 tok depending on active set
-[system-prompt]  ← ~70 tok, static
-[user-prompt]    ← MAS context + operator instruction; ~1,400 tok, stable per turn
-[tool-call / tool-return pairs]  ← grows with each hop; returns can be very large
+[system blocks]  ← assistant persona + operator profile + instructions
+[memory/current-turn context]  ← MAS context + operator instruction; stable per turn
+[live events]  ← assistant text + tool-call / tool-result exchanges; grows with each hop
 ```
 
 The operator's actual instruction is typically under 100 tokens. The dominant
@@ -84,10 +91,11 @@ everything after it.
 Two-tier strategy:
 
 **Tier 1 — static, set once per turn.**
-Placed after the first `ModelRequest` (system prompt + MAS context + user
-prompt). This prefix is byte-stable across all intra-turn hops as long as the
-tool array does not change. Cost: one cache write (125% of base) on the first
-hop, then cache reads (10% of base) on all subsequent hops.
+Compiled by the adapter from the inference request's static prefix (system
+blocks plus the stable initial context). This prefix is byte-stable across all
+intra-turn hops as long as the tool array does not change. Cost: one cache
+write (125% of base) on the first hop, then cache reads (10% of base) on all
+subsequent hops.
 
 **Tier 2 — dynamic, placed when a turn runs deep.**
 Placed after accumulated tool exchanges once hop count or token usage crosses a

@@ -9,10 +9,7 @@ from pydantic import BaseModel
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, new_meta
 from packages.brain_shared.errors import ErrorCategory
 from packages.brain_shared.http.server import read_json_body
-from services.action.language_model.domain import (
-    ChatMessage,
-    ChatToolDefinition,
-)
+from packages.brain_shared.language_model import InferenceRequest
 from services.action.language_model.service import LanguageModelService
 from services.action.language_model.validation import ReasoningLevel
 
@@ -47,26 +44,10 @@ class _ChatResponse(BaseModel):
     errors: list[_ErrorOut]
 
 
-class _ToolDefinition(BaseModel):
-    name: str
-    parameters_json_schema: dict[str, object]
-    description: str | None = None
-    strict: bool | None = None
-    sequential: bool = False
-
-
 class _ToolCall(BaseModel):
     tool_name: str
     args_json: str
     tool_call_id: str
-
-
-class _ChatMessage(BaseModel):
-    role: str
-    content: str = ""
-    tool_name: str = ""
-    tool_call_id: str = ""
-    tool_calls: tuple[_ToolCall, ...] = ()
 
 
 class _ChatWithToolsRequest(BaseModel):
@@ -75,12 +56,7 @@ class _ChatWithToolsRequest(BaseModel):
     trace_id: str | None = None
     envelope_id: str | None = None
     parent_id: str = ""
-    messages: tuple[_ChatMessage, ...]
-    tools: tuple[_ToolDefinition, ...] = ()
-    tool_choice: str | dict[str, object] | None = None
-    parallel_tool_calls: bool | None = None
-    allow_text_output: bool = True
-    profile: str = "standard"
+    inference_request: InferenceRequest
 
 
 class _ChatWithToolsPayload(BaseModel):
@@ -130,22 +106,10 @@ def register_routes(*, router: APIRouter, service: LanguageModelService) -> None
         meta = _meta_from_request(
             req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
         )
-        profile = _resolve_profile(req.profile)
         result = await run_in_threadpool(
             service.chat_with_tools,
             meta=meta,
-            messages=[
-                ChatMessage.model_validate(item.model_dump(mode="python"))
-                for item in req.messages
-            ],
-            tools=[
-                ChatToolDefinition.model_validate(item.model_dump(mode="python"))
-                for item in req.tools
-            ],
-            tool_choice=req.tool_choice,
-            parallel_tool_calls=req.parallel_tool_calls,
-            allow_text_output=req.allow_text_output,
-            profile=profile,
+            inference_request=req.inference_request,
         )
         payload = None
         if result.payload is not None:

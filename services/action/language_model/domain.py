@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from packages.brain_shared.language_model import InferenceRequest
+
 
 class ChatResponse(BaseModel):
     """One generated chat completion payload."""
@@ -17,18 +19,6 @@ class ChatResponse(BaseModel):
     model: str
 
 
-class ChatToolDefinition(BaseModel):
-    """One tool definition passed through the tool-capable chat boundary."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    name: str
-    parameters_json_schema: dict[str, object]
-    description: str | None = None
-    strict: bool | None = None
-    sequential: bool = False
-
-
 class ChatToolCall(BaseModel):
     """One normalized tool call emitted by the model or replayed in history."""
 
@@ -37,18 +27,6 @@ class ChatToolCall(BaseModel):
     tool_name: str
     args_json: str
     tool_call_id: str
-
-
-class ChatMessage(BaseModel):
-    """One normalized chat history message for tool-capable chat."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    role: str
-    content: str = ""
-    tool_name: str = ""
-    tool_call_id: str = ""
-    tool_calls: tuple[ChatToolCall, ...] = ()
 
 
 class ChatWithToolsResponse(BaseModel):
@@ -117,3 +95,15 @@ class LanguageModelCallAuditRow(BaseModel):
     request_json: object | None = None
     response_json: object | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+__all__ = [
+    "ChatResponse",
+    "ChatToolCall",
+    "ChatWithToolsResponse",
+    "EmbeddingVector",
+    "HealthStatus",
+    "InferenceRequest",
+    "LanguageModelCallAuditRow",
+    "ProviderCallAudit",
+]

@@ -11,11 +11,18 @@ from packages.brain_shared.config import (
     ResourcesSettings,
 )
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from packages.brain_shared.language_model import (
+    InferenceRequest,
+    InferenceToolCall,
+    InferenceToolCallBatchEvent,
+    InferenceToolDefinition,
+    InferenceToolResult,
+    InferenceToolResultBatchEvent,
+    InferenceToolResultPayload,
+)
 from resources.adapters.litellm import (
     AdapterChatResult,
-    AdapterChatMessage,
     AdapterChatToolCall,
-    AdapterChatToolDefinition,
     AdapterDependencyError,
     AdapterEmbeddingResult,
     AdapterHealthResult,
@@ -33,8 +40,8 @@ from services.action.language_model.data.repository import (
     InMemoryLanguageModelCallAuditRepository,
 )
 from services.action.language_model.implementation import DefaultLanguageModelService
-from services.action.language_model.domain import ChatMessage, ChatToolDefinition
 from services.action.language_model.validation import EmbeddingProfile, ReasoningLevel
+from tests.helpers.inference_request import make_inference_request
 
 
 @dataclass
@@ -56,10 +63,7 @@ class _ChatBatchCall(_Call):
 
 @dataclass
 class _ChatWithToolsCall(_Call):
-    messages: tuple[AdapterChatMessage, ...]
-    tools: tuple[AdapterChatToolDefinition, ...]
-    tool_choice: str | dict[str, object] | None
-    parallel_tool_calls: bool | None
+    inference_request: InferenceRequest
 
 
 @dataclass
@@ -130,19 +134,13 @@ class _FakeAdapter(LiteLlmAdapter):
         *,
         provider: str,
         model: str,
-        messages: Sequence[AdapterChatMessage],
-        tools: Sequence[AdapterChatToolDefinition],
-        tool_choice: str | dict[str, object] | None = None,
-        parallel_tool_calls: bool | None = None,
+        inference_request: InferenceRequest,
     ) -> AdapterToolChatResult:
         self.chat_with_tools_calls.append(
             _ChatWithToolsCall(
                 provider=provider,
                 model=model,
-                messages=tuple(messages),
-                tools=tuple(tools),
-                tool_choice=tool_choice,
-                parallel_tool_calls=parallel_tool_calls,
+                inference_request=inference_request,
             )
         )
         if self.raise_chat_with_tools is not None:
@@ -324,23 +322,18 @@ def test_chat_with_tools_maps_messages_tools_and_response() -> None:
     """Tool-capable chat should route normalized messages and tool calls."""
     adapter = _FakeAdapter()
     service = DefaultLanguageModelService(settings=_settings(), adapter=adapter)
-
-    result = service.chat_with_tools(
-        meta=_meta(),
-        messages=[
-            ChatMessage(role="system", content="system"),
-            ChatMessage(role="user", content="hello"),
-        ],
-        tools=[
-            ChatToolDefinition(
+    inference_request = make_inference_request(
+        system_blocks=(),
+        tools=(
+            InferenceToolDefinition(
                 name="demo-tool",
                 description="Do a thing.",
-                parameters_json_schema={"type": "object"},
-            )
-        ],
-        tool_choice="auto",
-        parallel_tool_calls=True,
+                input_schema={"type": "object"},
+            ),
+        ),
     )
+
+    result = service.chat_with_tools(meta=_meta(), inference_request=inference_request)
 
     assert result.ok is True
     assert result.payload is not None
@@ -350,19 +343,7 @@ def test_chat_with_tools_maps_messages_tools_and_response() -> None:
         _ChatWithToolsCall(
             provider="ollama",
             model="chat-a",
-            messages=(
-                AdapterChatMessage(role="system", content="system"),
-                AdapterChatMessage(role="user", content="hello"),
-            ),
-            tools=(
-                AdapterChatToolDefinition(
-                    name="demo-tool",
-                    description="Do a thing.",
-                    parameters_json_schema={"type": "object"},
-                ),
-            ),
-            tool_choice="auto",
-            parallel_tool_calls=True,
+            inference_request=inference_request,
         )
     ]
 
@@ -674,8 +655,11 @@ def test_chat_with_tools_marks_followup_and_sequences_audit_rows() -> None:
 
     def _chat_with_tools(**kwargs: object) -> AdapterToolChatResult:
         raw_call = raw_calls.pop(0)
-        messages = kwargs["messages"]
-        has_tool_message = any(item.role == "tool" for item in messages)  # type: ignore[attr-defined]
+        inference_request = kwargs["inference_request"]
+        has_tool_message = any(
+            item.kind == "tool_result_batch"
+            for item in inference_request.live_events  # type: ignore[attr-defined]
+        )
         return AdapterToolChatResult(
             text="done" if has_tool_message else None,
             tool_calls=()
@@ -703,19 +687,35 @@ def test_chat_with_tools_marks_followup_and_sequences_audit_rows() -> None:
 
     first = service.chat_with_tools(
         meta=meta,
-        messages=[ChatMessage(role="user", content="find resume")],
+        inference_request=make_inference_request(),
     )
     second = service.chat_with_tools(
         meta=meta,
-        messages=[
-            ChatMessage(role="assistant", tool_calls=first.payload.value.tool_calls),  # type: ignore[union-attr]
-            ChatMessage(
-                role="tool",
-                tool_call_id="call-1",
-                tool_name="demo-tool",
-                content="search results",
+        inference_request=make_inference_request(
+            live_events=(
+                InferenceToolCallBatchEvent(
+                    calls=(
+                        InferenceToolCall(
+                            call_id="call-1",
+                            tool_name="demo-tool",
+                            arguments={"value": "x"},
+                        ),
+                    )
+                ),
+                InferenceToolResultBatchEvent(
+                    results=(
+                        InferenceToolResult(
+                            call_id="call-1",
+                            tool_name="demo-tool",
+                            result=InferenceToolResultPayload(
+                                mime_type="text/plain",
+                                text="search results",
+                            ),
+                        ),
+                    )
+                ),
             ),
-        ],
+        ),
     )
 
     assert first.ok is True

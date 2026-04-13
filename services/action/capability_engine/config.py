@@ -15,7 +15,7 @@ class CapabilityEngineSettings(BaseModel):
 
     discovery_root: str = "capabilities"
     default_max_autonomy: int = Field(default=0, ge=0)
-    always_on_capability_ids: tuple[str, ...] = ("vault-search-files",)
+    always_on_capability_ids: tuple[str, ...] = ()
     capability_search_top_k: int = Field(default=10, ge=1, le=50)
 
 

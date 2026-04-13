@@ -23,3 +23,19 @@ def test_capability_docs_are_in_sync() -> None:
         check=False,
     )
     assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def test_capability_docs_group_skills_by_kind() -> None:
+    """Generated docs should group logic and pipeline skills into kind sections."""
+    repo_root = Path(__file__).resolve().parents[2]
+    content = (repo_root / "docs/capabilities.md").read_text(encoding="utf-8")
+
+    logic_section = content.split("## `Logic Skills`", 1)[1]
+    logic_section = logic_section.split(
+        "------------------------------------------------------------------------", 1
+    )[0]
+
+    assert "### `demo-echo\n" in logic_section
+    assert "### `object-get-base64\n" in logic_section
+    assert "## `Capability Engine Service`" not in content
+    assert "`logic_skill` `1.0.0`  \n" in content

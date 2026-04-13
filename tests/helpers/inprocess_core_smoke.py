@@ -19,7 +19,6 @@ from packages.brain_sdk import (
     CapabilitySearchHit,
 )
 from packages.brain_shared.config import ActorSettings
-from packages.brain_shared.config.models import ProfileSettings
 from packages.brain_shared.envelope import (
     Envelope,
     EnvelopeKind,
@@ -31,8 +30,6 @@ from packages.brain_shared.errors import ErrorDetail
 from packages.brain_shared.http.server import create_app
 from resources.adapters.litellm import (
     AdapterChatResult,
-    AdapterChatMessage,
-    AdapterChatToolDefinition,
     AdapterEmbeddingResult,
     AdapterHealthResult,
     AdapterToolChatResult,
@@ -111,13 +108,12 @@ class _FakeLiteLlmAdapter(LiteLlmAdapter):
         *,
         provider: str,
         model: str,
-        messages: tuple[AdapterChatMessage, ...],
-        tools: tuple[AdapterChatToolDefinition, ...],
-        tool_choice: str | dict[str, object] | None = None,
-        parallel_tool_calls: bool | None = None,
+        inference_request,
     ) -> AdapterToolChatResult:
-        del provider, model, messages, tool_choice, parallel_tool_calls
-        self.tool_chat_tool_names.append(tuple(item.name for item in tools))
+        del provider, model
+        self.tool_chat_tool_names.append(
+            tuple(item.name for item in inference_request.tools)
+        )
         return AdapterToolChatResult(
             text="assistant reply",
             tool_calls=(),
@@ -164,13 +160,12 @@ class _ScriptedLiteLlmAdapter(LiteLlmAdapter):
         *,
         provider: str,
         model: str,
-        messages: tuple[AdapterChatMessage, ...],
-        tools: tuple[AdapterChatToolDefinition, ...],
-        tool_choice: str | dict[str, object] | None = None,
-        parallel_tool_calls: bool | None = None,
+        inference_request,
     ) -> AdapterToolChatResult:
-        del provider, model, messages, tool_choice, parallel_tool_calls
-        self.tool_chat_tool_names.append(tuple(item.name for item in tools))
+        del provider, model
+        self.tool_chat_tool_names.append(
+            tuple(item.name for item in inference_request.tools)
+        )
         if len(self._tool_chat_results) == 0:
             return AdapterToolChatResult(
                 text="assistant reply",
@@ -457,11 +452,6 @@ def _build_core_app(
         runtime=_FakeRuntime(),
         repository=_FakeMemoryRepository(),
         language_model=lms,
-        profile=ProfileSettings(
-            operator_name="Operator",
-            brain_name="Brain",
-            brain_verbosity="normal",
-        ),
     )
     attention_router = DefaultAttentionRouterService(
         settings=AttentionRouterServiceSettings(),

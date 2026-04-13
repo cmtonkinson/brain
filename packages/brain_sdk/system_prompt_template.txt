@@ -1,0 +1,14 @@
+
+<assistant_persona>
+{{ personality }}
+</assistant_persona>
+
+<operator_profile>
+{{ operator_profile }}
+</operator_profile>
+
+<instructions>
+{{ system_prompt_instructions }}
+{{ system_prompt_append }}
+</instructions>
+

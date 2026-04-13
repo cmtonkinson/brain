@@ -26,6 +26,7 @@ from packages.brain_shared.config import (
     resolve_component_settings,
 )
 from packages.brain_shared.config.models import AgentActorSettings, CliActorSettings
+from packages.brain_shared.config.models import OperatorProfileSettings
 from resources.adapters.litellm.config import resolve_litellm_adapter_settings
 from resources.adapters.litellm.config import LiteLlmAdapterSettings
 from resources.adapters.signal.config import SignalAdapterSettings
@@ -148,25 +149,30 @@ def test_load_core_settings_uses_model_defaults_when_sources_missing(
     assert settings.boot.boot_retry_attempts == 3
     assert settings.http.host == "0.0.0.0"
     assert settings.http.port == 8898
-    assert settings.profile.personality == "default"
+    assert settings.profile.operator.signal_contact_e164 == "+12222222222"
+    assert settings.profile.operator_name == "Operator"
 
 
-def test_load_core_settings_reads_profile_personality(tmp_path: Path) -> None:
-    """core.yaml should support an optional profile.personality block."""
-    config_file = tmp_path / "core.yaml"
+def test_load_actor_settings_reads_agent_prompt_settings(tmp_path: Path) -> None:
+    """actors.yaml should support agent-owned prompt settings."""
+    config_file = tmp_path / "actors.yaml"
     config_file.write_text(
         "\n".join(
             [
-                "profile:",
+                "agent:",
                 "  personality: focused",
+                "  profile_context: Refer to me as 'captain'",
+                "  system_prompt_append: Appendix",
             ]
         ),
         encoding="utf-8",
     )
 
-    settings = load_core_settings(config_path=config_file, environ={})
+    settings = load_actor_settings(config_path=config_file, environ={})
 
-    assert settings.profile.personality == "focused"
+    assert settings.agent.personality == "focused"
+    assert settings.agent.profile_context == "Refer to me as 'captain'"
+    assert settings.agent.system_prompt_append == "Appendix"
 
 
 def test_load_core_settings_applies_secrets_yaml_over_core_yaml(tmp_path: Path) -> None:
@@ -298,6 +304,7 @@ def test_load_actor_settings_deep_merges_agent_defaults_with_secrets_yaml(
             [
                 "agent:",
                 "  principal: assistant",
+                "  personality: focused",
             ]
         ),
         encoding="utf-8",
@@ -308,6 +315,7 @@ def test_load_actor_settings_deep_merges_agent_defaults_with_secrets_yaml(
             [
                 "agent:",
                 "  source: test-agent",
+                "  system_prompt_append: Appendix",
             ]
         ),
         encoding="utf-8",
@@ -317,6 +325,9 @@ def test_load_actor_settings_deep_merges_agent_defaults_with_secrets_yaml(
 
     assert actors.agent.principal == "assistant"
     assert actors.agent.source == "test-agent"
+    assert actors.agent.personality == "focused"
+    assert actors.agent.profile_context == "Refer to me as 'boss'"
+    assert actors.agent.system_prompt_append == "Appendix"
     assert actors.agent.capability_discovery_deny_list == ("attention-notify",)
     assert actors.agent.tool_loop_tier2_hop_threshold == 3
 
@@ -336,6 +347,7 @@ def test_core_runtime_settings_exposes_profile_via_core() -> None:
     assert profile.operator.signal_contact_e164
     assert profile.default_dial_code
     assert profile.operator_name
+    assert profile.brain_name
 
 
 def test_sample_config_files_load_cleanly(tmp_path: Path) -> None:
@@ -392,12 +404,12 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
         "logging": LoggingSettings().model_dump(mode="json"),
         "observability": ObservabilitySettings().model_dump(mode="json"),
         "profile": {
+            "operator": OperatorProfileSettings().model_dump(mode="json"),
             "approval_responses": ApprovalResponseSettings().model_dump(mode="json"),
             "default_dial_code": ProfileSettings().default_dial_code,
             "operator_name": ProfileSettings().operator_name,
             "brain_name": ProfileSettings().brain_name,
             "brain_verbosity": ProfileSettings().brain_verbosity,
-            "personality": ProfileSettings().personality,
         },
         "boot": CoreBootSettings().model_dump(mode="json"),
         "http": CoreHttpSettings().model_dump(mode="json"),

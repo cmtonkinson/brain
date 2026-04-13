@@ -104,6 +104,10 @@ class CapabilityManifestBase(BaseModel):
 
     capability_id: str = Field(min_length=1, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
     kind: str
+    owner_service_id: str | None = Field(
+        default=None,
+        pattern=r"^[a-z][a-z0-9_]{1,62}$",
+    )
     version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
     summary: str = Field(min_length=1)
     enabled: bool = True

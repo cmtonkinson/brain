@@ -29,6 +29,10 @@ include:
   Intermediate grouping directories are not part of the identifier.
 - `kind`: Defines the specific type of the capability. Must be one of
   `native_op`, `mcp_op`, `pipeline_skill`, or `logic_skill`.
+- `owner_service_id`: The canonical L1 service `ComponentId` that owns the
+  capability. This is required for `logic_skill` and `pipeline_skill`
+  capabilities, and optional for `native_op` because ownership is derivable
+  from `call_target`.
 - `summary`: A brief, one-sentence description of what the capability does.
 - `input_schema` / `output_schema`: Defines the contract for the capability's
   inputs and outputs.

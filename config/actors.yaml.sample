@@ -19,6 +19,10 @@ cli:
 agent:
   principal: operator
   source: agent
+  session_start_mode: existing
+  personality: default
+  profile_context: "Refer to me as 'boss'"
+  system_prompt_append: ""
   capability_discovery_deny_list:
     - attention-notify
   tool_return_compress_threshold: 4000

@@ -9,12 +9,11 @@ from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from resources.adapters.litellm.adapter import LiteLlmAdapter
 from services.action.language_model.domain import (
-    ChatMessage,
     ChatResponse,
-    ChatToolDefinition,
     ChatWithToolsResponse,
     EmbeddingVector,
     HealthStatus,
+    InferenceRequest,
 )
 from services.action.language_model.validation import EmbeddingProfile, ReasoningLevel
 
@@ -48,12 +47,7 @@ class LanguageModelService(ABC):
         self,
         *,
         meta: EnvelopeMeta,
-        messages: Sequence[ChatMessage],
-        tools: Sequence[ChatToolDefinition] = (),
-        tool_choice: str | dict[str, object] | None = None,
-        parallel_tool_calls: bool | None = None,
-        allow_text_output: bool = True,
-        profile: ReasoningLevel = ReasoningLevel.STANDARD,
+        inference_request: InferenceRequest,
     ) -> Envelope[ChatWithToolsResponse]:
         """Generate one tool-capable chat completion."""
 

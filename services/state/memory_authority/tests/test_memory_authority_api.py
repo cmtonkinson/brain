@@ -13,11 +13,9 @@ from packages.brain_shared.errors import validation_error
 from packages.brain_shared.http.server import create_app
 from services.state.memory_authority.api import register_routes
 from services.state.memory_authority.domain import (
-    BrainVerbosity,
     ContextBlock,
     DialogueTurn,
     InboundInstructionRecord,
-    ProfileContext,
     SessionRecord,
     TurnDirection,
     TurnRecord,
@@ -116,14 +114,11 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
         self.assemble_result = success(
             meta=_meta(),
             payload=ContextBlock(
-                system_prompt="",
-                profile=ProfileContext(
-                    operator_name="Operator",
-                    brain_name="Brain",
-                    brain_verbosity=BrainVerbosity.NORMAL,
-                ),
-                focus="current focus",
-                dialogue=[DialogueTurn(role="user", content="hello", is_summary=False)],
+                current_focus="current focus",
+                recent_conversation_summary="prior summary",
+                recent_turns=[
+                    DialogueTurn(role="user", content="hello", is_summary=False)
+                ],
                 reference_snippets=[],
             ),
         )
@@ -150,9 +145,10 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
             meta=_meta(),
             payload=SessionRecord(
                 id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
-                system_prompt="",
                 focus=None,
                 focus_token_count=None,
+                dialogue_summary=None,
+                dialogue_summary_token_count=None,
                 dialogue_start_turn_id=None,
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
@@ -275,7 +271,7 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
         del meta, session_id
         raise NotImplementedError
 
-    def create_session(self, *, meta, system_prompt: str = ""):
+    def create_session(self, *, meta):
         self.create_session_calls.append((meta.source, meta.principal))
         return self.create_session_result
 
@@ -323,9 +319,9 @@ def test_assemble_context_route_forwards_request_and_returns_payload() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["payload"]["focus"] == "current focus"
-    assert payload["payload"]["profile"]["brain_name"] == "Brain"
-    assert payload["payload"]["dialogue"][0]["content"] == "hello"
+    assert payload["payload"]["current_focus"] == "current focus"
+    assert payload["payload"]["recent_conversation_summary"] == "prior summary"
+    assert payload["payload"]["recent_turns"][0]["content"] == "hello"
     assert payload["errors"] == []
     assert service.record_inbound_calls == [
         _TurnCall(
@@ -435,7 +431,7 @@ def test_assemble_snapshot_route_returns_context_without_live_turn() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["payload"]["dialogue"][0]["content"] == "hello"
+    assert payload["payload"]["recent_turns"][0]["content"] == "hello"
     assert service.assemble_snapshot_calls == [("01ARZ3NDEKTSV4RRFFQ69G5FAV", "sdk")]
 
 
@@ -503,7 +499,6 @@ def test_create_session_route_returns_session_id_only() -> None:
         json={
             "source": "agent",
             "principal": "agent",
-            "system_prompt": "You are Brain.",
         },
     )
 

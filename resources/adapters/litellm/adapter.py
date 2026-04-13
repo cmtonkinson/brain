@@ -6,6 +6,8 @@ from typing import Protocol, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from packages.brain_shared.language_model import ChatContentPart, InferenceRequest
+
 
 class AdapterError(Exception):
     """Base exception for adapter-level failures."""
@@ -81,7 +83,7 @@ class AdapterChatMessage(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     role: str
-    content: str = ""
+    content_parts: tuple[ChatContentPart, ...] = ()
     tool_name: str = ""
     tool_call_id: str = ""
     tool_calls: tuple[AdapterChatToolCall, ...] = ()
@@ -147,10 +149,7 @@ class LiteLlmAdapter(Protocol):
         *,
         provider: str,
         model: str,
-        messages: Sequence[AdapterChatMessage],
-        tools: Sequence[AdapterChatToolDefinition],
-        tool_choice: str | dict[str, object] | None = None,
-        parallel_tool_calls: bool | None = None,
+        inference_request: InferenceRequest,
     ) -> AdapterToolChatResult:
         """Generate one tool-capable chat completion."""
 

@@ -1,0 +1,3 @@
+<areas_of_focus>
+{{ text }}
+</areas_of_focus>

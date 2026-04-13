@@ -1,13 +1,6 @@
-"""Dialogue module for Memory Authority Service.
-
-MAS uses lazy summarization: summaries are generated only when an older dialogue
-slice is requested during context assembly and coverage is missing. This avoids
-paying summarization cost for turns that may never be included in context.
-"""
+"""Dialogue module for Memory Authority Service."""
 
 from __future__ import annotations
-
-from dataclasses import dataclass
 
 from packages.brain_shared.envelope import EnvelopeMeta
 from services.action.language_model.service import LanguageModelService
@@ -15,6 +8,7 @@ from services.state.memory_authority.config import MemoryAuthoritySettings
 from services.state.memory_authority.data.repository import MemoryRepository
 from services.state.memory_authority.domain import (
     DialogueTurn,
+    FocusRecord,
     InboundInstructionRecord,
     TurnDirection,
     TurnRecord,
@@ -22,17 +16,8 @@ from services.state.memory_authority.domain import (
 )
 
 
-@dataclass(frozen=True)
-class _SummarySegment:
-    """Inclusive index range for one summary-covered dialogue segment."""
-
-    start_index: int
-    end_index: int
-    content: str
-
-
 class DialogueModule:
-    """Store turns and assemble dialogue context with lazy summary coverage."""
+    """Store turns and assemble dialogue context with a rolling summary frontier."""
 
     def __init__(
         self,
@@ -43,8 +28,8 @@ class DialogueModule:
     ) -> None:
         self._repository = repository
         self._language_model = language_model
-        self._recent_turns = settings.dialogue_recent_turns
-        self._older_turns = settings.dialogue_older_turns
+        self._min_turns_to_keep = settings.min_turns_to_keep
+        self._max_turns_to_keep = settings.max_turns_to_keep
 
     def append_inbound(
         self,
@@ -102,12 +87,13 @@ class DialogueModule:
         *,
         meta: EnvelopeMeta,
         session_id: str,
+        focus: FocusRecord | None,
         exclude_turn_id: str | None = None,
-    ) -> list[DialogueTurn]:
-        """Assemble historical dialogue, optionally excluding one live turn."""
+    ) -> tuple[str, list[DialogueTurn]]:
+        """Assemble rolling summary + recent dialogue, optionally excluding one live turn."""
         turns = self._repository.list_turns(session_id=session_id)
         if not turns:
-            return []
+            return "", []
 
         session = self._repository.get_session(session_id=session_id)
         pointer = None if session is None else session.dialogue_start_turn_id
@@ -117,120 +103,77 @@ class DialogueModule:
                 turn for turn in visible_turns if turn.id != exclude_turn_id
             ]
         if not visible_turns:
-            return []
+            return "", []
 
-        if len(visible_turns) <= self._recent_turns:
-            return [
-                DialogueTurn(role=turn.role, content=turn.content, is_summary=False)
-                for turn in visible_turns
-            ]
-
-        older_turns = visible_turns[: -self._recent_turns]
-        recent_turns = visible_turns[-self._recent_turns :]
-        if self._older_turns == 0:
-            older_selected: list[TurnRecord] = []
-        elif len(older_turns) > self._older_turns:
-            older_selected = older_turns[-self._older_turns :]
-        else:
-            older_selected = older_turns
-
-        older_dialogue = self._assemble_older_dialogue(
-            meta=meta,
-            session_id=session_id,
-            turns=older_selected,
+        summary_text = (
+            ""
+            if session is None or session.dialogue_summary is None
+            else session.dialogue_summary
         )
+        turns_to_render = visible_turns
+        if len(visible_turns) > self._max_turns_to_keep:
+            turns_to_absorb = len(visible_turns) - self._min_turns_to_keep
+            absorbable = visible_turns[:turns_to_absorb]
+            # TODO(cmtonkinson): Move rolling summary compaction to an async job
+            # once the scheduler/jobs service exists; assembly should then read
+            # precomputed summary state instead of blocking on LMS work inline.
+            updated_summary = self._roll_summary(
+                meta=meta,
+                existing_summary=summary_text,
+                focus=focus,
+                run=absorbable,
+            )
+            if updated_summary is not None and session is not None:
+                updated_session = self._repository.update_dialogue_summary(
+                    session_id=session_id,
+                    dialogue_summary=updated_summary,
+                    dialogue_summary_token_count=estimate_token_count(updated_summary),
+                    dialogue_start_turn_id=absorbable[-1].id,
+                )
+                if updated_session is not None:
+                    summary_text = updated_summary
+                    turns_to_render = visible_turns[turns_to_absorb:]
+
         recent_dialogue = [
             DialogueTurn(role=turn.role, content=turn.content, is_summary=False)
-            for turn in recent_turns
+            for turn in turns_to_render
         ]
-        return [*older_dialogue, *recent_dialogue]
+        return summary_text, recent_dialogue
 
-    def _assemble_older_dialogue(
+    def _roll_summary(
         self,
         *,
         meta: EnvelopeMeta,
-        session_id: str,
-        turns: list[TurnRecord],
-    ) -> list[DialogueTurn]:
-        """Build the older dialogue block using persisted or newly-created summaries."""
-        if not turns:
-            return []
-
-        summaries = self._repository.list_turn_summaries(session_id=session_id)
-        turn_index = {turn.id: idx for idx, turn in enumerate(turns)}
-
-        covered: dict[int, _SummarySegment] = {}
-        for summary in summaries:
-            start = turn_index.get(summary.start_turn_id)
-            end = turn_index.get(summary.end_turn_id)
-            if start is None or end is None or end < start:
-                continue
-            segment = _SummarySegment(
-                start_index=start,
-                end_index=end,
-                content=summary.content,
-            )
-            covered[start] = segment
-
-        items: list[DialogueTurn] = []
-        index = 0
-        while index < len(turns):
-            segment = covered.get(index)
-            if segment is not None:
-                items.append(
-                    DialogueTurn(
-                        role="system", content=segment.content, is_summary=True
-                    )
-                )
-                index = segment.end_index + 1
-                continue
-
-            next_segment_start = min(
-                (pos for pos in covered.keys() if pos > index),
-                default=len(turns),
-            )
-            run = turns[index:next_segment_start]
-            summary = self._summarize_run(meta=meta, session_id=session_id, run=run)
-            if summary is not None:
-                items.append(
-                    DialogueTurn(role="system", content=summary, is_summary=True)
-                )
-            else:
-                for turn in run:
-                    items.append(
-                        DialogueTurn(
-                            role=turn.role, content=turn.content, is_summary=False
-                        )
-                    )
-            index = next_segment_start
-
-        return items
-
-    def _summarize_run(
-        self,
-        *,
-        meta: EnvelopeMeta,
-        session_id: str,
+        existing_summary: str,
+        focus: FocusRecord | None,
         run: list[TurnRecord],
     ) -> str | None:
-        """Summarize one older run and persist its range summary record."""
+        """Rewrite the rolling summary by folding in newly-absorbed turns."""
         if not run:
             return None
 
-        existing = self._repository.get_turn_summary_by_range(
-            session_id=session_id,
-            start_turn_id=run[0].id,
-            end_turn_id=run[-1].id,
-        )
-        if existing is not None:
-            return existing.content
-
         transcript = "\n".join(f"{turn.role}: {turn.content}" for turn in run)
+        focus_text = (
+            "" if focus is None or focus.content is None else focus.content.strip()
+        )
+        focus_section = (
+            "Current focus:\n(none)\n\n"
+            if focus_text == ""
+            else f"Current focus:\n{focus_text}\n\n"
+        )
+        existing_summary_section = (
+            "Existing summary:\n(none)\n\n"
+            if existing_summary.strip() == ""
+            else f"Existing summary:\n{existing_summary.strip()}\n\n"
+        )
         prompt = (
-            "Summarize this dialogue segment for context recall. "
-            "Preserve active goals, decisions, and commitments. "
-            "Keep it concise and factual.\n\n"
-            f"Dialogue:\n{transcript}"
+            "Update the rolling conversation summary for context recall. "
+            "Preserve active goals, decisions, commitments, and unresolved threads. "
+            "Bias toward what matters for current focus. "
+            "Output only the rewritten summary.\n\n"
+            f"{existing_summary_section}"
+            f"{focus_section}"
+            f"New dialogue to absorb:\n{transcript}"
         )
         result = self._language_model.chat(
             meta=meta,
@@ -247,15 +190,7 @@ class DialogueModule:
         summary_text = summary_raw.strip()
         if summary_text == "":
             return None
-
-        persisted = self._repository.create_turn_summary(
-            session_id=session_id,
-            start_turn_id=run[0].id,
-            end_turn_id=run[-1].id,
-            content=summary_text,
-            token_count=estimate_token_count(summary_text),
-        )
-        return persisted.content
+        return summary_text
 
     def _turns_after_pointer(
         self,

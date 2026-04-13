@@ -20,6 +20,8 @@ observability:
       metric_qdrant_op_duration_ms: brain_qdrant_op_duration_ms
 
 profile:
+  operator:
+    signal_contact_e164: "+12222222222"
   approval_responses:
     approve_reaction_emojis:
       - 👍
@@ -39,7 +41,6 @@ profile:
   operator_name: Operator
   brain_name: Brain
   brain_verbosity: normal
-  personality: default
 
 boot:
   run_migrations_on_startup: true
@@ -67,8 +68,7 @@ service:
   capability_engine:
     discovery_root: capabilities
     default_max_autonomy: 0
-    always_on_capability_ids:
-      - vault-search-files
+    always_on_capability_ids: []
     capability_search_top_k: 10
   embedding_authority:
     max_list_limit: 500
@@ -77,8 +77,8 @@ service:
     default_ttl_seconds: 300
     allow_non_expiring_keys: true
   memory_authority:
-    dialogue_recent_turns: 10
-    dialogue_older_turns: 20
+    min_turns_to_keep: 10
+    max_turns_to_keep: 20
     focus_token_budget: 512
   object_authority:
     digest_algorithm: sha256
