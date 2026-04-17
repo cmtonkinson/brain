@@ -253,7 +253,7 @@ class AgentActorSettings(ActorNamespaceSettings):
     source: str = "agent"
     session_start_mode: Literal["new", "existing"] = "existing"
     personality: str = "default"
-    profile_context: str = "Refer to me as 'boss'"
+    operator_profile: str = "Refer to me as 'boss'"
     system_prompt_append: str = ""
     capability_discovery_deny_list: tuple[str, ...] = ("attention-notify",)
     tool_return_max_chars: int = 8000

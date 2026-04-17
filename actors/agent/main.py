@@ -1748,8 +1748,8 @@ def _create_runtime(
     """Create one fully wired agent runtime from the published Core surface."""
     del core_settings
     personality = str(getattr(settings.agent, "personality", "default"))
-    profile_context = str(
-        getattr(settings.agent, "profile_context", "Refer to me as 'boss'")
+    operator_profile = str(
+        getattr(settings.agent, "operator_profile", "Refer to me as 'boss'")
     )
     system_prompt_append = str(getattr(settings.agent, "system_prompt_append", ""))
     session_start_mode = getattr(settings.agent, "session_start_mode", "existing")
@@ -1762,12 +1762,12 @@ def _create_runtime(
             session = client.memory_create_session()
     system_prompt = render_system_prompt(
         personality,
-        operator_profile=profile_context,
+        operator_profile=operator_profile,
         system_prompt_append=system_prompt_append,
     )
     system_blocks = render_system_prompt_blocks(
         personality,
-        operator_profile=profile_context,
+        operator_profile=operator_profile,
         system_prompt_append=system_prompt_append,
     )
     capabilities = client.describe_capabilities()

@@ -161,7 +161,7 @@ def test_load_actor_settings_reads_agent_prompt_settings(tmp_path: Path) -> None
             [
                 "agent:",
                 "  personality: focused",
-                "  profile_context: Refer to me as 'captain'",
+                "  operator_profile: Refer to me as 'captain'",
                 "  system_prompt_append: Appendix",
             ]
         ),
@@ -171,7 +171,7 @@ def test_load_actor_settings_reads_agent_prompt_settings(tmp_path: Path) -> None
     settings = load_actor_settings(config_path=config_file, environ={})
 
     assert settings.agent.personality == "focused"
-    assert settings.agent.profile_context == "Refer to me as 'captain'"
+    assert settings.agent.operator_profile == "Refer to me as 'captain'"
     assert settings.agent.system_prompt_append == "Appendix"
 
 
@@ -334,7 +334,7 @@ def test_load_actor_settings_deep_merges_agent_defaults_with_secrets_yaml(
     assert actors.agent.principal == "assistant"
     assert actors.agent.source == "test-agent"
     assert actors.agent.personality == "focused"
-    assert actors.agent.profile_context == "Refer to me as 'boss'"
+    assert actors.agent.operator_profile == "Refer to me as 'boss'"
     assert actors.agent.system_prompt_append == "Appendix"
     assert actors.agent.capability_discovery_deny_list == ("attention-notify",)
     assert actors.agent.tool_loop_tier2_hop_threshold == 3

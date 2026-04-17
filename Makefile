@@ -48,7 +48,7 @@ ifeq ($(INTEGRATION),1)
 PYTEST_INTEGRATION_ENV := BRAIN_RUN_INTEGRATION_REAL=1
 endif
 
-.PHONY: all deps deps-upgrade clean check format test test-only test-all docs up down integration outline smoke smoke-only smoke-e2e smoke-docker
+.PHONY: all deps deps-upgrade switch-python clean check format test test-only test-all docs up down integration outline smoke smoke-only smoke-e2e smoke-docker
 
 define run_gate
 	@set +e; \
@@ -85,6 +85,13 @@ deps-upgrade:
 		$(PY) -m piptools compile --upgrade --output-file requirements.txt requirements.in; \
 	fi
 	$(PY) -m piptools sync requirements.txt
+
+switch-python:
+	@if [ -z "$${VERSION:-}" ]; then \
+		echo "usage: make switch-python VERSION=3.14.2" >&2; \
+		exit 1; \
+	fi
+	./bin/use-python "$${VERSION}"
 
 clean:
 	find . -type f -name '*.pyc' -delete

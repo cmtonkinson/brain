@@ -6,7 +6,7 @@ This document covers how to set up, build, test, and contribute to Brain.
 
 ------------------------------------------------------------------------
 ## Prerequisites
-- **Python 3.13**
+- **Python 3.14**
 - **Docker** and **Docker Compose** (for Postgres, Qdrant, and other services)
 - **Ollama** (recommended for embedding, optional for inference)
 - **Obsidian** with the Local REST API plugin

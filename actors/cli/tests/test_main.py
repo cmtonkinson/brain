@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -14,6 +15,14 @@ from types import ModuleType
 from typing import Any
 
 from typer.testing import CliRunner
+
+
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+
+
+def _normalized_help_text(text: str) -> str:
+    """Return help output normalized for stable assertions across Typer versions."""
+    return _ANSI_ESCAPE_RE.sub("", text)
 
 
 def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
@@ -544,15 +553,16 @@ def test_generated_help_lists_live_capability_commands(monkeypatch: Any) -> None
 
 
 def test_generated_help_lists_command_options(monkeypatch: Any) -> None:
-    """Capability-command help should render generated named options."""
+    """Capability-command help should expose generated options despite style changes."""
     app, _, _ = _load_cli_app(monkeypatch)
     runner = CliRunner()
 
     result = runner.invoke(app, [*_base_args(), "vault", "get-file", "--help"])
+    help_text = _normalized_help_text(result.stdout)
 
     assert result.exit_code == 0
-    assert "--file-path" in result.stdout
-    assert "--include-metadata" in result.stdout
+    assert "--file-path" in help_text
+    assert "--include-metadata" in help_text
 
 
 def test_json_pretty_outputs_indented_json(monkeypatch: Any) -> None:

@@ -55,7 +55,7 @@ def _actor_settings_stub(**agent_overrides):
     agent_defaults = {
         "session_start_mode": "existing",
         "personality": "default",
-        "profile_context": "Refer to me as 'boss'",
+        "operator_profile": "Refer to me as 'boss'",
         "system_prompt_append": "",
         "source": "agent",
         "principal": "operator",

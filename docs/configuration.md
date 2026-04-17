@@ -68,7 +68,7 @@ Agent runtime settings loaded from `actors.yaml`.
 | `principal` | `operator` | Principal identity attached to outbound SDK calls from the agent actor. |
 | `source` | `agent` | Source identity attached to outbound SDK calls from the agent actor. |
 | `personality` | `default` | Named personality bundle used to render the agent system prompt at boot. Must match a file in `packages/brain_sdk/personalities/`. |
-| `profile_context` | `Refer to me as 'boss'` | Operator-facing profile text injected into the agent system prompt. |
+| `operator_profile` | `Refer to me as 'boss'` | Operator-facing profile text injected into the agent system prompt. |
 | `system_prompt_append` | `""` | Optional additional prompt text appended to the agent instruction block at boot. |
 | `capability_discovery_deny_list` | `["attention-notify"]` | Capability ids excluded from dynamic discovery and activation. |
 | `tool_return_compress_threshold` | `4000` | Character threshold above which decide-mode tool returns are eligible for compressor prompt reduction. |
