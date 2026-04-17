@@ -20,7 +20,7 @@ from packages.brain_shared.language_model import (
     InferenceToolResultBatchEvent,
     InferenceToolResultPayload,
 )
-from resources.adapters.litellm import (
+from resources.adapters.llm import (
     AdapterChatResult,
     AdapterChatToolCall,
     AdapterDependencyError,
@@ -29,15 +29,17 @@ from resources.adapters.litellm import (
     AdapterInternalError,
     AdapterProviderCallAudit,
     AdapterToolChatResult,
-    LiteLlmAdapter,
+    LlmAdapter,
 )
 from services.action.language_model.config import (
+    LanguageModelEmbeddingProfileSettings,
     LanguageModelProfileSettings,
     LanguageModelServiceSettings,
     resolve_language_model_service_settings,
 )
 from services.action.language_model.data.repository import (
     InMemoryLanguageModelCallAuditRepository,
+    InMemoryLanguageModelTurnCacheHopRepository,
 )
 from services.action.language_model.implementation import DefaultLanguageModelService
 from services.action.language_model.validation import EmbeddingProfile, ReasoningLevel
@@ -69,14 +71,16 @@ class _ChatWithToolsCall(_Call):
 @dataclass
 class _EmbedCall(_Call):
     text: str
+    dimensions: int | None = None
 
 
 @dataclass
 class _EmbedBatchCall(_Call):
     texts: tuple[str, ...]
+    dimensions: int | None = None
 
 
-class _FakeAdapter(LiteLlmAdapter):
+class _FakeAdapter(LlmAdapter):
     """In-memory adapter fake for LMS service behavior tests."""
 
     def __init__(self) -> None:
@@ -165,8 +169,16 @@ class _FakeAdapter(LiteLlmAdapter):
         provider: str,
         model: str,
         text: str,
+        dimensions: int | None = None,
     ) -> AdapterEmbeddingResult:
-        self.embed_calls.append(_EmbedCall(provider=provider, model=model, text=text))
+        self.embed_calls.append(
+            _EmbedCall(
+                provider=provider,
+                model=model,
+                text=text,
+                dimensions=dimensions,
+            )
+        )
         if self.raise_embed is not None:
             raise self.raise_embed
         return AdapterEmbeddingResult(
@@ -181,9 +193,15 @@ class _FakeAdapter(LiteLlmAdapter):
         provider: str,
         model: str,
         texts: Sequence[str],
+        dimensions: int | None = None,
     ) -> list[AdapterEmbeddingResult]:
         self.embed_batch_calls.append(
-            _EmbedBatchCall(provider=provider, model=model, texts=tuple(texts))
+            _EmbedBatchCall(
+                provider=provider,
+                model=model,
+                texts=tuple(texts),
+                dimensions=dimensions,
+            )
         )
         if self.raise_embed_batch is not None:
             raise self.raise_embed_batch
@@ -203,11 +221,11 @@ class _FakeAdapter(LiteLlmAdapter):
 def _settings() -> LanguageModelServiceSettings:
     """Build deterministic service settings for tests."""
     return LanguageModelServiceSettings(
-        document_embedding=LanguageModelProfileSettings(
-            provider="ollama", model="embed-a"
+        document_embedding=LanguageModelEmbeddingProfileSettings(
+            provider="ollama", model="embed-a", dimensions=1024
         ),
-        capability_embedding=LanguageModelProfileSettings(
-            provider="ollama", model="embed-cap"
+        capability_embedding=LanguageModelEmbeddingProfileSettings(
+            provider="ollama", model="embed-cap", dimensions=1024
         ),
         quick=LanguageModelProfileSettings(provider="openai", model="chat-q"),
         standard=LanguageModelProfileSettings(provider="ollama", model="chat-a"),
@@ -359,7 +377,12 @@ def test_embed_uses_embedding_profile_by_default() -> None:
     assert result.payload is not None
     assert result.payload.value.values == (0.1, 0.2)
     assert adapter.embed_calls == [
-        _EmbedCall(provider="ollama", model="embed-a", text="hello")
+        _EmbedCall(
+            provider="ollama",
+            model="embed-a",
+            text="hello",
+            dimensions=1024,
+        )
     ]
 
 
@@ -374,7 +397,12 @@ def test_embed_batch_trims_texts_and_maps_payload() -> None:
     assert result.payload is not None
     assert [item.values for item in result.payload.value] == [(0.1, 0.2), (1.1, 1.2)]
     assert adapter.embed_batch_calls == [
-        _EmbedBatchCall(provider="ollama", model="embed-a", texts=("a", "b"))
+        _EmbedBatchCall(
+            provider="ollama",
+            model="embed-a",
+            texts=("a", "b"),
+            dimensions=1024,
+        )
     ]
 
 
@@ -428,10 +456,12 @@ def test_resolve_settings_quick_falls_back_to_standard_when_unset() -> None:
                         "document_embedding": {
                             "provider": "ollama",
                             "model": "embed-a",
+                            "dimensions": 1024,
                         },
                         "capability_embedding": {
                             "provider": "ollama",
                             "model": "embed-cap",
+                            "dimensions": 1024,
                         },
                         "standard": {"provider": "ollama", "model": "chat-a"},
                         "quick": {"provider": "", "model": ""},
@@ -458,10 +488,12 @@ def test_resolve_settings_deep_falls_back_to_standard_when_unset() -> None:
                         "document_embedding": {
                             "provider": "ollama",
                             "model": "embed-a",
+                            "dimensions": 1024,
                         },
                         "capability_embedding": {
                             "provider": "ollama",
                             "model": "embed-cap",
+                            "dimensions": 1024,
                         },
                         "standard": {"provider": "ollama", "model": "chat-a"},
                         "deep": {"provider": "", "model": ""},
@@ -479,7 +511,7 @@ def test_resolve_settings_deep_falls_back_to_standard_when_unset() -> None:
 
 
 def test_resolve_settings_defaults_standard_profile_when_missing() -> None:
-    """Config resolver should default standard profile when it is omitted."""
+    """Config resolver should default chat profiles when they are omitted."""
     settings = CoreRuntimeSettings(
         core=CoreSettings.model_validate(
             {
@@ -488,10 +520,12 @@ def test_resolve_settings_defaults_standard_profile_when_missing() -> None:
                         "document_embedding": {
                             "provider": "ollama",
                             "model": "embed-a",
+                            "dimensions": 1024,
                         },
                         "capability_embedding": {
                             "provider": "ollama",
                             "model": "embed-cap",
+                            "dimensions": 1024,
                         },
                     }
                 }
@@ -502,8 +536,18 @@ def test_resolve_settings_defaults_standard_profile_when_missing() -> None:
 
     resolved = resolve_language_model_service_settings(settings)
 
-    assert resolved.standard.provider == "ollama"
-    assert resolved.standard.model == "gpt-oss:20b"
+    assert resolved.document_embedding.provider == "ollama"
+    assert resolved.document_embedding.model == "embed-a"
+    assert resolved.document_embedding.dimensions == 1024
+    assert resolved.capability_embedding.provider == "ollama"
+    assert resolved.capability_embedding.model == "embed-cap"
+    assert resolved.capability_embedding.dimensions == 1024
+    assert resolved.quick.provider == "anthropic"
+    assert resolved.quick.model == "claude-haiku-4-5-20251001"
+    assert resolved.standard.provider == "anthropic"
+    assert resolved.standard.model == "claude-sonnet-4-6-20251001"
+    assert resolved.deep.provider == "anthropic"
+    assert resolved.deep.model == "claude-opus-4-7"
 
 
 def test_chat_batch_rejects_empty_prompts() -> None:
@@ -557,7 +601,7 @@ def test_chat_maps_dependency_failures_to_error_envelope() -> None:
     assert result.ok is False
     assert len(result.errors) == 1
     assert result.errors[0].category.value == "dependency"
-    assert result.errors[0].metadata == {"adapter": "adapter_litellm"}
+    assert result.errors[0].metadata == {"adapter": "adapter_llm"}
 
 
 def test_embed_batch_maps_internal_failures_to_error_envelope() -> None:
@@ -572,7 +616,7 @@ def test_embed_batch_maps_internal_failures_to_error_envelope() -> None:
     assert len(result.errors) == 1
     assert result.errors[0].category.value == "internal"
     assert result.errors[0].message == "bad adapter payload"
-    assert result.errors[0].metadata == {"adapter": "adapter_litellm"}
+    assert result.errors[0].metadata == {"adapter": "adapter_llm"}
 
 
 def test_health_maps_adapter_readiness_into_service_payload() -> None:
@@ -580,7 +624,7 @@ def test_health_maps_adapter_readiness_into_service_payload() -> None:
     adapter = _FakeAdapter()
     adapter.health_result = AdapterHealthResult(
         adapter_ready=False,
-        detail="litellm unavailable",
+        detail="llm unavailable",
     )
     service = DefaultLanguageModelService(settings=_settings(), adapter=adapter)
 
@@ -590,7 +634,7 @@ def test_health_maps_adapter_readiness_into_service_payload() -> None:
     assert result.payload is not None
     assert result.payload.value.service_ready is True
     assert result.payload.value.adapter_ready is False
-    assert result.payload.value.detail == "litellm unavailable"
+    assert result.payload.value.detail == "llm unavailable"
 
 
 def test_chat_appends_provider_call_audit_with_raw_payloads() -> None:
@@ -725,6 +769,118 @@ def test_chat_with_tools_marks_followup_and_sequences_audit_rows() -> None:
     assert [row.call_index for row in rows] == [1, 2]
     assert [row.request_phase for row in rows] == ["initial", "tool_followup"]
     assert [row.outcome_kind for row in rows] == ["tool_call", "final"]
+
+
+def test_chat_with_tools_appends_turn_cache_hop_telemetry() -> None:
+    """Tool-capable chat calls should persist one per-hop cache telemetry row."""
+    adapter = _FakeAdapter()
+    audit_repository = InMemoryLanguageModelCallAuditRepository()
+    turn_cache_hop_repository = InMemoryLanguageModelTurnCacheHopRepository()
+    raw_call = AdapterProviderCallAudit(
+        request_api_base="https://api.example.test/v1/messages",
+        request_headers={},
+        request_body={
+            "model": "chat-a",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "prefix",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {"type": "text", "text": "question"},
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "content": "result"},
+                        {
+                            "type": "text",
+                            "text": " ",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                    ],
+                },
+            ],
+        },
+        response_body={
+            "id": "resp_123",
+            "usage": {
+                "cache_creation_input_tokens": 200,
+                "cache_read_input_tokens": 100,
+            },
+        },
+    )
+    adapter.chat_with_tools = lambda **kwargs: AdapterToolChatResult(  # type: ignore[method-assign]
+        text=None,
+        tool_calls=(
+            AdapterChatToolCall(
+                tool_name="demo-tool",
+                args_json='{"value":"x"}',
+                tool_call_id="call-1",
+            ),
+        ),
+        provider=str(kwargs["provider"]),
+        model=str(kwargs["model"]),
+        finish_reason="tool_call",
+        raw_call=raw_call,
+    )
+    service = DefaultLanguageModelService(
+        settings=_settings(),
+        adapter=adapter,
+        audit_repository=audit_repository,
+        turn_cache_hop_repository=turn_cache_hop_repository,
+    )
+
+    result = service.chat_with_tools(
+        meta=_meta(),
+        inference_request=make_inference_request(
+            live_events=(
+                InferenceToolCallBatchEvent(
+                    calls=(
+                        InferenceToolCall(
+                            call_id="call-1",
+                            tool_name="demo-tool",
+                            arguments={"value": "x"},
+                        ),
+                    )
+                ),
+                InferenceToolResultBatchEvent(
+                    results=(
+                        InferenceToolResult(
+                            call_id="call-1",
+                            tool_name="demo-tool",
+                            result=InferenceToolResultPayload(
+                                mime_type="text/plain",
+                                text="result",
+                            ),
+                        ),
+                    ),
+                    cache_after=True,
+                ),
+            ),
+        ),
+    )
+
+    assert result.ok is True
+    rows = turn_cache_hop_repository.list_rows()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.hop_ordinal == 1
+    assert row.call_index == 1
+    assert row.placed_cachepoint_ordinal == 1
+    assert row.cp0_active is True
+    assert row.cp1_active is True
+    assert row.cp2_active is False
+    assert row.active_cachepoint_count == 2
+    assert row.cache_creation_input_tokens == 200
+    assert row.cache_read_input_tokens == 100
+    assert row.estimated_write_premium_token_equiv == 50.0
+    assert row.estimated_read_savings_token_equiv == 90.0
+    assert row.estimated_net_token_equiv == 40.0
 
 
 def test_chat_error_appends_audit_row_with_error_outcome() -> None:

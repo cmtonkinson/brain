@@ -545,6 +545,188 @@ def test_build_inference_request_batches_tool_returns_and_sets_status() -> None:
     )
 
 
+def test_build_inference_request_assigns_cache_marker_to_tool_result_batch() -> None:
+    """Cache-only prompts after tool returns should mark the tool-result batch itself."""
+    from actors.agent import main
+    from pydantic_ai.messages import (
+        CachePoint,
+        ModelRequest,
+        ModelResponse,
+        ToolCallPart,
+        ToolReturnPart,
+        UserPromptPart,
+    )
+
+    messages = [
+        ModelRequest(parts=[UserPromptPart(content="hello")]),
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="search_tools",
+                    args={"query": "notify"},
+                    tool_call_id="call-1",
+                )
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="search_tools",
+                    content='{"tool_id":"attention-notify"}',
+                    tool_call_id="call-1",
+                ),
+                UserPromptPart(content=[CachePoint()]),
+            ]
+        ),
+    ]
+
+    result = main._build_inference_request(
+        session_id="session-1",
+        source="agent",
+        principal="operator",
+        meta=None,
+        system_blocks=(),
+        messages=messages,
+        tool_defs=[],
+        allow_text_output=True,
+        profile="standard",
+        tool_requires_approval={},
+    )
+
+    assert result.live_events == (
+        InferenceToolCallBatchEvent(
+            calls=(
+                InferenceToolCall(
+                    call_id="call-1",
+                    tool_name="search_tools",
+                    arguments={"query": "notify"},
+                ),
+            )
+        ),
+        InferenceToolResultBatchEvent(
+            results=(
+                InferenceToolResult(
+                    call_id="call-1",
+                    tool_name="search_tools",
+                    status="success",
+                    is_error=False,
+                    result=InferenceToolResultPayload(
+                        mime_type="text/plain",
+                        text='{"tool_id":"attention-notify"}',
+                    ),
+                ),
+            ),
+            cache_after=True,
+        ),
+    )
+
+
+def test_history_processor_adds_rolling_cachepoint_for_high_value_growth() -> None:
+    """Large exploratory tool-result growth should earn a rolling cachepoint."""
+    from actors.agent import main
+    from pydantic_ai.messages import (
+        CachePoint,
+        ModelRequest,
+        ModelResponse,
+        ToolCallPart,
+        ToolReturnPart,
+        UserPromptPart,
+    )
+
+    processor = main._build_history_processor(
+        client=object(),  # type: ignore[arg-type]
+        timeout_seconds=None,
+        compress_threshold=10_000,
+        max_chars=20_000,
+        tier2_hop_threshold=1,
+    )
+    messages = [
+        ModelRequest(parts=[UserPromptPart(content=["hello", CachePoint()])]),
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="search_tools",
+                    args={
+                        "query": "find person",
+                        "call_mode": "explore",
+                        "response_detail": "Orient before choosing a concrete vault tool.",
+                    },
+                    tool_call_id="call-1",
+                )
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="search_tools",
+                    content="x" * 8000,
+                    tool_call_id="call-1",
+                )
+            ]
+        ),
+    ]
+
+    processed = asyncio.run(processor(None, messages))
+
+    assert isinstance(processed[-1], ModelRequest)
+    assert isinstance(processed[-1].parts[-1], UserPromptPart)
+    assert processed[-1].parts[-1].content == [CachePoint()]
+
+
+def test_history_processor_skips_rolling_cachepoint_for_low_value_growth() -> None:
+    """Small decisive successful results should not pay the rolling-cache premium."""
+    from actors.agent import main
+    from pydantic_ai.messages import (
+        CachePoint,
+        ModelRequest,
+        ModelResponse,
+        ToolCallPart,
+        ToolReturnPart,
+        UserPromptPart,
+    )
+
+    processor = main._build_history_processor(
+        client=object(),  # type: ignore[arg-type]
+        timeout_seconds=None,
+        compress_threshold=10_000,
+        max_chars=20_000,
+        tier2_hop_threshold=1,
+    )
+    messages = [
+        ModelRequest(parts=[UserPromptPart(content=["hello", CachePoint()])]),
+        ModelResponse(
+            parts=[
+                ToolCallPart(
+                    tool_name="vault-get-file",
+                    args={
+                        "file_path": "entities/people/heidi.md",
+                        "call_mode": "decide",
+                        "response_detail": "Read one specific entity file.",
+                    },
+                    tool_call_id="call-1",
+                )
+            ]
+        ),
+        ModelRequest(
+            parts=[
+                ToolReturnPart(
+                    tool_name="vault-get-file",
+                    content="ok",
+                    tool_call_id="call-1",
+                )
+            ]
+        ),
+    ]
+
+    processed = asyncio.run(processor(None, messages))
+
+    assert isinstance(processed[-1], ModelRequest)
+    assert not any(
+        isinstance(part, UserPromptPart) and part.content == [CachePoint()]
+        for part in processed[-1].parts
+    )
+
+
 def test_format_user_prompt_places_cachepoint_before_current_instruction() -> None:
     """The operator-message block should come after the historical snapshot cache cut."""
     from actors.agent import main
@@ -1725,7 +1907,141 @@ def test_tool_model_requests_lms_chat_with_tools() -> None:
     )
     assert isinstance(response.parts[0], ToolCallPart)
     assert response.parts[0].tool_name == "vault-get-file"
-    assert response.parts[0].tool_call_id == "call-1"
+
+
+def test_tool_model_filters_unadvertised_tool_calls_from_model_response() -> None:
+    """Unadvertised tool calls should be dropped so they do not poison turn history."""
+    from actors.agent import main
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from pydantic_ai.models import ModelRequestParameters
+    from pydantic_ai.tools import ToolDefinition
+
+    class _FakeClient:
+        def lms_chat_with_tools(
+            self,
+            *,
+            inference_request: InferenceRequest,
+            timeout_seconds: float | None = None,
+            meta: object | None = None,
+        ) -> LmsToolChatResult:
+            del inference_request, timeout_seconds, meta
+            return LmsToolChatResult(
+                provider="unit",
+                model="test-model",
+                finish_reason="tool_call",
+                text="Checking.",
+                tool_calls=(
+                    LmsChatToolCall(
+                        tool_name="vault-get-file",
+                        args_json='{"file_path":"a.md"}',
+                        tool_call_id="call-valid",
+                    ),
+                    LmsChatToolCall(
+                        tool_name="vault-list-directory",
+                        args_json='{"directory_path":"entities"}',
+                        tool_call_id="call-invalid",
+                    ),
+                ),
+            )
+
+    model = main._BrainSdkToolModel(  # type: ignore[arg-type]
+        client=_FakeClient(),
+        session_id="session-1",
+        source="agent",
+        principal="operator",
+        system_blocks=(),
+    )
+
+    response = asyncio.run(
+        model.request(
+            messages=[ModelRequest(parts=[UserPromptPart("hello")])],
+            model_settings=None,
+            model_request_parameters=ModelRequestParameters(
+                function_tools=[ToolDefinition(name="vault-get-file")]
+            ),
+        )
+    )
+
+    assert [part.part_kind for part in response.parts] == ["text", "tool-call"]
+    assert response.parts[1].tool_name == "vault-get-file"
+
+
+def test_tool_model_retries_once_when_model_returns_only_unadvertised_tool_calls() -> (
+    None
+):
+    """Unadvertised-only tool calls should trigger one internal retry before failing."""
+    from actors.agent import main
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+    from pydantic_ai.models import ModelRequestParameters
+    from pydantic_ai.tools import ToolDefinition
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.calls: list[InferenceRequest] = []
+
+        def lms_chat_with_tools(
+            self,
+            *,
+            inference_request: InferenceRequest,
+            timeout_seconds: float | None = None,
+            meta: object | None = None,
+        ) -> LmsToolChatResult:
+            del timeout_seconds, meta
+            self.calls.append(inference_request)
+            if len(self.calls) == 1:
+                return LmsToolChatResult(
+                    provider="unit",
+                    model="test-model",
+                    finish_reason="tool_call",
+                    text=None,
+                    tool_calls=(
+                        LmsChatToolCall(
+                            tool_name="vault-list-directory",
+                            args_json='{"directory_path":"entities"}',
+                            tool_call_id="call-invalid",
+                        ),
+                    ),
+                )
+            return LmsToolChatResult(
+                provider="unit",
+                model="test-model",
+                finish_reason="tool_call",
+                text=None,
+                tool_calls=(
+                    LmsChatToolCall(
+                        tool_name="vault-get-file",
+                        args_json='{"file_path":"heidi.md"}',
+                        tool_call_id="call-valid",
+                    ),
+                ),
+            )
+
+    client = _FakeClient()
+    model = main._BrainSdkToolModel(  # type: ignore[arg-type]
+        client=client,
+        session_id="session-1",
+        source="agent",
+        principal="operator",
+        system_blocks=(),
+    )
+
+    response = asyncio.run(
+        model.request(
+            messages=[ModelRequest(parts=[UserPromptPart("hello")])],
+            model_settings=None,
+            model_request_parameters=ModelRequestParameters(
+                function_tools=[ToolDefinition(name="vault-get-file")]
+            ),
+        )
+    )
+
+    assert len(client.calls) == 2
+    assert (
+        client.calls[1].system.blocks[-1].text
+        == main._INVALID_TOOL_CALL_RETRY_INSTRUCTION
+    )
+    assert response.parts[0].tool_name == "vault-get-file"
+    assert response.parts[0].tool_call_id == "call-valid"
 
 
 def test_process_instruction_assembles_context_and_records_response() -> None:
@@ -1873,17 +2189,8 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
         )
     ]
     assert client.snapshots == ["01ARZ3NDEKTSV4RRFFQ69G5FAV"]
-    assert client.recorded == [
-        (
-            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-            "assistant reply",
-            "test-model",
-            "unit",
-            main._estimate_token_count("assistant reply"),
-            "standard",
-        )
-    ]
-    assert client.deliveries == [("01ARZ3NDEKTSV4RRFFQ69G5FAV", "turn-outbound", True)]
+    assert client.recorded == []
+    assert client.deliveries == []
     assert client.invoked == [
         (
             "attention-notify",
@@ -1891,6 +2198,13 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
                 "actor": "operator",
                 "channel": "signal",
                 "message": "assistant reply",
+                "conversational_memory": {
+                    "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                    "model": "test-model",
+                    "provider": "unit",
+                    "token_count": main._estimate_token_count("assistant reply"),
+                    "reasoning_level": "standard",
+                },
             },
             "operator",
             "signal",
@@ -1898,7 +2212,7 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
     ]
 
 
-def test_process_instruction_handles_lms_throttle_gracefully() -> None:
+def test_process_instruction_handles_lms_throttle_gracefully(monkeypatch) -> None:
     """Retryable LMS rate limiting should produce a fallback operator response."""
     from actors.agent import main
 
@@ -1990,6 +2304,10 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
                 ),
             )
 
+    async def _no_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(main.asyncio, "sleep", _no_sleep)
     client = _FakeClient()
     runtime = main._AgentRuntime(
         client=client,  # type: ignore[arg-type]
@@ -2020,16 +2338,7 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
     )
 
     assert response == main._LMS_THROTTLE_RESPONSE
-    assert client.recorded == [
-        (
-            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-            main._LMS_THROTTLE_RESPONSE,
-            "brain-sdk-lms",
-            "brain-sdk",
-            main._estimate_token_count(main._LMS_THROTTLE_RESPONSE),
-            "standard",
-        )
-    ]
+    assert client.recorded == []
     assert client.invoked == [
         (
             "attention-notify",
@@ -2037,14 +2346,23 @@ def test_process_instruction_handles_lms_throttle_gracefully() -> None:
                 "actor": "operator",
                 "channel": "signal",
                 "message": main._LMS_THROTTLE_RESPONSE,
+                "conversational_memory": {
+                    "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                    "model": "brain-sdk-lms",
+                    "provider": "brain-sdk",
+                    "token_count": main._estimate_token_count(
+                        main._LMS_THROTTLE_RESPONSE
+                    ),
+                    "reasoning_level": "standard",
+                },
             },
             "operator",
             "signal",
-        )
+        ),
     ]
 
 
-def test_process_instruction_handles_lms_timeout_gracefully() -> None:
+def test_process_instruction_handles_lms_timeout_gracefully(monkeypatch) -> None:
     """Retryable LMS timeout should produce a fallback operator response."""
     from actors.agent import main
 
@@ -2123,6 +2441,10 @@ def test_process_instruction_handles_lms_timeout_gracefully() -> None:
                 ),
             )
 
+    async def _no_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(main.asyncio, "sleep", _no_sleep)
     client = _FakeClient()
     runtime = main._AgentRuntime(
         client=client,  # type: ignore[arg-type]
@@ -2153,16 +2475,7 @@ def test_process_instruction_handles_lms_timeout_gracefully() -> None:
     )
 
     assert response == main._LMS_TIMEOUT_RESPONSE
-    assert client.recorded == [
-        (
-            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-            main._LMS_TIMEOUT_RESPONSE,
-            "brain-sdk-lms",
-            "brain-sdk",
-            main._estimate_token_count(main._LMS_TIMEOUT_RESPONSE),
-            "standard",
-        )
-    ]
+    assert client.recorded == []
     assert client.invoked == [
         (
             "attention-notify",
@@ -2170,10 +2483,19 @@ def test_process_instruction_handles_lms_timeout_gracefully() -> None:
                 "actor": "operator",
                 "channel": "signal",
                 "message": main._LMS_TIMEOUT_RESPONSE,
+                "conversational_memory": {
+                    "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                    "model": "brain-sdk-lms",
+                    "provider": "brain-sdk",
+                    "token_count": main._estimate_token_count(
+                        main._LMS_TIMEOUT_RESPONSE
+                    ),
+                    "reasoning_level": "standard",
+                },
             },
             "operator",
             "signal",
-        )
+        ),
     ]
 
 
@@ -2286,16 +2608,7 @@ def test_process_instruction_handles_lms_internal_error_gracefully() -> None:
     )
 
     assert response == main._LMS_GENERIC_ERROR_RESPONSE
-    assert client.recorded == [
-        (
-            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-            main._LMS_GENERIC_ERROR_RESPONSE,
-            "brain-sdk-lms",
-            "brain-sdk",
-            main._estimate_token_count(main._LMS_GENERIC_ERROR_RESPONSE),
-            "standard",
-        )
-    ]
+    assert client.recorded == []
     assert client.invoked == [
         (
             "attention-notify",
@@ -2303,6 +2616,15 @@ def test_process_instruction_handles_lms_internal_error_gracefully() -> None:
                 "actor": "operator",
                 "channel": "signal",
                 "message": main._LMS_GENERIC_ERROR_RESPONSE,
+                "conversational_memory": {
+                    "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                    "model": "brain-sdk-lms",
+                    "provider": "brain-sdk",
+                    "token_count": main._estimate_token_count(
+                        main._LMS_GENERIC_ERROR_RESPONSE
+                    ),
+                    "reasoning_level": "standard",
+                },
             },
             "operator",
             "signal",
@@ -2310,7 +2632,146 @@ def test_process_instruction_handles_lms_internal_error_gracefully() -> None:
     ]
 
 
-def test_process_instruction_handles_lms_transport_5xx_gracefully() -> None:
+def test_process_instruction_handles_retryable_internal_error_with_generic_fallback() -> (
+    None
+):
+    """Retryable internal errors from outside model.request still fall back cleanly."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.recorded: list[tuple[str, str, str, str, int, str]] = []
+            self.invoked: list[tuple[str, dict[str, object], str, str]] = []
+
+        def memory_record_inbound_turn(
+            self,
+            *,
+            session_id: str,
+            message: str,
+            instruction: SwitchboardOperatorInstruction | None = None,
+        ):
+            del message, instruction
+            return type("TurnRecord", (), {"id": f"{session_id}-inbound"})()
+
+        def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
+            del session_id
+            return MemoryContextBlock(
+                current_focus="current focus",
+                recent_conversation_summary="prior summary",
+                recent_turns=(),
+                reference_snippets=(),
+            )
+
+        def memory_record_outbound_candidate(
+            self,
+            *,
+            session_id: str,
+            content: str,
+            model: str,
+            provider: str,
+            token_count: int,
+            reasoning_level: str,
+        ):
+            self.recorded.append(
+                (session_id, content, model, provider, token_count, reasoning_level)
+            )
+            return type("TurnRecord", (), {"id": "turn-outbound"})()
+
+        def memory_record_outbound_delivery(
+            self,
+            *,
+            session_id: str,
+            turn_id: str,
+            delivered: bool,
+        ) -> bool:
+            del session_id, turn_id
+            return delivered
+
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+        ):
+            self.invoked.append((capability_id, input_payload, actor, channel))
+            return type("InvokeResult", (), {"output": {"decision": "sent"}})()
+
+    class _FakeAgent:
+        async def run(self, _prompt: str):
+            raise BrainInternalError(
+                message=(
+                    "lms.chat_with_tools domain failure: model returned "
+                    "unadvertised tool call(s): vault-list-directory"
+                ),
+                operation="lms.chat_with_tools",
+                details=(
+                    SdkErrorDetail(
+                        code="INVALID_TOOL_CALL",
+                        message="model returned unadvertised tool call",
+                        category="internal",
+                        retryable=True,
+                    ),
+                ),
+            )
+
+    client = _FakeClient()
+    runtime = main._AgentRuntime(
+        client=client,  # type: ignore[arg-type]
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        turn_state=main._TurnState(),
+        model=main._BrainSdkToolModel.__new__(main._BrainSdkToolModel),
+        agent=None,  # type: ignore[arg-type]
+        lms_request_timeout_seconds=45.0,
+    )
+    runtime.model.last_result = None
+    runtime.agent = _FakeAgent()  # type: ignore[assignment]
+
+    response = asyncio.run(
+        main._process_instruction(
+            runtime=runtime,
+            instruction=SwitchboardOperatorInstruction(
+                sender_e164="+12025550100",
+                message_text="hello",
+                timestamp_ms=1,
+                source_device="1",
+                source="signal",
+                group_id=None,
+                quote_target_timestamp_ms=None,
+                reaction_target_timestamp_ms=None,
+                reaction_emoji=None,
+                approval_intent=None,
+            ),
+        )
+    )
+
+    assert response == main._LMS_GENERIC_ERROR_RESPONSE
+    assert client.recorded == []
+    assert client.invoked == [
+        (
+            "attention-notify",
+            {
+                "actor": "operator",
+                "channel": "signal",
+                "message": main._LMS_GENERIC_ERROR_RESPONSE,
+                "conversational_memory": {
+                    "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                    "model": "brain-sdk-lms",
+                    "provider": "brain-sdk",
+                    "token_count": main._estimate_token_count(
+                        main._LMS_GENERIC_ERROR_RESPONSE
+                    ),
+                    "reasoning_level": "standard",
+                },
+            },
+            "operator",
+            "signal",
+        )
+    ]
+
+
+def test_process_instruction_handles_lms_transport_5xx_gracefully(monkeypatch) -> None:
     """LMS transport failures should produce the generic fallback response."""
     from actors.agent import main
 
@@ -2383,6 +2844,10 @@ def test_process_instruction_handles_lms_transport_5xx_gracefully() -> None:
                 retryable=False,
             )
 
+    async def _no_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(main.asyncio, "sleep", _no_sleep)
     client = _FakeClient()
     runtime = main._AgentRuntime(
         client=client,  # type: ignore[arg-type]
@@ -2413,16 +2878,7 @@ def test_process_instruction_handles_lms_transport_5xx_gracefully() -> None:
     )
 
     assert response == main._LMS_GENERIC_ERROR_RESPONSE
-    assert client.recorded == [
-        (
-            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-            main._LMS_GENERIC_ERROR_RESPONSE,
-            "brain-sdk-lms",
-            "brain-sdk",
-            main._estimate_token_count(main._LMS_GENERIC_ERROR_RESPONSE),
-            "standard",
-        )
-    ]
+    assert client.recorded == []
     assert client.invoked == [
         (
             "attention-notify",
@@ -2430,10 +2886,19 @@ def test_process_instruction_handles_lms_transport_5xx_gracefully() -> None:
                 "actor": "operator",
                 "channel": "signal",
                 "message": main._LMS_GENERIC_ERROR_RESPONSE,
+                "conversational_memory": {
+                    "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                    "model": "brain-sdk-lms",
+                    "provider": "brain-sdk",
+                    "token_count": main._estimate_token_count(
+                        main._LMS_GENERIC_ERROR_RESPONSE
+                    ),
+                    "reasoning_level": "standard",
+                },
             },
             "operator",
             "signal",
-        )
+        ),
     ]
 
 
@@ -2461,7 +2926,7 @@ def test_derive_lms_request_timeout_seconds_uses_largest_chat_provider_budget() 
         resources=ResourcesSettings.model_validate(
             {
                 "adapter": {
-                    "litellm": {
+                    "llm": {
                         "timeout_seconds": 20.0,
                         "timeout_retry_attempts": 2,
                         "timeout_retry_initial_delay_seconds": 0.5,
@@ -2718,6 +3183,84 @@ def test_runtime_discovery_tools_do_not_activate_capabilities_for_prepare_tools(
         "vault-search-files",
         main._SEARCH_TOOLS_TOOL_NAME,
     ]
+
+
+def test_allow_parallel_tool_calls_is_disabled_after_search_tool_result() -> None:
+    """Discovery results disable parallelism because the next hop may expose new tools."""
+    from actors.agent import main
+    from pydantic_ai.messages import ModelRequest, ToolReturnPart
+
+    assert (
+        main._allow_parallel_tool_calls(
+            messages=[
+                ModelRequest(
+                    parts=[
+                        ToolReturnPart(
+                            tool_name=main._SEARCH_TOOLS_TOOL_NAME,
+                            content="[]",
+                            tool_call_id="call-1",
+                        )
+                    ]
+                )
+            ]
+        )
+        is False
+    )
+
+
+def test_allow_parallel_tool_calls_is_disabled_after_get_tool_info_result() -> None:
+    """Tool-info results disable parallelism because they can change next-hop callability."""
+    from actors.agent import main
+    from pydantic_ai.messages import ModelRequest, ToolReturnPart
+
+    assert (
+        main._allow_parallel_tool_calls(
+            messages=[
+                ModelRequest(
+                    parts=[
+                        ToolReturnPart(
+                            tool_name=main._GET_TOOL_INFO_TOOL_NAME,
+                            content="{}",
+                            tool_call_id="call-1",
+                        )
+                    ]
+                )
+            ]
+        )
+        is False
+    )
+
+
+def test_allow_parallel_tool_calls_remains_enabled_after_non_discovery_results() -> (
+    None
+):
+    """Ordinary tool results keep parallelism enabled because they do not mutate tool exposure."""
+    from actors.agent import main
+    from pydantic_ai.messages import ModelRequest, ToolReturnPart
+
+    assert (
+        main._allow_parallel_tool_calls(
+            messages=[
+                ModelRequest(
+                    parts=[
+                        ToolReturnPart(
+                            tool_name="vault-get-file",
+                            content="{}",
+                            tool_call_id="call-1",
+                        )
+                    ]
+                )
+            ]
+        )
+        is True
+    )
+
+
+def test_allow_parallel_tool_calls_defaults_enabled_before_any_tool_results() -> None:
+    """The first LMS hop allows parallelism because no prior tool result can change availability."""
+    from actors.agent import main
+
+    assert main._allow_parallel_tool_calls(messages=[]) is True
 
 
 def test_runtime_discovery_tools_filter_denied_capabilities() -> None:

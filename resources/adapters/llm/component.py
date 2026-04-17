@@ -1,4 +1,4 @@
-"""Component declaration for LiteLLM adapter resource."""
+"""Component declaration for the native LLM adapter resource."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from packages.brain_shared.manifest import (
     register_component,
 )
 
-RESOURCE_COMPONENT_ID = ComponentId("adapter_litellm")
+RESOURCE_COMPONENT_ID = ComponentId("adapter_llm")
 
 MANIFEST = register_component(
     ResourceManifest(
@@ -20,7 +20,7 @@ MANIFEST = register_component(
         layer=0,
         system="action",
         kind="adapter",
-        module_roots=frozenset({ModuleRoot("resources.adapters.litellm")}),
+        module_roots=frozenset({ModuleRoot("resources.adapters.llm")}),
         owner_service_id=ComponentId("service_language_model"),
     )
 )
@@ -31,7 +31,7 @@ def build_component(
 ) -> object:
     """Build concrete runtime instance for this registered resource component."""
     del components
-    from resources.adapters.litellm.config import resolve_litellm_adapter_settings
-    from resources.adapters.litellm.litellm_adapter import LiteLlmLibraryAdapter
+    from resources.adapters.llm.config import resolve_llm_adapter_settings
+    from resources.adapters.llm.llm_adapter import HttpLlmAdapter
 
-    return LiteLlmLibraryAdapter(settings=resolve_litellm_adapter_settings(settings))
+    return HttpLlmAdapter(settings=resolve_llm_adapter_settings(settings))

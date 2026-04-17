@@ -97,6 +97,33 @@ class LanguageModelCallAuditRow(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class LanguageModelTurnCacheHopRow(BaseModel):
+    """One append-only per-hop cache telemetry row for tool-capable LMS calls."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    trace_id: str
+    hop_ordinal: int
+    call_index: int
+    envelope_id: str
+    provider: str
+    model: str
+    profile: str
+    placed_cachepoint_ordinal: int | None = None
+    cp0_active: bool = False
+    cp1_active: bool = False
+    cp2_active: bool = False
+    cp3_active: bool = False
+    active_cachepoint_count: int = 0
+    provider_cache_control_block_count: int = 0
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    estimated_write_premium_token_equiv: float = 0.0
+    estimated_read_savings_token_equiv: float = 0.0
+    estimated_net_token_equiv: float = 0.0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 __all__ = [
     "ChatResponse",
     "ChatToolCall",
@@ -105,5 +132,6 @@ __all__ = [
     "HealthStatus",
     "InferenceRequest",
     "LanguageModelCallAuditRow",
+    "LanguageModelTurnCacheHopRow",
     "ProviderCallAudit",
 ]

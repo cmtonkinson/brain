@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.action.language_model.component import SERVICE_COMPONENT_ID
@@ -10,14 +10,24 @@ from services.action.language_model.component import SERVICE_COMPONENT_ID
 DEFAULT_DOCUMENT_EMBEDDING_PROFILE = {
     "provider": "ollama",
     "model": "mxbai-embed-large",
+    "dimensions": 1024,
 }
 DEFAULT_CAPABILITY_EMBEDDING_PROFILE = {
     "provider": "ollama",
     "model": "mxbai-embed-large",
+    "dimensions": 1024,
 }
 DEFAULT_STANDARD_PROFILE = {
-    "provider": "ollama",
-    "model": "gpt-oss:20b",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6-20251001",
+}
+DEFAULT_QUICK_PROFILE = {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5-20251001",
+}
+DEFAULT_DEEP_PROFILE = {
+    "provider": "anthropic",
+    "model": "claude-opus-4-7",
 }
 
 
@@ -28,6 +38,16 @@ class LanguageModelProfileSettings(BaseModel):
 
     provider: str
     model: str
+
+
+class LanguageModelEmbeddingProfileSettings(BaseModel):
+    """Resolved model selector for one embedding profile."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    provider: str
+    model: str
+    dimensions: int = Field(gt=0)
 
 
 class LanguageModelOptionalProfileSettings(BaseModel):
@@ -44,17 +64,21 @@ class LanguageModelServiceSettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    document_embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
-        **DEFAULT_DOCUMENT_EMBEDDING_PROFILE
+    document_embedding: LanguageModelEmbeddingProfileSettings = (
+        LanguageModelEmbeddingProfileSettings(**DEFAULT_DOCUMENT_EMBEDDING_PROFILE)
     )
-    capability_embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
-        **DEFAULT_CAPABILITY_EMBEDDING_PROFILE
+    capability_embedding: LanguageModelEmbeddingProfileSettings = (
+        LanguageModelEmbeddingProfileSettings(**DEFAULT_CAPABILITY_EMBEDDING_PROFILE)
     )
-    quick: LanguageModelProfileSettings
+    quick: LanguageModelProfileSettings = LanguageModelProfileSettings(
+        **DEFAULT_QUICK_PROFILE
+    )
     standard: LanguageModelProfileSettings = LanguageModelProfileSettings(
         **DEFAULT_STANDARD_PROFILE
     )
-    deep: LanguageModelProfileSettings
+    deep: LanguageModelProfileSettings = LanguageModelProfileSettings(
+        **DEFAULT_DEEP_PROFILE
+    )
 
 
 class _LanguageModelServiceSettingsInput(BaseModel):
@@ -62,17 +86,21 @@ class _LanguageModelServiceSettingsInput(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    document_embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
-        **DEFAULT_DOCUMENT_EMBEDDING_PROFILE
+    document_embedding: LanguageModelEmbeddingProfileSettings = (
+        LanguageModelEmbeddingProfileSettings(**DEFAULT_DOCUMENT_EMBEDDING_PROFILE)
     )
-    capability_embedding: LanguageModelProfileSettings = LanguageModelProfileSettings(
-        **DEFAULT_CAPABILITY_EMBEDDING_PROFILE
+    capability_embedding: LanguageModelEmbeddingProfileSettings = (
+        LanguageModelEmbeddingProfileSettings(**DEFAULT_CAPABILITY_EMBEDDING_PROFILE)
     )
-    quick: LanguageModelOptionalProfileSettings = LanguageModelOptionalProfileSettings()
+    quick: LanguageModelOptionalProfileSettings = LanguageModelOptionalProfileSettings(
+        **DEFAULT_QUICK_PROFILE
+    )
     standard: LanguageModelProfileSettings = LanguageModelProfileSettings(
         **DEFAULT_STANDARD_PROFILE
     )
-    deep: LanguageModelOptionalProfileSettings = LanguageModelOptionalProfileSettings()
+    deep: LanguageModelOptionalProfileSettings = LanguageModelOptionalProfileSettings(
+        **DEFAULT_DEEP_PROFILE
+    )
 
 
 def resolve_language_model_service_settings(

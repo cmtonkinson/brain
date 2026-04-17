@@ -594,8 +594,8 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
 
     def _find_capability_embedding_spec(self, *, meta: EnvelopeMeta):
         """Return the current capability-embedding spec when already materialized."""
-        provider, _, model = self._capability_embedding_profile_fingerprint.partition(
-            ":"
+        provider, model, dimensions = _parse_capability_embedding_profile_fingerprint(
+            self._capability_embedding_profile_fingerprint
         )
         specs = self._embedding_authority_service.list_specs(meta=meta, limit=1000)
         if specs.payload is None:
@@ -605,6 +605,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 spec.provider == provider
                 and spec.name == model
                 and spec.version == _CAPABILITY_EMBEDDING_VERSION
+                and spec.dimensions == dimensions
             ):
                 return spec
         return None
@@ -1068,4 +1069,30 @@ def _resolve_capability_embedding_profile_fingerprint(
         return ""
     provider = str(capability_embedding.get("provider", "")).strip()
     model = str(capability_embedding.get("model", "")).strip()
-    return f"{provider}:{model}"
+    dimensions = int(capability_embedding.get("dimensions", 0) or 0)
+    return json.dumps(
+        {
+            "provider": provider,
+            "model": model,
+            "dimensions": dimensions,
+        },
+        sort_keys=True,
+    )
+
+
+def _parse_capability_embedding_profile_fingerprint(
+    fingerprint: str,
+) -> tuple[str, str, int]:
+    """Parse the configured capability-embedding fingerprint into lookup fields."""
+    if fingerprint.strip() == "":
+        return "", "", 0
+    try:
+        payload = json.loads(fingerprint)
+    except json.JSONDecodeError:
+        return "", "", 0
+    if not isinstance(payload, dict):
+        return "", "", 0
+    provider = str(payload.get("provider", "")).strip()
+    model = str(payload.get("model", "")).strip()
+    dimensions = int(payload.get("dimensions", 0) or 0)
+    return provider, model, dimensions

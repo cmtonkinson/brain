@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from services.state.memory_authority.service import ConversationalMemoryContext
 
 
 def _strip_text(value: object) -> object:
@@ -24,6 +25,7 @@ class RouteNotificationRequest(BaseModel):
     dedupe_key: str = Field(default="", min_length=0)
     batch_key: str = Field(default="", min_length=0)
     force: bool = False
+    conversational_memory: ConversationalMemoryContext | None = None
 
     @field_validator(
         "actor",

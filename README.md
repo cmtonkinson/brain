@@ -128,7 +128,6 @@ environment setup, and how to build/test.
 
 [Claude Cowork]: https://claude.com/product/cowork
 [Grafana]: https://grafana.com
-[LiteLLM]: https://docs.litellm.ai
 [Local REST API]: https://github.com/coddingtonbear/obsidian-local-rest-api
 [Loki]: https://grafana.com/oss/loki/
 [Obsidian]: https://obsidian.md

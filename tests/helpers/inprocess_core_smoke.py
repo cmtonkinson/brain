@@ -28,12 +28,12 @@ from packages.brain_shared.envelope import (
 )
 from packages.brain_shared.errors import ErrorDetail
 from packages.brain_shared.http.server import create_app
-from resources.adapters.litellm import (
+from resources.adapters.llm import (
     AdapterChatResult,
     AdapterEmbeddingResult,
     AdapterHealthResult,
     AdapterToolChatResult,
-    LiteLlmAdapter,
+    LlmAdapter,
 )
 from resources.adapters.signal import (
     SignalAdapter,
@@ -59,6 +59,7 @@ from services.action.capability_engine.implementation import (
 from services.action.capability_engine.registry import CapabilityRegistry
 from services.action.language_model.api import register_routes as register_lms_routes
 from services.action.language_model.config import (
+    LanguageModelEmbeddingProfileSettings,
     LanguageModelProfileSettings,
     LanguageModelServiceSettings,
 )
@@ -86,7 +87,7 @@ from services.state.memory_authority.tests.test_memory_authority_service import 
 )
 
 
-class _FakeLiteLlmAdapter(LiteLlmAdapter):
+class _FakeLlmAdapter(LlmAdapter):
     """Deterministic LMS adapter fake for in-process smoke runs."""
 
     def __init__(self) -> None:
@@ -122,18 +123,28 @@ class _FakeLiteLlmAdapter(LiteLlmAdapter):
             finish_reason="stop",
         )
 
-    def embed(self, *, provider: str, model: str, text: str) -> AdapterEmbeddingResult:
-        del provider, model, text
+    def embed(
+        self,
+        *,
+        provider: str,
+        model: str,
+        text: str,
+        dimensions: int | None = None,
+    ) -> AdapterEmbeddingResult:
+        del provider, model, text, dimensions
         return AdapterEmbeddingResult(values=(0.1, 0.2), provider="unit", model="embed")
 
-    def embed_batch(self, *, provider: str, model: str, texts):
+    def embed_batch(
+        self, *, provider: str, model: str, texts, dimensions: int | None = None
+    ):
+        del provider, model, texts, dimensions
         raise NotImplementedError
 
     def health(self) -> AdapterHealthResult:
         return AdapterHealthResult(adapter_ready=True, detail="ok")
 
 
-class _ScriptedLiteLlmAdapter(LiteLlmAdapter):
+class _ScriptedLlmAdapter(LlmAdapter):
     """Scripted LMS adapter fake for multi-round in-process smoke runs."""
 
     def __init__(
@@ -176,11 +187,21 @@ class _ScriptedLiteLlmAdapter(LiteLlmAdapter):
             )
         return self._tool_chat_results.pop(0)
 
-    def embed(self, *, provider: str, model: str, text: str) -> AdapterEmbeddingResult:
-        del provider, model, text
+    def embed(
+        self,
+        *,
+        provider: str,
+        model: str,
+        text: str,
+        dimensions: int | None = None,
+    ) -> AdapterEmbeddingResult:
+        del provider, model, text, dimensions
         return AdapterEmbeddingResult(values=(0.1, 0.2), provider="unit", model="embed")
 
-    def embed_batch(self, *, provider: str, model: str, texts):
+    def embed_batch(
+        self, *, provider: str, model: str, texts, dimensions: int | None = None
+    ):
+        del provider, model, texts, dimensions
         raise NotImplementedError
 
     def health(self) -> AdapterHealthResult:
@@ -428,18 +449,18 @@ def _build_core_app(
         adapter=signal,
         cache_service=cache,
     )
-    adapter: LiteLlmAdapter = (
-        _ScriptedLiteLlmAdapter(tool_chat_results=tool_chat_results)
+    adapter: LlmAdapter = (
+        _ScriptedLlmAdapter(tool_chat_results=tool_chat_results)
         if len(tool_chat_results) > 0
-        else _FakeLiteLlmAdapter()
+        else _FakeLlmAdapter()
     )
     lms = DefaultLanguageModelService(
         settings=LanguageModelServiceSettings(
-            document_embedding=LanguageModelProfileSettings(
-                provider="unit", model="embed"
+            document_embedding=LanguageModelEmbeddingProfileSettings(
+                provider="unit", model="embed", dimensions=1024
             ),
-            capability_embedding=LanguageModelProfileSettings(
-                provider="unit", model="embed-capability"
+            capability_embedding=LanguageModelEmbeddingProfileSettings(
+                provider="unit", model="embed-capability", dimensions=1024
             ),
             quick=LanguageModelProfileSettings(provider="unit", model="quick"),
             standard=LanguageModelProfileSettings(provider="unit", model="standard"),

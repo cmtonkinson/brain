@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from services.action.language_model.domain import LanguageModelCallAuditRow
+from services.action.language_model.domain import (
+    LanguageModelCallAuditRow,
+    LanguageModelTurnCacheHopRow,
+)
 
 
 class LanguageModelCallAuditRepository(Protocol):
@@ -18,3 +21,15 @@ class LanguageModelCallAuditRepository(Protocol):
 
     def count(self) -> int:
         """Return total persisted provider call audit row count."""
+
+
+class LanguageModelTurnCacheHopRepository(Protocol):
+    """Protocol for append-only LMS per-hop cache telemetry persistence."""
+
+    def append(
+        self, *, row: LanguageModelTurnCacheHopRow
+    ) -> LanguageModelTurnCacheHopRow:
+        """Persist one per-hop cache telemetry row and return stored value."""
+
+    def next_hop_ordinal(self, *, trace_id: str) -> int:
+        """Return the next chat-with-tools hop ordinal for one trace."""

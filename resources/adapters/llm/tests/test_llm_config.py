@@ -1,4 +1,4 @@
-"""Tests for LiteLLM adapter settings resolution."""
+"""Tests for native LLM adapter settings resolution."""
 
 from __future__ import annotations
 
@@ -7,35 +7,35 @@ from packages.brain_shared.config import (
     CoreSettings,
     ResourcesSettings,
 )
-from resources.adapters.litellm.config import (
-    LiteLlmAdapterSettings,
-    LiteLlmProviderSettings,
+from resources.adapters.llm.config import (
+    LlmAdapterSettings,
+    LlmProviderSettings,
     max_timeout_retry_budget_seconds,
-    resolve_litellm_adapter_settings,
+    resolve_llm_adapter_settings,
     timeout_retry_backoff_schedule_seconds,
 )
 
 
-def test_resolve_litellm_adapter_settings_defaults() -> None:
+def test_resolve_llm_adapter_settings_defaults() -> None:
     """Resolver should return model defaults when component section is absent."""
     settings = CoreRuntimeSettings(
         core=CoreSettings.model_validate({}),
         resources=ResourcesSettings.model_validate({}),
     )
 
-    resolved = resolve_litellm_adapter_settings(settings)
+    resolved = resolve_llm_adapter_settings(settings)
 
-    assert resolved == LiteLlmAdapterSettings()
+    assert resolved == LlmAdapterSettings()
 
 
-def test_resolve_litellm_adapter_settings_component_override() -> None:
+def test_resolve_llm_adapter_settings_component_override() -> None:
     """Resolver should deep-merge component overrides onto model defaults."""
     settings = CoreRuntimeSettings(
         core=CoreSettings.model_validate({}),
         resources=ResourcesSettings.model_validate(
             {
                 "adapter": {
-                    "litellm": {
+                    "llm": {
                         "timeout_seconds": 5.5,
                         "max_retries": 1,
                         "providers": {
@@ -51,14 +51,24 @@ def test_resolve_litellm_adapter_settings_component_override() -> None:
         ),
     )
 
-    resolved = resolve_litellm_adapter_settings(settings)
+    resolved = resolve_llm_adapter_settings(settings)
 
     assert resolved.timeout_seconds == 5.5
     assert resolved.max_retries == 1
     assert resolved.timeout_retry_attempts == 2
     assert resolved.providers == {
-        "ollama": LiteLlmProviderSettings(api_base="http://host.docker.internal:11434"),
-        "openai": LiteLlmProviderSettings(
+        "voyage": LlmProviderSettings(
+            api_base="https://api.voyageai.com",
+            options={"output_dimension": 2048},
+        ),
+        "ollama": LlmProviderSettings(
+            api_base="http://host.docker.internal:11434",
+        ),
+        "anthropic": LlmProviderSettings(
+            api_base="https://api.anthropic.com",
+            options={"max_tokens": 1024},
+        ),
+        "openai": LlmProviderSettings(
             api_key_env="OPENAI_API_KEY",
             timeout_seconds=7.5,
             max_retries=4,
@@ -68,14 +78,14 @@ def test_resolve_litellm_adapter_settings_component_override() -> None:
 
 def test_timeout_retry_budget_helpers_reflect_backoff_and_margin() -> None:
     """Timeout budget helpers should include retries, backoff, and margin."""
-    settings = LiteLlmAdapterSettings(
+    settings = LlmAdapterSettings(
         timeout_seconds=10.0,
         timeout_retry_attempts=2,
         timeout_retry_initial_delay_seconds=0.5,
         timeout_retry_max_delay_seconds=2.0,
         timeout_retry_backoff_multiplier=2.0,
         providers={
-            "anthropic": LiteLlmProviderSettings(timeout_seconds=12.0),
+            "anthropic": LlmProviderSettings(timeout_seconds=12.0),
         },
     )
 

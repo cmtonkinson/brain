@@ -14,7 +14,8 @@
     "message": "string | The notification body to route.",
     "dedupe_key": "string | optional | Suppress duplicate sends within configured dedupe window.",
     "batch_key": "string | optional | Queue into batch instead of immediate send.",
-    "force": "boolean | optional | Bypass dedupe, batch, and rate-limit suppression checks. Defaults to false."
+    "force": "boolean | optional | Bypass dedupe, batch, and rate-limit suppression checks. Defaults to false.",
+    "conversational_memory": "object | null | optional | MAS-owned conversational outbound metadata with session_id, model, provider, token_count, and reasoning_level. Persisted only when a conversational channel actually sends."
   },
   "output_schema": {
     "decision": "string | Router decision outcome: sent, suppressed, or batched.",

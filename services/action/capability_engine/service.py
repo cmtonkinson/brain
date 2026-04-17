@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import json
 
 from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
@@ -139,4 +140,12 @@ def _capability_embedding_profile_fingerprint(settings: CoreRuntimeSettings) -> 
         return ""
     provider = str(capability_embedding.get("provider", "")).strip()
     model = str(capability_embedding.get("model", "")).strip()
-    return f"{provider}:{model}"
+    dimensions = int(capability_embedding.get("dimensions", 0) or 0)
+    return json.dumps(
+        {
+            "provider": provider,
+            "model": model,
+            "dimensions": dimensions,
+        },
+        sort_keys=True,
+    )

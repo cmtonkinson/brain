@@ -27,8 +27,8 @@ from packages.brain_shared.config import (
 )
 from packages.brain_shared.config.models import AgentActorSettings, CliActorSettings
 from packages.brain_shared.config.models import OperatorProfileSettings
-from resources.adapters.litellm.config import resolve_litellm_adapter_settings
-from resources.adapters.litellm.config import LiteLlmAdapterSettings
+from resources.adapters.llm.config import resolve_llm_adapter_settings
+from resources.adapters.llm.config import LlmAdapterSettings
 from resources.adapters.signal.config import SignalAdapterSettings
 from resources.substrates.filesystem.config import FilesystemSubstrateSettings
 from resources.substrates.obsidian.config import ObsidianSubstrateSettings
@@ -231,10 +231,10 @@ def test_load_resources_settings_deep_merges_yaml_mappings(tmp_path: Path) -> No
         "\n".join(
             [
                 "adapter:",
-                "  litellm:",
+                "  llm:",
                 "    providers:",
-                "      ollama:",
-                "        api_base: http://host.docker.internal:11434",
+                "      anthropic:",
+                "        api_base: https://api.anthropic.com",
             ]
         ),
         encoding="utf-8",
@@ -244,7 +244,7 @@ def test_load_resources_settings_deep_merges_yaml_mappings(tmp_path: Path) -> No
         "\n".join(
             [
                 "adapter:",
-                "  litellm:",
+                "  llm:",
                 "    providers:",
                 "      anthropic:",
                 "        api_key: secret-key",
@@ -260,12 +260,17 @@ def test_load_resources_settings_deep_merges_yaml_mappings(tmp_path: Path) -> No
         environ={},
     )
 
-    assert resources.adapter.model_dump(mode="python")["litellm"]["providers"] == {
-        "ollama": {"api_base": "http://host.docker.internal:11434"},
-        "anthropic": {"api_key": "secret-key"},
+    assert resources.adapter.model_dump(mode="python")["llm"]["providers"] == {
+        "anthropic": {
+            "api_base": "https://api.anthropic.com",
+            "api_key": "secret-key",
+        },
     }
-    resolved = resolve_litellm_adapter_settings(runtime)
-    assert set(resolved.providers) == {"ollama", "anthropic"}
+    resolved = resolve_llm_adapter_settings(runtime)
+    assert set(resolved.providers) == {"anthropic", "voyage", "ollama"}
+    assert resolved.providers["voyage"].api_base == "https://api.voyageai.com"
+    assert resolved.providers["voyage"].options == {"output_dimension": 2048}
+    assert resolved.providers["ollama"].api_base == "http://host.docker.internal:11434"
 
 
 def test_resolve_component_settings_deep_merges_component_model_defaults() -> None:
@@ -275,7 +280,7 @@ def test_resolve_component_settings_deep_merges_component_model_defaults() -> No
         resources=ResourcesSettings.model_validate(
             {
                 "adapter": {
-                    "litellm": {
+                    "llm": {
                         "providers": {
                             "anthropic": {
                                 "api_key": "secret-key",
@@ -287,10 +292,13 @@ def test_resolve_component_settings_deep_merges_component_model_defaults() -> No
         ),
     )
 
-    resolved = resolve_litellm_adapter_settings(runtime)
+    resolved = resolve_llm_adapter_settings(runtime)
 
-    assert set(resolved.providers) == {"ollama", "anthropic"}
+    assert set(resolved.providers) == {"anthropic", "voyage", "ollama"}
+    assert resolved.providers["voyage"].api_base == "https://api.voyageai.com"
+    assert resolved.providers["voyage"].options == {"output_dimension": 2048}
     assert resolved.providers["ollama"].api_base == "http://host.docker.internal:11434"
+    assert resolved.providers["anthropic"].api_base == "https://api.anthropic.com"
     assert resolved.providers["anthropic"].api_key == "secret-key"
 
 
@@ -425,10 +433,7 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
             "object_authority": ObjectAuthoritySettings().model_dump(mode="json"),
             "policy_service": PolicyServiceSettings().model_dump(mode="json"),
             "vault_authority": VaultAuthoritySettings().model_dump(mode="json"),
-            "language_model": LanguageModelServiceSettings(
-                quick=LanguageModelServiceSettings.model_fields["standard"].default,
-                deep=LanguageModelServiceSettings.model_fields["standard"].default,
-            ).model_dump(mode="json"),
+            "language_model": LanguageModelServiceSettings().model_dump(mode="json"),
             "switchboard": {
                 "queue_name": "signal_inbound",
                 "callback_register_max_retries": 8,
@@ -452,27 +457,47 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
             "redis": RedisSettings().model_dump(mode="json"),
         },
         "adapter": {
-            "litellm": {
-                "timeout_seconds": LiteLlmAdapterSettings().timeout_seconds,
-                "max_retries": LiteLlmAdapterSettings().max_retries,
-                "timeout_retry_attempts": LiteLlmAdapterSettings().timeout_retry_attempts,
-                "timeout_retry_initial_delay_seconds": LiteLlmAdapterSettings().timeout_retry_initial_delay_seconds,
-                "timeout_retry_max_delay_seconds": LiteLlmAdapterSettings().timeout_retry_max_delay_seconds,
-                "timeout_retry_backoff_multiplier": LiteLlmAdapterSettings().timeout_retry_backoff_multiplier,
-                "timeout_retry_jitter_ratio": LiteLlmAdapterSettings().timeout_retry_jitter_ratio,
+            "llm": {
+                "timeout_seconds": LlmAdapterSettings().timeout_seconds,
+                "max_retries": LlmAdapterSettings().max_retries,
+                "timeout_retry_attempts": LlmAdapterSettings().timeout_retry_attempts,
+                "timeout_retry_initial_delay_seconds": LlmAdapterSettings().timeout_retry_initial_delay_seconds,
+                "timeout_retry_max_delay_seconds": LlmAdapterSettings().timeout_retry_max_delay_seconds,
+                "timeout_retry_backoff_multiplier": LlmAdapterSettings().timeout_retry_backoff_multiplier,
+                "timeout_retry_jitter_ratio": LlmAdapterSettings().timeout_retry_jitter_ratio,
                 "providers": {
+                    "voyage": {
+                        "api_base": LlmAdapterSettings().providers["voyage"].api_base,
+                        "timeout_seconds": LlmAdapterSettings()
+                        .providers["voyage"]
+                        .timeout_seconds,
+                        "max_retries": LlmAdapterSettings()
+                        .providers["voyage"]
+                        .max_retries,
+                        "options": LlmAdapterSettings().providers["voyage"].options,
+                    },
                     "ollama": {
-                        "api_base": LiteLlmAdapterSettings()
-                        .providers["ollama"]
-                        .api_base,
-                        "timeout_seconds": LiteLlmAdapterSettings()
+                        "api_base": LlmAdapterSettings().providers["ollama"].api_base,
+                        "timeout_seconds": LlmAdapterSettings()
                         .providers["ollama"]
                         .timeout_seconds,
-                        "max_retries": LiteLlmAdapterSettings()
+                        "max_retries": LlmAdapterSettings()
                         .providers["ollama"]
                         .max_retries,
-                        "options": LiteLlmAdapterSettings().providers["ollama"].options,
-                    }
+                        "options": LlmAdapterSettings().providers["ollama"].options,
+                    },
+                    "anthropic": {
+                        "api_base": LlmAdapterSettings()
+                        .providers["anthropic"]
+                        .api_base,
+                        "timeout_seconds": LlmAdapterSettings()
+                        .providers["anthropic"]
+                        .timeout_seconds,
+                        "max_retries": LlmAdapterSettings()
+                        .providers["anthropic"]
+                        .max_retries,
+                        "options": LlmAdapterSettings().providers["anthropic"].options,
+                    },
                 },
             },
             "signal": {
@@ -528,10 +553,10 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
         "substrate": {"obsidian": {"api_key": "replace-me"}},
         "adapter": {
             "signal": {"receive_e164": "+13333333333"},
-            "litellm": {
+            "llm": {
                 "providers": {
-                    "openai": {"api_key": "replace-me"},
                     "anthropic": {"api_key": "replace-me"},
+                    "voyage": {"api_key": "replace-me"},
                 }
             },
         },

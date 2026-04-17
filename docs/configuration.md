@@ -51,7 +51,7 @@ BRAIN_RESOURCES__SUBSTRATE__POSTGRES__URL=postgresql+psycopg://user:pass@host:54
 BRAIN_RESOURCES__SUBSTRATE__POSTGRES__POOL_SIZE=10
 BRAIN_RESOURCES__SUBSTRATE__QDRANT__URL=http://qdrant:6333
 BRAIN_RESOURCES__SUBSTRATE__REDIS__URL=redis://redis:6379/0
-BRAIN_RESOURCES__ADAPTER__LITELLM__BASE_URL=http://litellm:4000
+BRAIN_RESOURCES__ADAPTER__LITELLM__BASE_URL=http://llm:4000
 BRAIN_RESOURCES_ADAPTER__SIGNAL__BASE_URL=http://signal-api:8080
 BRAIN_ACTORS__CORE__HOST=127.0.0.1
 BRAIN_ACTORS__CORE__PORT=8898
@@ -82,7 +82,7 @@ Actor->Core connection settings.
 |---|---|---|
 | `host` | `127.0.0.1` | Core host used for actor SDK calls. |
 | `port` | `8898` | Core port used for actor SDK calls. |
-| `timeout_seconds` | `30.0` | Default per-request actor->Core timeout. LMS chat/tool-chat calls may use a larger derived timeout based on LiteLLM timeout-retry budget. |
+| `timeout_seconds` | `30.0` | Default per-request actor->Core timeout. LMS chat/tool-chat calls may use a larger derived timeout based on native LLM timeout-retry budget. |
 
 ------------------------------------------------------------------------
 ## `logging`
@@ -195,12 +195,12 @@ Filesystem substrate defaults for OAS blob persistence.
 | `fsync_writes` | `true` | When `true`, fsync temp files before atomic replace. |
 | `default_extension` | `blob` | Default extension used when OAS put requests omit extension. |
 
-### `resources.adapter.litellm`
-LiteLLM adapter connection defaults.
+### `resources.adapter.llm`
+native LLM adapter connection defaults.
 
 | Key | Default | Description |
 |---|---|---|
-| `base_url` | `http://litellm:4000` | Base URL for LiteLLM gateway HTTP endpoints. |
+| `base_url` | `http://llm:4000` | Base URL for native LLM gateway HTTP endpoints. |
 | `api_key` | `""` | Optional API token sent as `Authorization: Bearer <token>`. |
 | `timeout_seconds` | `30.0` | Per-request HTTP timeout. Must be > 0. |
 | `max_retries` | `2` | Number of retries for dependency-style failures (network/5xx). Must be >= 0. |
@@ -284,8 +284,12 @@ Language Model Service profile settings.
 
 | Key | Default | Description |
 |---|---|---|
-| `embedding.provider` | `ollama` | Provider used for embedding generation requests. |
-| `embedding.model` | `mxbai-embed-large` | Model identifier used for embedding generation requests. |
+| `document_embedding.provider` | `ollama` | Provider used for document embedding generation requests. |
+| `document_embedding.model` | `mxbai-embed-large` | Model identifier used for document embedding generation requests. |
+| `document_embedding.dimensions` | `1024` | Output vector dimensions requested for document embedding generation. Must be > 0. |
+| `capability_embedding.provider` | `ollama` | Provider used for capability discovery embedding requests. |
+| `capability_embedding.model` | `mxbai-embed-large` | Model identifier used for capability discovery embedding requests. |
+| `capability_embedding.dimensions` | `1024` | Output vector dimensions requested for capability discovery embedding generation. Must be > 0. |
 | `quick.provider` | `""` | Optional quick provider override; falls back to `standard.provider` when unset/blank. |
 | `quick.model` | `""` | Optional quick model override; falls back to `standard.model` when unset/blank. |
 | `standard.provider` | `ollama` | Standard chat provider used for standard requests and fallback resolution. |

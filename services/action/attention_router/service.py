@@ -13,6 +13,10 @@ from services.action.attention_router.domain import (
     HealthStatus,
     RouteNotificationResult,
 )
+from services.state.memory_authority.service import (
+    ConversationalMemoryContext,
+    MemoryAuthorityService,
+)
 from services.state.cache_authority.service import CacheAuthorityService
 
 
@@ -31,6 +35,7 @@ class AttentionRouterService(ABC):
         dedupe_key: str = "",
         batch_key: str = "",
         force: bool = False,
+        conversational_memory: ConversationalMemoryContext | None = None,
     ) -> Envelope[RouteNotificationResult]:
         """Route one outbound notification and decide suppress/send/batch."""
 
@@ -91,6 +96,7 @@ def build_attention_router_service(
     settings: CoreRuntimeSettings,
     signal_adapter: SignalAdapter | None = None,
     cache_authority_service: CacheAuthorityService | None = None,
+    memory_authority_service: MemoryAuthorityService | None = None,
 ) -> AttentionRouterService:
     """Build default Attention Router implementation from typed settings."""
     from resources.adapters.signal import (
@@ -112,4 +118,5 @@ def build_attention_router_service(
         or SignalRestApiAdapter(settings=adapter_settings),
         signal_receive_e164=adapter_settings.receive_e164,
         cache_authority_service=cache_authority_service,
+        memory_authority_service=memory_authority_service,
     )

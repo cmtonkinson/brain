@@ -8,6 +8,7 @@ from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from services.action.language_model.service import LanguageModelService
 from services.state.memory_authority.domain import (
+    ConversationalMemoryContext,
     ContextBlock,
     FocusRecord,
     HealthStatus,
@@ -146,3 +147,16 @@ def build_memory_authority_service(
         settings=settings,
         language_model=language_model,
     )
+
+
+__all__ = [
+    "ContextBlock",
+    "ConversationalMemoryContext",
+    "FocusRecord",
+    "HealthStatus",
+    "InboundInstructionRecord",
+    "MemoryAuthorityService",
+    "SessionRecord",
+    "TurnRecord",
+    "build_memory_authority_service",
+]

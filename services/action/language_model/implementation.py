@@ -24,22 +24,24 @@ from packages.brain_shared.errors import (
     validation_error,
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
-from resources.adapters.litellm import (
+from resources.adapters.llm import (
     AdapterDependencyError,
     AdapterInternalError,
     AdapterProviderCallAudit,
-    LiteLlmAdapter,
-    LiteLlmLibraryAdapter,
-    resolve_litellm_adapter_settings,
+    LlmAdapter,
+    HttpLlmAdapter,
+    resolve_llm_adapter_settings,
 )
 from services.action.language_model.component import SERVICE_COMPONENT_ID
 from services.action.language_model.config import (
+    LanguageModelEmbeddingProfileSettings,
     LanguageModelProfileSettings,
     LanguageModelServiceSettings,
     resolve_language_model_service_settings,
 )
 from services.action.language_model.data.repository import (
     InMemoryLanguageModelCallAuditRepository,
+    InMemoryLanguageModelTurnCacheHopRepository,
 )
 from services.action.language_model.domain import (
     ChatResponse,
@@ -49,8 +51,12 @@ from services.action.language_model.domain import (
     HealthStatus,
     InferenceRequest,
     LanguageModelCallAuditRow,
+    LanguageModelTurnCacheHopRow,
 )
-from services.action.language_model.interfaces import LanguageModelCallAuditRepository
+from services.action.language_model.interfaces import (
+    LanguageModelCallAuditRepository,
+    LanguageModelTurnCacheHopRepository,
+)
 from services.action.language_model.service import LanguageModelService
 from services.action.language_model.validation import (
     ChatBatchRequest,
@@ -63,6 +69,8 @@ from services.action.language_model.validation import (
 )
 
 _LOGGER = get_logger(__name__)
+_CACHE_WRITE_PREMIUM_MULTIPLIER = 0.25
+_CACHE_READ_DISCOUNT_MULTIPLIER = 0.90
 
 
 @dataclass(frozen=True)
@@ -71,17 +79,19 @@ class _ResolvedProfile:
 
     provider: str
     model: str
+    dimensions: int | None = None
 
 
 class DefaultLanguageModelService(LanguageModelService):
-    """Default LMS implementation backed by a LiteLLM adapter resource."""
+    """Default LMS implementation backed by the native LLM adapter resource."""
 
     def __init__(
         self,
         *,
         settings: LanguageModelServiceSettings,
-        adapter: LiteLlmAdapter,
+        adapter: LlmAdapter,
         audit_repository: LanguageModelCallAuditRepository | None = None,
+        turn_cache_hop_repository: LanguageModelTurnCacheHopRepository | None = None,
     ) -> None:
         self._settings = settings
         self._adapter = adapter
@@ -90,6 +100,11 @@ class DefaultLanguageModelService(LanguageModelService):
             if audit_repository is None
             else audit_repository
         )
+        self._turn_cache_hop_repository = (
+            InMemoryLanguageModelTurnCacheHopRepository()
+            if turn_cache_hop_repository is None
+            else turn_cache_hop_repository
+        )
 
     @classmethod
     def from_settings(
@@ -97,10 +112,10 @@ class DefaultLanguageModelService(LanguageModelService):
     ) -> "DefaultLanguageModelService":
         """Build LMS and owned adapter from typed root settings."""
         service_settings = resolve_language_model_service_settings(settings)
-        adapter_settings = resolve_litellm_adapter_settings(settings)
+        adapter_settings = resolve_llm_adapter_settings(settings)
         return cls(
             settings=service_settings,
-            adapter=LiteLlmLibraryAdapter(settings=adapter_settings),
+            adapter=HttpLlmAdapter(settings=adapter_settings),
         )
 
     @public_api_instrumented(
@@ -147,15 +162,15 @@ class DefaultLanguageModelService(LanguageModelService):
                 request_phase="initial",
                 outcome_kind="error",
                 raw_call=getattr(exc, "raw_call", None),
-                error_message=str(exc) or "litellm dependency failure",
+                error_message=str(exc) or "llm dependency failure",
             )
             return failure(
                 meta=meta,
                 errors=[
                     dependency_error(
-                        str(exc) or "litellm dependency failure",
+                        str(exc) or "llm dependency failure",
                         code=codes.DEPENDENCY_UNAVAILABLE,
-                        metadata={"adapter": "adapter_litellm"},
+                        metadata={"adapter": "adapter_llm"},
                     )
                 ],
             )
@@ -169,15 +184,15 @@ class DefaultLanguageModelService(LanguageModelService):
                 request_phase="initial",
                 outcome_kind="error",
                 raw_call=getattr(exc, "raw_call", None),
-                error_message=str(exc) or "litellm adapter internal failure",
+                error_message=str(exc) or "llm adapter internal failure",
             )
             return failure(
                 meta=meta,
                 errors=[
                     internal_error(
-                        str(exc) or "litellm adapter internal failure",
+                        str(exc) or "llm adapter internal failure",
                         code=codes.INTERNAL_ERROR,
-                        metadata={"adapter": "adapter_litellm"},
+                        metadata={"adapter": "adapter_llm"},
                     )
                 ],
             )
@@ -239,15 +254,15 @@ class DefaultLanguageModelService(LanguageModelService):
                 request_phase="initial",
                 outcome_kind="error",
                 raw_call=getattr(exc, "raw_call", None),
-                error_message=str(exc) or "litellm dependency failure",
+                error_message=str(exc) or "llm dependency failure",
             )
             return failure(
                 meta=meta,
                 errors=[
                     dependency_error(
-                        str(exc) or "litellm dependency failure",
+                        str(exc) or "llm dependency failure",
                         code=codes.DEPENDENCY_UNAVAILABLE,
-                        metadata={"adapter": "adapter_litellm"},
+                        metadata={"adapter": "adapter_llm"},
                     )
                 ],
             )
@@ -261,15 +276,15 @@ class DefaultLanguageModelService(LanguageModelService):
                 request_phase="initial",
                 outcome_kind="error",
                 raw_call=getattr(exc, "raw_call", None),
-                error_message=str(exc) or "litellm adapter internal failure",
+                error_message=str(exc) or "llm adapter internal failure",
             )
             return failure(
                 meta=meta,
                 errors=[
                     internal_error(
-                        str(exc) or "litellm adapter internal failure",
+                        str(exc) or "llm adapter internal failure",
                         code=codes.INTERNAL_ERROR,
-                        metadata={"adapter": "adapter_litellm"},
+                        metadata={"adapter": "adapter_llm"},
                     )
                 ],
             )
@@ -331,7 +346,7 @@ class DefaultLanguageModelService(LanguageModelService):
                 inference_request=request.inference_request,
             )
         except AdapterDependencyError as exc:
-            self._append_call_audit(
+            audit_row = self._append_call_audit(
                 meta=meta,
                 provider=resolved.provider,
                 model=resolved.model,
@@ -340,20 +355,25 @@ class DefaultLanguageModelService(LanguageModelService):
                 request_phase=request_phase,
                 outcome_kind="error",
                 raw_call=getattr(exc, "raw_call", None),
-                error_message=str(exc) or "litellm dependency failure",
+                error_message=str(exc) or "llm dependency failure",
+            )
+            self._append_turn_cache_hop(
+                audit_row=audit_row,
+                inference_request=request.inference_request,
+                raw_call=getattr(exc, "raw_call", None),
             )
             return failure(
                 meta=meta,
                 errors=[
                     dependency_error(
-                        str(exc) or "litellm dependency failure",
+                        str(exc) or "llm dependency failure",
                         code=codes.DEPENDENCY_UNAVAILABLE,
-                        metadata={"adapter": "adapter_litellm"},
+                        metadata={"adapter": "adapter_llm"},
                     )
                 ],
             )
         except AdapterInternalError as exc:
-            self._append_call_audit(
+            audit_row = self._append_call_audit(
                 meta=meta,
                 provider=resolved.provider,
                 model=resolved.model,
@@ -362,15 +382,20 @@ class DefaultLanguageModelService(LanguageModelService):
                 request_phase=request_phase,
                 outcome_kind="error",
                 raw_call=getattr(exc, "raw_call", None),
-                error_message=str(exc) or "litellm adapter internal failure",
+                error_message=str(exc) or "llm adapter internal failure",
+            )
+            self._append_turn_cache_hop(
+                audit_row=audit_row,
+                inference_request=request.inference_request,
+                raw_call=getattr(exc, "raw_call", None),
             )
             return failure(
                 meta=meta,
                 errors=[
                     internal_error(
-                        str(exc) or "litellm adapter internal failure",
+                        str(exc) or "llm adapter internal failure",
                         code=codes.INTERNAL_ERROR,
-                        metadata={"adapter": "adapter_litellm"},
+                        metadata={"adapter": "adapter_llm"},
                     )
                 ],
             )
@@ -379,7 +404,7 @@ class DefaultLanguageModelService(LanguageModelService):
             not request.inference_request.controls.allow_text_output
             and len(result.tool_calls) == 0
         ):
-            self._append_call_audit(
+            audit_row = self._append_call_audit(
                 meta=meta,
                 provider=result.provider,
                 model=result.model,
@@ -391,18 +416,23 @@ class DefaultLanguageModelService(LanguageModelService):
                 finish_reason=result.finish_reason,
                 error_message="tool-capable model response did not include any tool calls",
             )
+            self._append_turn_cache_hop(
+                audit_row=audit_row,
+                inference_request=request.inference_request,
+                raw_call=result.raw_call,
+            )
             return failure(
                 meta=meta,
                 errors=[
                     internal_error(
                         "tool-capable model response did not include any tool calls",
                         code=codes.INTERNAL_ERROR,
-                        metadata={"adapter": "adapter_litellm"},
+                        metadata={"adapter": "adapter_llm"},
                     )
                 ],
             )
 
-        self._append_call_audit(
+        audit_row = self._append_call_audit(
             meta=meta,
             provider=result.provider,
             model=result.model,
@@ -412,6 +442,11 @@ class DefaultLanguageModelService(LanguageModelService):
             outcome_kind=_tool_chat_outcome_kind(result=result),
             raw_call=result.raw_call,
             finish_reason=result.finish_reason,
+        )
+        self._append_turn_cache_hop(
+            audit_row=audit_row,
+            inference_request=request.inference_request,
+            raw_call=result.raw_call,
         )
         return success(
             meta=meta,
@@ -454,6 +489,7 @@ class DefaultLanguageModelService(LanguageModelService):
                 provider=resolved.provider,
                 model=resolved.model,
                 text=request.text,
+                dimensions=resolved.dimensions,
             )
         except AdapterDependencyError as exc:
             self._append_call_audit(
@@ -465,15 +501,15 @@ class DefaultLanguageModelService(LanguageModelService):
                 request_phase="embedding",
                 outcome_kind="error",
                 raw_call=getattr(exc, "raw_call", None),
-                error_message=str(exc) or "litellm dependency failure",
+                error_message=str(exc) or "llm dependency failure",
             )
             return failure(
                 meta=meta,
                 errors=[
                     dependency_error(
-                        str(exc) or "litellm dependency failure",
+                        str(exc) or "llm dependency failure",
                         code=codes.DEPENDENCY_UNAVAILABLE,
-                        metadata={"adapter": "adapter_litellm"},
+                        metadata={"adapter": "adapter_llm"},
                     )
                 ],
             )
@@ -487,15 +523,15 @@ class DefaultLanguageModelService(LanguageModelService):
                 request_phase="embedding",
                 outcome_kind="error",
                 raw_call=getattr(exc, "raw_call", None),
-                error_message=str(exc) or "litellm adapter internal failure",
+                error_message=str(exc) or "llm adapter internal failure",
             )
             return failure(
                 meta=meta,
                 errors=[
                     internal_error(
-                        str(exc) or "litellm adapter internal failure",
+                        str(exc) or "llm adapter internal failure",
                         code=codes.INTERNAL_ERROR,
-                        metadata={"adapter": "adapter_litellm"},
+                        metadata={"adapter": "adapter_llm"},
                     )
                 ],
             )
@@ -546,6 +582,7 @@ class DefaultLanguageModelService(LanguageModelService):
                 provider=resolved.provider,
                 model=resolved.model,
                 texts=request.texts,
+                dimensions=resolved.dimensions,
             )
         except AdapterDependencyError as exc:
             self._append_call_audit(
@@ -557,15 +594,15 @@ class DefaultLanguageModelService(LanguageModelService):
                 request_phase="embedding",
                 outcome_kind="error",
                 raw_call=getattr(exc, "raw_call", None),
-                error_message=str(exc) or "litellm dependency failure",
+                error_message=str(exc) or "llm dependency failure",
             )
             return failure(
                 meta=meta,
                 errors=[
                     dependency_error(
-                        str(exc) or "litellm dependency failure",
+                        str(exc) or "llm dependency failure",
                         code=codes.DEPENDENCY_UNAVAILABLE,
-                        metadata={"adapter": "adapter_litellm"},
+                        metadata={"adapter": "adapter_llm"},
                     )
                 ],
             )
@@ -579,15 +616,15 @@ class DefaultLanguageModelService(LanguageModelService):
                 request_phase="embedding",
                 outcome_kind="error",
                 raw_call=getattr(exc, "raw_call", None),
-                error_message=str(exc) or "litellm adapter internal failure",
+                error_message=str(exc) or "llm adapter internal failure",
             )
             return failure(
                 meta=meta,
                 errors=[
                     internal_error(
-                        str(exc) or "litellm adapter internal failure",
+                        str(exc) or "llm adapter internal failure",
                         code=codes.INTERNAL_ERROR,
-                        metadata={"adapter": "adapter_litellm"},
+                        metadata={"adapter": "adapter_llm"},
                     )
                 ],
             )
@@ -690,8 +727,8 @@ class DefaultLanguageModelService(LanguageModelService):
         raw_call: AdapterProviderCallAudit | None,
         finish_reason: str = "",
         error_message: str = "",
-    ) -> None:
-        """Append one provider-bound LMS call audit row."""
+    ) -> LanguageModelCallAuditRow:
+        """Append one provider-bound LMS call audit row and return the stored row."""
         row = LanguageModelCallAuditRow(
             envelope_id=meta.envelope_id,
             trace_id=meta.trace_id,
@@ -714,11 +751,74 @@ class DefaultLanguageModelService(LanguageModelService):
             created_at=datetime.now(UTC),
         )
         self._audit_repository.append(row=row)
+        return row
+
+    def _append_turn_cache_hop(
+        self,
+        *,
+        audit_row: LanguageModelCallAuditRow,
+        inference_request: InferenceRequest,
+        raw_call: AdapterProviderCallAudit | None,
+    ) -> None:
+        """Append one per-hop cache telemetry row for a tool-capable LMS call."""
+        request_json = None if raw_call is None else _provider_request_json(raw_call)
+        response_json = None if raw_call is None else _provider_response_json(raw_call)
+        cache_control_count = _count_provider_cache_control_blocks(request_json)
+        cache_creation_input_tokens, cache_read_input_tokens = _provider_cache_usage(
+            response_json
+        )
+        placed_cachepoint_ordinal = _placed_cachepoint_ordinal(
+            inference_request=inference_request,
+            cache_control_count=cache_control_count,
+        )
+        row = LanguageModelTurnCacheHopRow(
+            trace_id=audit_row.trace_id,
+            hop_ordinal=self._turn_cache_hop_repository.next_hop_ordinal(
+                trace_id=audit_row.trace_id
+            ),
+            call_index=audit_row.call_index,
+            envelope_id=audit_row.envelope_id,
+            provider=audit_row.provider,
+            model=audit_row.model,
+            profile=audit_row.profile,
+            placed_cachepoint_ordinal=placed_cachepoint_ordinal,
+            cp0_active=cache_control_count >= 1,
+            cp1_active=cache_control_count >= 2,
+            cp2_active=cache_control_count >= 3,
+            cp3_active=cache_control_count >= 4,
+            active_cachepoint_count=cache_control_count,
+            provider_cache_control_block_count=cache_control_count,
+            cache_creation_input_tokens=cache_creation_input_tokens,
+            cache_read_input_tokens=cache_read_input_tokens,
+            estimated_write_premium_token_equiv=(
+                _CACHE_WRITE_PREMIUM_MULTIPLIER * cache_creation_input_tokens
+            ),
+            estimated_read_savings_token_equiv=(
+                _CACHE_READ_DISCOUNT_MULTIPLIER * cache_read_input_tokens
+            ),
+            estimated_net_token_equiv=(
+                (_CACHE_READ_DISCOUNT_MULTIPLIER * cache_read_input_tokens)
+                - (_CACHE_WRITE_PREMIUM_MULTIPLIER * cache_creation_input_tokens)
+            ),
+            created_at=audit_row.created_at,
+        )
+        self._turn_cache_hop_repository.append(row=row)
 
 
-def _from_settings(settings: LanguageModelProfileSettings) -> _ResolvedProfile:
+def _from_settings(
+    settings: LanguageModelProfileSettings | LanguageModelEmbeddingProfileSettings,
+) -> _ResolvedProfile:
     """Convert required profile settings into resolved call-time tuple."""
-    return _ResolvedProfile(provider=settings.provider, model=settings.model)
+    dimensions = (
+        settings.dimensions
+        if isinstance(settings, LanguageModelEmbeddingProfileSettings)
+        else None
+    )
+    return _ResolvedProfile(
+        provider=settings.provider,
+        model=settings.model,
+        dimensions=dimensions,
+    )
 
 
 def _request_phase_for_inference_request(request: InferenceRequest) -> str:
@@ -754,3 +854,81 @@ def _provider_request_json(raw_call: AdapterProviderCallAudit) -> dict[str, obje
 def _provider_response_json(raw_call: AdapterProviderCallAudit) -> dict[str, object]:
     """Serialize provider response artifacts into one JSON document."""
     return {"body": raw_call.response_body}
+
+
+def _count_provider_cache_control_blocks(request_json: object | None) -> int:
+    """Count explicit provider cache-control blocks in one serialized request."""
+    if not isinstance(request_json, dict):
+        return 0
+    body = request_json.get("body")
+    if not isinstance(body, dict):
+        return 0
+
+    count = 0
+    system = body.get("system")
+    if isinstance(system, list):
+        for block in system:
+            if isinstance(block, dict) and "cache_control" in block:
+                count += 1
+
+    messages = body.get("messages")
+    if not isinstance(messages, list):
+        return count
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict) and "cache_control" in block:
+                count += 1
+    return count
+
+
+def _provider_cache_usage(response_json: object | None) -> tuple[int, int]:
+    """Extract provider-reported cache write and read usage token counts."""
+    if not isinstance(response_json, dict):
+        return 0, 0
+    body = response_json.get("body")
+    if not isinstance(body, dict):
+        return 0, 0
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        return 0, 0
+    created = usage.get("cache_creation_input_tokens", 0)
+    read = usage.get("cache_read_input_tokens", 0)
+    try:
+        created_tokens = int(created)
+    except (TypeError, ValueError):
+        created_tokens = 0
+    try:
+        read_tokens = int(read)
+    except (TypeError, ValueError):
+        read_tokens = 0
+    return max(0, created_tokens), max(0, read_tokens)
+
+
+def _placed_cachepoint_ordinal(
+    *,
+    inference_request: InferenceRequest,
+    cache_control_count: int,
+) -> int | None:
+    """Return the cachepoint ordinal newly placed for one hop, when present."""
+    if cache_control_count <= 0:
+        return None
+    if (
+        len(inference_request.live_events) == 0
+        and inference_request.cache.mode == "explicit"
+    ):
+        return 0
+    latest_event = (
+        inference_request.live_events[-1] if inference_request.live_events else None
+    )
+    if (
+        latest_event is not None
+        and latest_event.kind == "tool_result_batch"
+        and latest_event.cache_after
+    ):
+        return min(cache_control_count - 1, 3)
+    return None

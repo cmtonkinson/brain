@@ -7,7 +7,7 @@ from typing import Sequence
 
 from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
-from resources.adapters.litellm.adapter import LiteLlmAdapter
+from resources.adapters.llm.adapter import LlmAdapter
 from services.action.language_model.domain import (
     ChatResponse,
     ChatWithToolsResponse,
@@ -79,15 +79,16 @@ class LanguageModelService(ABC):
 def build_language_model_service(
     *,
     settings: CoreRuntimeSettings,
-    adapter: LiteLlmAdapter | None = None,
+    adapter: LlmAdapter | None = None,
 ) -> LanguageModelService:
     """Build default Language Model implementation from typed settings."""
-    from resources.adapters.litellm import (
-        LiteLlmLibraryAdapter,
-        resolve_litellm_adapter_settings,
+    from resources.adapters.llm import (
+        HttpLlmAdapter,
+        resolve_llm_adapter_settings,
     )
     from services.action.language_model.data.repository import (
         PostgresLanguageModelCallAuditRepository,
+        PostgresLanguageModelTurnCacheHopRepository,
     )
     from services.action.language_model.data.runtime import LanguageModelPostgresRuntime
     from services.action.language_model.config import (
@@ -101,8 +102,11 @@ def build_language_model_service(
     return DefaultLanguageModelService(
         settings=resolve_language_model_service_settings(settings),
         adapter=adapter
-        or LiteLlmLibraryAdapter(settings=resolve_litellm_adapter_settings(settings)),
+        or HttpLlmAdapter(settings=resolve_llm_adapter_settings(settings)),
         audit_repository=PostgresLanguageModelCallAuditRepository(
+            runtime.schema_sessions
+        ),
+        turn_cache_hop_repository=PostgresLanguageModelTurnCacheHopRepository(
             runtime.schema_sessions
         ),
     )

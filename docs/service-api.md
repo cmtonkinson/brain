@@ -21,7 +21,7 @@ _Route one token-only Policy->Attention approval notification._
 `flush_batch(*, meta: EnvelopeMeta, batch_key: str, actor: str = 'operator', channel: str = '', recipient_e164: str = '', sender_e164: str = '', title: str = '') -> Envelope[RouteNotificationResult]`  
 _Flush one pending batch by key and deliver consolidated summary._
 
-`route_notification(*, meta: EnvelopeMeta, actor: str = 'operator', channel: str = '', title: str = '', message: str, dedupe_key: str = '', batch_key: str = '', force: bool = False) -> Envelope[RouteNotificationResult]`  
+`route_notification(*, meta: EnvelopeMeta, actor: str = 'operator', channel: str = '', title: str = '', message: str, dedupe_key: str = '', batch_key: str = '', force: bool = False, conversational_memory: ConversationalMemoryContext | None = None) -> Envelope[RouteNotificationResult]`  
 _Route one outbound notification and decide suppress/send/batch._
 
 ------------------------------------------------------------------------

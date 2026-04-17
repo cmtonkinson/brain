@@ -66,6 +66,18 @@ class OutboundDeliveryRecord(BaseModel):
     detail: str | None = None
 
 
+class ConversationalMemoryContext(BaseModel):
+    """MAS-owned metadata required to persist one conversational outbound turn."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    session_id: str
+    model: str
+    provider: str
+    token_count: int
+    reasoning_level: str
+
+
 class SessionRecord(BaseModel):
     """Authoritative MAS session state row."""
 

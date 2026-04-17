@@ -1,4 +1,4 @@
-"""Pydantic settings for the LiteLLM adapter resource."""
+"""Pydantic settings for the native LLM adapter resource."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
-from resources.adapters.litellm.component import RESOURCE_COMPONENT_ID
+from resources.adapters.llm.component import RESOURCE_COMPONENT_ID
 
 
-class LiteLlmProviderSettings(BaseModel):
-    """Provider-specific backend settings for in-process LiteLLM calls."""
+class LlmProviderSettings(BaseModel):
+    """Provider-specific backend settings for in-process native LLM calls."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -23,15 +23,15 @@ class LiteLlmProviderSettings(BaseModel):
     options: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _validate_auth_source(self) -> "LiteLlmProviderSettings":
+    def _validate_auth_source(self) -> "LlmProviderSettings":
         """Prevent ambiguous inline + env-based API key configuration."""
         if self.api_key.strip() != "" and self.api_key_env.strip() != "":
             raise ValueError("api_key and api_key_env are mutually exclusive")
         return self
 
 
-class LiteLlmAdapterSettings(BaseModel):
-    """In-process LiteLLM adapter runtime configuration."""
+class LlmAdapterSettings(BaseModel):
+    """In-process native LLM adapter runtime configuration."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -42,20 +42,63 @@ class LiteLlmAdapterSettings(BaseModel):
     timeout_retry_max_delay_seconds: float = Field(default=2.0, gt=0)
     timeout_retry_backoff_multiplier: float = Field(default=2.0, gt=1.0)
     timeout_retry_jitter_ratio: float = Field(default=0.2, ge=0, lt=1.0)
-    providers: dict[str, LiteLlmProviderSettings] = Field(
+    providers: dict[str, LlmProviderSettings] = Field(
         default_factory=lambda: {
-            "ollama": LiteLlmProviderSettings(
-                api_base="http://host.docker.internal:11434"
-            )
+            "voyage": LlmProviderSettings(
+                api_base="https://api.voyageai.com",
+                options={"output_dimension": 2048},
+            ),
+            "ollama": LlmProviderSettings(
+                api_base="http://host.docker.internal:11434",
+            ),
+            "anthropic": LlmProviderSettings(
+                api_base="https://api.anthropic.com",
+                options={"max_tokens": 1024},
+            ),
         }
     )
 
     @model_validator(mode="after")
-    def _validate_provider_keys(self) -> "LiteLlmAdapterSettings":
+    def _validate_provider_keys(self) -> "LlmAdapterSettings":
         """Reject empty provider keys for stable provider lookup semantics."""
+        providers = dict(self.providers)
         for provider_name in self.providers:
             if provider_name.strip() == "":
                 raise ValueError("providers keys must be non-empty")
+            if provider_name == "voyage":
+                provider_settings = providers[provider_name]
+                updates: dict[str, object] = {}
+                if provider_settings.api_base.strip() == "":
+                    updates["api_base"] = "https://api.voyageai.com"
+                if "output_dimension" not in provider_settings.options:
+                    updates["options"] = {
+                        **provider_settings.options,
+                        "output_dimension": 2048,
+                    }
+                if updates:
+                    providers[provider_name] = provider_settings.model_copy(
+                        update=updates
+                    )
+            if provider_name == "ollama":
+                provider_settings = providers[provider_name]
+                if provider_settings.api_base.strip() == "":
+                    providers[provider_name] = provider_settings.model_copy(
+                        update={"api_base": "http://host.docker.internal:11434"}
+                    )
+            if provider_name == "anthropic":
+                provider_settings = providers[provider_name]
+                updates: dict[str, object] = {}
+                if provider_settings.api_base.strip() == "":
+                    updates["api_base"] = "https://api.anthropic.com"
+                if "max_tokens" not in provider_settings.options:
+                    updates["options"] = {
+                        **provider_settings.options,
+                        "max_tokens": 1024,
+                    }
+                if updates:
+                    providers[provider_name] = provider_settings.model_copy(
+                        update=updates
+                    )
         if (
             self.timeout_retry_attempts > 0
             and self.timeout_retry_max_delay_seconds
@@ -65,23 +108,25 @@ class LiteLlmAdapterSettings(BaseModel):
                 "timeout_retry_max_delay_seconds must be >= "
                 "timeout_retry_initial_delay_seconds when retries are enabled"
             )
+        if providers != self.providers:
+            object.__setattr__(self, "providers", providers)
         return self
 
 
-def resolve_litellm_adapter_settings(
+def resolve_llm_adapter_settings(
     settings: CoreRuntimeSettings,
-) -> LiteLlmAdapterSettings:
-    """Resolve LiteLLM adapter settings from ``adapter.litellm``."""
+) -> LlmAdapterSettings:
+    """Resolve native LLM adapter settings from ``adapter.llm``."""
     return resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),
-        model=LiteLlmAdapterSettings,
+        model=LlmAdapterSettings,
     )
 
 
-def resolve_litellm_provider_timeout_seconds(
+def resolve_llm_provider_timeout_seconds(
     *,
-    settings: LiteLlmAdapterSettings,
+    settings: LlmAdapterSettings,
     provider: str,
 ) -> float:
     """Resolve one provider timeout with adapter-level fallback."""
@@ -92,7 +137,7 @@ def resolve_litellm_provider_timeout_seconds(
 
 
 def timeout_retry_backoff_schedule_seconds(
-    settings: LiteLlmAdapterSettings,
+    settings: LlmAdapterSettings,
 ) -> tuple[float, ...]:
     """Return the bounded pre-attempt backoff schedule for timeout retries."""
     delays: list[float] = []
@@ -105,12 +150,12 @@ def timeout_retry_backoff_schedule_seconds(
 
 def timeout_retry_budget_seconds(
     *,
-    settings: LiteLlmAdapterSettings,
+    settings: LlmAdapterSettings,
     provider: str,
     margin_seconds: float = 0.0,
 ) -> float:
     """Return one full timeout budget for a provider call including retries."""
-    timeout_seconds = resolve_litellm_provider_timeout_seconds(
+    timeout_seconds = resolve_llm_provider_timeout_seconds(
         settings=settings,
         provider=provider,
     )
@@ -124,7 +169,7 @@ def timeout_retry_budget_seconds(
 
 def max_timeout_retry_budget_seconds(
     *,
-    settings: LiteLlmAdapterSettings,
+    settings: LlmAdapterSettings,
     providers: tuple[str, ...],
     margin_seconds: float = 0.0,
 ) -> float:

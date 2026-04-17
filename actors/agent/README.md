@@ -83,29 +83,59 @@ costs are MAS context (~1,400 tok, fixed), tool definitions (~350-1,750 tok,
 fixed once stabilized), and accumulated tool results (unbounded, the main risk).
 
 ### Prompt caching
+#### Anthropic
 Anthropic prompt caching is applied via `CachePoint` markers in the message
 history. The cache key is a hash of the exact byte sequence from position 0 up
 to the breakpoint — any change to content before a breakpoint invalidates
 everything after it.
 
-Two-tier strategy:
+Caching is priced at a 1.25x write premium and a 0.10x read rate relative to
+normal input cost. Anthropic also permits at most four `cache_control`
+breakpoints in one request, so the runtime must treat them as a scarce resource
+and never emit more than four.
 
-**Tier 1 — static, set once per turn.**
-Compiled by the adapter from the inference request's static prefix (system
-blocks plus the stable initial context). This prefix is byte-stable across all
-intra-turn hops as long as the tool array does not change. Cost: one cache
-write (125% of base) on the first hop, then cache reads (10% of base) on all
-subsequent hops.
+We express `CachePoint` breakpoints here as `CP0` through `CP3`.
 
-**Tier 2 — dynamic, placed when a turn runs deep.**
-Placed after accumulated tool exchanges once hop count or token usage crosses a
-threshold. Advances forward each hop: prior content is read from cache at 10%,
-only the new delta is written at 125%.
+**CP0** is the static prefix cachepoint. It covers the stable prompt prefix:
+system blocks, the initial MAS snapshot framing, and any other byte-stable
+context shared across intra-turn hops. This prefix is worth caching
+unconditionally as long as the tool array remains stable.
 
-**Tool array stability is a prerequisite for Tier 1 caching.** If the active
-tool set changes between hops — e.g. due to dynamic capability discovery — the
-tools array hash changes and the Tier 1 cache is invalidated. The tool list
-should be frozen after the first intra-turn call.
+**CP1-CP3** are optional rolling cachepoints for deep intra-turn loops. They
+should be chosen by marginal value, not by a fixed "every N hops" rule. If
+$\Delta T(i)$ is the uncached token growth since the prior retained cachepoint
+and $E[R(i)]$ is the expected number of future cache reuses for that extended
+prefix, then the decision rule is:
+
+$$
+\mathrm{Score}(i) = \Delta T(i) \times (0.90 E[R(i)] - 0.25)
+$$
+
+This comes directly from Anthropic's 5-minute pricing: each candidate
+cachepoint pays a `0.25x` write premium up front and saves `0.90x` of base
+input cost on each future reuse. In practice this means:
+- keep `CP0` always
+- only place `CP1`-`CP3` when the uncached delta is large enough and another
+  identical follow-up hop is likely
+- when the request would exceed Anthropic's 4-point limit, retain `CP0` and the
+  highest-value recent rolling points, dropping older lower-value ones first
+
+**Tool array stability is a prerequisite for `CP0`.** If the active tool set
+changes between hops — for example due to dynamic capability discovery — the
+cached prefix no longer matches and the value of that prefix cache is reset. The
+tool list should therefore be frozen after the first intra-turn call.
+
+#### OpenAI
+OpenAI applies prompt caching automatically for exact matched prefixes once the
+prompt reaches 1,024 tokens, with cache hits growing in 128-token increments.
+Caches are typically retained for 5-10 minutes of inactivity and are always
+removed within one hour of the last use.
+
+OpenAI cached-input pricing is model-specific rather than a single global
+multiplier. For example, the GPT-4o family is priced at a 50% cached-input
+discount, while GPT-4.1 cached input is priced at 25% of normal input cost. The
+same prompt-structuring rule applies: place static prefix material first and
+volatile per-turn content last.
 
 ### Tool result compression
 The primary mechanism for controlling token amplification is normalization of
@@ -157,7 +187,7 @@ decision is based on:
 Both caching and compression concerns are applied in a PydanticAI
 `history_processors` function registered on the `Agent` at construction time.
 This function runs before every intra-turn LLM request and is responsible for:
-- placing `CachePoint` markers (Tier 1 and Tier 2)
+- placing `CachePoint` markers (`CP0` through `CP3`)
 - normalizing every `ToolReturnPart` through the mandatory
   `pass_through` / `compress` / `truncate` boundary
 - ensuring only normalized display content is returned to the primary model

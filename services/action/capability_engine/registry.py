@@ -276,7 +276,7 @@ class CapabilityRegistry:
 
         types: set[str] = set()
         for option in any_of:
-            if not isinstance(option, dict) or set(option.keys()) != {"type"}:
+            if not isinstance(option, dict) or "type" not in option:
                 return None
             option_type = option.get("type")
             if not isinstance(option_type, str):

@@ -60,6 +60,8 @@ health:
 service:
   attention_router:
     default_channel: signal
+    conversational_channels:
+      - signal
     max_message_chars: 4000
     dedupe_window_seconds: 120
     rate_limit_window_seconds: 60
@@ -111,18 +113,20 @@ service:
     document_embedding:
       provider: ollama
       model: mxbai-embed-large
+      dimensions: 1024
     capability_embedding:
       provider: ollama
       model: mxbai-embed-large
+      dimensions: 1024
     quick:
-      provider: ollama
-      model: gpt-oss:20b
+      provider: anthropic
+      model: claude-haiku-4-5-20251001
     standard:
-      provider: ollama
-      model: gpt-oss:20b
+      provider: anthropic
+      model: claude-sonnet-4-6-20251001
     deep:
-      provider: ollama
-      model: gpt-oss:20b
+      provider: anthropic
+      model: claude-opus-4-7
   switchboard:
     queue_name: signal_inbound
     callback_register_max_retries: 8

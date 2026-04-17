@@ -73,7 +73,11 @@ class PublicApiLoggingConcern:
     def on_invocation(self, context: InvocationContext) -> None:
         """Emit standardized structured invocation-start log."""
         with log_context(_invocation_log_context(context)):
-            self._logger.info("Public API invocation")
+            self._logger.info(
+                "Public API invocation: %s.%s",
+                context.component_id,
+                context.api_name,
+            )
 
     def on_completion(self, context: CompletionContext) -> None:
         """Emit standardized structured completion log."""
@@ -88,9 +92,21 @@ class PublicApiLoggingConcern:
         )
         with log_context(payload):
             if context.success:
-                self._logger.info("Public API completion")
+                self._logger.info(
+                    "Public API completion: %s.%s succeeded in %.3fms",
+                    context.invocation.component_id,
+                    context.invocation.api_name,
+                    context.duration_ms,
+                )
             else:
-                self._logger.warning("Public API completion")
+                first_error = context.errors[0] if len(context.errors) > 0 else ""
+                self._logger.warning(
+                    "Public API completion: %s.%s failed in %.3fms: %s",
+                    context.invocation.component_id,
+                    context.invocation.api_name,
+                    context.duration_ms,
+                    first_error,
+                )
 
 
 class _CounterLike(Protocol):

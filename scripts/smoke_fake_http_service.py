@@ -173,6 +173,50 @@ async def _openai_embeddings(request: web.Request) -> web.Response:
     )
 
 
+async def _anthropic_messages(request: web.Request) -> web.Response:
+    """Capture one Anthropic Messages request and return a fixed final reply."""
+    store: _StateStore = request.app["state_store"]
+    payload = await request.json()
+    await store.append(name="anthropic_messages", value=payload)
+    return web.json_response(
+        {
+            "id": "msg-smoke",
+            "type": "message",
+            "role": "assistant",
+            "model": payload.get("model", "claude-sonnet-4-6-20251001"),
+            "content": [
+                {
+                    "type": "text",
+                    "text": "assistant reply",
+                }
+            ],
+            "stop_reason": "end_turn",
+        }
+    )
+
+
+async def _voyage_embeddings(request: web.Request) -> web.Response:
+    """Capture one Voyage embeddings request and return simple deterministic vectors."""
+    store: _StateStore = request.app["state_store"]
+    payload = await request.json()
+    await store.append(name="voyage_embeddings", value=payload)
+    raw_input = payload.get("input", [])
+    items = raw_input if isinstance(raw_input, list) else [raw_input]
+    return web.json_response(
+        {
+            "object": "list",
+            "data": [
+                {
+                    "index": index,
+                    "embedding": [float(index), 0.1, 0.2],
+                }
+                for index, _ in enumerate(items)
+            ],
+            "model": payload.get("model", "voyage-3-large"),
+        }
+    )
+
+
 def _build_app(*, role: str, state_dir: Path) -> web.Application:
     """Construct the fake service app for the selected role."""
     app = web.Application()
@@ -197,13 +241,19 @@ def _build_app(*, role: str, state_dir: Path) -> web.Application:
         app.router.add_post("/v1/embeddings", _openai_embeddings)
         return app
 
+    if role == "llm":
+        app.router.add_get("/health", _openai_health)
+        app.router.add_post("/v1/messages", _anthropic_messages)
+        app.router.add_post("/v1/embeddings", _voyage_embeddings)
+        return app
+
     raise ValueError(f"unsupported fake service role: {role}")
 
 
 def _parse_args() -> argparse.Namespace:
     """Parse CLI arguments for one fake smoke service process."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("role", choices=("signal", "obsidian", "openai"))
+    parser.add_argument("role", choices=("signal", "obsidian", "openai", "llm"))
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--state-dir", type=Path, required=True)

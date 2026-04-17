@@ -443,7 +443,7 @@ def test_humanize_component_name(monkeypatch: Any) -> None:
     assert m._humanize_component_name("service_attention_router") == "Attention Router"
     assert m._humanize_component_name("resource_vault") == "Vault"
     assert m._humanize_component_name("substrate_obsidian") == "Obsidian"
-    assert m._humanize_component_name("adapter_litellm") == "Litellm"
+    assert m._humanize_component_name("adapter_llm") == "Llm"
     assert m._humanize_component_name("plain_name") == "Plain Name"
 
 

@@ -37,6 +37,7 @@ Native Op over `Attention Router Service route_notification()`
 - `dedupe_key` _(string, optional)_ Suppress duplicate sends within configured dedupe window.
 - `batch_key` _(string, optional)_ Queue into batch instead of immediate send.
 - `force` _(boolean, optional)_ Bypass dedupe, batch, and rate-limit suppression checks. Defaults to false.
+- `conversational_memory` _(object | null, optional)_ MAS-owned conversational outbound metadata with session_id, model, provider, token_count, and reasoning_level. Persisted only when a conversational channel actually sends.
 
 **Outputs:**
 - `decision` _(string)_ Router decision outcome: sent, suppressed, or batched.

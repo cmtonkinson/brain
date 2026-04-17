@@ -45,6 +45,7 @@ from packages.brain_sdk import (
     LmsToolChatResult,
     MemoryContextBlock,
     MetaOverrides,
+    SdkErrorDetail,
     SwitchboardOperatorInstruction,
     render_system_prompt,
     render_system_prompt_blocks,
@@ -89,9 +90,9 @@ from packages.brain_shared.language_model import (
     ReferenceSnippetContentPart,
     TextContentPart,
 )
-from resources.adapters.litellm.config import (
+from resources.adapters.llm.config import (
     max_timeout_retry_budget_seconds,
-    resolve_litellm_adapter_settings,
+    resolve_llm_adapter_settings,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -109,7 +110,13 @@ _LMS_TIMEOUT_RESPONSE = (
 _LMS_GENERIC_ERROR_RESPONSE = (
     "I hit an internal language-model error while working on that. Please try again."
 )
+_LMS_RECOVERY_IN_PROGRESS_RESPONSE = (
+    "I'm sorry, but the language model provider is having trouble. "
+    "I'm still working on it and will keep trying."
+)
 _LMS_TIMEOUT_MARGIN_SECONDS = 2.0
+_LMS_PROVIDER_RETRY_DELAYS_SECONDS = (0.5, 1.0)
+_LMS_RECOVERY_NOTICE_DELAY_THRESHOLD_SECONDS = 1.0
 _AGENT_DIR = Path(__file__).resolve().parent
 _PROMPTS_DIR = _AGENT_DIR / "prompts"
 _COMPRESS_SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "compress-tool-return.txt"
@@ -123,6 +130,25 @@ _MAX_PENDING_INVOCATIONS = 128
 _HEARTBEAT_FILE_ENV = "BRAIN_AGENT_HEARTBEAT_FILE"
 _HEARTBEAT_PATH = Path("/run/brain/agent-heartbeat")
 _PROMPT_TEMPLATE_VAR_RE = re.compile(r"\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}")
+_INVALID_TOOL_CALL_RETRY_INSTRUCTION = (
+    "A prior response attempted to call tool names that were not in the current "
+    "advertised tool list. On this response, only emit tool calls whose exact "
+    "names appear in the provided tool definitions for this hop. Tool ids or "
+    "tool names mentioned inside discovery results are informational only until "
+    "the runtime explicitly advertises them as callable tools on a later hop."
+)
+_DISCOVERY_TOOL_NAMES = frozenset({_SEARCH_TOOLS_TOOL_NAME, _GET_TOOL_INFO_TOOL_NAME})
+_ROLLING_CACHE_BASE_CONTINUATION_PROBABILITY = 0.20
+_ROLLING_CACHE_EXPLORE_WEIGHT = 0.35
+_ROLLING_CACHE_DISCOVERY_WEIGHT = 0.25
+_ROLLING_CACHE_FAILURE_WEIGHT = 0.20
+_ROLLING_CACHE_NOT_FOUND_WEIGHT = 0.10
+_ROLLING_CACHE_DECISIVE_SUCCESS_WEIGHT = -0.30
+_ROLLING_CACHE_HOP_DECAY = -0.03
+_ROLLING_CACHE_MIN_PROBABILITY = 0.05
+_ROLLING_CACHE_MAX_PROBABILITY = 0.95
+_ROLLING_CACHE_MAX_FUTURE_REUSES = 3
+_INVALID_TOOL_CALL_REPAIR_ATTEMPTS = 3
 
 
 def _load_prompt_file(path: Path) -> str:
@@ -219,6 +245,7 @@ class _TurnState:
     pending_invocations: dict[str, _PendingInvocation] = field(default_factory=dict)
     reply_to_proposal_token: str = ""
     reaction_to_proposal_token: str = ""
+    lms_recovery_notice_sent: bool = False
 
     def reset_active_tools(self) -> None:
         """Reset the active tool set to the always-on CES tools plus runtime tools."""
@@ -336,6 +363,7 @@ class _TurnState:
         self.trace_id = generate_ulid_str()
         self.root_envelope_id = generate_ulid_str()
         self.current_model_envelope_id = ""
+        self.lms_recovery_notice_sent = False
 
     def next_model_meta(self) -> MetaOverrides:
         """Allocate metadata for one LMS request within the active turn trace."""
@@ -490,6 +518,7 @@ class _BrainSdkToolModel(Model):
             {} if tool_requires_approval is None else dict(tool_requires_approval)
         )
         self.last_result: LmsToolChatResult | None = None
+        self._last_used_profile_name = profile_name
 
     async def request(
         self,
@@ -504,38 +533,173 @@ class _BrainSdkToolModel(Model):
         )
         del prepared_settings
         request_meta = self._turn_state.next_model_meta()
-        inference_request = _build_inference_request(
-            session_id=self._session_id,
-            source=self._source,
-            principal=self._principal,
-            meta=request_meta,
-            system_blocks=self._system_blocks,
-            messages=messages,
-            tool_defs=prepared_params.function_tools,
-            allow_text_output=prepared_params.allow_text_output,
-            profile=self._profile_name,
-            tool_requires_approval=self._tool_requires_approval,
-        )
-        result = await asyncio.to_thread(
-            _call_with_optional_meta,
-            self._client.lms_chat_with_tools,
-            meta=request_meta,
-            inference_request=inference_request,
-            timeout_seconds=self._timeout_seconds,
-        )
-        self.last_result = result
-        parts: list[TextPart | ToolCallPart] = []
-        if result.text is not None and result.text.strip() != "":
-            parts.append(TextPart(result.text.strip()))
-        parts.extend(_to_model_tool_call(item) for item in result.tool_calls)
-        if len(parts) == 0:
-            parts.append(TextPart("I do not have a response yet."))
-        return ModelResponse(
-            parts=parts,
-            model_name=result.model,
-            provider_name=result.provider,
-            finish_reason=_normalize_finish_reason(result.finish_reason),
-        )
+        original_profile_name = self.profile_name
+        cumulative_retry_delay_seconds = 0.0
+        advertised_tool_names = [item.name for item in prepared_params.function_tools]
+        last_exc: BrainSdkError | None = None
+
+        def _recovery_notice_due(*, profile_index: int, next_delay: float) -> bool:
+            if self._turn_state.lms_recovery_notice_sent:
+                return False
+            if profile_index > 0:
+                return True
+            return (
+                cumulative_retry_delay_seconds + next_delay
+                >= _LMS_RECOVERY_NOTICE_DELAY_THRESHOLD_SECONDS
+            )
+
+        try:
+            for profile_index, profile_name in enumerate(
+                _lms_recovery_profile_sequence(original_profile_name)
+            ):
+                self.set_profile_name(profile_name)
+                for provider_attempt in range(
+                    len(_LMS_PROVIDER_RETRY_DELAYS_SECONDS) + 1
+                ):
+                    system_blocks = self._system_blocks
+                    result: LmsToolChatResult | None = None
+                    valid_tool_calls: tuple[LmsChatToolCall, ...] = ()
+                    invalid_tool_names: tuple[str, ...] = ()
+                    try:
+                        for repair_attempt in range(_INVALID_TOOL_CALL_REPAIR_ATTEMPTS):
+                            inference_request = _build_inference_request(
+                                session_id=self._session_id,
+                                source=self._source,
+                                principal=self._principal,
+                                meta=request_meta,
+                                system_blocks=system_blocks,
+                                messages=messages,
+                                tool_defs=prepared_params.function_tools,
+                                allow_text_output=prepared_params.allow_text_output,
+                                allow_parallel_tool_calls=_allow_parallel_tool_calls(
+                                    messages=messages
+                                ),
+                                profile=self.profile_name,
+                                tool_requires_approval=self._tool_requires_approval,
+                            )
+                            result = await asyncio.to_thread(
+                                _call_with_optional_meta,
+                                self._client.lms_chat_with_tools,
+                                meta=request_meta,
+                                inference_request=inference_request,
+                                timeout_seconds=self._timeout_seconds,
+                            )
+                            valid_tool_calls, invalid_tool_names = (
+                                _partition_returned_tool_calls(
+                                    tool_calls=result.tool_calls,
+                                    advertised_tool_defs=prepared_params.function_tools,
+                                )
+                            )
+                            if len(invalid_tool_names) == 0:
+                                break
+                            _LOGGER.warning(
+                                "brain agent model returned unadvertised tool calls",
+                                extra={
+                                    "invalid_tool_names": list(invalid_tool_names),
+                                    "advertised_tool_names": advertised_tool_names,
+                                    "repair_attempt": repair_attempt + 1,
+                                    "profile": self.profile_name,
+                                },
+                            )
+                            if len(valid_tool_calls) > 0 or repair_attempt >= (
+                                _INVALID_TOOL_CALL_REPAIR_ATTEMPTS - 1
+                            ):
+                                break
+                            system_blocks = (
+                                *self._system_blocks,
+                                InferenceSystemBlock(
+                                    kind="instructions",
+                                    text=_INVALID_TOOL_CALL_RETRY_INSTRUCTION,
+                                ),
+                            )
+                        assert result is not None
+                        self.last_result = result
+                        if len(valid_tool_calls) == 0 and len(invalid_tool_names) > 0:
+                            raise BrainInternalError(
+                                message=(
+                                    "lms.chat_with_tools domain failure: model returned "
+                                    "unadvertised tool call(s): "
+                                    f"{', '.join(invalid_tool_names)}"
+                                ),
+                                operation="lms.chat_with_tools",
+                                details=(
+                                    SdkErrorDetail(
+                                        code="INVALID_TOOL_CALL",
+                                        message=(
+                                            "model returned tool call(s) not present in "
+                                            "the advertised tool list: "
+                                            f"{', '.join(invalid_tool_names)}"
+                                        ),
+                                        category="internal",
+                                        retryable=True,
+                                        metadata={
+                                            "tool_names": ",".join(invalid_tool_names)
+                                        },
+                                    ),
+                                ),
+                            )
+                        parts: list[TextPart | ToolCallPart] = []
+                        if result.text is not None and result.text.strip() != "":
+                            parts.append(TextPart(result.text.strip()))
+                        parts.extend(
+                            _to_model_tool_call(item) for item in valid_tool_calls
+                        )
+                        if len(parts) == 0:
+                            parts.append(TextPart("I do not have a response yet."))
+                        self._last_used_profile_name = self.profile_name
+                        return ModelResponse(
+                            parts=parts,
+                            model_name=result.model,
+                            provider_name=result.provider,
+                            finish_reason=_normalize_finish_reason(
+                                result.finish_reason
+                            ),
+                        )
+                    except BrainSdkError as exc:
+                        if not _should_retry_lms_failure(exc):
+                            raise
+                        last_exc = exc
+                        is_last_provider_attempt = provider_attempt >= len(
+                            _LMS_PROVIDER_RETRY_DELAYS_SECONDS
+                        )
+                        should_notify = _should_notify_operator_of_lms_recovery(exc)
+                        if should_notify and _recovery_notice_due(
+                            profile_index=profile_index,
+                            next_delay=(
+                                0.0
+                                if is_last_provider_attempt
+                                else _LMS_PROVIDER_RETRY_DELAYS_SECONDS[
+                                    provider_attempt
+                                ]
+                            ),
+                        ):
+                            await _notify_operator_of_lms_recovery(
+                                client=self._client,
+                                turn_state=self._turn_state,
+                                session_id=self._session_id,
+                                message=_LMS_RECOVERY_IN_PROGRESS_RESPONSE,
+                                reasoning_level=self.profile_name,
+                            )
+                            self._turn_state.lms_recovery_notice_sent = True
+                        if is_last_provider_attempt:
+                            break
+                        retry_delay_seconds = (
+                            _LMS_PROVIDER_RETRY_DELAYS_SECONDS[provider_attempt]
+                            if should_notify
+                            else 0.0
+                        )
+                        if retry_delay_seconds > 0.0:
+                            await asyncio.sleep(retry_delay_seconds)
+                            cumulative_retry_delay_seconds += retry_delay_seconds
+                        continue
+            if last_exc is not None:
+                raise last_exc
+            raise BrainInternalError(
+                message="lms.chat_with_tools domain failure: recovery exhausted",
+                operation="lms.chat_with_tools",
+            )
+        finally:
+            self.set_profile_name(original_profile_name)
 
     @property
     def model_name(self) -> str:
@@ -546,6 +710,22 @@ class _BrainSdkToolModel(Model):
     def system(self) -> str:
         """Return the provider/system identifier for telemetry purposes."""
         return "brain"
+
+    @property
+    def profile_name(self) -> str:
+        """Return the active LMS profile name for this agent turn."""
+        value = getattr(self, "_profile_name", "")
+        return value if isinstance(value, str) and value != "" else "standard"
+
+    def set_profile_name(self, profile_name: str) -> None:
+        """Update the active LMS profile name for subsequent requests."""
+        self._profile_name = profile_name
+
+    @property
+    def last_used_profile_name(self) -> str:
+        """Return the profile that produced the latest successful model response."""
+        value = getattr(self, "_last_used_profile_name", "")
+        return value if isinstance(value, str) and value != "" else self.profile_name
 
 
 _CONTENT_PART_TYPES = (
@@ -602,6 +782,7 @@ def _build_inference_request(
     messages: list[ModelRequest | ModelResponse],
     tool_defs: list[ToolDefinition],
     allow_text_output: bool,
+    allow_parallel_tool_calls: bool = True,
     profile: str,
     tool_requires_approval: dict[str, bool | None],
 ) -> InferenceRequest:
@@ -622,6 +803,7 @@ def _build_inference_request(
     for message in messages:
         if isinstance(message, ModelRequest):
             tool_results: list[InferenceToolResult] = []
+            tool_results_cache_after = False
             for part in message.parts:
                 if isinstance(part, UserPromptPart):
                     content_parts = _to_content_parts(part.content)
@@ -643,7 +825,10 @@ def _build_inference_request(
                         context_found = True
                         continue
                     if _content_parts_are_only_cache_points(content_parts):
-                        _mark_cache_after_last_live_event(live_events)
+                        if len(tool_results) > 0:
+                            tool_results_cache_after = True
+                        else:
+                            _mark_cache_after_last_live_event(live_events)
                         continue
                     if operator_message is None and len(content_parts) > 0:
                         fallback_text = _text_from_content_parts(content_parts).strip()
@@ -658,7 +843,10 @@ def _build_inference_request(
                     tool_results.append(_tool_return_part_to_inference_result(part))
             if len(tool_results) > 0:
                 live_events.append(
-                    InferenceToolResultBatchEvent(results=tuple(tool_results))
+                    InferenceToolResultBatchEvent(
+                        results=tuple(tool_results),
+                        cache_after=tool_results_cache_after,
+                    )
                 )
             continue
 
@@ -719,7 +907,9 @@ def _build_inference_request(
         controls=InferenceControls(
             allow_text_output=allow_text_output,
             tool_choice=InferenceToolChoice(mode="auto"),
-            parallel_tool_calls=InferenceParallelToolCalls(mode="allow"),
+            parallel_tool_calls=InferenceParallelToolCalls(
+                mode="allow" if allow_parallel_tool_calls else "forbid"
+            ),
             profile=profile if profile in {"quick", "standard", "deep"} else None,
         ),
         cache=InferenceCache(mode="explicit" if explicit_cache else "none"),
@@ -966,6 +1156,144 @@ def _tool_result_payload_from_content(value: object) -> InferenceToolResultPaylo
     )
 
 
+def _is_not_found_tool_result(value: object) -> bool:
+    """Return True when one tool result encodes a not-found style failure."""
+    payload = value
+    if isinstance(value, str):
+        try:
+            payload = json.loads(value)
+        except ValueError:
+            return False
+    if not isinstance(payload, dict):
+        return False
+    if str(payload.get("error", "")).strip() == "not_found":
+        return True
+    details = payload.get("details")
+    if not isinstance(details, list):
+        return False
+    for item in details:
+        if not isinstance(item, dict):
+            continue
+        category = str(item.get("category", "")).strip()
+        code = str(item.get("code", "")).strip()
+        if category == "not_found" or code == "RESOURCE_NOT_FOUND":
+            return True
+    return False
+
+
+def _estimate_uncached_delta_tokens(
+    messages: list[ModelRequest | ModelResponse],
+) -> int:
+    """Estimate token growth since the most recent explicit cachepoint."""
+    segments: list[str] = []
+
+    def append_text(text: str) -> None:
+        normalized = text.strip()
+        if normalized != "":
+            segments.append(normalized)
+
+    def reset_segments() -> None:
+        segments.clear()
+
+    for message in messages:
+        if isinstance(message, ModelRequest):
+            for part in message.parts:
+                if isinstance(part, UserPromptPart):
+                    for content_part in _to_content_parts(part.content):
+                        if isinstance(content_part, CachePointContentPart):
+                            reset_segments()
+                            continue
+                        append_text(_stringify_content(content_part))
+                    continue
+                if isinstance(part, ToolReturnPart):
+                    append_text(part.tool_name)
+                    append_text(_stringify_content(part.content))
+                    continue
+                system_prompt = getattr(part, "content", None)
+                if isinstance(system_prompt, str):
+                    append_text(system_prompt)
+            continue
+        for part in message.parts:
+            if isinstance(part, TextPart):
+                append_text(part.content)
+            elif isinstance(part, ToolCallPart):
+                append_text(part.tool_name)
+                append_text(_tool_args_json(part.args))
+    return _estimate_token_count("\n".join(segments))
+
+
+def _rolling_cache_expected_reuses(
+    *,
+    tool_returns: list[ToolReturnPart],
+    call_args_by_id: dict[str, dict[str, object]],
+    hop_count: int,
+) -> float:
+    """Estimate expected future compatible reuses for one rolling cachepoint."""
+    if len(tool_returns) == 0:
+        return 0.0
+    total = float(len(tool_returns))
+    explore_count = 0.0
+    discovery_count = 0.0
+    failure_count = 0.0
+    not_found_count = 0.0
+    decisive_success_count = 0.0
+
+    for part in tool_returns:
+        call_args = call_args_by_id.get(part.tool_call_id, {})
+        call_mode = str(call_args.get("call_mode", "explore")).strip() or "explore"
+        status = _classify_tool_result_status(part.content)
+        if call_mode == "explore":
+            explore_count += 1.0
+        if part.tool_name in _DISCOVERY_TOOL_NAMES:
+            discovery_count += 1.0
+        if status in {"error", "empty"}:
+            failure_count += 1.0
+        if _is_not_found_tool_result(part.content):
+            not_found_count += 1.0
+        if call_mode == "decide" and status == "success":
+            decisive_success_count += 1.0
+
+    continuation_probability = _ROLLING_CACHE_BASE_CONTINUATION_PROBABILITY
+    continuation_probability += _ROLLING_CACHE_EXPLORE_WEIGHT * (explore_count / total)
+    continuation_probability += _ROLLING_CACHE_DISCOVERY_WEIGHT * (
+        discovery_count / total
+    )
+    continuation_probability += _ROLLING_CACHE_FAILURE_WEIGHT * (failure_count / total)
+    continuation_probability += _ROLLING_CACHE_NOT_FOUND_WEIGHT * (
+        not_found_count / total
+    )
+    continuation_probability += _ROLLING_CACHE_DECISIVE_SUCCESS_WEIGHT * (
+        decisive_success_count / total
+    )
+    continuation_probability += _ROLLING_CACHE_HOP_DECAY * max(0.0, hop_count - 3.0)
+    continuation_probability = max(
+        _ROLLING_CACHE_MIN_PROBABILITY,
+        min(_ROLLING_CACHE_MAX_PROBABILITY, continuation_probability),
+    )
+
+    expected_reuses = 0.0
+    for power in range(1, _ROLLING_CACHE_MAX_FUTURE_REUSES + 1):
+        expected_reuses += continuation_probability**power
+    return expected_reuses
+
+
+def _rolling_cachepoint_score(
+    *,
+    tool_returns: list[ToolReturnPart],
+    call_args_by_id: dict[str, dict[str, object]],
+    hop_count: int,
+    candidate_messages: list[ModelRequest | ModelResponse],
+) -> float:
+    """Return one concrete Anthropic price-weighted score for a rolling cachepoint."""
+    delta_tokens = _estimate_uncached_delta_tokens(candidate_messages)
+    expected_reuses = _rolling_cache_expected_reuses(
+        tool_returns=tool_returns,
+        call_args_by_id=call_args_by_id,
+        hop_count=hop_count,
+    )
+    return float(delta_tokens) * ((0.90 * expected_reuses) - 0.25)
+
+
 def _tool_schema_with_agent_context(schema: dict[str, object]) -> dict[str, object]:
     """Return one tool schema augmented with agent-only context properties."""
     properties = schema.get("properties", {})
@@ -1026,6 +1354,45 @@ def _normalize_finish_reason(value: str) -> str | None:
     if value in {"stop", "length", "content_filter", "tool_call", "error"}:
         return value
     return None
+
+
+def _partition_returned_tool_calls(
+    *,
+    tool_calls: tuple[LmsChatToolCall, ...],
+    advertised_tool_defs: list[ToolDefinition],
+) -> tuple[tuple[LmsChatToolCall, ...], tuple[str, ...]]:
+    """Split returned tool calls into advertised-valid and invalid subsets."""
+    advertised_tool_names = {item.name for item in advertised_tool_defs}
+    valid_tool_calls = tuple(
+        item for item in tool_calls if item.tool_name in advertised_tool_names
+    )
+    invalid_tool_names = tuple(
+        sorted(
+            {
+                item.tool_name
+                for item in tool_calls
+                if item.tool_name not in advertised_tool_names
+            }
+        )
+    )
+    return valid_tool_calls, invalid_tool_names
+
+
+def _allow_parallel_tool_calls(*, messages: list[ModelRequest | ModelResponse]) -> bool:
+    """Return whether the current hop can safely permit parallel tool calls."""
+    for message in reversed(messages):
+        if not isinstance(message, ModelRequest):
+            continue
+        saw_tool_return = False
+        for part in message.parts:
+            if not isinstance(part, ToolReturnPart):
+                continue
+            saw_tool_return = True
+            if part.tool_name in {_SEARCH_TOOLS_TOOL_NAME, _GET_TOOL_INFO_TOOL_NAME}:
+                return False
+        if saw_tool_return:
+            return True
+    return True
 
 
 def _parse_optional_iso_datetime(value: object) -> datetime | None:
@@ -1330,7 +1697,7 @@ def _brain_sdk_config_from_settings(settings: ActorSettings) -> BrainSdkConfig:
 
 def _derive_lms_request_timeout_seconds(core_runtime_settings) -> float:
     """Return one derived agent->core timeout for LMS chat requests only."""
-    adapter_settings = resolve_litellm_adapter_settings(core_runtime_settings)
+    adapter_settings = resolve_llm_adapter_settings(core_runtime_settings)
     service_settings = core_runtime_settings.core.service.model_dump(mode="python")
     language_model = service_settings.get("language_model", {})
     standard = (
@@ -1785,12 +2152,28 @@ def _build_history_processor(
                 and i == len(messages) - 1
                 and any(isinstance(p, ToolReturnPart) for p in new_parts)
             ):
+                tool_returns = [
+                    part for part in new_parts if isinstance(part, ToolReturnPart)
+                ]
                 last_tool_idx = max(
                     j for j, p in enumerate(new_parts) if isinstance(p, ToolReturnPart)
                 )
-                new_parts.insert(
-                    last_tool_idx + 1, UserPromptPart(content=[CachePoint()])
+                candidate_parts = list(new_parts)
+                candidate_parts.insert(
+                    last_tool_idx + 1,
+                    UserPromptPart(content=[CachePoint()]),
                 )
+                score = _rolling_cachepoint_score(
+                    tool_returns=tool_returns,
+                    call_args_by_id=call_args_by_id,
+                    hop_count=hop_count,
+                    candidate_messages=[
+                        *result,
+                        ModelRequest(parts=new_parts),
+                    ],
+                )
+                if score > 0.0:
+                    new_parts = candidate_parts
 
             result.append(ModelRequest(parts=new_parts))
 
@@ -1844,6 +2227,91 @@ def _is_retryable_lms_transport_timeout(exc: BrainTransportError) -> bool:
     message = str(exc).lower()
     timeout_tokens = ("timed out", "timeout", "readtimeout")
     return any(token in message for token in timeout_tokens)
+
+
+def _is_retryable_lms_transport_failure(exc: BrainTransportError) -> bool:
+    """Return True when one LMS transport failure merits another whole-turn try."""
+    if exc.operation not in {"lms.chat", "lms.chat_with_tools"}:
+        return False
+    return exc.retryable or exc.status_code >= 500 or exc.status_code == 429
+
+
+def _is_retryable_lms_internal_failure(exc: BrainInternalError) -> bool:
+    """Return True when one LMS internal failure is marked as recoverable."""
+    if exc.operation not in {"lms.chat", "lms.chat_with_tools"}:
+        return False
+    return any(detail.retryable for detail in exc.details)
+
+
+def _should_retry_lms_failure(exc: BrainSdkError) -> bool:
+    """Return True when one LMS failure should trigger local recovery attempts."""
+    if isinstance(exc, BrainDependencyError):
+        return any(detail.retryable for detail in exc.details)
+    if isinstance(exc, BrainTransportError):
+        return _is_retryable_lms_transport_failure(exc)
+    if isinstance(exc, BrainInternalError):
+        return _is_retryable_lms_internal_failure(exc)
+    return False
+
+
+def _should_notify_operator_of_lms_recovery(exc: BrainSdkError) -> bool:
+    """Return True when one LMS failure warrants a visible in-progress notice."""
+    return isinstance(exc, (BrainDependencyError, BrainTransportError)) and (
+        _should_retry_lms_failure(exc)
+    )
+
+
+def _lms_recovery_profile_sequence(initial_profile: str) -> tuple[str, ...]:
+    """Return the ordered profile fallback sequence for one turn."""
+    if initial_profile == "quick":
+        candidates = ("quick", "standard", "deep")
+    elif initial_profile == "deep":
+        candidates = ("deep", "standard", "quick")
+    else:
+        candidates = ("standard", "quick", "deep")
+    return tuple(dict.fromkeys(candidates))
+
+
+async def _notify_operator_of_lms_recovery(
+    *,
+    client: BrainClient,
+    turn_state: _TurnState,
+    session_id: str,
+    message: str,
+    reasoning_level: str,
+) -> None:
+    """Send one best-effort operator-facing notice that LMS recovery is underway."""
+    payload: dict[str, object] = {
+        "actor": "operator",
+        "channel": turn_state.channel,
+        "message": message,
+        "conversational_memory": {
+            "session_id": session_id,
+            "model": "brain-sdk-lms",
+            "provider": "brain-sdk",
+            "token_count": _estimate_token_count(message),
+            "reasoning_level": reasoning_level,
+        },
+    }
+    try:
+        await asyncio.to_thread(
+            _call_with_optional_meta,
+            client.invoke_capability,
+            meta=turn_state.nested_call_meta(),
+            capability_id="attention-notify",
+            input_payload=payload,
+            actor="operator",
+            channel=turn_state.channel,
+        )
+    except Exception:  # noqa: BLE001
+        _LOGGER.exception(
+            "brain agent lms recovery notify failed",
+            extra={
+                "capability_id": "attention-notify",
+                "channel": turn_state.channel,
+                "actor": "operator",
+            },
+        )
 
 
 def _is_lms_operation(operation: str) -> bool:
@@ -1935,29 +2403,13 @@ async def _process_instruction(
         )
         response_text = fallback_response
     chat = runtime.model.last_result
-    candidate_turn = await asyncio.to_thread(
-        _call_with_optional_meta,
-        runtime.client.memory_record_outbound_candidate,
-        meta=runtime.turn_state.nested_call_meta(),
-        session_id=runtime.session_id,
-        content=response_text,
-        model="brain-sdk-lms" if chat is None else chat.model,
-        provider="brain-sdk" if chat is None else chat.provider,
-        token_count=_estimate_token_count(response_text),
-        reasoning_level="standard",
-    )
-    delivered = await _route_outbound_response(
+    await _route_outbound_response(
         runtime=runtime,
         instruction=instruction,
         response_text=response_text,
-    )
-    await asyncio.to_thread(
-        _call_with_optional_meta,
-        runtime.client.memory_record_outbound_delivery,
-        meta=runtime.turn_state.nested_call_meta(),
-        session_id=runtime.session_id,
-        turn_id=candidate_turn.id,
-        delivered=delivered,
+        model="brain-sdk-lms" if chat is None else chat.model,
+        provider="brain-sdk" if chat is None else chat.provider,
+        reasoning_level=runtime.model.last_used_profile_name,
     )
     return response_text
 
@@ -1967,12 +2419,22 @@ async def _route_outbound_response(
     runtime: _AgentRuntime,
     instruction: SwitchboardOperatorInstruction,
     response_text: str,
+    model: str,
+    provider: str,
+    reasoning_level: str,
 ) -> bool:
     """Deliver one finalized response via Attention Router notify capability."""
     payload: dict[str, object] = {
         "actor": "operator",
         "channel": instruction.source,
         "message": response_text,
+        "conversational_memory": {
+            "session_id": runtime.session_id,
+            "model": model,
+            "provider": provider,
+            "token_count": _estimate_token_count(response_text),
+            "reasoning_level": reasoning_level,
+        },
     }
     try:
         await asyncio.to_thread(

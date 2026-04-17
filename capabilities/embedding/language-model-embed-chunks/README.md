@@ -7,7 +7,7 @@ Generate embedding vectors for a batch of text chunks.
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `texts` | `list[str]` | yes | — | The text chunks to embed. |
-| `profile` | `EmbeddingProfile` | no | `embedding` | Embedding profile override. |
+| `profile` | `EmbeddingProfile` | no | `document_embedding` | Embedding profile override (`document_embedding` or `capability_embedding`). |
 
 ## Returns
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -48,6 +49,10 @@ from services.action.attention_router.domain import (
 )
 from services.action.attention_router.service import AttentionRouterService
 from services.state.cache_authority.service import CacheAuthorityService
+from services.state.memory_authority.service import (
+    ConversationalMemoryContext,
+    MemoryAuthorityService,
+)
 from services.action.attention_router.validation import (
     CorrelateApprovalRequest,
     FlushBatchRequest,
@@ -55,6 +60,14 @@ from services.action.attention_router.validation import (
 )
 
 _LOGGER = get_logger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingBatchItem:
+    """One batched outbound plus optional conversational-memory metadata."""
+
+    rendered_message: str
+    conversational_memory: ConversationalMemoryContext | None = None
 
 
 class DefaultAttentionRouterService(AttentionRouterService):
@@ -68,17 +81,19 @@ class DefaultAttentionRouterService(AttentionRouterService):
         operator_signal_contact_e164: str,
         signal_receive_e164: str,
         cache_authority_service: CacheAuthorityService | None = None,
+        memory_authority_service: MemoryAuthorityService | None = None,
     ) -> None:
         self._settings = settings
         self._signal_adapter = signal_adapter
         self._operator_signal_contact_e164 = operator_signal_contact_e164.strip()
         self._signal_receive_e164 = signal_receive_e164.strip()
         self._cache_authority_service = cache_authority_service
+        self._memory_authority_service = memory_authority_service
         self._recent_dedupe: dict[str, datetime] = {}
         self._recent_by_channel_recipient: dict[tuple[str, str], deque[datetime]] = (
             defaultdict(deque)
         )
-        self._batched_messages: dict[str, list[str]] = defaultdict(list)
+        self._batched_messages: dict[str, list[_PendingBatchItem]] = defaultdict(list)
 
     @classmethod
     def from_settings(
@@ -92,6 +107,7 @@ class DefaultAttentionRouterService(AttentionRouterService):
             signal_adapter=SignalRestApiAdapter(settings=adapter_settings),
             operator_signal_contact_e164=settings.core.profile.operator.signal_contact_e164,
             signal_receive_e164=adapter_settings.receive_e164,
+            memory_authority_service=None,
         )
 
     @public_api_instrumented(
@@ -109,8 +125,12 @@ class DefaultAttentionRouterService(AttentionRouterService):
         dedupe_key: str = "",
         batch_key: str = "",
         force: bool = False,
+        conversational_memory: ConversationalMemoryContext | None = None,
     ) -> Envelope[RouteNotificationResult]:
         """Route one outbound notification and apply policy-neutral constraints."""
+        normalized_conversational_memory = self._normalize_conversational_memory(
+            conversational_memory=conversational_memory
+        )
         request, errors = self._validate_request(
             meta=meta,
             model=RouteNotificationRequest,
@@ -122,6 +142,11 @@ class DefaultAttentionRouterService(AttentionRouterService):
                 "dedupe_key": dedupe_key,
                 "batch_key": batch_key,
                 "force": force,
+                "conversational_memory": (
+                    None
+                    if normalized_conversational_memory is None
+                    else normalized_conversational_memory.model_dump(mode="python")
+                ),
             },
         )
         if errors:
@@ -149,6 +174,7 @@ class DefaultAttentionRouterService(AttentionRouterService):
             batched_count = self._enqueue_batch(
                 batch_key=resolved.batch_key,
                 message=self._render_message(resolved),
+                conversational_memory=request.conversational_memory,
             )
             return success(
                 meta=meta,
@@ -188,6 +214,15 @@ class DefaultAttentionRouterService(AttentionRouterService):
             recipient=resolved.recipient,
             now=now,
         )
+        persistence_error = self._persist_conversational_outbound(
+            meta=meta,
+            notification=resolved,
+            rendered_message=self._render_message(resolved),
+            conversational_memory=request.conversational_memory,
+            delivered_at_ms=delivery.sent_timestamp_ms,
+        )
+        if persistence_error is not None:
+            return failure(meta=meta, errors=[persistence_error])
         return success(
             meta=meta,
             payload=RouteNotificationResult(
@@ -284,8 +319,12 @@ class DefaultAttentionRouterService(AttentionRouterService):
                 ),
             )
 
-        rendered = self._render_batch_message(batch_key=request.batch_key, items=items)
-        return self.route_notification(
+        rendered = self._render_batch_message(
+            batch_key=request.batch_key,
+            items=[item.rendered_message for item in items],
+        )
+        conversational_memory = self._batch_conversational_memory(items=items)
+        result = self.route_notification(
             meta=meta,
             actor=request.actor,
             channel=request.channel,
@@ -293,7 +332,9 @@ class DefaultAttentionRouterService(AttentionRouterService):
             message=rendered,
             dedupe_key=f"batch:{request.batch_key}:{len(items)}",
             force=True,
+            conversational_memory=conversational_memory,
         )
+        return result
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -445,6 +486,18 @@ class DefaultAttentionRouterService(AttentionRouterService):
             batch_key=request.batch_key,
         )
 
+    @staticmethod
+    def _normalize_conversational_memory(
+        *,
+        conversational_memory: object,
+    ) -> ConversationalMemoryContext | None:
+        """Normalize one optional conversational-memory payload into MAS-owned shape."""
+        if conversational_memory is None:
+            return None
+        if isinstance(conversational_memory, ConversationalMemoryContext):
+            return conversational_memory
+        return ConversationalMemoryContext.model_validate(conversational_memory)
+
     def _persist_approval_timestamp_correlation(
         self,
         *,
@@ -519,6 +572,59 @@ class DefaultAttentionRouterService(AttentionRouterService):
         token = str(value.get("proposal_token", "")).strip()
         return token or None
 
+    def _persist_conversational_outbound(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        notification: RoutedNotification,
+        rendered_message: str,
+        conversational_memory: ConversationalMemoryContext | None,
+        delivered_at_ms: int | None,
+    ) -> ErrorDetail | None:
+        """Persist one actually sent conversational outbound into MAS."""
+        if conversational_memory is None:
+            return None
+        if not self._is_conversational_channel(channel=notification.channel):
+            return None
+        if self._memory_authority_service is None:
+            return None
+        candidate_meta = new_meta(
+            kind=meta.kind,
+            source=str(SERVICE_COMPONENT_ID),
+            principal=meta.principal,
+            trace_id=meta.trace_id,
+            parent_id=meta.envelope_id,
+        )
+        candidate = self._memory_authority_service.record_outbound_candidate(
+            meta=candidate_meta,
+            session_id=conversational_memory.session_id,
+            content=rendered_message,
+            model=conversational_memory.model,
+            provider=conversational_memory.provider,
+            token_count=conversational_memory.token_count,
+            reasoning_level=conversational_memory.reasoning_level,
+        )
+        if not candidate.ok or candidate.payload is None:
+            return dependency_error(
+                "memory persistence failed for conversational outbound",
+                metadata={"channel": notification.channel},
+            )
+        delivery = self._memory_authority_service.record_outbound_delivery(
+            meta=candidate_meta,
+            session_id=conversational_memory.session_id,
+            turn_id=candidate.payload.value.id,
+            delivered=True,
+        )
+        if delivery.ok:
+            return None
+        return dependency_error(
+            "memory delivery persistence failed for conversational outbound",
+            metadata={
+                "channel": notification.channel,
+                "timestamp_ms": "" if delivered_at_ms is None else str(delivered_at_ms),
+            },
+        )
+
     @staticmethod
     def _approval_timestamp_cache_key(*, channel: str, timestamp_ms: int) -> str:
         """Return the component-local cache key for one approval delivery timestamp."""
@@ -536,8 +642,46 @@ class DefaultAttentionRouterService(AttentionRouterService):
 
     def _enqueue_batch(self, *, batch_key: str, message: str) -> int:
         """Append one message to in-memory batch queue and return queue depth."""
-        self._batched_messages[batch_key].append(message)
+        self._batched_messages[batch_key].append(
+            _PendingBatchItem(rendered_message=message)
+        )
         return len(self._batched_messages[batch_key])
+
+    def _enqueue_batch(
+        self,
+        *,
+        batch_key: str,
+        message: str,
+        conversational_memory: ConversationalMemoryContext | None,
+    ) -> int:
+        """Append one routed message to the pending batch queue and return depth."""
+        self._batched_messages[batch_key].append(
+            _PendingBatchItem(
+                rendered_message=message,
+                conversational_memory=conversational_memory,
+            )
+        )
+        return len(self._batched_messages[batch_key])
+
+    def _batch_conversational_memory(
+        self, *, items: list[_PendingBatchItem]
+    ) -> ConversationalMemoryContext | None:
+        """Return one stable conversational context for a flushed batch when possible."""
+        contexts = [
+            item.conversational_memory
+            for item in items
+            if item.conversational_memory is not None
+        ]
+        if len(contexts) == 0:
+            return None
+        first = contexts[0]
+        if any(item != first for item in contexts[1:]):
+            return None
+        return first
+
+    def _is_conversational_channel(self, *, channel: str) -> bool:
+        """Return True when one channel participates in unified assistant dialogue."""
+        return channel in self._settings.conversational_channels
 
     def _is_rate_limited(self, *, channel: str, recipient: str, now: datetime) -> bool:
         """Return True when channel/recipient exceeds configured send rate."""

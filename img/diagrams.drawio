@@ -1,4 +1,4 @@
-<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.5.2 Chrome/142.0.7444.265 Electron/39.6.1 Safari/537.36" version="29.5.2" pages="4">
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/29.6.6 Chrome/144.0.7559.236 Electron/40.8.4 Safari/537.36" version="29.6.6" pages="4">
   <diagram id="xxchCFrYY8up_Jw6Zuoi" name="c4-context">
     <mxGraphModel dx="1669" dy="1145" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
@@ -229,7 +229,7 @@
     </mxGraphModel>
   </diagram>
   <diagram name="boundaries-and-responsibilities" id="YvuT0BCowB7iJ6q_Dn-D">
-    <mxGraphModel dx="3081" dy="1954" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="2173" dy="1970" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -473,16 +473,16 @@
         <mxCell id="9sP40jFmVC6lyYa5Idyd-4" connectable="0" parent="9sP40jFmVC6lyYa5Idyd-3" style="group" value="" vertex="1">
           <mxGeometry height="110" width="260.5" as="geometry" />
         </mxCell>
-        <mxCell id="9sP40jFmVC6lyYa5Idyd-5" parent="9sP40jFmVC6lyYa5Idyd-4" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="Ollama" vertex="1">
+        <mxCell id="9sP40jFmVC6lyYa5Idyd-5" parent="9sP40jFmVC6lyYa5Idyd-4" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="HTTPS:&lt;br&gt;Anthropic" vertex="1">
           <mxGeometry height="80" width="80" x="160" y="30" as="geometry" />
         </mxCell>
-        <mxCell id="9sP40jFmVC6lyYa5Idyd-6" parent="9sP40jFmVC6lyYa5Idyd-4" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="HTTPS:&lt;br&gt;OpenAI" vertex="1">
+        <mxCell id="9sP40jFmVC6lyYa5Idyd-6" parent="9sP40jFmVC6lyYa5Idyd-4" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="Ollama" vertex="1">
           <mxGeometry height="80" width="80" x="220.5" y="30" as="geometry" />
         </mxCell>
         <mxCell id="9sP40jFmVC6lyYa5Idyd-7" parent="9sP40jFmVC6lyYa5Idyd-4" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="..." vertex="1">
           <mxGeometry height="80" width="80" x="280.5" y="30" as="geometry" />
         </mxCell>
-        <mxCell id="9sP40jFmVC6lyYa5Idyd-9" parent="9sP40jFmVC6lyYa5Idyd-4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#60a917;fontColor=#ffffff;strokeColor=#2D7600;" value="LiteLLM" vertex="1">
+        <mxCell id="9sP40jFmVC6lyYa5Idyd-9" parent="9sP40jFmVC6lyYa5Idyd-4" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#60a917;fontColor=#ffffff;strokeColor=#2D7600;" value="LLM" vertex="1">
           <mxGeometry height="30" width="179.5" x="180.5" as="geometry" />
         </mxCell>
         <mxCell id="9sP40jFmVC6lyYa5Idyd-14" edge="1" parent="1" source="OA3wkwMe9krJbiAJaj_3-1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.75;entryY=1;entryDx=0;entryDy=0;dashed=1;curved=0;exitX=0.75;exitY=1;exitDx=0;exitDy=0;" target="-nI3kN9ZCotlMl1iEThV-22">

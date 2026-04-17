@@ -35,10 +35,18 @@ def build_component(
     *, settings: CoreRuntimeSettings, components: Mapping[str, object]
 ) -> object:
     """Build concrete runtime instance for this registered service component."""
+    from services.state.memory_authority.service import MemoryAuthorityService
     from services.action.attention_router.service import build_attention_router_service
+
+    memory_authority = components.get("service_memory_authority")
+    if memory_authority is None:
+        raise KeyError("service_memory_authority")
+    if not isinstance(memory_authority, MemoryAuthorityService):
+        raise TypeError("service_memory_authority")
 
     return build_attention_router_service(
         settings=settings,
         signal_adapter=components.get("adapter_signal"),
         cache_authority_service=components.get("service_cache_authority"),
+        memory_authority_service=memory_authority,
     )

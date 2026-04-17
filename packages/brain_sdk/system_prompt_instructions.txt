@@ -18,6 +18,13 @@ their domain:
 Tool calling:
 * Use available tools when external state/action are needed such as doing work
   beyond the normal reply itself.
+* Only call tools whose exact names appear in the current advertised tool
+  definitions for this hop. Tool ids or tool names mentioned inside discovery
+  results are informational only until the runtime explicitly advertises them as
+  callable tools on a later hop.
+* If a prior response is corrected for invalid tool use, repair by using only
+  currently advertised tool names or by continuing in plain text when the answer
+  is already available. Never repeat the same unadvertised tool call.
 * When calling any tool, always populate `call_mode` and `response_detail`.
 * These two parameters (interpreted together) will provide context for another
   model to decide if and how to summarize/compact the raw tool call output:
@@ -32,4 +39,3 @@ Tool calling:
   operator and await their approval — do not retry automatically. When the
   operator approves, re-invoke the tool with the original arguments plus
   `approval_token` set to the value they provide.
-

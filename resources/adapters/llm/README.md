@@ -1,19 +1,19 @@
-# LiteLLM Adapter
-Action _Adapter_ _Resource_ that executes chat and embedding calls against a LiteLLM gateway for the Language Model Service.
+# native LLM Adapter
+Action _Adapter_ _Resource_ that executes chat and embedding calls against a native LLM gateway for the Language Model Service.
 
 ------------------------------------------------------------------------
 ## What This Component Is
-`resources/adapters/litellm/` provides the concrete Layer 0 LiteLLM
+`resources/adapters/llm/` provides the concrete Layer 0 native LLM
 integration:
-- `component.py`: `ResourceManifest` registration (`adapter_litellm`)
+- `component.py`: `ResourceManifest` registration (`adapter_llm`)
 - `adapter.py`: adapter protocol, DTOs, and adapter exception taxonomy
-- `litellm_adapter.py`: HTTP implementation (`HttpLiteLlmAdapter`)
+- `llm_adapter.py`: HTTP implementation (`HttpLlmAdapter`)
 - `config.py`: Pydantic settings model and resolver for adapter config
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
 This _Resource_ is owned by `service_language_model` via `owner_service_id` in
-`resources/adapters/litellm/component.py`.
+`resources/adapters/llm/component.py`.
 
 Boundary rules:
 - Adapter owns network calls and response mapping to typed adapter DTOs.
@@ -23,7 +23,7 @@ Boundary rules:
 ------------------------------------------------------------------------
 ## Interactions
 Primary interactions:
-- Language Model Service composes `HttpLiteLlmAdapter` in
+- Language Model Service composes `HttpLlmAdapter` in
   `DefaultLanguageModelService.from_settings(...)`.
 - LMS calls adapter methods:
   - `chat` / `chat_batch`
@@ -35,7 +35,7 @@ Primary interactions:
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
 1. LMS resolves provider/model profile and passes it to adapter methods.
-2. Adapter constructs LiteLLM request payloads and sends HTTP requests.
+2. Adapter constructs native LLM request payloads and sends HTTP requests.
 3. Adapter validates response JSON shape and maps to typed DTOs.
 4. Adapter raises dependency/internal exceptions for failure paths.
 5. LMS maps adapter output/failures to envelope-level service responses.
@@ -49,7 +49,7 @@ Primary interactions:
 
 ------------------------------------------------------------------------
 ## Configuration Surface
-Adapter settings are sourced from `components.adapter.litellm`:
+Adapter settings are sourced from `components.adapter.llm`:
 - `base_url`
 - `api_key`
 - `timeout_seconds`
@@ -60,8 +60,8 @@ See `docs/configuration.md` for canonical key definitions and overrides.
 ------------------------------------------------------------------------
 ## Testing and Validation
 Component tests:
-- `resources/adapters/litellm/tests/test_litellm_config.py`
-- `resources/adapters/litellm/tests/test_litellm_adapter.py`
+- `resources/adapters/llm/tests/test_llm_config.py`
+- `resources/adapters/llm/tests/test_llm_adapter.py`
 
 Project-wide validation command:
 ```bash
@@ -79,4 +79,4 @@ make test
 
 
 ------------------------------------------------------------------------
-_End of LiteLLM Adapter README_
+_End of native LLM Adapter README_

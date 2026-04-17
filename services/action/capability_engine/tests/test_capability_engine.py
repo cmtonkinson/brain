@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
+from packages.brain_shared.config import (
+    CoreRuntimeSettings,
+    CoreSettings,
+    ResourcesSettings,
+)
 from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
 from packages.brain_shared.errors import policy_error
 from services.action.capability_engine.config import CapabilityEngineSettings
@@ -21,6 +27,7 @@ from services.action.capability_engine.domain import (
 )
 from services.action.capability_engine.implementation import (
     DefaultCapabilityEngineService,
+    _resolve_capability_embedding_profile_fingerprint,
 )
 from services.action.capability_engine.pipeline_handler_bridge import (
     build_pipeline_skill_handler,
@@ -823,3 +830,30 @@ def test_ces_health_does_not_depend_on_policy_service_health() -> None:
     assert health.payload is not None
     payload: CapabilityEngineHealthStatus = health.payload.value
     assert payload.policy_ready is True
+
+
+def test_capability_embedding_profile_fingerprint_includes_dimensions() -> None:
+    settings = CoreRuntimeSettings(
+        core=CoreSettings.model_validate(
+            {
+                "service": {
+                    "language_model": {
+                        "capability_embedding": {
+                            "provider": "ollama",
+                            "model": "mxbai-embed-large",
+                            "dimensions": 1024,
+                        }
+                    }
+                }
+            }
+        ),
+        resources=ResourcesSettings.model_validate({}),
+    )
+
+    fingerprint = _resolve_capability_embedding_profile_fingerprint(settings)
+
+    assert json.loads(fingerprint) == {
+        "dimensions": 1024,
+        "model": "mxbai-embed-large",
+        "provider": "ollama",
+    }

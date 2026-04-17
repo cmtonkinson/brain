@@ -23,7 +23,7 @@ MANIFEST = register_component(
         public_api_roots=frozenset(
             {ModuleRoot("services.action.language_model.service")}
         ),
-        owns_resources=frozenset({ComponentId("adapter_litellm")}),
+        owns_resources=frozenset({ComponentId("adapter_llm")}),
     )
 )
 
@@ -36,5 +36,5 @@ def build_component(
 
     return build_language_model_service(
         settings=settings,
-        adapter=components.get("adapter_litellm"),
+        adapter=components.get("adapter_llm"),
     )

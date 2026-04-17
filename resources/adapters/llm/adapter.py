@@ -1,4 +1,4 @@
-"""Transport-agnostic LiteLLM adapter contract and DTOs."""
+"""Transport-agnostic native LLM adapter contract and DTOs."""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ class AdapterChatResult(BaseModel):
 
 
 class AdapterChatToolDefinition(BaseModel):
-    """One normalized tool definition passed to LiteLLM."""
+    """One normalized tool definition passed to native LLM."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -68,7 +68,7 @@ class AdapterChatToolDefinition(BaseModel):
 
 
 class AdapterChatToolCall(BaseModel):
-    """One normalized tool call returned by LiteLLM."""
+    """One normalized tool call returned by native LLM."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -78,7 +78,7 @@ class AdapterChatToolCall(BaseModel):
 
 
 class AdapterChatMessage(BaseModel):
-    """One normalized chat history message passed through LiteLLM."""
+    """One normalized chat history message passed through native LLM."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -90,7 +90,7 @@ class AdapterChatMessage(BaseModel):
 
 
 class AdapterToolChatResult(BaseModel):
-    """One normalized tool-capable completion returned by LiteLLM."""
+    """One normalized tool-capable completion returned by native LLM."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -122,8 +122,8 @@ class AdapterHealthResult(BaseModel):
     detail: str
 
 
-class LiteLlmAdapter(Protocol):
-    """Protocol for LiteLLM-backed chat and embedding operations."""
+class LlmAdapter(Protocol):
+    """Protocol for native LLM-backed chat and embedding operations."""
 
     def chat(
         self,
@@ -159,6 +159,7 @@ class LiteLlmAdapter(Protocol):
         provider: str,
         model: str,
         text: str,
+        dimensions: int | None = None,
     ) -> AdapterEmbeddingResult:
         """Generate one embedding vector."""
 
@@ -168,6 +169,7 @@ class LiteLlmAdapter(Protocol):
         provider: str,
         model: str,
         texts: Sequence[str],
+        dimensions: int | None = None,
     ) -> list[AdapterEmbeddingResult]:
         """Generate embedding vectors for one batch."""
 

@@ -41,7 +41,7 @@ substrate:
     max_connections: 20
 
 adapter:
-  litellm:
+  llm:
     timeout_seconds: 30.0
     max_retries: 2
     timeout_retry_attempts: 2
@@ -55,6 +55,18 @@ adapter:
         timeout_seconds: null
         max_retries: null
         options: {}
+      voyage:
+        api_base: https://api.voyageai.com
+        timeout_seconds: null
+        max_retries: null
+        options:
+          output_dimension: 2048
+      anthropic:
+        api_base: https://api.anthropic.com
+        timeout_seconds: null
+        max_retries: null
+        options:
+          max_tokens: 1024
   signal:
     base_url: http://signal-api:8080
     health_timeout_seconds: 0.5

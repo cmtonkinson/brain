@@ -26,17 +26,25 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
         "/memory/record_inbound_turn",
         "/memory/assemble_snapshot",
         "/lms/chat-with-tools",
-        "/memory/record_outbound_candidate",
         "/capabilities/invoke",
-        "/memory/record_outbound_delivery",
     ]
-    invoke_call = result.calls[7]
+    invoke_call = result.calls[6]
     assert invoke_call.body["capability_id"] == "attention-notify"
-    assert invoke_call.body["input_payload"] == {
-        "actor": "operator",
-        "channel": "signal",
-        "message": "assistant reply",
+    assert invoke_call.body["input_payload"]["actor"] == "operator"
+    assert invoke_call.body["input_payload"]["channel"] == "signal"
+    assert invoke_call.body["input_payload"]["message"] == "assistant reply"
+    assert invoke_call.body["input_payload"]["conversational_memory"] == {
+        "session_id": invoke_call.body["input_payload"]["conversational_memory"][
+            "session_id"
+        ],
+        "model": "test-model",
+        "provider": "unit",
+        "token_count": agent_main._estimate_token_count("assistant reply"),
+        "reasoning_level": "standard",
     }
+    assert (
+        invoke_call.body["input_payload"]["conversational_memory"]["session_id"] != ""
+    )
     assert invoke_call.body["invocation_id"] != ""
 
 
@@ -50,23 +58,15 @@ def test_agent_turn_harness_preserves_trace_linkage_for_final_notify() -> None:
     lms_call = next(
         call for call in result.calls if call.path == "/lms/chat-with-tools"
     )
-    record_call = next(
-        call
-        for call in result.calls
-        if call.path == "/memory/record_outbound_candidate"
-    )
     notify_call = next(
         call for call in reversed(result.calls) if call.path == "/capabilities/invoke"
     )
-    delivery_call = result.calls[-1]
 
     assert notify_call.path == "/capabilities/invoke"
     assert notify_call.body["capability_id"] == "attention-notify"
     assert assemble_call.body["trace_id"] == lms_call.body["trace_id"]
-    assert record_call.body["trace_id"] == lms_call.body["trace_id"]
     assert lms_call.body["trace_id"] == notify_call.body["trace_id"]
     assert notify_call.body["parent_id"] == lms_call.body["envelope_id"]
-    assert delivery_call.path == "/memory/record_outbound_delivery"
 
 
 def test_agent_turn_harness_logs_notify_failures_without_failing_turn() -> None:
@@ -185,9 +185,7 @@ def test_agent_turn_harness_keeps_tool_set_stable_after_discovery() -> None:
         "/lms/chat-with-tools",
         "/capabilities/search",
         "/lms/chat-with-tools",
-        "/memory/record_outbound_candidate",
         "/capabilities/invoke",
-        "/memory/record_outbound_delivery",
     ]
     first_lms_call = result.calls[5]
     second_lms_call = result.calls[7]

@@ -1,6 +1,6 @@
-"""LiteLLM adapter resource exports."""
+"""Native LLM adapter resource exports."""
 
-from resources.adapters.litellm.adapter import (
+from resources.adapters.llm.adapter import (
     AdapterChatResult,
     AdapterChatMessage,
     AdapterChatToolCall,
@@ -11,15 +11,15 @@ from resources.adapters.litellm.adapter import (
     AdapterInternalError,
     AdapterProviderCallAudit,
     AdapterToolChatResult,
-    LiteLlmAdapter,
+    LlmAdapter,
 )
-from resources.adapters.litellm.component import MANIFEST, RESOURCE_COMPONENT_ID
-from resources.adapters.litellm.config import (
-    LiteLlmAdapterSettings,
-    LiteLlmProviderSettings,
-    resolve_litellm_adapter_settings,
+from resources.adapters.llm.component import MANIFEST, RESOURCE_COMPONENT_ID
+from resources.adapters.llm.config import (
+    LlmAdapterSettings,
+    LlmProviderSettings,
+    resolve_llm_adapter_settings,
 )
-from resources.adapters.litellm.litellm_adapter import LiteLlmLibraryAdapter
+from resources.adapters.llm.llm_adapter import HttpLlmAdapter
 
 __all__ = [
     "AdapterChatResult",
@@ -32,11 +32,11 @@ __all__ = [
     "AdapterInternalError",
     "AdapterProviderCallAudit",
     "AdapterToolChatResult",
-    "LiteLlmLibraryAdapter",
-    "LiteLlmAdapter",
-    "LiteLlmAdapterSettings",
-    "LiteLlmProviderSettings",
+    "HttpLlmAdapter",
+    "LlmAdapter",
+    "LlmAdapterSettings",
+    "LlmProviderSettings",
     "MANIFEST",
     "RESOURCE_COMPONENT_ID",
-    "resolve_litellm_adapter_settings",
+    "resolve_llm_adapter_settings",
 ]

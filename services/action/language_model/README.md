@@ -1,5 +1,5 @@
 # Language Model Service
-Action _Service_ that provides stateless chat and embedding APIs and gates all model access through the LiteLLM adapter resource.
+Action _Service_ that provides stateless chat and embedding APIs and gates all model access through the native LLM adapter resource.
 
 ------------------------------------------------------------------------
 ## What This Component Is
@@ -18,8 +18,8 @@ Core module roles:
 ------------------------------------------------------------------------
 ## Boundary and Ownership
 Language Model Service is an Action-System _Service_ (`layer=1`,
-`system="action"`). It declares ownership of the LiteLLM adapter resource
-(`adapter_litellm`) in `services/action/language_model/component.py`.
+`system="action"`). It declares ownership of the native LLM adapter resource
+(`adapter_llm`) in `services/action/language_model/component.py`.
 
 Boundary rules:
 - LMS owns request validation and profile selection semantics.
@@ -35,7 +35,7 @@ Primary system interactions:
 - Layer 2 callers use HTTP via FastAPI routes (`api.py`).
 - `DefaultLanguageModelService.from_settings(...)` resolves:
   - `components.service.language_model`
-  - `components.adapter.litellm`
+  - `components.adapter.llm`
 - LMS invokes owned adapter methods for:
   - `chat` / `chat_batch`
   - `embed` / `embed_batch`
@@ -49,7 +49,7 @@ Primary system interactions:
 3. LMS validates metadata and request shape using Pydantic request models.
 4. LMS resolves one model profile (`embedding`, `quick`, `standard`, `deep`)
    with fallback from `quick`/`deep` to `standard`.
-5. LMS dispatches to the LiteLLM adapter resource.
+5. LMS dispatches to the native LLM adapter resource.
 6. The adapter lowers the canonical request into provider-specific request JSON.
 7. LMS returns typed envelope payloads (`ChatResponse`, `EmbeddingVector`,
    `HealthStatus`) or structured errors.
@@ -75,7 +75,7 @@ Service settings are sourced from `components.service.language_model`:
 - `deep.provider`
 - `deep.model`
 
-Adapter settings are sourced from `components.adapter.litellm`.
+Adapter settings are sourced from `components.adapter.llm`.
 
 See `docs/configuration.md` for canonical key definitions and override rules.
 

@@ -5,27 +5,30 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import select
 
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
-from resources.adapters.litellm import (
+from resources.adapters.llm import (
     AdapterChatToolCall,
     AdapterDependencyError,
     AdapterEmbeddingResult,
     AdapterHealthResult,
     AdapterProviderCallAudit,
     AdapterToolChatResult,
-    LiteLlmAdapter,
+    LlmAdapter,
 )
 from services.action.language_model.config import (
+    LanguageModelEmbeddingProfileSettings,
     LanguageModelProfileSettings,
     LanguageModelServiceSettings,
 )
 from services.action.language_model.data.repository import (
     PostgresLanguageModelCallAuditRepository,
+    PostgresLanguageModelTurnCacheHopRepository,
 )
 from services.action.language_model.data.runtime import LanguageModelPostgresRuntime
-from services.action.language_model.data.schema import call_audits
+from services.action.language_model.data.schema import call_audits, turn_cache_hops
 from services.action.language_model.implementation import DefaultLanguageModelService
 from tests.integration.helpers import real_provider_tests_enabled
 from tests.helpers.inference_request import make_inference_request
@@ -39,7 +42,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-class _AuditAdapter(LiteLlmAdapter):
+class _AuditAdapter(LlmAdapter):
     """Deterministic adapter fake that records one tool-chat success or failure."""
 
     def __init__(self, *, fail: bool = False) -> None:
@@ -93,12 +96,26 @@ class _AuditAdapter(LiteLlmAdapter):
             raw_call=raw_call,
         )
 
-    def embed(self, *, provider: str, model: str, text: str) -> AdapterEmbeddingResult:
+    def embed(
+        self,
+        *,
+        provider: str,
+        model: str,
+        text: str,
+        dimensions: int | None = None,
+    ) -> AdapterEmbeddingResult:
+        del provider, model, text, dimensions
         raise NotImplementedError
 
     def embed_batch(
-        self, *, provider: str, model: str, texts: Sequence[str]
+        self,
+        *,
+        provider: str,
+        model: str,
+        texts: Sequence[str],
+        dimensions: int | None = None,
     ) -> list[AdapterEmbeddingResult]:
+        del provider, model, texts, dimensions
         raise NotImplementedError
 
     def health(self) -> AdapterHealthResult:
@@ -107,11 +124,11 @@ class _AuditAdapter(LiteLlmAdapter):
 
 def _settings() -> LanguageModelServiceSettings:
     return LanguageModelServiceSettings(
-        document_embedding=LanguageModelProfileSettings(
-            provider="ollama", model="embed"
+        document_embedding=LanguageModelEmbeddingProfileSettings(
+            provider="ollama", model="embed", dimensions=1024
         ),
-        capability_embedding=LanguageModelProfileSettings(
-            provider="ollama", model="embed-cap"
+        capability_embedding=LanguageModelEmbeddingProfileSettings(
+            provider="ollama", model="embed-cap", dimensions=1024
         ),
         quick=LanguageModelProfileSettings(provider="unit", model="quick"),
         standard=LanguageModelProfileSettings(provider="unit", model="standard"),
@@ -132,6 +149,9 @@ def test_chat_with_tools_persists_postgres_audit_rows(
         settings=_settings(),
         adapter=_AuditAdapter(),
         audit_repository=PostgresLanguageModelCallAuditRepository(
+            runtime.schema_sessions
+        ),
+        turn_cache_hop_repository=PostgresLanguageModelTurnCacheHopRepository(
             runtime.schema_sessions
         ),
     )
@@ -165,6 +185,38 @@ def test_chat_with_tools_persists_postgres_audit_rows(
         == "hello"
     )
     assert row.response_json["body"]["id"] == "resp_123"
+    with runtime.schema_sessions.session() as session:
+        hop_rows = session.execute(
+            select(
+                turn_cache_hops.c.trace_id,
+                turn_cache_hops.c.hop_ordinal,
+                turn_cache_hops.c.call_index,
+                turn_cache_hops.c.active_cachepoint_count,
+                turn_cache_hops.c.cache_creation_input_tokens,
+                turn_cache_hops.c.cache_read_input_tokens,
+            )
+        ).all()
+        view_row = (
+            session.execute(
+                sa.text(
+                    "SELECT hop_count, total_cache_creation_input_tokens, "
+                    "total_cache_read_input_tokens "
+                    "FROM service_language_model.turn_cache_traces_v "
+                    "WHERE trace_id = :trace_id"
+                ),
+                {"trace_id": row.trace_id},
+            )
+            .mappings()
+            .one()
+        )
+    assert hop_rows
+    hop_row = hop_rows[-1]
+    assert hop_row.hop_ordinal == 1
+    assert hop_row.call_index == 1
+    assert hop_row.active_cachepoint_count == 0
+    assert view_row["hop_count"] == 1
+    assert view_row["total_cache_creation_input_tokens"] == 0
+    assert view_row["total_cache_read_input_tokens"] == 0
 
 
 def test_chat_with_tools_failure_persists_non_empty_postgres_audit_rows(
@@ -176,6 +228,9 @@ def test_chat_with_tools_failure_persists_non_empty_postgres_audit_rows(
         settings=_settings(),
         adapter=_AuditAdapter(fail=True),
         audit_repository=PostgresLanguageModelCallAuditRepository(
+            runtime.schema_sessions
+        ),
+        turn_cache_hop_repository=PostgresLanguageModelTurnCacheHopRepository(
             runtime.schema_sessions
         ),
     )
