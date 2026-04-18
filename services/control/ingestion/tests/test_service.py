@@ -10,8 +10,10 @@ from services.control.ingestion.config import IngestionServiceSettings
 from services.control.ingestion.domain import (
     AnchorRecord,
     ExtractionMetadataRecord,
+    IngestionIndexingRun,
     IngestionRecord,
     IngestionStatus,
+    IndexingRunStatus,
     NormalizationMetadataRecord,
     ProvenanceRecord,
     ProvenanceSourceRecord,
@@ -24,6 +26,8 @@ from services.control.ingestion.implementation import DefaultIngestionService
 from services.control.ingestion.interfaces import (
     BaseExtractor,
     BaseNormalizer,
+    BuiltInTextExtractor,
+    BuiltInTextNormalizer,
     ExtractedArtifact,
     ExtractorRegistry,
     NormalizedArtifact,
@@ -48,6 +52,7 @@ class _FakeRepository:
         self._provenance: dict[str, ProvenanceRecord] = {}
         self._provenance_sources: list[ProvenanceSourceRecord] = []
         self._anchors: dict[str, AnchorRecord] = {}
+        self._indexing_runs: dict[str, IngestionIndexingRun] = {}
         self._healthy: bool = True
         self._id_counter = 0
 
@@ -369,6 +374,80 @@ class _FakeRepository:
     ) -> AnchorRecord | None:
         return self._anchors.get(normalized_object_key)
 
+    # -- indexing runs --
+
+    def create_indexing_run(
+        self,
+        *,
+        ingestion_id: str,
+        status: str,
+        created_at: datetime,
+    ) -> IngestionIndexingRun:
+        run = IngestionIndexingRun(
+            id=self._next_id(),
+            ingestion_id=ingestion_id,
+            job_id=None,
+            status=IndexingRunStatus(status),
+            source_count=0,
+            chunk_count=0,
+            embedding_count=0,
+            failed_count=0,
+            error=None,
+            created_at=created_at,
+            updated_at=created_at,
+            finished_at=None,
+        )
+        self._indexing_runs[run.id] = run
+        return run
+
+    def get_indexing_run(self, *, indexing_run_id: str) -> IngestionIndexingRun | None:
+        return self._indexing_runs.get(indexing_run_id)
+
+    def update_indexing_run_job(
+        self,
+        *,
+        indexing_run_id: str,
+        job_id: str,
+        updated_at: datetime,
+    ) -> IngestionIndexingRun | None:
+        run = self._indexing_runs.get(indexing_run_id)
+        if run is None:
+            return None
+        updated = run.model_copy(update={"job_id": job_id, "updated_at": updated_at})
+        self._indexing_runs[indexing_run_id] = updated
+        return updated
+
+    def update_indexing_run_status(
+        self,
+        *,
+        indexing_run_id: str,
+        status: str,
+        source_count: int,
+        chunk_count: int,
+        embedding_count: int,
+        failed_count: int,
+        error: str | None,
+        updated_at: datetime,
+        finished_at: datetime | None,
+    ) -> IngestionIndexingRun | None:
+        run = self._indexing_runs.get(indexing_run_id)
+        if run is None:
+            return None
+        updated = run.model_copy(
+            update={
+                "status": IndexingRunStatus(status),
+                "source_count": source_count,
+                "chunk_count": chunk_count,
+                "embedding_count": embedding_count,
+                "failed_count": failed_count,
+                "error": error,
+                "updated_at": updated_at,
+                "finished_at": finished_at,
+            }
+        )
+        self._indexing_runs[indexing_run_id] = updated
+        return updated
+
     # -- health --
 
     def is_healthy(self) -> bool:
@@ -385,6 +464,7 @@ class _FakeOAS:
 
     def __init__(self) -> None:
         self._objects: dict[str, bytes] = {}
+        self._content_types: dict[str, str] = {}
         self._fail_put = False
         self._fail_stat = False
         self._content_to_key: dict[bytes, str] = {}
@@ -394,7 +474,9 @@ class _FakeOAS:
         from types import SimpleNamespace
 
         ref = SimpleNamespace(object_key=object_key)
-        meta = SimpleNamespace(content_type="application/octet-stream")
+        meta = SimpleNamespace(
+            content_type=self._content_types.get(object_key, "application/octet-stream")
+        )
         return SimpleNamespace(ref=ref, metadata=meta)
 
     def _make_put_result(self, object_key: str, write_disposition: str):
@@ -433,12 +515,14 @@ class _FakeOAS:
         existing_key = self._content_to_key.get(content)
         if existing_key is not None:
             self._objects[existing_key] = content
+            self._content_types[existing_key] = content_type
             return success(
                 meta=meta, payload=self._make_put_result(existing_key, "existing")
             )
 
         key = f"sha256/{hashlib.sha256(content).hexdigest()}.{extension}"
         self._objects[key] = content
+        self._content_types[key] = content_type
         self._content_to_key[content] = key
         return success(meta=meta, payload=self._make_put_result(key, "created"))
 
@@ -549,6 +633,103 @@ class _FakeJobService:
         return success(meta=meta, payload=payload)
 
 
+class _FakeUtilityService:
+    """Minimal Utility Service fake for indexing tests."""
+
+    def chunk_text(self, *, meta, text: str):
+        from types import SimpleNamespace
+
+        from packages.brain_shared.envelope import success
+
+        return success(
+            meta=meta,
+            payload=[SimpleNamespace(chunk_ordinal=0, text=text, reference_range="0")],
+        )
+
+
+class _FakeLanguageModelService:
+    """Minimal LMS fake for indexing tests."""
+
+    def embed_batch(self, *, meta, texts):
+        from types import SimpleNamespace
+
+        from packages.brain_shared.envelope import success
+
+        return success(
+            meta=meta,
+            payload=[
+                SimpleNamespace(values=(0.1, 0.2), provider="fake", model="fake")
+                for _text in texts
+            ],
+        )
+
+
+class _FakeEmbeddingAuthorityService:
+    """Minimal EAS fake for indexing tests."""
+
+    def __init__(self) -> None:
+        self.sources: list[dict[str, object]] = []
+        self.chunks: list[object] = []
+        self.vectors: list[object] = []
+
+    def get_active_spec(self, *, meta):
+        from types import SimpleNamespace
+
+        from packages.brain_shared.envelope import success
+
+        return success(meta=meta, payload=SimpleNamespace(id="spec-1"))
+
+    def upsert_source(
+        self,
+        *,
+        meta,
+        canonical_reference: str,
+        source_type: str,
+        service: str,
+        principal: str,
+        metadata,
+    ):
+        from types import SimpleNamespace
+
+        from packages.brain_shared.envelope import success
+
+        source = SimpleNamespace(id=f"source-{len(self.sources) + 1}")
+        self.sources.append(
+            {
+                "canonical_reference": canonical_reference,
+                "source_type": source_type,
+                "service": service,
+                "principal": principal,
+                "metadata": metadata,
+            }
+        )
+        return success(meta=meta, payload=source)
+
+    def upsert_chunks(self, *, meta, items):
+        from types import SimpleNamespace
+
+        from packages.brain_shared.envelope import success
+
+        chunks = [
+            SimpleNamespace(
+                id=f"chunk-{len(self.chunks) + index + 1}",
+                text=item["text"],
+            )
+            for index, item in enumerate(items)
+        ]
+        self.chunks.extend(chunks)
+        return success(meta=meta, payload=chunks)
+
+    def upsert_embedding_vectors(self, *, meta, items):
+        from types import SimpleNamespace
+
+        from packages.brain_shared.envelope import success
+
+        records = [SimpleNamespace(chunk_id=item["chunk_id"]) for item in items]
+        self.vectors.extend(records)
+        return success(meta=meta, payload=records)
+
+
 class _TextExtractor(BaseExtractor):
     """Extractor that emits one text artifact for any raw payload."""
 
@@ -613,6 +794,9 @@ def _make_service(
     oas: _FakeOAS | None = None,
     vas: _FakeVAS | None = None,
     job_service: _FakeJobService | None = None,
+    utility_service: _FakeUtilityService | None = None,
+    language_model_service: _FakeLanguageModelService | None = None,
+    embedding_authority_service: _FakeEmbeddingAuthorityService | None = None,
     settings: IngestionServiceSettings | None = None,
     extractor_registry: ExtractorRegistry | None = None,
     normalizer_registry: NormalizerRegistry | None = None,
@@ -631,6 +815,9 @@ def _make_service(
         job_service=job_service,
         extractor_registry=extractor_registry or ExtractorRegistry(),
         normalizer_registry=normalizer_registry or NormalizerRegistry(),
+        utility_service=utility_service,
+        language_model_service=language_model_service,
+        embedding_authority_service=embedding_authority_service,
     )
     return svc, repo, oas, job_service
 
@@ -825,6 +1012,7 @@ class TestSubmitIngestion:
                 "force_target": False,
             },
         }
+        assert jobs.created_jobs[0]["start_state"] == "paused"
         assert jobs.run_now_calls == ["job-1"]
 
     def test_submit_job_dispatch_failure_marks_ingestion_failed(self) -> None:
@@ -1158,6 +1346,68 @@ class TestAdvanceIngestion:
         assert anchor_runs[0].status == StageRunStatus.success
         assert len(vas.files) == 1
 
+    def test_builtin_text_handlers_advance_to_anchor_and_schedule_indexing(
+        self,
+    ) -> None:
+        vas = _FakeVAS()
+        svc, repo, _, jobs = _make_service(
+            vas=vas,
+            extractor_registry=ExtractorRegistry([BuiltInTextExtractor()]),
+            normalizer_registry=NormalizerRegistry([BuiltInTextNormalizer()]),
+        )
+        submit = svc.submit_ingestion(
+            meta=_test_meta(),
+            source_type="test",
+            payload=b"hello",
+            capture_time="2026-01-01T00:00:00Z",
+            mime_type="text/plain",
+        )
+        assert not submit.errors
+
+        env = svc.advance_ingestion(
+            meta=_test_meta(),
+            ingestion_id=_pv(submit).id,
+            from_stage="extract",
+            force_target=False,
+        )
+
+        assert not env.errors
+        assert _pv(env).status == IngestionStatus.complete
+        assert len(vas.files) == 1
+        assert jobs.created_jobs[-1]["job_action"]["capability_id"] == (
+            "ingestion-index-anchored"
+        )
+        assert jobs.created_jobs[-1]["start_state"] == "paused"
+
+    def test_unsupported_mime_records_extract_failure(self) -> None:
+        svc, repo, _, _ = _make_service(
+            extractor_registry=ExtractorRegistry([BuiltInTextExtractor()]),
+            normalizer_registry=NormalizerRegistry([BuiltInTextNormalizer()]),
+        )
+        submit = svc.submit_ingestion(
+            meta=_test_meta(),
+            source_type="test",
+            payload=b"\x00\x01",
+            capture_time="2026-01-01T00:00:00Z",
+            mime_type="application/octet-stream",
+        )
+        assert not submit.errors
+
+        env = svc.advance_ingestion(
+            meta=_test_meta(),
+            ingestion_id=_pv(submit).id,
+            from_stage="extract",
+            force_target=False,
+        )
+
+        assert not env.errors
+        assert _pv(env).status == IngestionStatus.failed
+        outcomes = repo.list_stage_artifact_outcomes(
+            ingestion_id=_pv(submit).id, stage="extract", status="failed"
+        )
+        assert len(outcomes) == 1
+        assert "no extractor available" in (outcomes[0].error or "")
+
 
 class TestAnchorStage:
     def test_noop_anchor_creates_one_skipped_run(self) -> None:
@@ -1178,3 +1428,93 @@ class TestAnchorStage:
         runs = repo.list_stage_runs(ingestion_id=record.id, stage="anchor")
         assert len(runs) == 1
         assert runs[0].status == StageRunStatus.skipped
+
+
+class TestIndexAnchoredIngestion:
+    def test_indexes_anchor_through_public_service_dependencies(self) -> None:
+        repo = _FakeRepository()
+        oas = _FakeOAS()
+        utility = _FakeUtilityService()
+        lms = _FakeLanguageModelService()
+        eas = _FakeEmbeddingAuthorityService()
+        svc, repo, oas, _jobs = _make_service(
+            repo=repo,
+            oas=oas,
+            utility_service=utility,
+            language_model_service=lms,
+            embedding_authority_service=eas,
+        )
+        record = repo.create_ingestion(
+            status=IngestionStatus.complete.value,
+            source_type="test",
+            source_uri=None,
+            source_actor=None,
+            capture_time=datetime(2026, 1, 1, tzinfo=UTC),
+            mime_type="text/plain",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        put_env = oas.put_object(
+            meta=_test_meta(),
+            content=b"hello world",
+            extension="md",
+            content_type="text/markdown",
+            original_filename="test.md",
+            source_uri="",
+        )
+        object_key = _pv(put_env).object.ref.object_key
+        repo.upsert_anchor_note(
+            ingestion_id=record.id,
+            normalized_object_key=object_key,
+            vault_path="Ingestion/test.md",
+            created_at=datetime.now(UTC),
+        )
+        run = repo.create_indexing_run(
+            ingestion_id=record.id,
+            status=IndexingRunStatus.queued.value,
+            created_at=datetime.now(UTC),
+        )
+
+        env = svc.index_anchored_ingestion(
+            meta=_test_meta(),
+            ingestion_id=record.id,
+            indexing_run_id=run.id,
+        )
+
+        assert not env.errors
+        assert _pv(env).source_count == 1
+        assert _pv(env).chunk_count == 1
+        assert _pv(env).embedding_count == 1
+        refreshed = repo.get_indexing_run(indexing_run_id=run.id)
+        assert refreshed is not None
+        assert refreshed.status == IndexingRunStatus.succeeded
+        assert len(eas.sources) == 1
+        assert len(eas.vectors) == 1
+
+    def test_missing_indexing_dependency_marks_run_failed(self) -> None:
+        repo = _FakeRepository()
+        svc, repo, _, _ = _make_service(repo=repo)
+        record = repo.create_ingestion(
+            status=IngestionStatus.complete.value,
+            source_type="test",
+            source_uri=None,
+            source_actor=None,
+            capture_time=datetime(2026, 1, 1, tzinfo=UTC),
+            mime_type="text/plain",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        run = repo.create_indexing_run(
+            ingestion_id=record.id,
+            status=IndexingRunStatus.queued.value,
+            created_at=datetime.now(UTC),
+        )
+
+        env = svc.index_anchored_ingestion(
+            meta=_test_meta(),
+            ingestion_id=record.id,
+            indexing_run_id=run.id,
+        )
+
+        assert env.errors
+        refreshed = repo.get_indexing_run(indexing_run_id=run.id)
+        assert refreshed is not None
+        assert refreshed.status == IndexingRunStatus.failed

@@ -596,6 +596,8 @@ class CapabilityRegistry:
         return contracts
 
     def _discover_native_service_targets(self) -> dict[str, CallTargetContract]:
+        from services.control.commitment.service import CommitmentService
+
         contracts: dict[str, CallTargetContract] = {}
         services: tuple[tuple[str, type[Any]], ...] = (
             ("service_cache_authority", CacheAuthorityService),
@@ -608,6 +610,7 @@ class CapabilityRegistry:
             ("service_attention_router", AttentionRouterService),
             ("service_switchboard", SwitchboardService),
             ("service_utility_service", UtilityService),
+            ("service_commitment", CommitmentService),
             ("service_ingestion", IngestionService),
         )
         for component_id, service_cls in services:

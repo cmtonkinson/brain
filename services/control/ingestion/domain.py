@@ -52,6 +52,15 @@ class StageArtifactStatus(str, Enum):
     skipped = "skipped"
 
 
+class IndexingRunStatus(str, Enum):
+    """Lifecycle statuses for derived indexing handoff runs."""
+
+    queued = "queued"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+
+
 # ---------------------------------------------------------------------------
 # Core domain entities
 # ---------------------------------------------------------------------------
@@ -171,6 +180,25 @@ class AnchorRecord(BaseModel):
     updated_at: datetime
 
 
+class IngestionIndexingRun(BaseModel):
+    """One derived indexing run for anchored ingestion artifacts."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    ingestion_id: str
+    job_id: str | None = None
+    status: IndexingRunStatus
+    source_count: int = 0
+    chunk_count: int = 0
+    embedding_count: int = 0
+    failed_count: int = 0
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    finished_at: datetime | None = None
+
+
 # ---------------------------------------------------------------------------
 # Stage result summaries (returned from internal stage orchestration)
 # ---------------------------------------------------------------------------
@@ -207,6 +235,19 @@ class AnchorStageResult(BaseModel):
     anchored: int
     failed: int
     errors: tuple[str, ...]
+
+
+class IndexAnchoredIngestionResult(BaseModel):
+    """Summary of derived indexing work for one anchored ingestion."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ingestion_id: str
+    indexing_run_id: str
+    source_count: int
+    chunk_count: int
+    embedding_count: int
+    failed_count: int
 
 
 # ---------------------------------------------------------------------------

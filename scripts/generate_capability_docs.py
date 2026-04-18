@@ -25,6 +25,7 @@ _GROUP_LOGIC = "Logic Skills"
 _DIR_SERVICE_LABELS = {
     "attention": "Attention Router Service",
     "cache": "Cache Authority Service",
+    "commitment": "Commitment Service",
     "embedding": "Embedding Authority Service",
     "ingestion": "Ingestion Service",
     "job": "Job Service",
@@ -37,6 +38,7 @@ _SERVICE_LABELS = {
     "service_attention_router": "Attention Router Service",
     "service_cache_authority": "Cache Authority Service",
     "service_capability_engine": "Capability Engine Service",
+    "service_commitment": "Commitment Service",
     "service_embedding_authority": "Embedding Authority Service",
     "service_ingestion": "Ingestion Service",
     "service_job": "Job Service",
@@ -263,7 +265,7 @@ def _schema_label(schema: dict[str, Any]) -> str:
 
 def _render_capability(manifest: object, repo_root: Path, lines: list[str]) -> None:
     """Append one capability's markdown block to lines."""
-    lines.append(f"### `{getattr(manifest, 'capability_id')}")
+    lines.append(f"### `{getattr(manifest, 'capability_id')}`")
     lines.append(f"{getattr(manifest, 'summary')}  ")
     lines.append(_tag_line(manifest))
     lines.extend(_implementation_lines(manifest, repo_root))

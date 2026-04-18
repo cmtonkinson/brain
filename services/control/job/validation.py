@@ -92,10 +92,10 @@ class CreateJobRequest(_ValidationModel):
     @field_validator("start_state")
     @classmethod
     def _validate_start_state(cls, value: str) -> str:
-        """Restrict start_state to draft or active."""
+        """Restrict start_state to draft, active, or paused."""
         normalized = value.strip().lower()
-        if normalized not in {"draft", "active"}:
-            msg = "start_state must be 'draft' or 'active'"
+        if normalized not in {"draft", "active", "paused"}:
+            msg = "start_state must be 'draft', 'active', or 'paused'"
             raise ValueError(msg)
         return normalized
 

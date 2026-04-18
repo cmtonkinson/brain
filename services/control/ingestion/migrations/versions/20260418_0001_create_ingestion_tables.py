@@ -281,10 +281,51 @@ def upgrade() -> None:
         schema=schema,
     )
 
+    # -- ingestion_indexing_runs --
+    op.create_table(
+        "ingestion_indexing_runs",
+        sa.Column("id", _ulid_domain(schema), primary_key=True, nullable=False),
+        sa.Column("ingestion_id", sa.LargeBinary(16), nullable=False),
+        sa.Column("job_id", sa.String(64), nullable=True),
+        sa.Column("status", sa.String(32), nullable=False),
+        sa.Column("source_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("chunk_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("embedding_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("failed_count", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("error", sa.Text(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+        sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
+        schema=schema,
+    )
+    op.create_index(
+        "ix_indexing_runs_ingestion_id",
+        "ingestion_indexing_runs",
+        ["ingestion_id"],
+        schema=schema,
+    )
+    op.create_index(
+        "ix_indexing_runs_status",
+        "ingestion_indexing_runs",
+        ["status"],
+        schema=schema,
+    )
+
 
 def downgrade() -> None:
     """Drop Ingestion Service authoritative schema objects."""
     schema = _schema()
+    op.drop_table("ingestion_indexing_runs", schema=schema)
     op.drop_table("anchor_notes", schema=schema)
     op.drop_table("provenance_sources", schema=schema)
     op.drop_table("artifact_provenance", schema=schema)

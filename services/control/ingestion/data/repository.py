@@ -18,6 +18,8 @@ from services.control.ingestion.domain import (
     ExtractionMetadataRecord,
     IngestionRecord,
     IngestionStatus,
+    IngestionIndexingRun,
+    IndexingRunStatus,
     NormalizationMetadataRecord,
     ProvenanceRecord,
     ProvenanceSourceRecord,
@@ -32,6 +34,7 @@ from .schema import (
     artifact_provenance,
     extraction_metadata,
     ingestion_stage_runs,
+    ingestion_indexing_runs,
     ingestions,
     normalization_metadata,
     provenance_sources,
@@ -630,6 +633,130 @@ class PostgresIngestionRepository:
             return _to_anchor(row) if row else None
 
     # ------------------------------------------------------------------
+    # Indexing runs
+    # ------------------------------------------------------------------
+
+    def create_indexing_run(
+        self,
+        *,
+        ingestion_id: str,
+        status: str,
+        created_at: datetime,
+    ) -> IngestionIndexingRun:
+        """Create one derived indexing run for an ingestion."""
+        row_id = generate_ulid_bytes()
+        ing_bytes = ulid_str_to_bytes(ingestion_id)
+        with self._sessions.session() as session:
+            session.execute(
+                ingestion_indexing_runs.insert().values(
+                    id=row_id,
+                    ingestion_id=ing_bytes,
+                    job_id=None,
+                    status=status,
+                    source_count=0,
+                    chunk_count=0,
+                    embedding_count=0,
+                    failed_count=0,
+                    error=None,
+                    created_at=created_at,
+                    updated_at=created_at,
+                    finished_at=None,
+                )
+            )
+            row = (
+                session.execute(
+                    select(ingestion_indexing_runs).where(
+                        ingestion_indexing_runs.c.id == row_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            return _to_indexing_run(row)
+
+    def get_indexing_run(self, *, indexing_run_id: str) -> IngestionIndexingRun | None:
+        """Read one derived indexing run by id."""
+        row_bytes = ulid_str_to_bytes(indexing_run_id)
+        with self._sessions.session() as session:
+            row = (
+                session.execute(
+                    select(ingestion_indexing_runs).where(
+                        ingestion_indexing_runs.c.id == row_bytes
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            return _to_indexing_run(row) if row else None
+
+    def update_indexing_run_job(
+        self,
+        *,
+        indexing_run_id: str,
+        job_id: str,
+        updated_at: datetime,
+    ) -> IngestionIndexingRun | None:
+        """Attach the Job Service job id to one indexing run."""
+        row_bytes = ulid_str_to_bytes(indexing_run_id)
+        with self._sessions.session() as session:
+            session.execute(
+                ingestion_indexing_runs.update()
+                .where(ingestion_indexing_runs.c.id == row_bytes)
+                .values(job_id=job_id, updated_at=updated_at)
+            )
+            row = (
+                session.execute(
+                    select(ingestion_indexing_runs).where(
+                        ingestion_indexing_runs.c.id == row_bytes
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            return _to_indexing_run(row) if row else None
+
+    def update_indexing_run_status(
+        self,
+        *,
+        indexing_run_id: str,
+        status: str,
+        source_count: int,
+        chunk_count: int,
+        embedding_count: int,
+        failed_count: int,
+        error: str | None,
+        updated_at: datetime,
+        finished_at: datetime | None,
+    ) -> IngestionIndexingRun | None:
+        """Update one indexing run with progress or terminal counts."""
+        row_bytes = ulid_str_to_bytes(indexing_run_id)
+        with self._sessions.session() as session:
+            session.execute(
+                ingestion_indexing_runs.update()
+                .where(ingestion_indexing_runs.c.id == row_bytes)
+                .values(
+                    status=status,
+                    source_count=source_count,
+                    chunk_count=chunk_count,
+                    embedding_count=embedding_count,
+                    failed_count=failed_count,
+                    error=error,
+                    updated_at=updated_at,
+                    finished_at=finished_at,
+                )
+            )
+            row = (
+                session.execute(
+                    select(ingestion_indexing_runs).where(
+                        ingestion_indexing_runs.c.id == row_bytes
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            return _to_indexing_run(row) if row else None
+
+    # ------------------------------------------------------------------
     # Health
     # ------------------------------------------------------------------
 
@@ -749,4 +876,22 @@ def _to_anchor(row: object) -> AnchorRecord:
         vault_path=row["vault_path"],  # type: ignore[index]
         created_at=row["created_at"],  # type: ignore[index]
         updated_at=row["updated_at"],  # type: ignore[index]
+    )
+
+
+def _to_indexing_run(row: object) -> IngestionIndexingRun:
+    """Map a row mapping to an IngestionIndexingRun."""
+    return IngestionIndexingRun(
+        id=ulid_bytes_to_str(row["id"]),  # type: ignore[index]
+        ingestion_id=ulid_bytes_to_str(row["ingestion_id"]),  # type: ignore[index]
+        job_id=row["job_id"],  # type: ignore[index]
+        status=IndexingRunStatus(row["status"]),  # type: ignore[index]
+        source_count=int(row["source_count"]),  # type: ignore[index]
+        chunk_count=int(row["chunk_count"]),  # type: ignore[index]
+        embedding_count=int(row["embedding_count"]),  # type: ignore[index]
+        failed_count=int(row["failed_count"]),  # type: ignore[index]
+        error=row["error"],  # type: ignore[index]
+        created_at=row["created_at"],  # type: ignore[index]
+        updated_at=row["updated_at"],  # type: ignore[index]
+        finished_at=row["finished_at"],  # type: ignore[index]
     )

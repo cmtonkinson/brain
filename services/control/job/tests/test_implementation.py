@@ -35,6 +35,7 @@ from services.control.job.domain import (
 )
 from services.control.job.implementation import DefaultJobService
 from services.control.job.interfaces import ProviderHealthStatus, ProviderJobPayload
+from services.control.job.provider import InProcessJobProvider
 
 
 def _meta() -> Any:
@@ -990,3 +991,59 @@ class TestReviewHealth:
         assert envelope.payload.value.failing_count == 1
         assert envelope.payload.value.items[0].category == ReviewCategory.failing
         assert envelope.payload.value.items[0].severity == ReviewSeverity.error
+
+
+class _ProviderServiceProbe:
+    """Probe service for provider polling behavior."""
+
+    def __init__(self) -> None:
+        self.retry_calls = 0
+        self.callback_calls = 0
+
+    def process_retry_due_jobs(self, *, meta):
+        self.retry_calls += 1
+        return success(meta=meta, payload=[])
+
+    def handle_provider_callback(self, **kwargs):
+        self.callback_calls += 1
+        return success(
+            meta=kwargs["meta"],
+            payload=type("Callback", (), {"status": CallbackStatus.accepted})(),
+        )
+
+    def evaluate_conditional_job(self, **kwargs):
+        return success(meta=kwargs["meta"], payload=None)
+
+
+class TestInProcessJobProvider:
+    def test_poll_once_processes_retry_due_jobs_before_due_jobs(self) -> None:
+        repo = _FakeRepository()
+        provider = InProcessJobProvider(poll_interval_seconds=1.0, repository=repo)
+        probe = _ProviderServiceProbe()
+        provider.set_service(probe)  # type: ignore[arg-type]
+
+        provider._poll_once()  # type: ignore[attr-defined]
+
+        assert probe.retry_calls == 1
+
+    def test_paused_due_job_is_not_provider_dispatched(self) -> None:
+        service, repo, _, _ = _build_service()
+        create_env = service.create_job(
+            meta=_meta(),
+            summary="paused one shot",
+            schedule_type="one_time",
+            timezone="UTC",
+            definition={"run_at": datetime.now(UTC).isoformat()},
+            job_action=_job_action(),
+            start_state="paused",
+        )
+        assert create_env.ok
+        provider = InProcessJobProvider(poll_interval_seconds=1.0, repository=repo)
+        probe = _ProviderServiceProbe()
+        provider.set_service(probe)  # type: ignore[arg-type]
+
+        provider._poll_once()  # type: ignore[attr-defined]
+
+        assert probe.retry_calls == 1
+        assert probe.callback_calls == 0
+        assert create_env.payload.value.job.state == JobState.paused

@@ -52,6 +52,47 @@ _Response: `_PollOperatorInstructionResponse`_
 _Summary: Pop the next queued operator instruction, optionally long-polling._
 
 ------------------------------------------------------------------------
+## `services/control/commitment/api.py`
+`POST /commitment/create` &mdash; create a commitment directly or persist a creation proposal  
+_Handler: `create_commitment`_
+
+
+`POST /commitment/get` &mdash; read one commitment by id  
+_Handler: `get_commitment`_
+
+
+`POST /commitment/health` &mdash; return Commitment Service readiness status  
+_Handler: `health`_
+
+
+`POST /commitment/history` &mdash; return one commitment plus its progress and transition history  
+_Handler: `get_history`_
+
+
+`POST /commitment/list` &mdash; list commitments with optional state filter and cursor pagination  
+_Handler: `list_commitments`_
+
+
+`POST /commitment/progress` &mdash; record one progress event for a commitment  
+_Handler: `record_progress`_
+
+
+`POST /commitment/review-items` &mdash; list review items for one persisted review run  
+_Handler: `get_review_items`_
+
+
+`POST /commitment/review-run` &mdash; read one persisted commitment review run by id  
+_Handler: `get_review_run`_
+
+
+`POST /commitment/transition` &mdash; apply one commitment state transition or persist a transition proposal  
+_Handler: `transition_commitment`_
+
+
+`POST /commitment/update` &mdash; update one commitment without changing lifecycle state  
+_Handler: `update_commitment`_
+
+------------------------------------------------------------------------
 ## `services/control/ingestion/api.py`
 `POST /ingestion/get` &mdash; read one ingestion record by id  
 _Handler: `get_ingestion`_

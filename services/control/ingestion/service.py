@@ -11,6 +11,7 @@ from services.control.ingestion.domain import (
     AnchorStageResult,
     FanOutStageResult,
     HealthStatus,
+    IndexAnchoredIngestionResult,
     IngestionListResult,
     IngestionRecord,
     IngestionResultsView,
@@ -89,6 +90,16 @@ class IngestionService(ABC):
         Internal orchestration entrypoint used by Job Service capability dispatch.
         ``force_target`` bypasses replay-skip logic for only the first stage.
         """
+
+    @abstractmethod
+    def index_anchored_ingestion(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        ingestion_id: str,
+        indexing_run_id: str,
+    ) -> Envelope[IndexAnchoredIngestionResult]:
+        """Index anchored normalized artifacts through Utility, LMS, and EAS."""
 
     # ------------------------------------------------------------------
     # Queries
@@ -213,6 +224,8 @@ def build_ingestion_service(
     )
     from services.control.ingestion.implementation import DefaultIngestionService
     from services.control.ingestion.interfaces import (
+        BuiltInTextExtractor,
+        BuiltInTextNormalizer,
         ExtractorRegistry,
         NormalizerRegistry,
     )
@@ -224,6 +237,9 @@ def build_ingestion_service(
     oas = components.get("service_object_authority")
     vas = components.get("service_vault_authority")
     job_service = components.get("service_job")
+    utility_service = components.get("service_utility_service")
+    language_model_service = components.get("service_language_model")
+    embedding_authority_service = components.get("service_embedding_authority")
 
     return DefaultIngestionService(
         settings=service_settings,
@@ -232,6 +248,9 @@ def build_ingestion_service(
         oas=oas,
         vas=vas,
         job_service=job_service,
-        extractor_registry=ExtractorRegistry(),
-        normalizer_registry=NormalizerRegistry(),
+        utility_service=utility_service,
+        language_model_service=language_model_service,
+        embedding_authority_service=embedding_authority_service,
+        extractor_registry=ExtractorRegistry([BuiltInTextExtractor()]),
+        normalizer_registry=NormalizerRegistry([BuiltInTextNormalizer()]),
     )

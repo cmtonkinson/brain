@@ -145,11 +145,20 @@ class InProcessJobProvider:
                 self._wake.clear()
 
     def _poll_once(self) -> None:
-        """Check for and dispatch one due job."""
+        """Process retry-due executions, then check for and dispatch one due job."""
         if self._service is None:
             return
 
         now = datetime.now(UTC)
+        retry_trace_id = generate_ulid_str()
+        retry_meta = new_meta(
+            kind=EnvelopeKind.EVENT,
+            source=_PROVIDER_SOURCE,
+            principal=str(SERVICE_COMPONENT_ID),
+            trace_id=retry_trace_id,
+        )
+        self._service.process_retry_due_jobs(meta=retry_meta)
+
         job = self._repository.get_next_due_job(now=now)
         if job is None:
             return

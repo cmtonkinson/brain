@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import hashlib
 from typing import Any
 
 from packages.brain_shared.envelope import (
@@ -15,6 +16,7 @@ from packages.brain_shared.envelope import (
 from packages.brain_shared.errors import (
     ErrorDetail,
     codes,
+    dependency_error,
     not_found_error,
     validation_error,
 )
@@ -28,6 +30,8 @@ from services.control.ingestion.domain import (
     AnchorStageResult,
     FanOutStageResult,
     HealthStatus,
+    IndexAnchoredIngestionResult,
+    IndexingRunStatus,
     IngestionListResult,
     IngestionRecord,
     IngestionResultsView,
@@ -67,6 +71,9 @@ class DefaultIngestionService(IngestionService):
         job_service: JobService | Any,
         extractor_registry: ExtractorRegistry,
         normalizer_registry: NormalizerRegistry,
+        utility_service: Any = None,
+        language_model_service: Any = None,
+        embedding_authority_service: Any = None,
     ) -> None:
         """Initialize the service with its dependencies."""
         self._settings = settings
@@ -75,6 +82,9 @@ class DefaultIngestionService(IngestionService):
         self._oas = oas
         self._vas = vas
         self._job_service = job_service
+        self._utility_service = utility_service
+        self._language_model_service = language_model_service
+        self._embedding_authority_service = embedding_authority_service
         self._extractors = extractor_registry
         self._normalizers = normalizer_registry
 
@@ -796,8 +806,260 @@ class DefaultIngestionService(IngestionService):
             error=finish_error,
             finished_at=_utc_now(),
         )
+        if finish_status == StageRunStatus.success.value:
+            dispatch_env = self._enqueue_indexing_job(
+                meta=meta, ingestion_id=ingestion_id
+            )
+            if dispatch_env.errors:
+                return failure(meta=meta, errors=dispatch_env.errors)
 
         return success(meta=meta, payload=result)
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
+    def index_anchored_ingestion(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        ingestion_id: str,
+        indexing_run_id: str,
+    ) -> Envelope[IndexAnchoredIngestionResult]:
+        """Index anchored normalized artifacts through Utility, LMS, and EAS."""
+        validate_meta(meta)
+        if self._oas is None:
+            return self._fail_indexing_dependency(
+                meta=meta,
+                indexing_run_id=indexing_run_id,
+                message="Object Authority Service is not available",
+            )
+        if self._utility_service is None:
+            return self._fail_indexing_dependency(
+                meta=meta,
+                indexing_run_id=indexing_run_id,
+                message="Utility Service is not available",
+            )
+        if self._language_model_service is None:
+            return self._fail_indexing_dependency(
+                meta=meta,
+                indexing_run_id=indexing_run_id,
+                message="Language Model Service is not available",
+            )
+        if self._embedding_authority_service is None:
+            return self._fail_indexing_dependency(
+                meta=meta,
+                indexing_run_id=indexing_run_id,
+                message="Embedding Authority Service is not available",
+            )
+
+        record = self._repository.get_ingestion(ingestion_id=ingestion_id)
+        if record is None:
+            return failure(
+                meta=meta,
+                errors=[not_found_error(f"ingestion '{ingestion_id}' not found")],
+            )
+        indexing_run = self._repository.get_indexing_run(
+            indexing_run_id=indexing_run_id
+        )
+        if indexing_run is None:
+            return failure(
+                meta=meta,
+                errors=[not_found_error(f"indexing run '{indexing_run_id}' not found")],
+            )
+
+        now = _utc_now()
+        self._repository.update_indexing_run_status(
+            indexing_run_id=indexing_run_id,
+            status=IndexingRunStatus.running.value,
+            source_count=0,
+            chunk_count=0,
+            embedding_count=0,
+            failed_count=0,
+            error=None,
+            updated_at=now,
+            finished_at=None,
+        )
+
+        source_count = 0
+        chunk_count = 0
+        embedding_count = 0
+        failed_count = 0
+        errors: list[str] = []
+        svc_meta = _service_meta(meta=meta)
+
+        active_spec_env = self._embedding_authority_service.get_active_spec(
+            meta=svc_meta
+        )
+        if active_spec_env.errors or active_spec_env.payload is None:
+            error_text = (
+                _join_errors(active_spec_env.errors) or "EAS active spec missing"
+            )
+            return self._finish_indexing_failure(
+                meta=meta,
+                indexing_run_id=indexing_run_id,
+                ingestion_id=ingestion_id,
+                source_count=0,
+                chunk_count=0,
+                embedding_count=0,
+                failed_count=1,
+                error=error_text,
+            )
+        spec = active_spec_env.payload.value
+
+        anchors = self._repository.list_anchor_notes(ingestion_id=ingestion_id)
+        for anchor in anchors:
+            get_env = self._oas.get_object(
+                meta=svc_meta, object_key=anchor.normalized_object_key
+            )
+            if get_env.errors or get_env.payload is None:
+                failed_count += 1
+                errors.append(
+                    f"object_key={anchor.normalized_object_key} error=OAS get_object failed"
+                )
+                continue
+
+            try:
+                text = get_env.payload.value.content.decode("utf-8")
+            except UnicodeDecodeError:
+                failed_count += 1
+                errors.append(
+                    f"object_key={anchor.normalized_object_key} error=normalized artifact is not UTF-8"
+                )
+                continue
+
+            chunks_env = self._utility_service.chunk_text(meta=svc_meta, text=text)
+            if chunks_env.errors or chunks_env.payload is None:
+                failed_count += 1
+                errors.append(_join_errors(chunks_env.errors) or "chunk_text failed")
+                continue
+
+            source_env = self._embedding_authority_service.upsert_source(
+                meta=svc_meta,
+                canonical_reference=(
+                    f"ingestion:{ingestion_id}:{anchor.normalized_object_key}"
+                ),
+                source_type="ingestion_anchor",
+                service="ingestion",
+                principal=meta.principal,
+                metadata={
+                    "ingestion_id": ingestion_id,
+                    "normalized_object_key": anchor.normalized_object_key,
+                    "vault_path": anchor.vault_path,
+                },
+            )
+            if source_env.errors or source_env.payload is None:
+                failed_count += 1
+                errors.append(_join_errors(source_env.errors) or "upsert_source failed")
+                continue
+            source_count += 1
+            source = source_env.payload.value
+
+            chunk_inputs = [
+                {
+                    "source_id": source.id,
+                    "chunk_ordinal": chunk.chunk_ordinal,
+                    "reference_range": chunk.reference_range,
+                    "content_hash": _text_hash(chunk.text),
+                    "text": chunk.text,
+                    "metadata": {
+                        "ingestion_id": ingestion_id,
+                        "normalized_object_key": anchor.normalized_object_key,
+                        "vault_path": anchor.vault_path,
+                    },
+                }
+                for chunk in chunks_env.payload.value
+            ]
+            chunk_env = self._embedding_authority_service.upsert_chunks(
+                meta=svc_meta, items=chunk_inputs
+            )
+            if chunk_env.errors or chunk_env.payload is None:
+                failed_count += 1
+                errors.append(_join_errors(chunk_env.errors) or "upsert_chunks failed")
+                continue
+            chunks = chunk_env.payload.value
+            chunk_count += len(chunks)
+
+            if not chunks:
+                continue
+
+            embed_env = self._language_model_service.embed_batch(
+                meta=svc_meta,
+                texts=[chunk.text for chunk in chunks],
+            )
+            if embed_env.errors or embed_env.payload is None:
+                failed_count += 1
+                errors.append(_join_errors(embed_env.errors) or "embed_batch failed")
+                continue
+            vectors = embed_env.payload.value
+            if len(vectors) != len(chunks):
+                failed_count += 1
+                errors.append("embed_batch returned a different count than chunks")
+                continue
+            vector_inputs = [
+                {"chunk_id": chunk.id, "spec_id": spec.id, "vector": vector.values}
+                for chunk, vector in zip(chunks, vectors, strict=True)
+            ]
+            vector_env = self._embedding_authority_service.upsert_embedding_vectors(
+                meta=svc_meta, items=vector_inputs
+            )
+            if vector_env.errors or vector_env.payload is None:
+                failed_count += 1
+                errors.append(
+                    _join_errors(vector_env.errors) or "upsert_embedding_vectors failed"
+                )
+                continue
+            embedding_count += len(vector_env.payload.value)
+
+        finished_at = _utc_now()
+        status = (
+            IndexingRunStatus.failed.value
+            if failed_count > 0
+            else IndexingRunStatus.succeeded.value
+        )
+        error_text = "; ".join(errors) if errors else None
+        self._repository.update_indexing_run_status(
+            indexing_run_id=indexing_run_id,
+            status=status,
+            source_count=source_count,
+            chunk_count=chunk_count,
+            embedding_count=embedding_count,
+            failed_count=failed_count,
+            error=error_text,
+            updated_at=finished_at,
+            finished_at=finished_at,
+        )
+
+        if failed_count > 0:
+            return failure(
+                meta=meta,
+                errors=[
+                    dependency_error(
+                        error_text or "anchored ingestion indexing failed",
+                        code=codes.DEPENDENCY_FAILURE,
+                    )
+                ],
+                payload=IndexAnchoredIngestionResult(
+                    ingestion_id=ingestion_id,
+                    indexing_run_id=indexing_run_id,
+                    source_count=source_count,
+                    chunk_count=chunk_count,
+                    embedding_count=embedding_count,
+                    failed_count=failed_count,
+                ),
+            )
+
+        return success(
+            meta=meta,
+            payload=IndexAnchoredIngestionResult(
+                ingestion_id=ingestion_id,
+                indexing_run_id=indexing_run_id,
+                source_count=source_count,
+                chunk_count=chunk_count,
+                embedding_count=embedding_count,
+                failed_count=failed_count,
+            ),
+        )
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -891,7 +1153,7 @@ class DefaultIngestionService(IngestionService):
                     "force_target": force_target,
                 },
             },
-            start_state="active",
+            start_state="paused",
         )
         if create_env.errors:
             error_text = "; ".join(error.message for error in create_env.errors)
@@ -917,6 +1179,166 @@ class DefaultIngestionService(IngestionService):
             )
             return failure(meta=meta, errors=run_env.errors)
         return success(meta=meta, payload=run_env.payload.value)
+
+    def _enqueue_indexing_job(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        ingestion_id: str,
+    ) -> Envelope[Any]:
+        """Create and immediately run one job that indexes anchored artifacts."""
+        if self._job_service is None:
+            error_text = "Job Service is not available"
+            from packages.brain_shared.errors import internal_error
+
+            return failure(meta=meta, errors=[internal_error(error_text)])
+
+        now = _utc_now()
+        indexing_run = self._repository.create_indexing_run(
+            ingestion_id=ingestion_id,
+            status=IndexingRunStatus.queued.value,
+            created_at=now,
+        )
+        job_meta = meta.model_copy(
+            update={
+                "source": str(SERVICE_COMPONENT_ID),
+                "principal": "service-ingestion",
+            }
+        )
+        create_env = self._job_service.create_job(
+            meta=job_meta,
+            summary=f"Index anchored ingestion {ingestion_id}",
+            details=None,
+            origin_reference=f"ingestion:{ingestion_id}:index:{indexing_run.id}",
+            schedule_type="one_time",
+            timezone="UTC",
+            definition={"run_at": now.isoformat()},
+            job_action={
+                "type": "capability_invocation",
+                "capability_id": "ingestion-index-anchored",
+                "input_payload": {
+                    "ingestion_id": ingestion_id,
+                    "indexing_run_id": indexing_run.id,
+                },
+            },
+            start_state="paused",
+        )
+        if create_env.errors:
+            error_text = _join_errors(create_env.errors)
+            self._repository.update_indexing_run_status(
+                indexing_run_id=indexing_run.id,
+                status=IndexingRunStatus.failed.value,
+                source_count=0,
+                chunk_count=0,
+                embedding_count=0,
+                failed_count=1,
+                error=error_text,
+                updated_at=_utc_now(),
+                finished_at=_utc_now(),
+            )
+            return failure(meta=meta, errors=create_env.errors)
+
+        job_id = create_env.payload.value.job.id
+        self._repository.update_indexing_run_job(
+            indexing_run_id=indexing_run.id,
+            job_id=job_id,
+            updated_at=_utc_now(),
+        )
+        run_env = self._job_service.run_job_now(meta=job_meta, job_id=job_id)
+        if run_env.errors:
+            error_text = _join_errors(run_env.errors)
+            self._repository.update_indexing_run_status(
+                indexing_run_id=indexing_run.id,
+                status=IndexingRunStatus.failed.value,
+                source_count=0,
+                chunk_count=0,
+                embedding_count=0,
+                failed_count=1,
+                error=error_text,
+                updated_at=_utc_now(),
+                finished_at=_utc_now(),
+            )
+            return failure(meta=meta, errors=run_env.errors)
+        return success(meta=meta, payload=run_env.payload.value)
+
+    def _fail_indexing_dependency(
+        self, *, meta: EnvelopeMeta, indexing_run_id: str, message: str
+    ) -> Envelope[IndexAnchoredIngestionResult]:
+        """Record dependency failure for one indexing run when possible."""
+        run = self._repository.get_indexing_run(indexing_run_id=indexing_run_id)
+        ingestion_id = run.ingestion_id if run is not None else ""
+        if run is not None:
+            self._repository.update_indexing_run_status(
+                indexing_run_id=indexing_run_id,
+                status=IndexingRunStatus.failed.value,
+                source_count=0,
+                chunk_count=0,
+                embedding_count=0,
+                failed_count=1,
+                error=message,
+                updated_at=_utc_now(),
+                finished_at=_utc_now(),
+            )
+        return failure(
+            meta=meta,
+            errors=[
+                dependency_error(
+                    message,
+                    code=codes.DEPENDENCY_UNAVAILABLE,
+                    retryable=False,
+                )
+            ],
+            payload=IndexAnchoredIngestionResult(
+                ingestion_id=ingestion_id,
+                indexing_run_id=indexing_run_id,
+                source_count=0,
+                chunk_count=0,
+                embedding_count=0,
+                failed_count=1,
+            ),
+        )
+
+    def _finish_indexing_failure(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        indexing_run_id: str,
+        ingestion_id: str,
+        source_count: int,
+        chunk_count: int,
+        embedding_count: int,
+        failed_count: int,
+        error: str,
+    ) -> Envelope[IndexAnchoredIngestionResult]:
+        """Persist terminal indexing failure and return a structured envelope."""
+        self._repository.update_indexing_run_status(
+            indexing_run_id=indexing_run_id,
+            status=IndexingRunStatus.failed.value,
+            source_count=source_count,
+            chunk_count=chunk_count,
+            embedding_count=embedding_count,
+            failed_count=failed_count,
+            error=error,
+            updated_at=_utc_now(),
+            finished_at=_utc_now(),
+        )
+        return failure(
+            meta=meta,
+            errors=[
+                dependency_error(
+                    error,
+                    code=codes.DEPENDENCY_FAILURE,
+                )
+            ],
+            payload=IndexAnchoredIngestionResult(
+                ingestion_id=ingestion_id,
+                indexing_run_id=indexing_run_id,
+                source_count=source_count,
+                chunk_count=chunk_count,
+                embedding_count=embedding_count,
+                failed_count=failed_count,
+            ),
+        )
 
     def _stage_result_failed(self, *, stage: str, result: Any) -> bool:
         """Return whether one successful stage call still produced a failing outcome."""
@@ -1326,6 +1748,20 @@ class DefaultIngestionService(IngestionService):
 
             extractors = self._extractors.match(context)
             if not extractors:
+                err = (
+                    f"object_key={raw_outcome.object_key} error=no extractor available"
+                )
+                errors.append(err)
+                failed += 1
+                self._repository.create_stage_artifact_outcome(
+                    ingestion_id=record.id,
+                    stage="extract",
+                    object_key=None,
+                    parent_object_key=raw_outcome.object_key,
+                    status=StageArtifactStatus.failed.value,
+                    error=err,
+                    created_at=now,
+                )
                 continue
 
             for extractor in extractors:
@@ -1949,3 +2385,26 @@ def _ext_from_mime(mime_type: str | None) -> str | None:
 def _filename_for_ingestion(ingestion_id: str, ext: str) -> str:
     """Build a stable original_filename for OAS from ingestion context."""
     return f"ingestion-{ingestion_id}.{ext}"
+
+
+def _service_meta(*, meta: EnvelopeMeta) -> EnvelopeMeta:
+    """Build service-origin metadata for internal public API calls."""
+    from packages.brain_shared.envelope import EnvelopeKind, new_meta
+
+    return new_meta(
+        kind=EnvelopeKind.COMMAND,
+        source=str(SERVICE_COMPONENT_ID),
+        principal=meta.principal,
+        trace_id=meta.trace_id,
+        parent_id=meta.envelope_id,
+    )
+
+
+def _join_errors(errors: list[ErrorDetail]) -> str:
+    """Render envelope errors as one stable message."""
+    return "; ".join(error.message for error in errors)
+
+
+def _text_hash(text: str) -> str:
+    """Return a deterministic SHA-256 hash for text chunk content."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()

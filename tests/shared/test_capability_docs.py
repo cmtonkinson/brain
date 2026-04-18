@@ -35,7 +35,7 @@ def test_capability_docs_group_skills_by_kind() -> None:
         "------------------------------------------------------------------------", 1
     )[0]
 
-    assert "### `demo-echo\n" in logic_section
-    assert "### `object-get-base64\n" in logic_section
+    assert "### `demo-echo`\n" in logic_section
+    assert "### `object-get-base64`\n" in logic_section
     assert "## `Capability Engine Service`" not in content
     assert "`logic_skill` `1.0.0`  \n" in content

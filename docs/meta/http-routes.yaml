@@ -32,3 +32,13 @@
 /jobs/run-now: immediately queue an execution for an active or paused job
 /jobs/executions/list: list executions for one job with cursor pagination
 /jobs/health: return Job Service and provider health state
+/commitment/create: create a commitment directly or persist a creation proposal
+/commitment/get: read one commitment by id
+/commitment/health: return Commitment Service readiness status
+/commitment/history: return one commitment plus its progress and transition history
+/commitment/list: list commitments with optional state filter and cursor pagination
+/commitment/progress: record one progress event for a commitment
+/commitment/review-items: list review items for one persisted review run
+/commitment/review-run: read one persisted commitment review run by id
+/commitment/transition: apply one commitment state transition or persist a transition proposal
+/commitment/update: update one commitment without changing lifecycle state

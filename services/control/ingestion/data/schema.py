@@ -228,3 +228,37 @@ anchor_notes = sa.Table(
     sa.Index("ix_anchor_notes_ingestion_id", "ingestion_id"),
     schema=_SCHEMA,
 )
+
+# ---------------------------------------------------------------------------
+# ingestion_indexing_runs
+# ---------------------------------------------------------------------------
+
+ingestion_indexing_runs = sa.Table(
+    "ingestion_indexing_runs",
+    metadata,
+    ulid_primary_key_column("id", schema_name=_SCHEMA),
+    sa.Column("ingestion_id", sa.LargeBinary(16), nullable=False),
+    sa.Column("job_id", sa.String(64), nullable=True),
+    sa.Column("status", sa.String(32), nullable=False),
+    sa.Column("source_count", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("chunk_count", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("embedding_count", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("failed_count", sa.Integer(), nullable=False, server_default="0"),
+    sa.Column("error", sa.Text(), nullable=True),
+    sa.Column(
+        "created_at",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    ),
+    sa.Column(
+        "updated_at",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    ),
+    sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
+    sa.Index("ix_indexing_runs_ingestion_id", "ingestion_id"),
+    sa.Index("ix_indexing_runs_status", "status"),
+    schema=_SCHEMA,
+)

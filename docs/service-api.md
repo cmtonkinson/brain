@@ -113,6 +113,71 @@ _Return the current UTC datetime._
 _Return one or more chunks for the provided text content._
 
 ------------------------------------------------------------------------
+## `CommitmentService`
+- Module: `services/control/commitment/service.py`
+- Summary: Public API for commitment lifecycle, review, and loop closure.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return Commitment Service readiness state._
+
+`get_commitment(*, meta: EnvelopeMeta, commitment_id: str) -> Envelope[CommitmentRecord]`  
+_Read one commitment by id._
+
+`get_commitment_history(*, meta: EnvelopeMeta, commitment_id: str) -> Envelope[CommitmentHistoryResult]`  
+_Return one commitment plus progress and transition history._
+
+`create_commitment(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+_Create one commitment or persist a creation proposal._
+
+`ingest_commitment_candidate(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+_Accept one typed ingestion-derived commitment candidate._
+
+`transition_commitment(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+_Apply one lifecycle transition or persist a transition proposal._
+
+`update_commitment(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+_Update one commitment without changing lifecycle state._
+
+`list_commitments(*, meta: EnvelopeMeta, state: str | None = None, limit: int = 50, cursor: str | None = None) -> Envelope[CommitmentListResult]`  
+_List commitments with optional state filter and cursor pagination._
+
+`apply_creation_proposal_decision(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+_Approve or reject one pending creation proposal._
+
+`ensure_follow_up_job(*, meta: EnvelopeMeta, commitment_id: str) -> Envelope[CommitmentMutationResult]`  
+_Ensure one active follow-up job exists for one commitment._
+
+`remove_follow_up_job(*, meta: EnvelopeMeta, commitment_id: str) -> Envelope[CommitmentMutationResult]`  
+_Remove any active follow-up job for one commitment._
+
+`resolve_loop_closure_reply(*, meta: EnvelopeMeta, **payload: object) -> Envelope[LoopClosureResolutionResult]`  
+_Resolve one normalized loop-closure reply._
+
+`run_miss_detection(*, meta: EnvelopeMeta, commitment_id: str | None = None) -> Envelope[MissDetectionResult]`  
+_Detect and mark due open commitments as MISSED._
+
+`record_progress(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+_Record one progress entry and update last_progress_at atomically._
+
+`get_review_run(*, meta: EnvelopeMeta, review_run_id: str) -> Envelope[CommitmentReviewRun]`  
+_Read one review run by id._
+
+`list_review_items(*, meta: EnvelopeMeta, review_run_id: str) -> Envelope[tuple[CommitmentReviewItem, ...]]`  
+_List review items for one run._
+
+`list_review_runs(*, meta: EnvelopeMeta, limit: int = 50, cursor: str | None = None) -> Envelope[tuple[CommitmentReviewRun, ...]]`  
+_List review runs._
+
+`build_review_sets(*, meta: EnvelopeMeta) -> Envelope[CommitmentReviewRun]`  
+_Build and persist one review run and its items._
+
+`deliver_review(*, meta: EnvelopeMeta, review_run_id: str) -> Envelope[ReviewDeliveryResult]`  
+_Deliver one review run through Attention Router._
+
+`apply_transition_proposal_decision(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+_Approve or reject one pending transition proposal._
+
+------------------------------------------------------------------------
 ## `IngestionService`
 - Module: `services/control/ingestion/service.py`
 - Summary: Public API for content ingestion, stage orchestration, and artifact lineage.
@@ -122,6 +187,9 @@ _Return Ingestion Service readiness status._
 
 `run_anchor_stage(*, meta: EnvelopeMeta, ingestion_id: str) -> Envelope[AnchorStageResult]`  
 _Execute the anchor stage for the named ingestion._
+
+`index_anchored_ingestion(*, meta: EnvelopeMeta, ingestion_id: str, indexing_run_id: str) -> Envelope[IndexAnchoredIngestionResult]`  
+_Index anchored normalized artifacts through Utility, LMS, and EAS._
 
 `run_extract_stage(*, meta: EnvelopeMeta, ingestion_id: str) -> Envelope[FanOutStageResult]`  
 _Execute the extraction stage for the named ingestion._

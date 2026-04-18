@@ -102,6 +102,20 @@ class TestCreateJobRequest:
                 },
             )
 
+    def test_paused_start_state_allowed(self) -> None:
+        r = CreateJobRequest(
+            summary="test",
+            schedule_type="one_time",
+            timezone="UTC",
+            definition={"run_at": "2026-06-01T00:00:00Z"},
+            job_action={
+                "type": "capability_invocation",
+                "capability_id": "demo-capability",
+            },
+            start_state="paused",
+        )
+        assert r.start_state == "paused"
+
     def test_invalid_start_state(self) -> None:
         with pytest.raises(ValidationError, match="start_state must be"):
             CreateJobRequest(
@@ -113,7 +127,7 @@ class TestCreateJobRequest:
                     "type": "capability_invocation",
                     "capability_id": "demo-capability",
                 },
-                start_state="paused",
+                start_state="archived",
             )
 
     def test_empty_summary_rejected(self) -> None:

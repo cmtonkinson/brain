@@ -9,6 +9,7 @@ from typing import Protocol, Sequence
 from services.control.ingestion.domain import (
     AnchorRecord,
     ExtractionMetadataRecord,
+    IngestionIndexingRun,
     IngestionRecord,
     NormalizationMetadataRecord,
     ProvenanceRecord,
@@ -223,6 +224,48 @@ class IngestionRepository(Protocol):
         """Return the anchor record for one normalized artifact key, if any."""
         ...
 
+    # -- indexing runs --
+
+    def create_indexing_run(
+        self,
+        *,
+        ingestion_id: str,
+        status: str,
+        created_at: datetime,
+    ) -> IngestionIndexingRun:
+        """Create one derived indexing run for an ingestion."""
+        ...
+
+    def get_indexing_run(self, *, indexing_run_id: str) -> IngestionIndexingRun | None:
+        """Read one derived indexing run by id."""
+        ...
+
+    def update_indexing_run_job(
+        self,
+        *,
+        indexing_run_id: str,
+        job_id: str,
+        updated_at: datetime,
+    ) -> IngestionIndexingRun | None:
+        """Attach a Job Service job id to one indexing run."""
+        ...
+
+    def update_indexing_run_status(
+        self,
+        *,
+        indexing_run_id: str,
+        status: str,
+        source_count: int,
+        chunk_count: int,
+        embedding_count: int,
+        failed_count: int,
+        error: str | None,
+        updated_at: datetime,
+        finished_at: datetime | None,
+    ) -> IngestionIndexingRun | None:
+        """Update one indexing run with progress or terminal counts."""
+        ...
+
     # -- health --
 
     def is_healthy(self) -> bool:
@@ -335,6 +378,39 @@ class ExtractorRegistry:
     def match(self, context: ExtractorContext) -> list[BaseExtractor]:
         """Return all extractors that can handle the supplied context."""
         return [e for e in self._extractors if e.can_extract(context)]
+
+
+_TEXT_MIME_TYPES = frozenset(
+    {
+        "application/json",
+        "application/markdown",
+        "application/x-markdown",
+        "text/markdown",
+        "text/plain",
+    }
+)
+
+
+class BuiltInTextExtractor(BaseExtractor):
+    """Built-in extractor for UTF-8 text, Markdown, and JSON artifacts."""
+
+    def can_extract(self, context: ExtractorContext) -> bool:
+        """Return True for supported textual MIME types."""
+        mime_type = (context.mime_type or "").split(";", 1)[0].strip().lower()
+        return mime_type.startswith("text/") or mime_type in _TEXT_MIME_TYPES
+
+    def extract(self, context: ExtractorContext) -> Sequence[ExtractedArtifact]:
+        """Validate UTF-8 text payload and return it as one derived artifact."""
+        context.payload.decode("utf-8")
+        mime_type = (context.mime_type or "text/plain").split(";", 1)[0].strip()
+        return (
+            ExtractedArtifact(
+                payload=context.payload,
+                mime_type=mime_type or "text/plain",
+                method="builtin_text",
+                confidence=1.0,
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -467,3 +543,33 @@ class NormalizerRegistry:
     def match(self, context: NormalizerContext) -> list[BaseNormalizer]:
         """Return all normalizers that can handle the supplied context."""
         return [n for n in self._normalizers if n.can_normalize(context)]
+
+
+class BuiltInTextNormalizer(BaseNormalizer):
+    """Built-in normalizer that converts UTF-8 text-like payloads to Markdown."""
+
+    def can_normalize(self, context: NormalizerContext) -> bool:
+        """Return True for supported textual MIME types."""
+        mime_type = (context.mime_type or "").split(";", 1)[0].strip().lower()
+        return mime_type.startswith("text/") or mime_type in _TEXT_MIME_TYPES
+
+    def normalize(self, context: NormalizerContext) -> Sequence[NormalizedArtifact]:
+        """Return one canonical UTF-8 Markdown/plain-text artifact."""
+        import json
+
+        text = context.payload.decode("utf-8")
+        mime_type = (context.mime_type or "").split(";", 1)[0].strip().lower()
+        if mime_type == "application/json":
+            try:
+                text = json.dumps(json.loads(text), indent=2, sort_keys=True)
+            except json.JSONDecodeError:
+                pass
+        normalized = text.rstrip() + "\n"
+        return (
+            NormalizedArtifact(
+                payload=normalized.encode("utf-8"),
+                mime_type="text/markdown",
+                method="builtin_text_to_markdown",
+                confidence=1.0,
+            ),
+        )
