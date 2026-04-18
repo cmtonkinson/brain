@@ -41,7 +41,9 @@ from services.state.object_authority.data import (
 from services.state.object_authority.domain import (
     HealthStatus,
     ObjectGetResult,
+    ObjectPutResult,
     ObjectRecord,
+    ObjectWriteDisposition,
 )
 from services.state.object_authority.interfaces import ObjectRepository
 from services.state.object_authority.service import ObjectAuthorityService
@@ -119,8 +121,8 @@ class DefaultObjectAuthorityService(ObjectAuthorityService):
         content_type: str,
         original_filename: str,
         source_uri: str,
-    ) -> Envelope[ObjectRecord]:
-        """Persist one blob and return authoritative metadata record."""
+    ) -> Envelope[ObjectPutResult]:
+        """Persist one blob and return metadata plus dedupe disposition."""
         request, errors = self._validate_request(
             meta=meta,
             model=PutObjectRequest,
@@ -162,7 +164,13 @@ class DefaultObjectAuthorityService(ObjectAuthorityService):
                     extension=existing.metadata.extension,
                     content=request.content,
                 )
-                return success(meta=meta, payload=existing)
+                return success(
+                    meta=meta,
+                    payload=ObjectPutResult(
+                        object=existing,
+                        write_disposition=ObjectWriteDisposition.existing,
+                    ),
+                )
         except Exception as exc:  # noqa: BLE001
             if _is_postgres_error(exc):
                 return failure(meta=meta, errors=[normalize_postgres_error(exc)])
@@ -197,7 +205,13 @@ class DefaultObjectAuthorityService(ObjectAuthorityService):
             if _is_postgres_error(exc):
                 return failure(meta=meta, errors=[normalize_postgres_error(exc)])
             return self._dependency_failure(meta=meta, operation="put_object", exc=exc)
-        return success(meta=meta, payload=created)
+        return success(
+            meta=meta,
+            payload=ObjectPutResult(
+                object=created,
+                write_disposition=ObjectWriteDisposition.created,
+            ),
+        )
 
     @public_api_instrumented(
         logger=_LOGGER,

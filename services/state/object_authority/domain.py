@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
 
@@ -39,6 +40,22 @@ class ObjectRecord(BaseModel):
 
     ref: ObjectRef
     metadata: ObjectMetadata
+
+
+class ObjectWriteDisposition(str, Enum):
+    """Whether a put-object request created or reused an existing object."""
+
+    created = "created"
+    existing = "existing"
+
+
+class ObjectPutResult(BaseModel):
+    """Put-object payload including metadata and dedupe disposition."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    object: ObjectRecord
+    write_disposition: ObjectWriteDisposition
 
 
 class ObjectGetResult(BaseModel):

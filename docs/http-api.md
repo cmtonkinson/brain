@@ -52,6 +52,39 @@ _Response: `_PollOperatorInstructionResponse`_
 _Summary: Pop the next queued operator instruction, optionally long-polling._
 
 ------------------------------------------------------------------------
+## `services/control/ingestion/api.py`
+`POST /ingestion/get` &mdash; read one ingestion record by id  
+_Handler: `get_ingestion`_
+
+
+`POST /ingestion/health` &mdash; return Ingestion Service readiness status  
+_Handler: `health`_
+
+
+`POST /ingestion/list` &mdash; list ingestions with optional status filter and cursor pagination  
+_Handler: `list_ingestions`_
+
+
+`POST /ingestion/replay` &mdash; replay an ingestion from the named stage forward  
+_Handler: `replay_ingestion`_
+
+
+`POST /ingestion/results` &mdash; return stage-ordered artifact outcomes for one ingestion  
+_Handler: `get_ingestion_results`_
+
+
+`POST /ingestion/retry-stage` &mdash; retry one named stage for an existing ingestion  
+_Handler: `retry_ingestion_stage`_
+
+
+`POST /ingestion/status` &mdash; return current status snapshot for one ingestion  
+_Handler: `get_ingestion_status`_
+
+
+`POST /ingestion/submit` &mdash; validate and submit one ingestion attempt; runs store stage inline  
+_Handler: `submit_ingestion`_
+
+------------------------------------------------------------------------
 ## `services/control/job/api.py`
 `POST /jobs/cancel` &mdash; cancel a job and clear its next_run  
 _Handler: `cancel_job`_

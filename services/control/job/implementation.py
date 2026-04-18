@@ -29,8 +29,10 @@ from packages.brain_shared.errors import (
 from packages.brain_shared.ids import generate_ulid_str
 from packages.brain_shared.logging import get_logger, public_api_instrumented
 from resources.substrates.postgres.errors import normalize_postgres_error
-from services.action.capability_engine.domain import CapabilityInvocationMetadata
-from services.action.capability_engine.service import CapabilityEngineService
+from services.action.capability_engine.service import (
+    CapabilityEngineService,
+    CapabilityInvocationMetadata,
+)
 from services.control.job.component import SERVICE_COMPONENT_ID
 from services.control.job.config import JobServiceSettings
 from services.control.job.data.runtime import JobPostgresRuntime

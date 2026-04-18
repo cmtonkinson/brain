@@ -10,6 +10,7 @@ from resources.substrates.filesystem.substrate import FilesystemBlobSubstrate
 from services.state.object_authority.domain import (
     HealthStatus,
     ObjectGetResult,
+    ObjectPutResult,
     ObjectRecord,
 )
 
@@ -27,8 +28,8 @@ class ObjectAuthorityService(ABC):
         content_type: str,
         original_filename: str,
         source_uri: str,
-    ) -> Envelope[ObjectRecord]:
-        """Persist one blob and return authoritative object record."""
+    ) -> Envelope[ObjectPutResult]:
+        """Persist one blob and return object metadata plus dedupe disposition."""
 
     @abstractmethod
     def get_object(

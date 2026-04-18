@@ -15,6 +15,14 @@
 /memory/record_outbound_delivery: persist the final delivery state for one outbound MAS turn
 /memory/record_response: persist one outbound MAS response turn
 /switchboard/poll_operator_instruction: dequeue the next queued operator instruction for the agent
+/ingestion/submit: validate and submit one ingestion attempt; runs store stage inline
+/ingestion/get: read one ingestion record by id
+/ingestion/status: return current status snapshot for one ingestion
+/ingestion/results: return stage-ordered artifact outcomes for one ingestion
+/ingestion/list: list ingestions with optional status filter and cursor pagination
+/ingestion/retry-stage: retry one named stage for an existing ingestion
+/ingestion/replay: replay an ingestion from the named stage forward
+/ingestion/health: return Ingestion Service readiness status
 /jobs/create: create a job intent, job record, and initial audit entry
 /jobs/get: read one job by id
 /jobs/list: list jobs with optional filters and cursor pagination

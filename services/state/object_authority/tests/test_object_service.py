@@ -12,6 +12,7 @@ from services.state.object_authority.domain import (
     ObjectMetadata,
     ObjectRecord,
     ObjectRef,
+    ObjectWriteDisposition,
 )
 from services.state.object_authority.implementation import (
     DefaultObjectAuthorityService,
@@ -154,7 +155,8 @@ def test_put_get_stat_delete_happy_path() -> None:
     )
     assert put.ok is True
     assert put.payload is not None
-    object_key = put.payload.value.ref.object_key
+    assert put.payload.value.write_disposition == ObjectWriteDisposition.created
+    object_key = put.payload.value.object.ref.object_key
 
     stat = service.stat_object(meta=_meta(), object_key=object_key)
     assert stat.ok is True
@@ -197,10 +199,18 @@ def test_put_preserves_digest_key_semantics_and_extension_as_metadata() -> None:
     assert second.ok is True
     assert first.payload is not None
     assert second.payload is not None
-    assert first.payload.value.ref.object_key == second.payload.value.ref.object_key
-    assert first.payload.value.metadata.extension == "txt"
-    assert second.payload.value.metadata.extension == "txt"
-    assert first.payload.value.ref.object_key == f"b1:sha256:{_expected_digest(b'abc')}"
+    assert first.payload.value.write_disposition == ObjectWriteDisposition.created
+    assert second.payload.value.write_disposition == ObjectWriteDisposition.existing
+    assert (
+        first.payload.value.object.ref.object_key
+        == second.payload.value.object.ref.object_key
+    )
+    assert first.payload.value.object.metadata.extension == "txt"
+    assert second.payload.value.object.metadata.extension == "txt"
+    assert (
+        first.payload.value.object.ref.object_key
+        == f"b1:sha256:{_expected_digest(b'abc')}"
+    )
     assert [call.extension for call in blob.write_calls] == ["txt", "txt"]
 
 
@@ -249,7 +259,7 @@ def test_put_uses_default_extension_when_blank() -> None:
 
     assert result.ok is True
     assert result.payload is not None
-    assert result.payload.value.metadata.extension == "blob"
+    assert result.payload.value.object.metadata.extension == "blob"
 
 
 def test_put_maps_filesystem_errors_to_dependency() -> None:

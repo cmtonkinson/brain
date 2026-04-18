@@ -48,6 +48,6 @@ def test_put_delete_roundtrip_and_orphan_cleanup() -> None:
     )
     assert failed.ok is False
 
-    key = created.payload.value.ref.object_key
+    key = created.payload.value.object.ref.object_key
     deleted = service.delete_object(meta=_meta(), object_key=key)
     assert deleted.ok is True

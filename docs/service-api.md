@@ -113,6 +113,50 @@ _Return the current UTC datetime._
 _Return one or more chunks for the provided text content._
 
 ------------------------------------------------------------------------
+## `IngestionService`
+- Module: `services/control/ingestion/service.py`
+- Summary: Public API for content ingestion, stage orchestration, and artifact lineage.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return Ingestion Service readiness status._
+
+`run_anchor_stage(*, meta: EnvelopeMeta, ingestion_id: str) -> Envelope[AnchorStageResult]`  
+_Execute the anchor stage for the named ingestion._
+
+`run_extract_stage(*, meta: EnvelopeMeta, ingestion_id: str) -> Envelope[FanOutStageResult]`  
+_Execute the extraction stage for the named ingestion._
+
+`get_ingestion(*, meta: EnvelopeMeta, ingestion_id: str) -> Envelope[IngestionRecord]`  
+_Read one ingestion record by id._
+
+`get_ingestion_results(*, meta: EnvelopeMeta, ingestion_id: str) -> Envelope[IngestionResultsView]`  
+_Return the stage-ordered artifact outcomes view for one ingestion._
+
+`get_ingestion_status(*, meta: EnvelopeMeta, ingestion_id: str) -> Envelope[IngestionStatusResult]`  
+_Return the current status snapshot for one ingestion._
+
+`advance_ingestion(*, meta: EnvelopeMeta, ingestion_id: str, from_stage: str, force_target: bool = False) -> Envelope[IngestionRecord]`  
+_Advance one ingestion through the pipeline from the named stage onward._
+
+`replay_ingestion(*, meta: EnvelopeMeta, ingestion_id: str, from_stage: str) -> Envelope[IngestionRecord]`  
+_Replay an ingestion from the named stage forward through the pipeline._
+
+`retry_ingestion_stage(*, meta: EnvelopeMeta, ingestion_id: str, stage: str) -> Envelope[IngestionRecord]`  
+_Retry one named stage for an existing ingestion._
+
+`submit_ingestion(*, meta: EnvelopeMeta, source_type: str, source_uri: str | None = None, source_actor: str | None = None, payload: bytes | None = None, existing_object_key: str | None = None, capture_time: str, mime_type: str | None = None) -> Envelope[IngestionRecord]`  
+_Validate and persist one ingestion submission._
+
+`list_ingestions(*, meta: EnvelopeMeta, status: str | None = None, limit: int = 50, cursor: str | None = None) -> Envelope[IngestionListResult]`  
+_List ingestions with optional status filter and cursor pagination._
+
+`run_normalize_stage(*, meta: EnvelopeMeta, ingestion_id: str) -> Envelope[FanOutStageResult]`  
+_Execute the normalization stage for the named ingestion._
+
+`run_store_stage(*, meta: EnvelopeMeta, ingestion_id: str) -> Envelope[StoreStageResult]`  
+_Execute the store stage for the named ingestion._
+
+------------------------------------------------------------------------
 ## `JobService`
 - Module: `services/control/job/service.py`
 - Summary: Public API for job scheduling, execution tracking, and audit.
@@ -138,7 +182,7 @@ _List mutation audit entries for one job._
 `cancel_job(*, meta: EnvelopeMeta, job_id: str) -> Envelope[JobMutationResult]`  
 _Cancel a job and clear its next_run._
 
-`create_job(*, meta: EnvelopeMeta, summary: str, details: str | None = None, origin_reference: str | None = None, schedule_type: str, timezone: str, definition: dict[str, object], start_state: str = 'draft') -> Envelope[JobMutationResult]`  
+`create_job(*, meta: EnvelopeMeta, summary: str, details: str | None = None, origin_reference: str | None = None, schedule_type: str, timezone: str, definition: dict[str, object], job_action: dict[str, object], start_state: str = JobState.draft.value) -> Envelope[JobMutationResult]`  
 _Create a job intent, job record, and initial audit entry._
 
 `pause_job(*, meta: EnvelopeMeta, job_id: str, reason: str = '') -> Envelope[JobMutationResult]`  
@@ -311,8 +355,8 @@ _Return the historical MAS context snapshot for one session._
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
 _Return OAS and owned dependency readiness status._
 
-`put_object(*, meta: EnvelopeMeta, content: bytes, extension: str, content_type: str, original_filename: str, source_uri: str) -> Envelope[ObjectRecord]`  
-_Persist one blob and return authoritative object record._
+`put_object(*, meta: EnvelopeMeta, content: bytes, extension: str, content_type: str, original_filename: str, source_uri: str) -> Envelope[ObjectPutResult]`  
+_Persist one blob and return object metadata plus dedupe disposition._
 
 `get_object(*, meta: EnvelopeMeta, object_key: str) -> Envelope[ObjectGetResult]`  
 _Read one blob and metadata by canonical object key._

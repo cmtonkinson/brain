@@ -33,6 +33,7 @@ from services.action.attention_router.service import AttentionRouterService
 from services.action.switchboard.service import SwitchboardService
 from services.action.utility_service.service import UtilityService
 from services.action.policy_service.domain import CapabilityInvocationRequest
+from services.control.ingestion.service import IngestionService
 from services.state.cache_authority.service import CacheAuthorityService
 from services.state.embedding_authority.service import EmbeddingAuthorityService
 from services.state.memory_authority.service import MemoryAuthorityService
@@ -607,6 +608,7 @@ class CapabilityRegistry:
             ("service_attention_router", AttentionRouterService),
             ("service_switchboard", SwitchboardService),
             ("service_utility_service", UtilityService),
+            ("service_ingestion", IngestionService),
         )
         for component_id, service_cls in services:
             for method_name, contract in self._service_target_contracts(

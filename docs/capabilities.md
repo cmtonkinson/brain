@@ -155,6 +155,30 @@ Native Op over `Language Model Service embed_batch()`
 - `array[object]`: One embedding vector result per input text chunk.
 
 ------------------------------------------------------------------------
+## `Ingestion Service`
+### `ingestion-advance
+Advance one ingestion from a named stage through the remaining pipeline.  
+`native_op` `1.0.0`  
+Native Op over `Ingestion Service advance_ingestion()`  
+
+**Inputs:**
+- `ingestion_id` _(string)_ The ingestion identifier to advance.
+- `from_stage` _(string)_ The first stage to consider: store, extract, normalize, or anchor.
+- `force_target` _(boolean, optional)_ Re-run the requested target stage even if its latest run succeeded.
+
+**Outputs:**
+- `id` _(string)_ The ingestion identifier.
+- `status` _(string)_ The current ingestion lifecycle status.
+- `source_type` _(string)_ The original source type.
+- `source_uri` _(string | null)_ The original source URI, if any.
+- `source_actor` _(string | null)_ The originating actor, if any.
+- `capture_time` _(string)_ The timezone-aware capture timestamp.
+- `mime_type` _(string | null)_ The source MIME type, if any.
+- `last_error` _(string | null)_ The most recent ingestion error, if any.
+- `created_at` _(string)_ The record creation timestamp.
+- `updated_at` _(string)_ The record update timestamp.
+
+------------------------------------------------------------------------
 ## `Object Authority Service`
 ### `object-delete
 Delete one persisted object by canonical object key.  
@@ -424,7 +448,7 @@ Logic Skill
 - `encoding` _(string)_ The text encoding used for decoding.
 
 ### `object-put-base64
-Persist one base64-encoded blob and return the authoritative object record.  
+Persist one base64-encoded blob and return object metadata plus dedupe disposition.  
 `logic_skill` `1.0.0`  
 Logic Skill  
 
@@ -436,11 +460,11 @@ Logic Skill
 - `source_uri` _(string, optional)_ Optional source URI metadata.
 
 **Outputs:**
-- `ref` _(object)_
-- `metadata` _(object)_
+- `object` _(object)_
+- `write_disposition` _(string)_
 
 ### `object-put-text
-Persist one text blob and return the authoritative object record.  
+Persist one text blob and return object metadata plus dedupe disposition.  
 `logic_skill` `1.0.0`  
 Logic Skill  
 
@@ -453,8 +477,8 @@ Logic Skill
 - `encoding` _(string, optional)_ Text encoding used before persistence. Defaults to 'utf-8'.
 
 **Outputs:**
-- `ref` _(object)_
-- `metadata` _(object)_
+- `object` _(object)_
+- `write_disposition` _(string)_
 
 
 ------------------------------------------------------------------------
