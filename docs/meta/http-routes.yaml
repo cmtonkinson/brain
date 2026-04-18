@@ -15,3 +15,12 @@
 /memory/record_outbound_delivery: persist the final delivery state for one outbound MAS turn
 /memory/record_response: persist one outbound MAS response turn
 /switchboard/poll_operator_instruction: dequeue the next queued operator instruction for the agent
+/jobs/create: create a job intent, job record, and initial audit entry
+/jobs/get: read one job by id
+/jobs/list: list jobs with optional filters and cursor pagination
+/jobs/pause: transition a job from active to paused
+/jobs/resume: transition a job from paused to active and recompute next_run
+/jobs/cancel: cancel a job and clear its next_run
+/jobs/run-now: immediately queue an execution for an active or paused job
+/jobs/executions/list: list executions for one job with cursor pagination
+/jobs/health: return Job Service and provider health state

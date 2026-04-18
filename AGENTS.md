@@ -15,3 +15,6 @@ Additional instructions for working in this specific project:
     - If code would be dead as a result, prune it; don't leave old paths "for
       compatibility."
     - Don't leave notes about what what things "used to" be called.
+- Avoid hardcoded scalars where reasonable: favor configuration parameters with
+  sane defaults.
+

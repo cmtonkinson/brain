@@ -113,6 +113,62 @@ _Return the current UTC datetime._
 _Return one or more chunks for the provided text content._
 
 ------------------------------------------------------------------------
+## `JobService`
+- Module: `services/control/job/service.py`
+- Summary: Public API for job scheduling, execution tracking, and audit.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return Job Service and provider health state._
+
+`evaluate_conditional_job(*, meta: EnvelopeMeta, job_id: str) -> Envelope[PredicateEvaluationRecord]`  
+_Evaluate the predicate for one conditional job and record audit._
+
+`get_execution(*, meta: EnvelopeMeta, execution_id: str) -> Envelope[ExecutionRecord]`  
+_Read one execution by id._
+
+`list_executions(*, meta: EnvelopeMeta, job_id: str, limit: int = 50, cursor: str | None = None) -> Envelope[ExecutionListResult]`  
+_List executions for one job with cursor pagination._
+
+`get_job(*, meta: EnvelopeMeta, job_id: str) -> Envelope[JobRecord]`  
+_Read one job by id._
+
+`list_job_audits(*, meta: EnvelopeMeta, job_id: str, limit: int = 50) -> Envelope[list[JobMutationAudit]]`  
+_List mutation audit entries for one job._
+
+`cancel_job(*, meta: EnvelopeMeta, job_id: str) -> Envelope[JobMutationResult]`  
+_Cancel a job and clear its next_run._
+
+`create_job(*, meta: EnvelopeMeta, summary: str, details: str | None = None, origin_reference: str | None = None, schedule_type: str, timezone: str, definition: dict[str, object], start_state: str = 'draft') -> Envelope[JobMutationResult]`  
+_Create a job intent, job record, and initial audit entry._
+
+`pause_job(*, meta: EnvelopeMeta, job_id: str, reason: str = '') -> Envelope[JobMutationResult]`  
+_Transition a job from active to paused._
+
+`resume_job(*, meta: EnvelopeMeta, job_id: str) -> Envelope[JobMutationResult]`  
+_Transition a job from paused to active and recompute next_run._
+
+`review_job_health(*, meta: EnvelopeMeta) -> Envelope[ReviewOutput]`  
+_Detect orphaned, failing, and ignored jobs._
+
+`run_job_now(*, meta: EnvelopeMeta, job_id: str) -> Envelope[RunJobNowResult]`  
+_Immediately queue an execution for an active or paused job._
+
+`update_job(*, meta: EnvelopeMeta, job_id: str, timezone: str | None = None, definition: dict[str, object] | None = None, notes: str | None = None) -> Envelope[JobMutationResult]`  
+_Update a job definition and/or timezone._
+
+`list_jobs(*, meta: EnvelopeMeta, state: str | None = None, schedule_type: str | None = None, limit: int = 50, cursor: str | None = None) -> Envelope[JobListResult]`  
+_List jobs with optional filters and cursor pagination._
+
+`list_predicate_evaluations(*, meta: EnvelopeMeta, job_id: str, limit: int = 50) -> Envelope[list[PredicateEvaluationRecord]]`  
+_List predicate evaluation records for one conditional job._
+
+`handle_provider_callback(*, meta: EnvelopeMeta, job_id: str, scheduled_for: str, trace_id: str, trigger_source: str) -> Envelope[CallbackResult]`  
+_Handle an idempotent provider callback for one job execution._
+
+`process_retry_due_jobs(*, meta: EnvelopeMeta) -> Envelope[list[str]]`  
+_Re-queue retry-scheduled executions past their retry_after time._
+
+------------------------------------------------------------------------
 ## `CacheAuthorityService`
 - Module: `services/state/cache_authority/service.py`
 - Summary: Public API for component-scoped cache and queue operations.

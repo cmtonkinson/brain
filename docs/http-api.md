@@ -52,6 +52,43 @@ _Response: `_PollOperatorInstructionResponse`_
 _Summary: Pop the next queued operator instruction, optionally long-polling._
 
 ------------------------------------------------------------------------
+## `services/control/job/api.py`
+`POST /jobs/cancel` &mdash; cancel a job and clear its next_run  
+_Handler: `cancel_job`_
+
+
+`POST /jobs/create` &mdash; create a job intent, job record, and initial audit entry  
+_Handler: `create_job`_
+
+
+`POST /jobs/executions/list` &mdash; list executions for one job with cursor pagination  
+_Handler: `list_executions`_
+
+
+`POST /jobs/get` &mdash; read one job by id  
+_Handler: `get_job`_
+
+
+`POST /jobs/health` &mdash; return Job Service and provider health state  
+_Handler: `health`_
+
+
+`POST /jobs/list` &mdash; list jobs with optional filters and cursor pagination  
+_Handler: `list_jobs`_
+
+
+`POST /jobs/pause` &mdash; transition a job from active to paused  
+_Handler: `pause_job`_
+
+
+`POST /jobs/resume` &mdash; transition a job from paused to active and recompute next_run  
+_Handler: `resume_job`_
+
+
+`POST /jobs/run-now` &mdash; immediately queue an execution for an active or paused job  
+_Handler: `run_job_now`_
+
+------------------------------------------------------------------------
 ## `services/state/memory_authority/api.py`
 `POST /memory/assemble_context` &mdash; assemble MAS context for one inbound turn  
 _Handler: `assemble_context`_
