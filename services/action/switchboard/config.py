@@ -14,6 +14,8 @@ class SwitchboardServiceSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     queue_name: str = "signal_inbound"
+    console_queue_name: str = "console_inbound"
+    console_response_queue_name: str = "console_outbound"
     callback_register_max_retries: int = Field(default=8, ge=0)
     callback_register_retry_delay_seconds: float = Field(default=2.0, gt=0)
 

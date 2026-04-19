@@ -436,6 +436,8 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
             "language_model": LanguageModelServiceSettings().model_dump(mode="json"),
             "switchboard": {
                 "queue_name": "signal_inbound",
+                "console_queue_name": "console_inbound",
+                "console_response_queue_name": "console_outbound",
                 "callback_register_max_retries": 8,
                 "callback_register_retry_delay_seconds": 2.0,
             },

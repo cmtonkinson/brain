@@ -69,6 +69,14 @@ class FlushBatchRequest(BaseModel):
         return _strip_text(value)
 
 
+class PollConsoleResponseRequest(BaseModel):
+    """Validate one poll request for queued console responses."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    wait_timeout_seconds: float = Field(default=0.0, ge=0.0)
+
+
 class CorrelateApprovalRequest(BaseModel):
     """Validate one approval-correlation normalization request payload."""
 

@@ -206,7 +206,7 @@ def _call_with_optional_meta(func, /, *, meta: MetaOverrides | None, **kwargs: A
     """Call one SDK-style method, omitting ``meta`` for legacy fake clients."""
     try:
         parameters = inspect.signature(func).parameters
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         parameters = {}
     if "meta" in parameters:
         return func(meta=meta, **kwargs)
@@ -2083,7 +2083,7 @@ def _build_history_processor(
                     )
                     if isinstance(args, dict):
                         index[part.tool_call_id] = args
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     pass
         return index
 

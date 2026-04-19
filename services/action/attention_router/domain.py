@@ -65,6 +65,15 @@ class ApprovalCorrelationPayload(BaseModel):
     reaction_to_proposal_token: str = ""
 
 
+class ConsoleResponseMessage(BaseModel):
+    """One outbound Brain response delivered to the console channel."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    message: str
+    timestamp_ms: int
+
+
 class HealthStatus(BaseModel):
     """Attention Router and adapter readiness payload."""
 

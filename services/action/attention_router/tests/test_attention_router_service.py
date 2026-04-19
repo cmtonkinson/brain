@@ -164,7 +164,7 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
     ):
         raise NotImplementedError
 
-    def assemble_snapshot(self, *, meta, session_id: str):
+    def assemble_snapshot(self, *, meta, session_id: str, exclude_latest: bool = True):
         raise NotImplementedError
 
     def record_outbound_candidate(
@@ -296,6 +296,7 @@ def _service() -> tuple[
         signal_adapter=adapter,
         operator_signal_contact_e164="+12025550100",
         signal_receive_e164="+12025550101",
+        console_response_queue_name="console_outbound",
         cache_authority_service=cache,
         memory_authority_service=memory,
     )

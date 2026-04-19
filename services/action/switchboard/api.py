@@ -9,7 +9,10 @@ from pydantic import BaseModel
 from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, new_meta
 from packages.brain_shared.errors import ErrorCategory
 from packages.brain_shared.http.server import read_json_body
-from services.action.switchboard.domain import NormalizedSignalMessage
+from services.action.switchboard.domain import (
+    ConsoleEnqueueResult,
+    NormalizedOperatorMessage,
+)
 from services.action.switchboard.service import SwitchboardService
 
 
@@ -29,6 +32,12 @@ class _PollOperatorInstructionRequest(_RequestMeta):
     wait_timeout_seconds: float = 0.0
 
 
+class _EnqueueConsoleMessageRequest(_RequestMeta):
+    """Inbound body for console message enqueue requests."""
+
+    message_text: str
+
+
 class _ErrorOut(BaseModel):
     """Stable serialized error shape for Switchboard HTTP responses."""
 
@@ -42,7 +51,14 @@ class _ErrorOut(BaseModel):
 class _PollOperatorInstructionResponse(BaseModel):
     """Serialized response body for operator-instruction dequeue requests."""
 
-    payload: NormalizedSignalMessage | None
+    payload: NormalizedOperatorMessage | None
+    errors: list[_ErrorOut]
+
+
+class _EnqueueConsoleMessageResponse(BaseModel):
+    """Serialized response body for console message enqueue."""
+
+    payload: ConsoleEnqueueResult | None
     errors: list[_ErrorOut]
 
 
@@ -69,6 +85,30 @@ def register_routes(*, router: APIRouter, service: SwitchboardService) -> None:
         )
         payload = None if result.payload is None else result.payload.value
         return _PollOperatorInstructionResponse(
+            payload=payload,
+            errors=[_error_out(error) for error in result.errors],
+        )
+
+    @router.post(
+        "/switchboard/enqueue_console_message",
+        response_model=_EnqueueConsoleMessageResponse,
+    )
+    async def enqueue_console_message(
+        request: Request,
+    ) -> _EnqueueConsoleMessageResponse:
+        """Enqueue one inbound console operator message."""
+        body = await read_json_body(request)
+        req = _EnqueueConsoleMessageRequest.model_validate(body)
+        meta = _meta_from_request(
+            req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
+        )
+        result = await run_in_threadpool(
+            service.enqueue_console_message,
+            meta=meta,
+            message_text=req.message_text,
+        )
+        payload = None if result.payload is None else result.payload.value
+        return _EnqueueConsoleMessageResponse(
             payload=payload,
             errors=[_error_out(error) for error in result.errors],
         )

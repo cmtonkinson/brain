@@ -7,22 +7,15 @@ if [[ $# -ne 1 ]]; then
   exit 1
 fi
 
-if ! command -v pyenv >/dev/null 2>&1; then
-  echo "pyenv is required but was not found on PATH" >&2
-  exit 1
-fi
-
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 VERSION="$1"
 
 cd "${REPO_ROOT}"
 
-pyenv install --skip-existing "${VERSION}"
-pyenv local "${VERSION}"
+uv python install "${VERSION}"
+echo "${VERSION}" > .python-version
 rm -rf .venv
-pyenv exec python -m venv .venv
-.venv/bin/python -m pip install --upgrade pip pip-tools
 make deps
 
 echo

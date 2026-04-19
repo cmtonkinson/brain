@@ -14,8 +14,8 @@ This document covers how to set up, build, test, and contribute to Brain.
 ------------------------------------------------------------------------
 ## Environment Setup
 1. Clone the repository and install Python dependencies:
-   ```
-   pip install -r requirements.txt
+   ```sh
+   make deps
    ```
 
 2. Start infrastructure services:
@@ -56,7 +56,7 @@ This document covers how to set up, build, test, and contribute to Brain.
 | Target | Description |
 |---|---|
 | `make all` | Full pipeline: deps, clean, unit + integration tests, docs |
-| `make deps` | Install Python dependencies from `requirements.txt` |
+| `make deps` | Install Python dependencies with `uv sync` |
 | `make clean` | Remove generated code and Python cache files |
 | `make check` | Run linting and format checks (ruff) |
 | `make format` | Auto-format code (ruff) |
@@ -80,6 +80,12 @@ Tests are discovered in four locations:
 - `actors/` -- _Actor_-level tests in `actors/<actor>/tests`
 - `services/` -- _Service_-level tests in `services/<system>/<service>/tests/`
 - `resources/` -- _Resource_-level tests in `resources/<kind>/<resource>/tests`
+
+------------------------------------------------------------------------
+## Docker Build Notes
+Docker builds rely on the container-created `/app/.venv`. Keep host virtual
+environments out of the build context, and do not bind-mount over `/app` in
+smoke sidecars because that masks the image's installed dependencies.
 
 ------------------------------------------------------------------------
 ## Adding a New Service

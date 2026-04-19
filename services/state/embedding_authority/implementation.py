@@ -905,7 +905,7 @@ class DefaultEmbeddingAuthorityService(EmbeddingAuthorityService):
                 chunk_ordinal_raw = hit.payload.get("chunk_ordinal", 0)
                 try:
                     chunk_ordinal = int(chunk_ordinal_raw)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     chunk_ordinal = 0
                 matches.append(
                     SearchEmbeddingMatch(

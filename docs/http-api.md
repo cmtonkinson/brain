@@ -8,6 +8,13 @@ _Handler: `health`_
 _Response: `_HealthResponse`_
 
 ------------------------------------------------------------------------
+## `services/action/attention_router/api.py`
+`POST /attention-router/poll_console_response` &mdash; dequeue the next queued Brain response for the console channel  
+_Handler: `poll_console_response`_
+_Response: `_PollConsoleResponseResponse`_
+_Summary: Pop the next queued Brain response for the console channel._
+
+------------------------------------------------------------------------
 ## `services/action/capability_engine/api.py`
 `POST /capabilities/always-on` &mdash; return full descriptors for the configured always-on capabilities  
 _Handler: `list_always_on_capabilities`_
@@ -46,6 +53,12 @@ _Response: `_ChatWithToolsResponse`_
 
 ------------------------------------------------------------------------
 ## `services/action/switchboard/api.py`
+`POST /switchboard/enqueue_console_message` &mdash; accept and enqueue one inbound console operator message  
+_Handler: `enqueue_console_message`_
+_Response: `_EnqueueConsoleMessageResponse`_
+_Summary: Enqueue one inbound console operator message._
+
+
 `POST /switchboard/poll_operator_instruction` &mdash; dequeue the next queued operator instruction for the agent  
 _Handler: `poll_operator_instruction`_
 _Response: `_PollOperatorInstructionResponse`_

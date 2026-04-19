@@ -5,16 +5,22 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict
 
 
-class NormalizedSignalMessage(BaseModel):
-    """Normalized inbound Signal message payload for downstream processing."""
+class NormalizedOperatorMessage(BaseModel):
+    """Normalized inbound operator message payload for downstream processing.
+
+    Required fields (``source``, ``message_text``, ``timestamp_ms``) are
+    channel-agnostic.  Signal-specific fields default to empty/``None`` so that
+    non-Signal channels (e.g. console) can produce valid instances without
+    synthesizing placeholder values.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    sender_e164: str
+    source: str
     message_text: str
     timestamp_ms: int
-    source_device: str
-    source: str
+    sender_e164: str = ""
+    source_device: str = ""
     group_id: str | None = None
     quote_target_timestamp_ms: int | None = None
     reaction_target_timestamp_ms: int | None = None
@@ -33,7 +39,16 @@ class IngestResult(BaseModel):
     queued: bool
     queue_name: str
     reason: str
-    message: NormalizedSignalMessage | None = None
+    message: NormalizedOperatorMessage | None = None
+
+
+class ConsoleEnqueueResult(BaseModel):
+    """Result payload for console message ingestion."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    queued: bool
+    queue_name: str
 
 
 class RegisterSignalCallbackResult(BaseModel):

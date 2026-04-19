@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, date, datetime, time, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ValidationError
@@ -72,26 +74,35 @@ from services.control.job.service import JobService
 _LOGGER = get_logger(__name__)
 _DEFAULT_REVIEW_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
-_DEDUPE_SYSTEM_PROMPT = (
-    "You are a commitment deduplication classifier. Respond with JSON only."
-)
+_PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+_PROMPT_TEMPLATE_VAR_RE = re.compile(r"\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}")
 
-_DEDUPE_PROMPT_TEMPLATE = """\
-Determine if the NEW commitment duplicates any EXISTING open commitment.
 
-NEW commitment:
-{new_description}
+def _load_prompt_file(path: Path) -> str:
+    """Load one prompt text file from disk without altering its contents."""
+    return path.read_text(encoding="utf-8")
 
-EXISTING open commitments:
-{existing_commitments}
 
-Respond with JSON only:
-{{"duplicate_commitment_id": "<id or null>", "confidence": <0.0-1.0>, "summary": "<reason, {max_words} words or fewer>"}}
+def _render_prompt_template(template: str, /, **values: str) -> str:
+    """Render one prompt template and reject unresolved placeholders."""
 
-Rules:
-- confidence 0.0 = unrelated, 1.0 = clearly the same commitment
-- Only flag as duplicate if the core obligation is the same, not merely related
-- If no duplicate, set duplicate_commitment_id to null and confidence to 0.0"""
+    def _replace(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key not in values:
+            return match.group(0)
+        return values[key]
+
+    rendered = _PROMPT_TEMPLATE_VAR_RE.sub(_replace, template)
+    unresolved = _PROMPT_TEMPLATE_VAR_RE.findall(rendered)
+    if unresolved:
+        raise ValueError(
+            f"unresolved prompt template placeholders: {', '.join(sorted(unresolved))}"
+        )
+    return rendered
+
+
+_DEDUPE_SYSTEM_TEMPLATE = _load_prompt_file(_PROMPTS_DIR / "dedupe-system.txt")
+_DEDUPE_USER_TEMPLATE = _load_prompt_file(_PROMPTS_DIR / "dedupe-user-template.txt")
 
 _ALLOWED_TRANSITIONS: dict[CommitmentState, frozenset[CommitmentState]] = {
     CommitmentState.OPEN: frozenset(
@@ -124,6 +135,10 @@ class DefaultCommitmentService(CommitmentService):
         self._job_service = job_service
         self._attention_router_service = attention_router_service
         self._language_model_service = language_model_service
+        self._dedupe_system_prompt = _render_prompt_template(
+            _DEDUPE_SYSTEM_TEMPLATE,
+            max_words=str(settings.dedupe_summary_max_words),
+        )
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(SERVICE_COMPONENT_ID))
     def create_commitment(
@@ -1471,14 +1486,14 @@ class DefaultCommitmentService(CommitmentService):
             existing_lines = "\n".join(
                 f"- {c.id}: {c.description}" for c in open_commitments
             )
-            prompt = _DEDUPE_PROMPT_TEMPLATE.format(
+            prompt = _render_prompt_template(
+                _DEDUPE_USER_TEMPLATE,
                 new_description=description,
                 existing_commitments=existing_lines,
-                max_words=self._settings.dedupe_summary_max_words,
             )
             chat_env = self._language_model_service.chat(
                 meta=meta,
-                system_prompt=_DEDUPE_SYSTEM_PROMPT,
+                system_prompt=self._dedupe_system_prompt,
                 prompt=prompt,
                 profile=ReasoningLevel.QUICK,
             )

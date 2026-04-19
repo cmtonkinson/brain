@@ -252,7 +252,6 @@ def _write_override_file(
                     "/state",
                 ],
                 "volumes": [
-                    f"{REPO_ROOT}:/app:ro",
                     f"{fake_signal_state}:/state:rw",
                 ],
                 "healthcheck": {
@@ -278,7 +277,6 @@ def _write_override_file(
                     "/state",
                 ],
                 "volumes": [
-                    f"{REPO_ROOT}:/app:ro",
                     f"{fake_llm_state}:/state:rw",
                 ],
                 "healthcheck": {
@@ -304,7 +302,6 @@ def _write_override_file(
                     "/state",
                 ],
                 "volumes": [
-                    f"{REPO_ROOT}:/app:ro",
                     f"{fake_obsidian_state}:/state:rw",
                 ],
                 "healthcheck": {

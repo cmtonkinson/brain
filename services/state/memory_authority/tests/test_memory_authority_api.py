@@ -173,7 +173,7 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
         )
         return self.record_inbound_result
 
-    def assemble_snapshot(self, *, meta, session_id: str):
+    def assemble_snapshot(self, *, meta, session_id: str, exclude_latest: bool = True):
         self.assemble_snapshot_calls.append((session_id, meta.source))
         return self.assemble_result
 

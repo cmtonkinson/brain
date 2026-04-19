@@ -46,13 +46,15 @@ from services.action.switchboard.config import (
     resolve_switchboard_service_settings,
 )
 from services.action.switchboard.domain import (
+    ConsoleEnqueueResult,
     HealthStatus,
     IngestResult,
-    NormalizedSignalMessage,
+    NormalizedOperatorMessage,
     RegisterSignalCallbackResult,
 )
 from services.action.switchboard.service import SwitchboardService
 from services.action.switchboard.validation import (
+    EnqueueConsoleMessageRequest,
     IngestSignalMessageRequest,
     PollOperatorInstructionRequest,
 )
@@ -243,6 +245,57 @@ class DefaultSwitchboardService(SwitchboardService):
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
     )
+    def enqueue_console_message(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        message_text: str,
+    ) -> Envelope[ConsoleEnqueueResult]:
+        """Normalize and enqueue one inbound console operator message."""
+        request, errors = self._validate_request(
+            meta=meta,
+            model=EnqueueConsoleMessageRequest,
+            payload={"message_text": message_text},
+        )
+        if errors:
+            return failure(meta=meta, errors=errors)
+        assert request is not None
+
+        message = NormalizedOperatorMessage(
+            source="console",
+            message_text=request.message_text,
+            timestamp_ms=int(time.time() * 1000),
+        )
+
+        queue_payload = message.model_dump(mode="python")
+        enqueued = self._cache_service.push_queue(
+            meta=meta,
+            component_id=str(SERVICE_COMPONENT_ID),
+            queue=self._settings.console_queue_name,
+            value=queue_payload,
+        )
+        if not enqueued.ok:
+            return failure(meta=meta, errors=enqueued.errors)
+
+        _LOGGER.debug(
+            "switchboard accepted console operator instruction",
+            extra={
+                "channel": "console",
+                "message_text": request.message_text,
+            },
+        )
+        return success(
+            meta=meta,
+            payload=ConsoleEnqueueResult(
+                queued=True,
+                queue_name=self._settings.console_queue_name,
+            ),
+        )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
     def register_signal_callback(
         self,
         *,
@@ -332,7 +385,7 @@ class DefaultSwitchboardService(SwitchboardService):
         *,
         meta: EnvelopeMeta,
         wait_timeout_seconds: float = 0.0,
-    ) -> Envelope[NormalizedSignalMessage | None]:
+    ) -> Envelope[NormalizedOperatorMessage | None]:
         """Pop the next queued operator instruction, optionally long-polling."""
         request, errors = self._validate_request(
             meta=meta,
@@ -343,39 +396,44 @@ class DefaultSwitchboardService(SwitchboardService):
             return failure(meta=meta, errors=errors)
         assert request is not None
 
+        queues = (
+            self._settings.console_queue_name,
+            self._settings.queue_name,
+        )
         deadline = time.monotonic() + request.wait_timeout_seconds
         while True:
-            popped = self._cache_service.pop_queue(
-                meta=meta,
-                component_id=str(SERVICE_COMPONENT_ID),
-                queue=self._settings.queue_name,
-            )
-            if not popped.ok:
-                return failure(meta=meta, errors=popped.errors)
-
-            if popped.payload is not None and popped.payload.value is not None:
-                entry = popped.payload.value
-                try:
-                    message = NormalizedSignalMessage.model_validate(entry.value)
-                except ValidationError:
-                    return failure(
-                        meta=meta,
-                        errors=[
-                            internal_error(
-                                "queued operator instruction payload is invalid",
-                                code=codes.INTERNAL_ERROR,
-                            )
-                        ],
-                    )
-                _LOGGER.debug(
-                    "switchboard dequeued operator instruction",
-                    extra={
-                        "channel": message.source,
-                        "sender_e164": message.sender_e164,
-                        "message_text": message.message_text,
-                    },
+            for queue in queues:
+                popped = self._cache_service.pop_queue(
+                    meta=meta,
+                    component_id=str(SERVICE_COMPONENT_ID),
+                    queue=queue,
                 )
-                return success(meta=meta, payload=message)
+                if not popped.ok:
+                    return failure(meta=meta, errors=popped.errors)
+
+                if popped.payload is not None and popped.payload.value is not None:
+                    entry = popped.payload.value
+                    try:
+                        message = NormalizedOperatorMessage.model_validate(entry.value)
+                    except ValidationError:
+                        return failure(
+                            meta=meta,
+                            errors=[
+                                internal_error(
+                                    "queued operator instruction payload is invalid",
+                                    code=codes.INTERNAL_ERROR,
+                                )
+                            ],
+                        )
+                    _LOGGER.debug(
+                        "switchboard dequeued operator instruction",
+                        extra={
+                            "channel": message.source,
+                            "sender_e164": message.sender_e164,
+                            "message_text": message.message_text,
+                        },
+                    )
+                    return success(meta=meta, payload=message)
 
             now = time.monotonic()
             if now >= deadline:
@@ -421,7 +479,7 @@ class DefaultSwitchboardService(SwitchboardService):
         *,
         meta: EnvelopeMeta,
         raw_body_json: str,
-    ) -> tuple[NormalizedSignalMessage | None, ErrorDetail | None]:
+    ) -> tuple[NormalizedOperatorMessage | None, ErrorDetail | None]:
         """Parse + normalize one inbound Signal payload into a canonical message DTO."""
         try:
             payload = json.loads(raw_body_json)
@@ -560,7 +618,7 @@ class DefaultSwitchboardService(SwitchboardService):
         )
 
         return (
-            NormalizedSignalMessage(
+            NormalizedOperatorMessage(
                 sender_e164=sender_e164,
                 message_text=message_text,
                 timestamp_ms=timestamp_ms,

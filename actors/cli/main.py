@@ -726,7 +726,7 @@ def _load_capability_catalog(cache_path: Path = CLI_CACHE_PATH) -> CapabilityCat
     """Resolve capability catalog from live Core or cached fallback."""
     try:
         live = _load_live_capability_catalog()
-    except (DomainError, TransportError, OSError, ValueError, json.JSONDecodeError):
+    except DomainError, TransportError, OSError, ValueError, json.JSONDecodeError:
         live = ()
     if live:
         _write_capability_cache(cache_path, capabilities=live)

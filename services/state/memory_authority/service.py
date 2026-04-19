@@ -38,8 +38,14 @@ class MemoryAuthorityService(ABC):
         *,
         meta: EnvelopeMeta,
         session_id: str,
+        exclude_latest: bool = True,
     ) -> Envelope[ContextBlock]:
-        """Return the historical MAS context snapshot for one session."""
+        """Return the historical MAS context snapshot for one session.
+
+        When *exclude_latest* is ``True`` (default, for Agent use), the most
+        recent turn is excluded from the assembled context.  Pass ``False``
+        to include all turns (e.g. for history display).
+        """
 
     @abstractmethod
     def record_outbound_candidate(

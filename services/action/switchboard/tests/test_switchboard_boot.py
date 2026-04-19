@@ -39,13 +39,12 @@ class _FakeSwitchboardService(SwitchboardService):
         self.register_ok = True
         self.adapter_ready = False
 
-    def ingest_signal_message(
-        self,
-        *,
-        meta,
-        raw_body_json: str,
-    ):
+    def ingest_signal_message(self, *, meta, raw_body_json: str):
         del meta, raw_body_json
+        raise NotImplementedError
+
+    def enqueue_console_message(self, *, meta, message_text: str):
+        del meta, message_text
         raise NotImplementedError
 
     def register_signal_callback(self, *, meta):

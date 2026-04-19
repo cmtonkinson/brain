@@ -696,7 +696,7 @@ def _to_iso_from_epoch_ms(value: object) -> str:
         return ""
     try:
         epoch_ms = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return ""
     from datetime import UTC, datetime
 

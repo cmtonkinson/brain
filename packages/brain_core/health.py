@@ -138,7 +138,7 @@ def _health_accepts_meta(health_fn: Callable[..., object]) -> bool:
     """Return True when callable health function accepts ``meta``."""
     try:
         signature = inspect.signature(health_fn)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
     parameters = signature.parameters
     if "meta" in parameters:

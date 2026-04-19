@@ -900,11 +900,11 @@ def _provider_cache_usage(response_json: object | None) -> tuple[int, int]:
     read = usage.get("cache_read_input_tokens", 0)
     try:
         created_tokens = int(created)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         created_tokens = 0
     try:
         read_tokens = int(read)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         read_tokens = 0
     return max(0, created_tokens), max(0, read_tokens)
 

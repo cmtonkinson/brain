@@ -21,6 +21,9 @@ _Route one token-only Policy->Attention approval notification._
 `flush_batch(*, meta: EnvelopeMeta, batch_key: str, actor: str = 'operator', channel: str = '', recipient_e164: str = '', sender_e164: str = '', title: str = '') -> Envelope[RouteNotificationResult]`  
 _Flush one pending batch by key and deliver consolidated summary._
 
+`poll_console_response(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[ConsoleResponseMessage | None]`  
+_Pop the next queued console response, optionally long-polling._
+
 `route_notification(*, meta: EnvelopeMeta, actor: str = 'operator', channel: str = '', title: str = '', message: str, dedupe_key: str = '', batch_key: str = '', force: bool = False, conversational_memory: ConversationalMemoryContext | None = None) -> Envelope[RouteNotificationResult]`  
 _Route one outbound notification and decide suppress/send/batch._
 
@@ -84,12 +87,15 @@ _Return PolicyExecutionResult with allow/deny output, PolicyDecision, and Approv
 ------------------------------------------------------------------------
 ## `SwitchboardService`
 - Module: `services/action/switchboard/service.py`
-- Summary: Public API for inbound Signal ingestion and operator polling.
+- Summary: Public API for inbound operator message ingestion and polling.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
 _Return Switchboard and dependency health state._
 
-`poll_operator_instruction(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[NormalizedSignalMessage | None]`  
+`enqueue_console_message(*, meta: EnvelopeMeta, message_text: str) -> Envelope[ConsoleEnqueueResult]`  
+_Normalize and enqueue one inbound console message._
+
+`poll_operator_instruction(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[NormalizedOperatorMessage | None]`  
 _Pop the next queued operator instruction, optionally long-polling._
 
 `ingest_signal_message(*, meta: EnvelopeMeta, raw_body_json: str) -> Envelope[IngestResult]`  
@@ -412,7 +418,7 @@ _Advance dialogue pointer and clear focus without deleting historical data._
 `create_session(*, meta: EnvelopeMeta) -> Envelope[SessionRecord]`  
 _Create and return one new MAS session._
 
-`assemble_snapshot(*, meta: EnvelopeMeta, session_id: str) -> Envelope[ContextBlock]`  
+`assemble_snapshot(*, meta: EnvelopeMeta, session_id: str, exclude_latest: bool = True) -> Envelope[ContextBlock]`  
 _Return the historical MAS context snapshot for one session._
 
 ------------------------------------------------------------------------

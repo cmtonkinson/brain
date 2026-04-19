@@ -50,7 +50,7 @@ def normalize_log_line(line: str, component: str, source: str) -> DashboardLogEv
                 break
         trace_id = data.get("trace_id")
         envelope_id = data.get("envelope_id")
-    except (json.JSONDecodeError, ValueError):
+    except json.JSONDecodeError, ValueError:
         pass  # plain text — use defaults
 
     return DashboardLogEvent(

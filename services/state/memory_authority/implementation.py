@@ -212,6 +212,7 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         *,
         meta: EnvelopeMeta,
         session_id: str,
+        exclude_latest: bool = True,
     ) -> Envelope[ContextBlock]:
         """Return the historical MAS context snapshot for one session."""
         request, errors = self._validate_request(
@@ -228,11 +229,15 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             if session is None:
                 return self._session_not_found(meta=meta, session_id=request.session_id)
 
-            latest = self._repository.get_latest_turn(session_id=request.session_id)
+            exclude_turn_id: str | None = None
+            if exclude_latest:
+                latest = self._repository.get_latest_turn(session_id=request.session_id)
+                if latest is not None:
+                    exclude_turn_id = latest.id
             context = self._assembler.assemble(
                 meta=meta,
                 session_id=request.session_id,
-                exclude_turn_id=None if latest is None else latest.id,
+                exclude_turn_id=exclude_turn_id,
             )
             return success(meta=meta, payload=context)
         except Exception as exc:  # noqa: BLE001

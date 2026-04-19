@@ -111,7 +111,14 @@ class DefaultPolicyService(PolicyService):
             settings=resolve_policy_service_settings(settings),
             persistence=PostgresPolicyPersistenceRepository(runtime.schema_sessions),
             attention_router_service=attention_router_service
-            or build_attention_router_service(settings=settings),
+            or build_attention_router_service(
+                settings=settings,
+                console_response_queue_name=str(
+                    settings.core.service.model_dump(mode="python")
+                    .get("switchboard", {})
+                    .get("console_response_queue_name", "console_outbound")
+                ),
+            ),
             approval_response_settings=settings.core.profile.approval_responses,
         )
 

@@ -479,6 +479,7 @@ def _build_core_app(
         signal_adapter=signal,
         operator_signal_contact_e164="+16104257807",
         signal_receive_e164="+17175371552",
+        console_response_queue_name="console_outbound",
     )
     policy = DefaultPolicyService(
         settings=PolicyServiceSettings(),

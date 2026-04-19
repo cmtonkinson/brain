@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict, deque
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from pydantic import BaseModel, ValidationError
 from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import (
     Envelope,
+    EnvelopeKind,
     EnvelopeMeta,
     failure,
     new_meta,
@@ -31,7 +33,6 @@ from resources.adapters.signal import (
     SignalAdapter,
     SignalAdapterDependencyError,
     SignalAdapterInternalError,
-    SignalSendMessageResult,
     SignalRestApiAdapter,
     resolve_signal_adapter_settings,
 )
@@ -43,6 +44,7 @@ from services.action.attention_router.config import (
 from services.action.attention_router.domain import (
     ApprovalCorrelationPayload,
     ApprovalNotificationPayload,
+    ConsoleResponseMessage,
     HealthStatus,
     RouteNotificationResult,
     RoutedNotification,
@@ -56,10 +58,19 @@ from services.state.memory_authority.service import (
 from services.action.attention_router.validation import (
     CorrelateApprovalRequest,
     FlushBatchRequest,
+    PollConsoleResponseRequest,
     RouteNotificationRequest,
 )
 
 _LOGGER = get_logger(__name__)
+_POLL_INTERVAL_SECONDS = 0.25
+
+
+@dataclass(frozen=True, slots=True)
+class _DeliveryResult:
+    """Channel-agnostic delivery outcome returned by all delivery paths."""
+
+    sent_timestamp_ms: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +91,7 @@ class DefaultAttentionRouterService(AttentionRouterService):
         signal_adapter: SignalAdapter,
         operator_signal_contact_e164: str,
         signal_receive_e164: str,
+        console_response_queue_name: str,
         cache_authority_service: CacheAuthorityService | None = None,
         memory_authority_service: MemoryAuthorityService | None = None,
     ) -> None:
@@ -87,6 +99,7 @@ class DefaultAttentionRouterService(AttentionRouterService):
         self._signal_adapter = signal_adapter
         self._operator_signal_contact_e164 = operator_signal_contact_e164.strip()
         self._signal_receive_e164 = signal_receive_e164.strip()
+        self._console_response_queue_name = console_response_queue_name
         self._cache_authority_service = cache_authority_service
         self._memory_authority_service = memory_authority_service
         self._recent_dedupe: dict[str, datetime] = {}
@@ -102,11 +115,18 @@ class DefaultAttentionRouterService(AttentionRouterService):
         """Build Attention Router + owned Signal adapter from typed settings."""
         service_settings = resolve_attention_router_service_settings(settings)
         adapter_settings = resolve_signal_adapter_settings(settings)
+        switchboard_raw = settings.core.service.model_dump(mode="python").get(
+            "switchboard", {}
+        )
+        console_queue = str(
+            switchboard_raw.get("console_response_queue_name", "console_outbound")
+        )
         return cls(
             settings=service_settings,
             signal_adapter=SignalRestApiAdapter(settings=adapter_settings),
             operator_signal_contact_e164=settings.core.profile.operator.signal_contact_e164,
             signal_receive_e164=adapter_settings.receive_e164,
+            console_response_queue_name=console_queue,
             memory_authority_service=None,
         )
 
@@ -203,7 +223,7 @@ class DefaultAttentionRouterService(AttentionRouterService):
                 ),
             )
 
-        delivery, delivery_error = self._deliver_signal(notification=resolved)
+        delivery, delivery_error = self._deliver(notification=resolved)
         if delivery is None:
             assert delivery_error is not None
             return failure(meta=meta, errors=[delivery_error])
@@ -363,6 +383,72 @@ class DefaultAttentionRouterService(AttentionRouterService):
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
     )
+    def poll_console_response(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        wait_timeout_seconds: float = 0.0,
+    ) -> Envelope[ConsoleResponseMessage | None]:
+        """Pop the next queued console response, optionally long-polling."""
+        request, errors = self._validate_request(
+            meta=meta,
+            model=PollConsoleResponseRequest,
+            payload={"wait_timeout_seconds": wait_timeout_seconds},
+        )
+        if errors:
+            return failure(meta=meta, errors=errors)
+        assert request is not None
+
+        if self._cache_authority_service is None:
+            return failure(
+                meta=meta,
+                errors=[
+                    dependency_error(
+                        "cache authority unavailable for console response polling",
+                        code=codes.DEPENDENCY_UNAVAILABLE,
+                    )
+                ],
+            )
+
+        deadline = time.monotonic() + request.wait_timeout_seconds
+        while True:
+            popped = self._cache_authority_service.pop_queue(
+                meta=meta,
+                component_id="service_switchboard",
+                queue=self._console_response_queue_name,
+            )
+            if not popped.ok:
+                return failure(meta=meta, errors=popped.errors)
+
+            if popped.payload is not None and popped.payload.value is not None:
+                entry = popped.payload.value
+                try:
+                    response = ConsoleResponseMessage.model_validate(entry.value)
+                except ValidationError:
+                    return failure(
+                        meta=meta,
+                        errors=[
+                            internal_error(
+                                "queued console response payload is invalid",
+                                code=codes.INTERNAL_ERROR,
+                            )
+                        ],
+                    )
+                return success(meta=meta, payload=response)
+
+            now = time.monotonic()
+            if now >= deadline:
+                return success(meta=meta, payload=None)
+
+            sleep_seconds = min(_POLL_INTERVAL_SECONDS, deadline - now)
+            if sleep_seconds <= 0.0:
+                return success(meta=meta, payload=None)
+            time.sleep(sleep_seconds)
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
     def correlate_approval_response(
         self,
         *,
@@ -468,8 +554,12 @@ class DefaultAttentionRouterService(AttentionRouterService):
     ) -> RoutedNotification:
         """Resolve defaults and clamp message payload before delivery."""
         resolved_channel = request.channel or self._settings.default_channel
-        recipient = self._operator_signal_contact_e164
-        sender = self._signal_receive_e164
+        if resolved_channel == "console":
+            recipient = "console"
+            sender = "brain"
+        else:
+            recipient = self._operator_signal_contact_e164
+            sender = self._signal_receive_e164
 
         message = request.message.strip()
         if len(message) > self._settings.max_message_chars:
@@ -709,18 +799,27 @@ class DefaultAttentionRouterService(AttentionRouterService):
             self._recent_dedupe[dedupe_key] = now
         self._recent_by_channel_recipient[(channel, recipient)].append(now)
 
-    def _deliver_signal(
+    def _deliver(
         self,
         *,
         notification: RoutedNotification,
-    ) -> tuple[SignalSendMessageResult | None, ErrorDetail | None]:
-        """Deliver one normalized notification over Signal adapter."""
-        if notification.channel != "signal":
-            return None, validation_error(
-                f"unsupported channel: {notification.channel}",
-                code=codes.INVALID_ARGUMENT,
-            )
+    ) -> tuple[_DeliveryResult | None, ErrorDetail | None]:
+        """Deliver one normalized notification via the appropriate channel."""
+        if notification.channel == "signal":
+            return self._deliver_via_signal(notification=notification)
+        if notification.channel == "console":
+            return self._deliver_via_console(notification=notification)
+        return None, validation_error(
+            f"unsupported channel: {notification.channel}",
+            code=codes.INVALID_ARGUMENT,
+        )
 
+    def _deliver_via_signal(
+        self,
+        *,
+        notification: RoutedNotification,
+    ) -> tuple[_DeliveryResult | None, ErrorDetail | None]:
+        """Deliver one normalized notification over Signal adapter."""
         try:
             delivery = self._signal_adapter.send_message(
                 sender_e164=notification.sender,
@@ -739,7 +838,41 @@ class DefaultAttentionRouterService(AttentionRouterService):
                 metadata={"adapter": "adapter_signal"},
             )
 
-        return delivery, None
+        return _DeliveryResult(sent_timestamp_ms=delivery.sent_timestamp_ms), None
+
+    def _deliver_via_console(
+        self,
+        *,
+        notification: RoutedNotification,
+    ) -> tuple[_DeliveryResult | None, ErrorDetail | None]:
+        """Deliver one normalized notification to the console outbound queue."""
+        if self._cache_authority_service is None:
+            return None, dependency_error(
+                "cache authority unavailable for console delivery",
+                code=codes.DEPENDENCY_UNAVAILABLE,
+            )
+
+        timestamp_ms = int(time.time() * 1000)
+        result = self._cache_authority_service.push_queue(
+            meta=new_meta(
+                kind=EnvelopeKind.EVENT,
+                source=str(SERVICE_COMPONENT_ID),
+                principal="system",
+            ),
+            component_id="service_switchboard",
+            queue=self._console_response_queue_name,
+            value={
+                "message": self._render_message(notification),
+                "timestamp_ms": timestamp_ms,
+            },
+        )
+        if not result.ok:
+            return None, dependency_error(
+                "console response queue push failed",
+                code=codes.DEPENDENCY_UNAVAILABLE,
+            )
+
+        return _DeliveryResult(sent_timestamp_ms=timestamp_ms), None
 
     def _render_message(self, notification: RoutedNotification) -> str:
         """Render title/body into final outbound message text payload."""

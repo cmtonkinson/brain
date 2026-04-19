@@ -10,6 +10,7 @@ from resources.adapters.signal.adapter import SignalAdapter
 from services.action.attention_router.domain import (
     ApprovalCorrelationPayload,
     ApprovalNotificationPayload,
+    ConsoleResponseMessage,
     HealthStatus,
     RouteNotificationResult,
 )
@@ -90,11 +91,21 @@ class AttentionRouterService(ABC):
     ) -> Envelope[str | None]:
         """Resolve one outbound approval notification timestamp to a proposal token."""
 
+    @abstractmethod
+    def poll_console_response(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        wait_timeout_seconds: float = 0.0,
+    ) -> Envelope[ConsoleResponseMessage | None]:
+        """Pop the next queued console response, optionally long-polling."""
+
 
 def build_attention_router_service(
     *,
     settings: CoreRuntimeSettings,
     signal_adapter: SignalAdapter | None = None,
+    console_response_queue_name: str,
     cache_authority_service: CacheAuthorityService | None = None,
     memory_authority_service: MemoryAuthorityService | None = None,
 ) -> AttentionRouterService:
@@ -117,6 +128,7 @@ def build_attention_router_service(
         signal_adapter=signal_adapter
         or SignalRestApiAdapter(settings=adapter_settings),
         signal_receive_e164=adapter_settings.receive_e164,
+        console_response_queue_name=console_response_queue_name,
         cache_authority_service=cache_authority_service,
         memory_authority_service=memory_authority_service,
     )

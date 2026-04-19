@@ -10,15 +10,16 @@ from resources.adapters.signal.adapter import SignalAdapter
 from services.action.attention_router.service import AttentionRouterService
 from services.state.cache_authority.service import CacheAuthorityService
 from services.action.switchboard.domain import (
+    ConsoleEnqueueResult,
     HealthStatus,
     IngestResult,
-    NormalizedSignalMessage,
+    NormalizedOperatorMessage,
     RegisterSignalCallbackResult,
 )
 
 
 class SwitchboardService(ABC):
-    """Public API for inbound Signal ingestion and operator polling."""
+    """Public API for inbound operator message ingestion and polling."""
 
     @abstractmethod
     def ingest_signal_message(
@@ -28,6 +29,15 @@ class SwitchboardService(ABC):
         raw_body_json: str,
     ) -> Envelope[IngestResult]:
         """Normalize and enqueue one raw inbound Signal payload."""
+
+    @abstractmethod
+    def enqueue_console_message(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        message_text: str,
+    ) -> Envelope[ConsoleEnqueueResult]:
+        """Normalize and enqueue one inbound console message."""
 
     @abstractmethod
     def register_signal_callback(
@@ -43,7 +53,7 @@ class SwitchboardService(ABC):
         *,
         meta: EnvelopeMeta,
         wait_timeout_seconds: float = 0.0,
-    ) -> Envelope[NormalizedSignalMessage | None]:
+    ) -> Envelope[NormalizedOperatorMessage | None]:
         """Pop the next queued operator instruction, optionally long-polling."""
 
     @abstractmethod

@@ -232,6 +232,10 @@ class _FakeAttentionRouterService(AttentionRouterService):
             payload=self.timestamp_to_token.get((channel, target_timestamp_ms)),
         )
 
+    def poll_console_response(self, *, meta, wait_timeout_seconds: float = 0.0):
+        del meta, wait_timeout_seconds
+        return success(meta=_meta(), payload=None)
+
 
 def _meta():
     """Build valid envelope metadata for Switchboard tests."""

@@ -137,6 +137,13 @@ class _FakeAttentionRouterService(AttentionRouterService):
             payload=None,
         )
 
+    def poll_console_response(self, *, meta, wait_timeout_seconds: float = 0.0):
+        del meta, wait_timeout_seconds
+        return success(
+            meta=new_meta(kind=EnvelopeKind.EVENT, source="test", principal="operator"),
+            payload=None,
+        )
+
 
 def _request(
     *,

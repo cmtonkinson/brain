@@ -6,6 +6,8 @@ from packages.brain_sdk.calls import (
     CapabilityDescriptor,
     CapabilityInvokeResult,
     CapabilitySearchHit,
+    ConsoleEnqueueResult,
+    ConsoleResponseMessage,
     CoreHealthResult,
     LmsChatResult,
     LmsToolChatResult,
@@ -29,6 +31,8 @@ from packages.brain_sdk.calls import (
     call_memory_record_outbound_candidate,
     call_memory_record_outbound_delivery,
     call_memory_record_response,
+    call_switchboard_enqueue_console,
+    call_switchboard_poll_console_response,
     call_switchboard_poll_operator_instruction,
 )
 from packages.brain_sdk.config import (
@@ -239,6 +243,7 @@ class BrainClient:
         self,
         *,
         session_id: str,
+        exclude_latest: bool = True,
         meta: MetaOverrides | None = None,
     ) -> MemoryContextBlock:
         """Return the historical MAS snapshot for one session."""
@@ -247,6 +252,7 @@ class BrainClient:
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
             session_id=session_id,
+            exclude_latest=exclude_latest,
         )
 
     def memory_create_session(
@@ -347,6 +353,34 @@ class BrainClient:
     ) -> SwitchboardOperatorInstruction | None:
         """Poll Switchboard for the next queued operator instruction."""
         return call_switchboard_poll_operator_instruction(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            wait_timeout_seconds=wait_timeout_seconds,
+        )
+
+    def switchboard_enqueue_console(
+        self,
+        *,
+        message_text: str,
+        meta: MetaOverrides | None = None,
+    ) -> ConsoleEnqueueResult:
+        """Submit one console operator message to Switchboard."""
+        return call_switchboard_enqueue_console(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            message_text=message_text,
+        )
+
+    def switchboard_poll_console_response(
+        self,
+        *,
+        wait_timeout_seconds: float = 0.0,
+        meta: MetaOverrides | None = None,
+    ) -> ConsoleResponseMessage | None:
+        """Poll Switchboard for the next queued console response."""
+        return call_switchboard_poll_console_response(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,

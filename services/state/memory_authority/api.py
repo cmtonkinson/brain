@@ -56,6 +56,7 @@ class _AssembleSnapshotRequest(_RequestMeta):
     """Inbound body for MAS snapshot assembly requests."""
 
     session_id: str
+    exclude_latest: bool = True
 
 
 class _RecordOutboundCandidateRequest(_RequestMeta):
@@ -246,6 +247,7 @@ def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> No
             service.assemble_snapshot,
             meta=meta,
             session_id=req.session_id,
+            exclude_latest=req.exclude_latest,
         )
         payload = None if result.payload is None else result.payload.value
         return _AssembleContextResponse(

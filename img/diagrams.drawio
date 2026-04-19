@@ -229,7 +229,7 @@
     </mxGraphModel>
   </diagram>
   <diagram name="boundaries-and-responsibilities" id="YvuT0BCowB7iJ6q_Dn-D">
-    <mxGraphModel dx="2173" dy="1970" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="3024" dy="2530" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -314,13 +314,13 @@
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-64" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=40;" value="" vertex="1">
           <mxGeometry height="560" width="360" x="1600" y="170" as="geometry" />
         </mxCell>
-        <mxCell id="unOKrO_ng0ZAvA2SlFJE-65" parent="1" style="rounded=0;whiteSpace=wrap;html=1;movable=1;resizable=1;rotatable=1;deletable=1;editable=1;locked=0;connectable=1;fillColor=#76608a;strokeColor=#432D57;fontColor=#ffffff;" value="Commitment&lt;br&gt;Tracking &amp;amp;&lt;br&gt;Loop&lt;br&gt;Closure" vertex="1">
+        <mxCell id="unOKrO_ng0ZAvA2SlFJE-65" parent="1" style="rounded=0;whiteSpace=wrap;html=1;movable=1;resizable=1;rotatable=1;deletable=1;editable=1;locked=0;connectable=1;fillColor=#76608a;strokeColor=#432D57;fontColor=#ffffff;" value="Commitment" vertex="1">
           <mxGeometry height="100" width="80" x="1841" y="230" as="geometry" />
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-110" edge="1" parent="1" source="unOKrO_ng0ZAvA2SlFJE-66" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.75;entryY=1;entryDx=0;entryDy=0;exitX=0.75;exitY=1;exitDx=0;exitDy=0;dashed=1;curved=0;" target="unOKrO_ng0ZAvA2SlFJE-65">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="unOKrO_ng0ZAvA2SlFJE-66" parent="1" style="rounded=0;whiteSpace=wrap;html=1;movable=1;resizable=1;rotatable=1;deletable=1;editable=1;locked=0;connectable=1;fillColor=#76608a;strokeColor=#432D57;fontColor=#ffffff;" value="Scheduler /&lt;br&gt;Jobs" vertex="1">
+        <mxCell id="unOKrO_ng0ZAvA2SlFJE-66" parent="1" style="rounded=0;whiteSpace=wrap;html=1;movable=1;resizable=1;rotatable=1;deletable=1;editable=1;locked=0;connectable=1;fillColor=#76608a;strokeColor=#432D57;fontColor=#ffffff;" value="Job" vertex="1">
           <mxGeometry height="100" width="80" x="1741" y="230" as="geometry" />
         </mxCell>
         <mxCell id="unOKrO_ng0ZAvA2SlFJE-109" edge="1" parent="1" source="unOKrO_ng0ZAvA2SlFJE-67" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.75;entryY=1;entryDx=0;entryDy=0;exitX=0.75;exitY=1;exitDx=0;exitDy=0;dashed=1;curved=0;" target="unOKrO_ng0ZAvA2SlFJE-66">
@@ -476,7 +476,7 @@
         <mxCell id="9sP40jFmVC6lyYa5Idyd-5" parent="9sP40jFmVC6lyYa5Idyd-4" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="HTTPS:&lt;br&gt;Anthropic" vertex="1">
           <mxGeometry height="80" width="80" x="160" y="30" as="geometry" />
         </mxCell>
-        <mxCell id="9sP40jFmVC6lyYa5Idyd-6" parent="9sP40jFmVC6lyYa5Idyd-4" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="Ollama" vertex="1">
+        <mxCell id="9sP40jFmVC6lyYa5Idyd-6" parent="9sP40jFmVC6lyYa5Idyd-4" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="Local:&lt;div&gt;Ollama&lt;/div&gt;" vertex="1">
           <mxGeometry height="80" width="80" x="220.5" y="30" as="geometry" />
         </mxCell>
         <mxCell id="9sP40jFmVC6lyYa5Idyd-7" parent="9sP40jFmVC6lyYa5Idyd-4" style="shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;fillColor=#60a917;strokeColor=#2D7600;fontColor=#ffffff;" value="..." vertex="1">
@@ -505,13 +505,13 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="unOKrO_ng0ZAvA2SlFJE-81" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Pydantic&lt;br&gt;Agent" vertex="1">
+        <mxCell id="unOKrO_ng0ZAvA2SlFJE-81" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Agent" vertex="1">
           <mxGeometry height="65" width="100" x="734.75" y="-87.5" as="geometry" />
         </mxCell>
         <mxCell id="ncvEKnJd2a5RAWJPpVSZ-6" edge="1" parent="1" source="-nI3kN9ZCotlMl1iEThV-13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;curved=0;strokeWidth=2;" target="-nI3kN9ZCotlMl1iEThV-7">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="-nI3kN9ZCotlMl1iEThV-13" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="&lt;div&gt;CLI&lt;/div&gt;" vertex="1">
+        <mxCell id="-nI3kN9ZCotlMl1iEThV-13" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Console" vertex="1">
           <mxGeometry height="65" width="100" x="834.75" y="-87.5" as="geometry" />
         </mxCell>
         <mxCell id="ncvEKnJd2a5RAWJPpVSZ-7" edge="1" parent="1" source="-nI3kN9ZCotlMl1iEThV-16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;curved=0;strokeWidth=2;" target="-nI3kN9ZCotlMl1iEThV-7">

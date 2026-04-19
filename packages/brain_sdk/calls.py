@@ -521,6 +521,7 @@ def call_memory_assemble_snapshot(
     metadata: dict[str, object],
     timeout_seconds: float,
     session_id: str,
+    exclude_latest: bool = True,
 ) -> MemoryContextBlock:
     """Return the historical MAS context snapshot for one session."""
     data = _post_json(
@@ -530,6 +531,7 @@ def call_memory_assemble_snapshot(
         body={
             **metadata,
             "session_id": session_id,
+            "exclude_latest": exclude_latest,
         },
         timeout_seconds=timeout_seconds,
     )
@@ -736,6 +738,88 @@ def call_switchboard_poll_operator_instruction(
             operation="switchboard.poll_operator_instruction",
         )
     return _switchboard_operator_instruction(payload)
+
+
+@dataclass(frozen=True, slots=True)
+class ConsoleEnqueueResult:
+    """Result of enqueuing one console operator message."""
+
+    queued: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ConsoleResponseMessage:
+    """One outbound Brain response delivered via the console channel."""
+
+    message: str
+    timestamp_ms: int
+
+
+def call_switchboard_enqueue_console(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    message_text: str,
+) -> ConsoleEnqueueResult:
+    """Submit one console operator message to Switchboard for processing."""
+    data = _post_json(
+        operation="switchboard.enqueue_console",
+        http=http,
+        url="/switchboard/enqueue_console_message",
+        body={
+            **metadata,
+            "message_text": message_text,
+        },
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="switchboard.enqueue_console",
+        errors=_errors_from_data(data),
+    )
+    payload = data.get("payload")
+    if payload is None or not isinstance(payload, dict):
+        raise BrainDomainError(
+            message="switchboard.enqueue_console domain failure: invalid payload",
+            operation="switchboard.enqueue_console",
+        )
+    return ConsoleEnqueueResult(queued=bool(payload.get("queued", False)))
+
+
+def call_switchboard_poll_console_response(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    wait_timeout_seconds: float = 0.0,
+) -> ConsoleResponseMessage | None:
+    """Poll Attention Router for the next queued console response."""
+    data = _post_json(
+        operation="switchboard.poll_console_response",
+        http=http,
+        url="/attention-router/poll_console_response",
+        body={
+            **metadata,
+            "wait_timeout_seconds": wait_timeout_seconds,
+        },
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="switchboard.poll_console_response",
+        errors=_errors_from_data(data),
+    )
+    payload = data.get("payload")
+    if payload is None:
+        return None
+    if not isinstance(payload, dict):
+        raise BrainDomainError(
+            message="switchboard.poll_console_response domain failure: invalid payload",
+            operation="switchboard.poll_console_response",
+        )
+    return ConsoleResponseMessage(
+        message=str(payload.get("message", "")),
+        timestamp_ms=int(payload.get("timestamp_ms", 0)),
+    )
 
 
 def _post_json(
@@ -976,7 +1060,7 @@ def _optional_int(value: object) -> int | None:
         return None
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 

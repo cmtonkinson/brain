@@ -1,4 +1,5 @@
 SHELL           := /bin/bash
+UV              := uv
 VENV 						:= .venv
 VENV_PY         := $(VENV)/bin/python
 PY 							:= $(if $(wildcard $(VENV_PY)),$(VENV_PY),python3)
@@ -75,16 +76,15 @@ all: deps clean
 	$(MAKE) docs
 
 deps:
-	$(PY) -m pip install --upgrade pip pip-tools
-	$(PY) -m piptools sync requirements.txt
+	$(UV) sync
 
 deps-upgrade:
 	if [ -n "$${PACKAGE:-}" ]; then \
-		$(PY) -m piptools compile --upgrade-package "$$PACKAGE" --output-file requirements.txt requirements.in; \
+		$(UV) lock --upgrade-package "$$PACKAGE"; \
 	else \
-		$(PY) -m piptools compile --upgrade --output-file requirements.txt requirements.in; \
+		$(UV) lock --upgrade; \
 	fi
-	$(PY) -m piptools sync requirements.txt
+	$(UV) sync
 
 switch-python:
 	@if [ -z "$${VERSION:-}" ]; then \

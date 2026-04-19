@@ -84,7 +84,7 @@ def _docker_available() -> bool:
     """Return True when docker CLI is callable in the current environment."""
     try:
         _run_command("docker", "version")
-    except (FileNotFoundError, subprocess.CalledProcessError):
+    except FileNotFoundError, subprocess.CalledProcessError:
         return False
     return True
 
