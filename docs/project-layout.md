@@ -9,7 +9,7 @@ described in [Boundaries & Responsibilities](boundaries-and-responsibilities.md)
 ## Top-Level Directories
 | Directory | Purpose |
 |---|---|
-| `actors/` | L2 _Actor_ processes: `agent/`, `beat/`, `cli/`, `worker/` |
+| `actors/` | L2 _Actor_ processes: `agent/`, `cli/`, `worker/` |
 | `config/` | Configuration samples (`core.yaml.sample`, `resources.yaml.sample`, `actors.yaml.sample`) |
 | `docs/` | Architecture & contributor documentation |
 | `host-mcp-gateway/` | Go-based HTTP proxy for host-level MCP Servers |

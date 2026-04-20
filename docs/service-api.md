@@ -50,6 +50,9 @@ _Return the full descriptor for one registered capability._
 `invoke_capability(*, meta: EnvelopeMeta, capability_id: str, input_payload: dict[str, object], invocation: CapabilityInvocationMetadata) -> Envelope[CapabilityInvokeResult]`  
 _Invoke by package ``capability_id`` (no version arg) and return normalized policy fields._
 
+`resolve_slash_command(*, meta: EnvelopeMeta, name: str) -> Envelope[CapabilityDescriptor | None]`  
+_Return the descriptor for a slash command by name or alias._
+
 ------------------------------------------------------------------------
 ## `LanguageModelService`
 - Module: `services/action/language_model/service.py`
@@ -244,13 +247,19 @@ _Evaluate the predicate for one conditional job and record audit._
 `get_execution(*, meta: EnvelopeMeta, execution_id: str) -> Envelope[ExecutionRecord]`  
 _Read one execution by id._
 
+`complete_execution(*, meta: EnvelopeMeta, execution_id: str) -> Envelope[ExecutionRecord]`  
+_Mark one running execution as succeeded and update job run-state._
+
+`fail_execution(*, meta: EnvelopeMeta, execution_id: str, error_message: str, error_code: str | None = None, is_retryable: bool = False) -> Envelope[ExecutionRecord]`  
+_Mark one running execution failed or schedule it for retry._
+
 `list_executions(*, meta: EnvelopeMeta, job_id: str, limit: int = 50, cursor: str | None = None) -> Envelope[ExecutionListResult]`  
 _List executions for one job with cursor pagination._
 
 `get_job(*, meta: EnvelopeMeta, job_id: str) -> Envelope[JobRecord]`  
 _Read one job by id._
 
-`list_job_audits(*, meta: EnvelopeMeta, job_id: str, limit: int = 50) -> Envelope[list[JobMutationAudit]]`  
+`list_job_audits(*, meta: EnvelopeMeta, job_id: str, limit: int = 50, cursor: str | None = None) -> Envelope[JobAuditListResult]`  
 _List mutation audit entries for one job._
 
 `cancel_job(*, meta: EnvelopeMeta, job_id: str) -> Envelope[JobMutationResult]`  
@@ -277,7 +286,10 @@ _Update a job definition and/or timezone._
 `list_jobs(*, meta: EnvelopeMeta, state: str | None = None, schedule_type: str | None = None, limit: int = 50, cursor: str | None = None) -> Envelope[JobListResult]`  
 _List jobs with optional filters and cursor pagination._
 
-`list_predicate_evaluations(*, meta: EnvelopeMeta, job_id: str, limit: int = 50) -> Envelope[list[PredicateEvaluationRecord]]`  
+`claim_next_execution(*, meta: EnvelopeMeta, worker_id: str = 'worker') -> Envelope[ClaimExecutionResult | None]`  
+_Atomically claim the next queued execution for a Worker Actor._
+
+`list_predicate_evaluations(*, meta: EnvelopeMeta, job_id: str, limit: int = 50, cursor: str | None = None) -> Envelope[PredicateEvaluationListResult]`  
 _List predicate evaluation records for one conditional job._
 
 `handle_provider_callback(*, meta: EnvelopeMeta, job_id: str, scheduled_for: str, trace_id: str, trigger_source: str) -> Envelope[CallbackResult]`  

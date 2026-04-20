@@ -4,6 +4,7 @@
 /capabilities/describe-one: return one full Capability descriptor by capability_id
 /capabilities/invoke: execute tool calls
 /capabilities/search: semantically search the enabled Capability catalog and return compact matches
+/capabilities/slash-lookup: resolve one capability descriptor by slash command name or alias
 /lms/chat: direct access to model inference without CES/PS overhead
 /lms/chat-with-tools: direct access to tool-capable model inference without CES/PS overhead
 /memory/create_session: create one new MAS session for the agent
@@ -32,7 +33,14 @@
 /jobs/resume: transition a job from paused to active and recompute next_run
 /jobs/cancel: cancel a job and clear its next_run
 /jobs/run-now: immediately queue an execution for an active or paused job
+/jobs/executions/claim: atomically claim the next queued execution for a Worker Actor
+/jobs/executions/complete: report a successful execution result from a Worker Actor
+/jobs/executions/fail: report a failed execution result from a Worker Actor
+/jobs/executions/get: read one job execution by id
 /jobs/executions/list: list executions for one job with cursor pagination
+/jobs/audits/list: list audit entries for one job with cursor pagination
+/jobs/predicate-evaluations/list: list predicate evaluation records for one job
+/jobs/update: update mutable fields on an existing job
 /jobs/health: return Job Service and provider health state
 /commitment/create: create a commitment directly or persist a creation proposal
 /commitment/get: read one commitment by id

@@ -181,8 +181,6 @@ Reused:
   `execution_audits`, `predicate_evaluations` tables
 
 Deliberately dropped:
-- `celery_app.py` god-module — provider integration is now behind the
-  `JobProviderAdapter` protocol; no Celery concepts reach the domain or public API
 - `agent_invoker.py` — direct agent wiring replaced by service public APIs and
   Capability Engine / Policy Service flows
 - `failure_notifications.py` — operator notifications must route through Attention

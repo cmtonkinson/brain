@@ -316,10 +316,28 @@ Capability Engine Service runtime settings.
 
 ------------------------------------------------------------------------
 ## `observability`
+Controls optional process-level OpenTelemetry export and LLM trace capture.
+Observability is disabled by default; when enabled, Brain exports OTLP over HTTP
+to the configured collector endpoint. The optional local stack in
+`docker-compose.observability.yaml` forwards traces to self-hosted Langfuse and
+uses SeaweedFS as the S3-compatible blob store.
+
+| Key | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Enable process-level observability bootstrap. |
+| `otlp.endpoint` | `http://otel-collector:4318` | Base OTLP HTTP endpoint. Signal paths such as `/v1/traces` are appended automatically. |
+| `otlp.headers` | `{}` | Headers sent to the OTLP exporter. Use only for direct authenticated exporter endpoints. |
+| `traces.enabled` | `true` | Export traces when observability is enabled. |
+| `traces.sample_ratio` | `1.0` | Trace sampling ratio from `0.0` to `1.0`. |
+| `metrics.enabled` | `true` | Export metrics when observability is enabled. |
+| `llm.enabled` | `true` | Enable PydanticAI LLM instrumentation when observability is enabled. |
+| `llm.backend` | `langfuse` | LLM observability backend. Currently only `langfuse` is supported. |
+| `llm.capture_content` | `true` | Capture prompt, completion, and tool content in local Langfuse traces. |
+
+### `observability.public_api.otel`
 OpenTelemetry metric and tracer names. These are advanced settings; the
 defaults are correct for standard deployments and rarely need to change.
 
-### `observability.public_api.otel`
 | Key | Default | Description |
 |---|---|---|
 | `meter_name` | `brain.public_api` | OTel meter name for public API instrumentation. |

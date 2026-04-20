@@ -55,6 +55,7 @@ from packages.brain_shared.config import (
     ActorSettings,
     CoreRuntimeSettings,
     CoreSettings,
+    ObservabilitySettings,
     load_actor_settings,
     load_core_runtime_settings,
 )
@@ -89,6 +90,10 @@ from packages.brain_shared.language_model import (
     OperatorMessageContentPart,
     ReferenceSnippetContentPart,
     TextContentPart,
+)
+from packages.brain_shared.observability import (
+    bootstrap_observability,
+    pydantic_ai_instrumentation_settings,
 )
 from resources.adapters.llm.config import (
     max_timeout_retry_budget_seconds,
@@ -149,6 +154,21 @@ _ROLLING_CACHE_MIN_PROBABILITY = 0.05
 _ROLLING_CACHE_MAX_PROBABILITY = 0.95
 _ROLLING_CACHE_MAX_FUTURE_REUSES = 3
 _INVALID_TOOL_CALL_REPAIR_ATTEMPTS = 3
+
+
+def _set_current_span_attributes(attributes: dict[str, object | None]) -> None:
+    """Attach attributes to the active OTel span when tracing is active."""
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        return
+    span = trace.get_current_span()
+    if span is None:
+        return
+    for key, value in attributes.items():
+        if value in (None, ""):
+            continue
+        span.set_attribute(key, value)
 
 
 def _load_prompt_file(path: Path) -> str:
@@ -647,6 +667,23 @@ class _BrainSdkToolModel(Model):
                         if len(parts) == 0:
                             parts.append(TextPart("I do not have a response yet."))
                         self._last_used_profile_name = self.profile_name
+                        _set_current_span_attributes(
+                            {
+                                "brain.operation": "lms.chat_with_tools",
+                                "brain.trace_id": request_meta.trace_id,
+                                "brain.envelope_id": request_meta.envelope_id,
+                                "brain.parent_id": request_meta.parent_id,
+                                "brain.session_id": self._session_id,
+                                "brain.principal": self._principal,
+                                "brain.source": self._source,
+                                "llm.provider": result.provider,
+                                "llm.model": result.model,
+                                "llm.profile": self.profile_name,
+                                "llm.finish_reason": result.finish_reason,
+                                "llm.tool_call_count": len(valid_tool_calls),
+                                "llm.outcome": "success",
+                            }
+                        )
                         return ModelResponse(
                             parts=parts,
                             model_name=result.model,
@@ -1821,6 +1858,9 @@ def _create_runtime(
         tools=[*capability_tools, *runtime_tools],
         prepare_tools=_build_prepare_tools(turn_state=turn_state),
         history_processors=[history_processor],
+        instrument=pydantic_ai_instrumentation_settings(
+            getattr(settings, "observability", ObservabilitySettings())
+        ),
     )
     return _AgentRuntime(
         client=client,
@@ -2347,6 +2387,16 @@ async def _process_instruction(
     """Handle one inbound operator instruction end-to-end."""
     runtime.turn_state.prune_pending_invocations()
     runtime.turn_state.begin_turn_trace()
+    _set_current_span_attributes(
+        {
+            "brain.operation": "agent.turn",
+            "brain.trace_id": runtime.turn_state.trace_id,
+            "brain.envelope_id": runtime.turn_state.root_envelope_id,
+            "brain.session_id": runtime.session_id,
+            "brain.principal": runtime.turn_state.actor,
+            "brain.source": instruction.source,
+        }
+    )
     _inbound_turn = await asyncio.to_thread(
         _call_with_optional_meta,
         runtime.client.memory_record_inbound_turn,
@@ -2467,6 +2517,11 @@ async def _run_main() -> None:
     settings, core_runtime_settings = _load_startup_settings()
     core_settings = core_runtime_settings.core
     _configure_logging(settings=settings)
+    bootstrap_observability(
+        settings=settings.observability,
+        service_name=str(settings.logging.process_name),
+        environment=str(settings.logging.environment),
+    )
     heartbeat_path = _resolve_heartbeat_path()
     _write_heartbeat(path=heartbeat_path)
 

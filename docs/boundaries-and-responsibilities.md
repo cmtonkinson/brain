@@ -16,7 +16,7 @@ higher level.
 
 ### Layer 2: Actors
 _Actors_ are external clients of _Layer_ 1 _Services_. The Agent process
-itself, along with Celery Workers/Beats, and any CLI tooling, are by definition
+itself, along with Workers, and any CLI tooling, are by definition
 _Layer_ 2.
 
 The only means for L2/_Actors_ to interact with the system are with the _Brain

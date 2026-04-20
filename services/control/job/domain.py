@@ -78,6 +78,7 @@ class AuditEventType(str, Enum):
     update = "update"
     pause = "pause"
     resume = "resume"
+    cancel = "cancel"
     delete = "delete"
     run_now = "run_now"
 
@@ -104,6 +105,7 @@ class ReviewCategory(str, Enum):
     orphaned = "orphaned"
     failing = "failing"
     ignored = "ignored"
+    stalled = "stalled"
 
 
 class ReviewSeverity(str, Enum):
@@ -422,8 +424,27 @@ class ReviewOutput(BaseModel):
     orphaned_count: int
     failing_count: int
     ignored_count: int
+    stalled_count: int
     items: list[ReviewItem]
     run_at: datetime
+
+
+class JobAuditListResult(BaseModel):
+    """Paginated job mutation audit list result."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    audits: list[JobMutationAudit]
+    cursor: str | None = None
+
+
+class PredicateEvaluationListResult(BaseModel):
+    """Paginated predicate evaluation list result."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    evaluations: list[PredicateEvaluationRecord]
+    cursor: str | None = None
 
 
 class HealthStatus(BaseModel):
@@ -434,3 +455,13 @@ class HealthStatus(BaseModel):
     service_ready: bool
     provider_ready: bool
     detail: HealthDetail
+
+
+class ClaimExecutionResult(BaseModel):
+    """Result of a successful execution claim by a Worker Actor."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    execution: ExecutionRecord
+    job: JobRecord
+    intent: JobIntent

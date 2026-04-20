@@ -8,6 +8,19 @@ logging:
   environment: dev
 
 observability:
+  enabled: false
+  otlp:
+    endpoint: http://otel-collector:4318
+    headers: {}
+  traces:
+    enabled: true
+    sample_ratio: 1.0
+  metrics:
+    enabled: true
+  llm:
+    enabled: true
+    backend: langfuse
+    capture_content: true
   public_api:
     otel:
       meter_name: brain.public_api

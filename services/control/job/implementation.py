@@ -41,18 +41,20 @@ from services.control.job.domain import (
     AuditEventType,
     CallbackResult,
     CallbackStatus,
+    ClaimExecutionResult,
     ConditionalDefinition,
     ExecutionListResult,
     ExecutionRecord,
     ExecutionStatus,
     HealthDetail,
     HealthStatus,
+    JobAuditListResult,
     JobIntent,
     JobListResult,
-    JobMutationAudit,
     JobMutationResult,
     JobRecord,
     JobState,
+    PredicateEvaluationListResult,
     PredicateEvaluationRecord,
     PredicateEvaluationStatus,
     PredicateOperator,
@@ -77,8 +79,10 @@ from services.control.job.service import JobService
 from services.control.job.timing import compute_next_run
 from services.control.job.validation import (
     CancelJobRequest,
+    ClaimExecutionRequest,
     CreateJobRequest,
     ExecutionIdRequest,
+    FailExecutionRequest,
     HandleCallbackRequest,
     JobIdRequest,
     ListAuditsRequest,
@@ -384,7 +388,7 @@ class DefaultJobService(JobService):
             meta=meta,
             job_id=request.job_id,
             target_state=JobState.canceled,
-            event_type=AuditEventType.delete,
+            event_type=AuditEventType.cancel,
             notes=None,
             clear_next_run=True,
         )
@@ -431,11 +435,6 @@ class DefaultJobService(JobService):
                 trace_id=generate_ulid_str(),
                 parent_envelope_id=meta.envelope_id,
             )
-            dispatched = self._dispatch_execution(
-                job=job,
-                intent=intent,
-                execution=execution,
-            )
             self._repository.create_job_mutation_audit(
                 job_id=job.id,
                 event_type=AuditEventType.run_now.value,
@@ -443,7 +442,7 @@ class DefaultJobService(JobService):
                 actor_id=None,
                 channel=meta.source,
                 trace_id=meta.trace_id,
-                diff_summary=f"run_now triggered execution {execution.id}",
+                diff_summary=f"run_now queued execution {execution.id}",
                 notes=None,
                 created_at=datetime.now(UTC),
             )
@@ -451,7 +450,7 @@ class DefaultJobService(JobService):
                 meta=meta,
                 payload=RunJobNowResult(
                     job=self._repository.get_job(job_id=job.id) or job,
-                    execution=dispatched,
+                    execution=execution,
                 ),
             )
         except Exception as exc:  # noqa: BLE001
@@ -613,21 +612,28 @@ class DefaultJobService(JobService):
         meta: EnvelopeMeta,
         job_id: str,
         limit: int = 50,
-    ) -> Envelope[list[JobMutationAudit]]:
+        cursor: str | None = None,
+    ) -> Envelope[JobAuditListResult]:
         """List mutation audit entries for one job."""
         request, errors = self._validate_request(
             meta=meta,
             model=ListAuditsRequest,
-            payload={"job_id": job_id, "limit": limit},
+            payload={"job_id": job_id, "limit": limit, "cursor": cursor},
         )
         if errors:
             return failure(meta=meta, errors=errors)
         assert isinstance(request, ListAuditsRequest)
         try:
             audits = self._repository.list_job_audits(
-                job_id=request.job_id, limit=request.limit
+                job_id=request.job_id,
+                limit=request.limit,
+                cursor=request.cursor,
             )
-            return success(meta=meta, payload=audits)
+            next_cursor = audits[-1].id if len(audits) == request.limit else None
+            return success(
+                meta=meta,
+                payload=JobAuditListResult(audits=audits, cursor=next_cursor),
+            )
         except Exception as exc:  # noqa: BLE001
             return self._handle_exception(
                 meta=meta, operation="list_job_audits", exc=exc
@@ -644,12 +650,13 @@ class DefaultJobService(JobService):
         meta: EnvelopeMeta,
         job_id: str,
         limit: int = 50,
-    ) -> Envelope[list[PredicateEvaluationRecord]]:
+        cursor: str | None = None,
+    ) -> Envelope[PredicateEvaluationListResult]:
         """List predicate evaluation records for one conditional job."""
         request, errors = self._validate_request(
             meta=meta,
             model=ListAuditsRequest,
-            payload={"job_id": job_id, "limit": limit},
+            payload={"job_id": job_id, "limit": limit, "cursor": cursor},
         )
         if errors:
             return failure(meta=meta, errors=errors)
@@ -658,8 +665,17 @@ class DefaultJobService(JobService):
             evaluations = self._repository.list_predicate_evaluations(
                 job_id=request.job_id,
                 limit=request.limit,
+                cursor=request.cursor,
             )
-            return success(meta=meta, payload=evaluations)
+            next_cursor = (
+                evaluations[-1].id if len(evaluations) == request.limit else None
+            )
+            return success(
+                meta=meta,
+                payload=PredicateEvaluationListResult(
+                    evaluations=evaluations, cursor=next_cursor
+                ),
+            )
         except Exception as exc:  # noqa: BLE001
             return self._handle_exception(
                 meta=meta,
@@ -731,7 +747,6 @@ class DefaultJobService(JobService):
                 parent_envelope_id=meta.envelope_id,
             )
             self._advance_scheduled_job(job=job, reference_time=request.scheduled_for)
-            self._dispatch_execution(job=job, intent=intent, execution=execution)
             return success(
                 meta=meta,
                 payload=CallbackResult(
@@ -792,15 +807,15 @@ class DefaultJobService(JobService):
 
             definition = job.definition
             assert isinstance(definition, ConditionalDefinition)
-            self._advance_scheduled_job(job=job, reference_time=datetime.now(UTC))
             evaluation, matched = self._evaluate_predicate(
                 job=job,
                 intent=intent,
                 definition=definition,
                 meta=meta,
             )
+            self._advance_scheduled_job(job=job, reference_time=datetime.now(UTC))
             if matched:
-                execution = self._create_execution(
+                self._create_execution(
                     job=job,
                     meta=meta,
                     scheduled_for=datetime.now(UTC),
@@ -808,7 +823,6 @@ class DefaultJobService(JobService):
                     trace_id=generate_ulid_str(),
                     parent_envelope_id=meta.envelope_id,
                 )
-                self._dispatch_execution(job=job, intent=intent, execution=execution)
             return success(meta=meta, payload=evaluation)
         except Exception as exc:  # noqa: BLE001
             return self._handle_exception(
@@ -834,7 +848,8 @@ class DefaultJobService(JobService):
         try:
             processed_ids: list[str] = []
             for execution in self._repository.list_retry_due_executions(
-                now=datetime.now(UTC)
+                now=datetime.now(UTC),
+                limit=self._settings.retry_batch_size,
             ):
                 job, intent = self._get_job_context(job_id=execution.job_id)
                 if not should_retry(
@@ -844,9 +859,9 @@ class DefaultJobService(JobService):
                     self._finalize_failed_execution(
                         job=job,
                         execution=execution,
-                        error=validation_error(
-                            "retry exhausted before requeue",
-                            code=codes.CONFLICT,
+                        error=dependency_error(
+                            "retry attempts exhausted",
+                            code=codes.DEPENDENCY_FAILURE,
                         ),
                     )
                     processed_ids.append(execution.id)
@@ -874,7 +889,6 @@ class DefaultJobService(JobService):
                     error_code=None,
                     created_at=datetime.now(UTC),
                 )
-                self._dispatch_execution(job=job, intent=intent, execution=requeued)
                 processed_ids.append(execution.id)
 
             return success(meta=meta, payload=processed_ids)
@@ -906,16 +920,20 @@ class DefaultJobService(JobService):
             )
             failing = self._repository.get_failing_jobs(
                 threshold=self._settings.consecutive_failure_threshold,
-                now=now,
             )
             ignored = self._repository.get_ignored_paused_jobs(
                 age_days=self._settings.ignored_pause_age_days,
+                now=now,
+            )
+            stalled = self._repository.get_stalled_executions(
+                threshold_minutes=self._settings.stalled_execution_threshold_minutes,
                 now=now,
             )
             review_id = self._repository.create_review_output(
                 orphaned_count=len(orphaned),
                 failing_count=len(failing),
                 ignored_count=len(ignored),
+                stalled_count=len(stalled),
                 run_at=now,
                 created_at=now,
             )
@@ -968,6 +986,22 @@ class DefaultJobService(JobService):
                     message=item.message,
                     created_at=now,
                 )
+            for execution in stalled:
+                item = ReviewItem(
+                    job_id=execution.job_id,
+                    category=ReviewCategory.stalled,
+                    severity=ReviewSeverity.error,
+                    message=f"execution {execution.id} stuck in running since {execution.started_at}",
+                )
+                items.append(item)
+                self._repository.create_review_item(
+                    review_output_id=review_id,
+                    job_id=execution.job_id,
+                    category=item.category.value,
+                    severity=item.severity.value,
+                    message=item.message,
+                    created_at=now,
+                )
             return success(
                 meta=meta,
                 payload=ReviewOutput(
@@ -975,6 +1009,7 @@ class DefaultJobService(JobService):
                     orphaned_count=len(orphaned),
                     failing_count=len(failing),
                     ignored_count=len(ignored),
+                    stalled_count=len(stalled),
                     items=items,
                     run_at=now,
                 ),
@@ -1017,6 +1052,154 @@ class DefaultJobService(JobService):
                 detail=detail,
             ),
         )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
+    def claim_next_execution(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        worker_id: str = "worker",
+    ) -> Envelope[ClaimExecutionResult | None]:
+        """Atomically claim the next queued execution for a Worker Actor."""
+        request, errors = self._validate_request(
+            meta=meta,
+            model=ClaimExecutionRequest,
+            payload={"worker_id": worker_id},
+        )
+        if errors:
+            return failure(meta=meta, errors=errors)
+
+        try:
+            now = datetime.now(UTC)
+            execution = self._repository.claim_next_queued_execution(now=now)
+            if execution is None:
+                return success(meta=meta, payload=None)
+            self._repository.create_execution_audit(
+                execution_id=execution.id,
+                job_id=execution.job_id,
+                status=ExecutionStatus.running.value,
+                attempt_number=execution.attempt_number,
+                retry_after=None,
+                error_message=None,
+                error_code=None,
+                created_at=now,
+            )
+            job, intent = self._get_job_context(job_id=execution.job_id)
+            _LOGGER.info(
+                "Worker %s claimed execution: execution_id=%s job_id=%s",
+                worker_id,
+                execution.id,
+                execution.job_id,
+            )
+            return success(
+                meta=meta,
+                payload=ClaimExecutionResult(
+                    execution=execution,
+                    job=job,
+                    intent=intent,
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._handle_exception(
+                meta=meta, operation="claim_next_execution", exc=exc
+            )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("execution_id",),
+    )
+    def complete_execution(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        execution_id: str,
+    ) -> Envelope[ExecutionRecord]:
+        """Mark one running execution as succeeded and update job run-state."""
+        request, errors = self._validate_request(
+            meta=meta,
+            model=ExecutionIdRequest,
+            payload={"execution_id": execution_id},
+        )
+        if errors:
+            return failure(meta=meta, errors=errors)
+        assert isinstance(request, ExecutionIdRequest)
+
+        try:
+            execution = self._repository.get_execution(
+                execution_id=request.execution_id
+            )
+            if execution is None:
+                return self._not_found(
+                    meta=meta, entity="execution", entity_id=request.execution_id
+                )
+            job, _ = self._get_job_context(job_id=execution.job_id)
+            final = self._finalize_successful_execution(job=job, execution=execution)
+            return success(meta=meta, payload=final)
+        except Exception as exc:  # noqa: BLE001
+            return self._handle_exception(
+                meta=meta, operation="complete_execution", exc=exc
+            )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("execution_id",),
+    )
+    def fail_execution(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        execution_id: str,
+        error_message: str,
+        error_code: str | None = None,
+        is_retryable: bool = False,
+    ) -> Envelope[ExecutionRecord]:
+        """Mark one running execution failed or schedule it for retry."""
+        request, errors = self._validate_request(
+            meta=meta,
+            model=FailExecutionRequest,
+            payload={
+                "execution_id": execution_id,
+                "error_message": error_message,
+                "error_code": error_code,
+                "is_retryable": is_retryable,
+            },
+        )
+        if errors:
+            return failure(meta=meta, errors=errors)
+        assert isinstance(request, FailExecutionRequest)
+
+        try:
+            execution = self._repository.get_execution(
+                execution_id=request.execution_id
+            )
+            if execution is None:
+                return self._not_found(
+                    meta=meta, entity="execution", entity_id=request.execution_id
+                )
+            job, _ = self._get_job_context(job_id=execution.job_id)
+            error = dependency_error(
+                request.error_message,
+                code=request.error_code or codes.DEPENDENCY_FAILURE,
+            )
+            if request.is_retryable and should_retry(
+                attempt_number=execution.attempt_number,
+                max_attempts=execution.max_attempts,
+            ):
+                final = self._schedule_retry(job=job, execution=execution, error=error)
+            else:
+                final = self._finalize_failed_execution(
+                    job=job, execution=execution, error=error
+                )
+            return success(meta=meta, payload=final)
+        except Exception as exc:  # noqa: BLE001
+            return self._handle_exception(
+                meta=meta, operation="fail_execution", exc=exc
+            )
 
     def _transition_state(
         self,
@@ -1078,7 +1261,12 @@ class DefaultJobService(JobService):
             )
             if self._provider is not None:
                 if target_state == JobState.active:
-                    self._provider.resume_job(job_id=job_id)
+                    if job.state == JobState.draft:
+                        self._provider.register_job(
+                            payload=_to_provider_payload(updated)
+                        )
+                    else:
+                        self._provider.resume_job(job_id=job_id)
                 elif target_state == JobState.paused:
                     self._provider.pause_job(job_id=job_id)
                 elif target_state in {JobState.canceled, JobState.archived}:
@@ -1092,60 +1280,6 @@ class DefaultJobService(JobService):
                 operation=f"transition_to_{target_state.value}",
                 exc=exc,
             )
-
-    def _dispatch_execution(
-        self,
-        *,
-        job: JobRecord,
-        intent: JobIntent,
-        execution: ExecutionRecord,
-    ) -> ExecutionRecord:
-        """Run one queued execution through Capability Engine and update state."""
-        started_at = datetime.now(UTC)
-        running = self._repository.update_execution_status(
-            execution_id=execution.id,
-            status=ExecutionStatus.running.value,
-            started_at=started_at,
-            finished_at=None,
-            retry_after=None,
-            error_message=None,
-            error_code=None,
-            attempt_number=execution.attempt_number,
-        )
-        if running is None:
-            msg = f"execution not found: {execution.id}"
-            raise RuntimeError(msg)
-        self._repository.create_execution_audit(
-            execution_id=running.id,
-            job_id=running.job_id,
-            status=ExecutionStatus.running.value,
-            attempt_number=running.attempt_number,
-            retry_after=None,
-            error_message=None,
-            error_code=None,
-            created_at=started_at,
-        )
-
-        capability_meta = self._new_job_execution_meta(intent=intent, execution=running)
-        capability_env = self._capability_engine_service.invoke_capability(
-            meta=capability_meta,
-            capability_id=intent.action.capability_id,
-            input_payload=intent.action.input_payload,
-            invocation=self._new_invocation_metadata(
-                actor=intent.created_by_actor,
-                channel=_JOB_CHANNEL,
-            ),
-        )
-        if capability_env.ok and capability_env.payload is not None:
-            return self._finalize_successful_execution(job=job, execution=running)
-
-        error = self._primary_error(capability_env.errors)
-        if error.retryable and should_retry(
-            attempt_number=running.attempt_number,
-            max_attempts=running.max_attempts,
-        ):
-            return self._schedule_retry(job=job, execution=running, error=error)
-        return self._finalize_failed_execution(job=job, execution=running, error=error)
 
     def _evaluate_predicate(
         self,
@@ -1233,11 +1367,27 @@ class DefaultJobService(JobService):
 
         output = invoke_env.payload.value.output or {}
         resolved_value = _extract_subject_value(output, definition.predicate_subject)
-        matched = _evaluate_predicate_operator(
-            definition.predicate_operator,
-            resolved_value,
-            definition.predicate_value,
-        )
+        try:
+            matched = _evaluate_predicate_operator(
+                definition.predicate_operator,
+                resolved_value,
+                definition.predicate_value,
+            )
+        except ValueError as exc:
+            evaluation = self._repository.create_predicate_evaluation(
+                job_id=job.id,
+                status=PredicateEvaluationStatus.failed.value,
+                predicate_subject=definition.predicate_subject,
+                predicate_operator=definition.predicate_operator.value,
+                predicate_value=_stringify_value(definition.predicate_value),
+                resolved_value=_stringify_value(resolved_value),
+                authorization_decision=_PREDICATE_ALLOWED,
+                error_code=codes.INVALID_ARGUMENT,
+                error_message=str(exc),
+                trace_id=meta.trace_id,
+                created_at=datetime.now(UTC),
+            )
+            return evaluation, False
         evaluation = self._repository.create_predicate_evaluation(
             job_id=job.id,
             status=(

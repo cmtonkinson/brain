@@ -97,6 +97,39 @@ class PipelineStep(BaseModel):
         return cls(capability=entry)
 
 
+class ToolConfig(BaseModel):
+    """Surface configuration for tool invocation via the LLM agent."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    description: str | None = None
+    """LLM-facing tool description. Defaults to manifest summary when absent."""
+
+
+class JobConfig(BaseModel):
+    """Surface configuration for job invocation."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    description: str | None = None
+    """Human-facing job description. Defaults to manifest summary when absent."""
+
+
+class SlashCommandConfig(BaseModel):
+    """Surface configuration for slash command invocation via operator channels."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str | None = None
+    """Command token without the leading slash. Defaults to capability_id when absent."""
+
+    description: str | None = None
+    """Help text shown in /help output. Defaults to manifest summary when absent."""
+
+    aliases: tuple[str, ...] = ()
+    """Additional command tokens that resolve to the same capability."""
+
+
 class CapabilityManifestBase(BaseModel):
     """Immutable capability manifest metadata shared by ops and skills."""
 
@@ -118,6 +151,9 @@ class CapabilityManifestBase(BaseModel):
     input_schema: dict[str, Any] | None = None
     output_schema: dict[str, Any] | None = None
     simple_output_path: str | None = None
+    tool: ToolConfig | None = None
+    job: JobConfig | None = None
+    slash_command: SlashCommandConfig | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -203,6 +239,12 @@ class CapabilityDescriptor(BaseModel):
     requires_approval: bool
     side_effects: tuple[str, ...]
     required_capabilities: tuple[str, ...]
+    slash_command_name: str | None = None
+    """Resolved slash command token. None when the capability has no slash binding."""
+    slash_command_aliases: tuple[str, ...] = ()
+    """Additional slash command tokens that resolve to this capability."""
+    slash_command_description: str | None = None
+    """Resolved slash command help text. None when the capability has no slash binding."""
 
 
 class CapabilitySearchHit(BaseModel):

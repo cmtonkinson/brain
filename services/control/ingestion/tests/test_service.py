@@ -374,6 +374,9 @@ class _FakeRepository:
     ) -> AnchorRecord | None:
         return self._anchors.get(normalized_object_key)
 
+    def delete_anchor_note(self, *, normalized_object_key: str) -> None:
+        self._anchors.pop(normalized_object_key, None)
+
     # -- indexing runs --
 
     def create_indexing_run(
@@ -781,8 +784,6 @@ def _make_settings(**overrides) -> IngestionServiceSettings:
     defaults = {
         "anchor_folder": "Ingestion",
         "max_payload_bytes": 10_485_760,
-        "visual_mime_allowlist": frozenset(),
-        "attachments_folder": "Attachments",
     }
     defaults.update(overrides)
     return IngestionServiceSettings(**defaults)

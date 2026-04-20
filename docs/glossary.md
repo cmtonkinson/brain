@@ -4,7 +4,7 @@ _This document is generated from `docs/meta/glossary.yaml`. Do not edit by hand.
 ------------------------------------------------------------------------
 ## Terms
 - **Action System &mdash;** The _System_ responsible for external consequences: comprises Services and _Adapter_ Resources responsible for external I/O.
-- **Actor &mdash;** A client of the _Brain Core Sdk_, such as the Agent, CLI, or Celery Worker.
+- **Actor &mdash;** A client of the _Brain Core Sdk_, such as the Agent, CLI, or Worker.
 - **Adapter &mdash;** A _Resource_ which governs interaction with the outside world such as an MCP Server, messaging platform, web API, etc.
 - **Brain Core SDK &mdash;** The interface on top of the _Public Api_ for direct consumption (via HTTP) by _Layer_ 2. This is the only _System_ interface available to Actors.
 - **Capability &mdash;** A governed, testable unit of action with a clear input/output contract, bounded authority, and inspectable results. Types are `Op` and `Skill`.

@@ -349,6 +349,11 @@ def stage_replay_decision(
             should_run=True,
             reason=f"retrying skipped stage (previous: {most_recent.error})",
         )
+    if most_recent.status == StageRunStatus.running:
+        return StageReplayDecision(
+            should_run=False,
+            reason=f"stage is currently running (started at {most_recent.started_at})",
+        )
     return StageReplayDecision(
         should_run=True,
         reason=f"unknown prior status: {most_recent.status}",

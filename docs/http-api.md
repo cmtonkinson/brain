@@ -40,6 +40,11 @@ _Response: `_InvokeResponse`_
 _Handler: `search_capabilities`_
 _Response: `_SearchResponse`_
 
+
+`POST /capabilities/slash-lookup` &mdash; resolve one capability descriptor by slash command name or alias  
+_Handler: `slash_lookup`_
+_Response: `_SlashLookupResponse`_
+
 ------------------------------------------------------------------------
 ## `services/action/language_model/api.py`
 `POST /lms/chat` &mdash; direct access to model inference without CES/PS overhead  
@@ -140,12 +145,32 @@ _Handler: `submit_ingestion`_
 
 ------------------------------------------------------------------------
 ## `services/control/job/api.py`
+`POST /jobs/audits/list` &mdash; list audit entries for one job with cursor pagination  
+_Handler: `list_job_audits`_
+
+
 `POST /jobs/cancel` &mdash; cancel a job and clear its next_run  
 _Handler: `cancel_job`_
 
 
 `POST /jobs/create` &mdash; create a job intent, job record, and initial audit entry  
 _Handler: `create_job`_
+
+
+`POST /jobs/executions/claim` &mdash; atomically claim the next queued execution for a Worker Actor  
+_Handler: `claim_next_execution`_
+
+
+`POST /jobs/executions/complete` &mdash; report a successful execution result from a Worker Actor  
+_Handler: `complete_execution`_
+
+
+`POST /jobs/executions/fail` &mdash; report a failed execution result from a Worker Actor  
+_Handler: `fail_execution`_
+
+
+`POST /jobs/executions/get` &mdash; read one job execution by id  
+_Handler: `get_execution`_
 
 
 `POST /jobs/executions/list` &mdash; list executions for one job with cursor pagination  
@@ -168,12 +193,20 @@ _Handler: `list_jobs`_
 _Handler: `pause_job`_
 
 
+`POST /jobs/predicate-evaluations/list` &mdash; list predicate evaluation records for one job  
+_Handler: `list_predicate_evaluations`_
+
+
 `POST /jobs/resume` &mdash; transition a job from paused to active and recompute next_run  
 _Handler: `resume_job`_
 
 
 `POST /jobs/run-now` &mdash; immediately queue an execution for an active or paused job  
 _Handler: `run_job_now`_
+
+
+`POST /jobs/update` &mdash; update mutable fields on an existing job  
+_Handler: `update_job`_
 
 ------------------------------------------------------------------------
 ## `services/state/memory_authority/api.py`

@@ -203,6 +203,7 @@ review_outputs = sa.Table(
     sa.Column("orphaned_count", sa.Integer(), nullable=False),
     sa.Column("failing_count", sa.Integer(), nullable=False),
     sa.Column("ignored_count", sa.Integer(), nullable=False),
+    sa.Column("stalled_count", sa.Integer(), nullable=False, server_default="0"),
     sa.Column("run_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column(
         "created_at",

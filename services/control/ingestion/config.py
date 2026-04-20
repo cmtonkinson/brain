@@ -16,14 +16,6 @@ class IngestionServiceSettings(BaseModel):
     anchor_folder: str = Field(default="anchors")
     """Vault-relative path prefix for anchor note files."""
 
-    visual_mime_allowlist: tuple[str, ...] = Field(
-        default=("image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml")
-    )
-    """MIME types that are eligible for vault attachment materialization during anchoring."""
-
-    attachments_folder: str = Field(default="attachments")
-    """Vault-relative path prefix for materialized visual attachments."""
-
     max_payload_bytes: int = Field(default=100 * 1024 * 1024, ge=1)
     """Maximum accepted inline payload size in bytes (default: 100 MiB)."""
 

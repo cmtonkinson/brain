@@ -80,9 +80,12 @@ Host port assignments (non-standard range to avoid conflicts):
 | 8762 | Qdrant | HTTP |
 | 8898 | Brain Core | HTTP |
 
-There is also an optional OpenTelemetry-based observability stack (a separate
-but related Docker Compose) which leverages [Prometheus], [Loki],
-[Grafana], and [cAdvisor].
+There is also an optional OpenTelemetry-based observability stack in
+`docker-compose.observability.yaml`. It routes Brain traces through an OTel
+Collector to self-hosted [Langfuse], backed by [ClickHouse], the existing
+[Postgres] and [Redis] services, and [SeaweedFS] for S3-compatible blob storage.
+See [Observability](docs/observability.md) for connection details, required
+secrets, environment variables, and startup checks.
 
 ------------------------------------------------------------------------
 ## Architecture
@@ -113,11 +116,13 @@ Recommended reading order:
    targets, testing, and contributor workflows.
 7. **[Configuration Reference](docs/configuration.md)** &mdash; Config file
    schema, environment variable overrides, and per-section key reference.
-8. **[Glossary](docs/glossary.md)** &mdash; Term definitions (generated from
+8. **[Observability](docs/observability.md)** &mdash; Optional OTel, Langfuse,
+   and SeaweedFS stack setup.
+9. **[Glossary](docs/glossary.md)** &mdash; Term definitions (generated from
    YAML).
-9. **[Service API Reference](docs/service-api.md)** &mdash; Public API surface
+10. **[Service API Reference](docs/service-api.md)** &mdash; Public API surface
    (generated from code).
-10. **[Roadmap](docs/roadmap.md)** &mdash; Phased implementation plan and
+11. **[Roadmap](docs/roadmap.md)** &mdash; Phased implementation plan and
     current status.
 
 ------------------------------------------------------------------------
@@ -127,7 +132,9 @@ environment setup, and how to build/test.
 
 
 [Claude Cowork]: https://claude.com/product/cowork
+[ClickHouse]: https://clickhouse.com
 [Grafana]: https://grafana.com
+[Langfuse]: https://langfuse.com
 [Local REST API]: https://github.com/coddingtonbear/obsidian-local-rest-api
 [Loki]: https://grafana.com/oss/loki/
 [Obsidian]: https://obsidian.md
@@ -138,6 +145,7 @@ environment setup, and how to build/test.
 [PydanticAI]: https://ai.pydantic.dev
 [Qdrant]: https://qdrant.tech
 [Redis]: https://redis.io
+[SeaweedFS]: https://github.com/seaweedfs/seaweedfs
 [Signal]: https://signal.org
 [cAdvisor]: https://github.com/google/cadvisor
 

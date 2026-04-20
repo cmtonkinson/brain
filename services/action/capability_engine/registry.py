@@ -72,6 +72,7 @@ class CapabilityRegistry:
     def __init__(self) -> None:
         self._manifests: dict[str, CapabilityManifest] = {}
         self._handlers: dict[str, CapabilityHandler] = {}
+        self._slash_commands: dict[str, CapabilityManifest] = {}
 
     def discover(
         self,
@@ -103,6 +104,7 @@ class CapabilityRegistry:
             call_targets=self._build_call_target_contracts(extra=call_targets),
         )
         self._manifests = discovered
+        self._slash_commands = self._build_slash_index(discovered)
 
     def _iter_manifest_paths(self, *, root: Path) -> tuple[Path, ...]:
         """Yield package manifest paths under ``root`` in stable order.
@@ -730,9 +732,49 @@ class CapabilityRegistry:
 
         return {"type": "object"}  # Default fallback
 
+    def _build_slash_index(
+        self,
+        manifests: dict[str, CapabilityManifest],
+    ) -> dict[str, CapabilityManifest]:
+        """Build the slash command name/alias → manifest index from discovered manifests."""
+        index: dict[str, CapabilityManifest] = {}
+        for manifest in manifests.values():
+            sc = manifest.slash_command
+            if sc is None:
+                continue
+            resolved_name = sc.name or manifest.capability_id
+            for token in (resolved_name, *sc.aliases):
+                key = token.lower()
+                if key in index:
+                    raise ValueError(
+                        f"duplicate slash command '{key}' in "
+                        f"'{index[key].capability_id}' and '{manifest.capability_id}'"
+                    )
+                index[key] = manifest
+        return index
+
+    def resolve_slash_command(self, *, name: str) -> CapabilityManifest | None:
+        """Return the manifest bound to one slash command name or alias."""
+        return self._slash_commands.get(name.lower())
+
+    def list_slash_commands(self) -> tuple[CapabilityManifest, ...]:
+        """Return all manifests that expose a slash command, in stable order, deduplicated."""
+        seen: set[str] = set()
+        result: list[CapabilityManifest] = []
+        for manifest in (self._slash_commands[k] for k in sorted(self._slash_commands)):
+            if manifest.capability_id not in seen:
+                seen.add(manifest.capability_id)
+                result.append(manifest)
+        return tuple(result)
+
     def register_manifest(self, *, manifest: CapabilityManifest) -> None:
         """Register one manifest directly without filesystem discovery."""
         self._manifests[manifest.capability_id] = manifest
+        sc = manifest.slash_command
+        if sc is not None:
+            resolved_name = sc.name or manifest.capability_id
+            for token in (resolved_name, *sc.aliases):
+                self._slash_commands[token.lower()] = manifest
 
     def register_handler(
         self,

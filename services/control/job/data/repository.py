@@ -408,7 +408,9 @@ class PostgresJobRepository:
             rows = session.execute(stmt).mappings().all()
             return [_to_execution_record(r) for r in rows]
 
-    def list_retry_due_executions(self, *, now: datetime) -> list[ExecutionRecord]:
+    def list_retry_due_executions(
+        self, *, now: datetime, limit: int
+    ) -> list[ExecutionRecord]:
         """List executions with status retry_scheduled and retry_after <= now."""
         with self._sessions.session() as session:
             stmt = (
@@ -418,6 +420,20 @@ class PostgresJobRepository:
                     executions.c.retry_after <= now,
                 )
                 .order_by(executions.c.retry_after)
+                .limit(limit)
+            )
+            rows = session.execute(stmt).mappings().all()
+            return [_to_execution_record(r) for r in rows]
+
+    def get_stalled_executions(
+        self, *, threshold_minutes: int, now: datetime
+    ) -> list[ExecutionRecord]:
+        """List executions stuck in running state beyond threshold_minutes."""
+        threshold = now - timedelta(minutes=threshold_minutes)
+        with self._sessions.session() as session:
+            stmt = select(executions).where(
+                executions.c.status == ExecutionStatus.running.value,
+                executions.c.started_at < threshold,
             )
             rows = session.execute(stmt).mappings().all()
             return [_to_execution_record(r) for r in rows]
@@ -467,15 +483,17 @@ class PostgresJobRepository:
             )
             return _to_job_mutation_audit(row)
 
-    def list_job_audits(self, *, job_id: str, limit: int) -> list[JobMutationAudit]:
+    def list_job_audits(
+        self, *, job_id: str, limit: int, cursor: str | None
+    ) -> list[JobMutationAudit]:
         """List mutation audits for one job."""
         with self._sessions.session() as session:
-            stmt = (
-                select(job_mutation_audits)
-                .where(job_mutation_audits.c.job_id == ulid_str_to_bytes(job_id))
-                .order_by(job_mutation_audits.c.id.desc())
-                .limit(limit)
+            stmt = select(job_mutation_audits).where(
+                job_mutation_audits.c.job_id == ulid_str_to_bytes(job_id)
             )
+            if cursor is not None:
+                stmt = stmt.where(job_mutation_audits.c.id < ulid_str_to_bytes(cursor))
+            stmt = stmt.order_by(job_mutation_audits.c.id.desc()).limit(limit)
             rows = session.execute(stmt).mappings().all()
             return [_to_job_mutation_audit(r) for r in rows]
 
@@ -566,16 +584,18 @@ class PostgresJobRepository:
             return _to_predicate_evaluation(row)
 
     def list_predicate_evaluations(
-        self, *, job_id: str, limit: int
+        self, *, job_id: str, limit: int, cursor: str | None
     ) -> list[PredicateEvaluationRecord]:
         """List predicate evaluations for one job."""
         with self._sessions.session() as session:
-            stmt = (
-                select(predicate_evaluations)
-                .where(predicate_evaluations.c.job_id == ulid_str_to_bytes(job_id))
-                .order_by(predicate_evaluations.c.id.desc())
-                .limit(limit)
+            stmt = select(predicate_evaluations).where(
+                predicate_evaluations.c.job_id == ulid_str_to_bytes(job_id)
             )
+            if cursor is not None:
+                stmt = stmt.where(
+                    predicate_evaluations.c.id < ulid_str_to_bytes(cursor)
+                )
+            stmt = stmt.order_by(predicate_evaluations.c.id.desc()).limit(limit)
             rows = session.execute(stmt).mappings().all()
             return [_to_predicate_evaluation(r) for r in rows]
 
@@ -597,7 +617,7 @@ class PostgresJobRepository:
             rows = session.execute(stmt).mappings().all()
             return [_to_job_record(r) for r in rows]
 
-    def get_failing_jobs(self, *, threshold: int, now: datetime) -> list[JobRecord]:
+    def get_failing_jobs(self, *, threshold: int) -> list[JobRecord]:
         """List active jobs with failure_count >= threshold."""
         with self._sessions.session() as session:
             stmt = select(jobs).where(
@@ -626,6 +646,7 @@ class PostgresJobRepository:
         orphaned_count: int,
         failing_count: int,
         ignored_count: int,
+        stalled_count: int,
         run_at: datetime,
         created_at: datetime,
     ) -> str:
@@ -638,6 +659,7 @@ class PostgresJobRepository:
                     orphaned_count=orphaned_count,
                     failing_count=failing_count,
                     ignored_count=ignored_count,
+                    stalled_count=stalled_count,
                     run_at=run_at,
                     created_at=created_at,
                 )
@@ -712,6 +734,39 @@ class PostgresJobRepository:
             )
             result = session.execute(stmt).scalar()
             return result
+
+    def claim_next_queued_execution(self, *, now: datetime) -> ExecutionRecord | None:
+        """Atomically claim the oldest queued execution, transitioning it to running.
+
+        Uses SELECT ... FOR UPDATE SKIP LOCKED so concurrent Worker callers do
+        not double-claim the same row.  Returns None when nothing is queued.
+        """
+        with self._sessions.session() as session:
+            stmt = (
+                select(executions)
+                .where(executions.c.status == ExecutionStatus.queued.value)
+                .order_by(executions.c.id)
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            )
+            row = session.execute(stmt).mappings().one_or_none()
+            if row is None:
+                return None
+            exec_id = row["id"]
+            session.execute(
+                update(executions)
+                .where(executions.c.id == exec_id)
+                .values(
+                    status=ExecutionStatus.running.value,
+                    started_at=now,
+                )
+            )
+            updated = (
+                session.execute(select(executions).where(executions.c.id == exec_id))
+                .mappings()
+                .one()
+            )
+            return _to_execution_record(updated)
 
 
 # ---------------------------------------------------------------------------

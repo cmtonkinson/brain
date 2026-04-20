@@ -891,7 +891,11 @@ class DefaultIngestionService(IngestionService):
         active_spec_env = self._embedding_authority_service.get_active_spec(
             meta=svc_meta
         )
-        if active_spec_env.errors or active_spec_env.payload is None:
+        if (
+            active_spec_env.errors
+            or active_spec_env.payload is None
+            or active_spec_env.payload.value is None
+        ):
             error_text = (
                 _join_errors(active_spec_env.errors) or "EAS active spec missing"
             )
@@ -912,7 +916,11 @@ class DefaultIngestionService(IngestionService):
             get_env = self._oas.get_object(
                 meta=svc_meta, object_key=anchor.normalized_object_key
             )
-            if get_env.errors or get_env.payload is None:
+            if (
+                get_env.errors
+                or get_env.payload is None
+                or get_env.payload.value is None
+            ):
                 failed_count += 1
                 errors.append(
                     f"object_key={anchor.normalized_object_key} error=OAS get_object failed"
@@ -929,7 +937,11 @@ class DefaultIngestionService(IngestionService):
                 continue
 
             chunks_env = self._utility_service.chunk_text(meta=svc_meta, text=text)
-            if chunks_env.errors or chunks_env.payload is None:
+            if (
+                chunks_env.errors
+                or chunks_env.payload is None
+                or chunks_env.payload.value is None
+            ):
                 failed_count += 1
                 errors.append(_join_errors(chunks_env.errors) or "chunk_text failed")
                 continue
@@ -948,7 +960,11 @@ class DefaultIngestionService(IngestionService):
                     "vault_path": anchor.vault_path,
                 },
             )
-            if source_env.errors or source_env.payload is None:
+            if (
+                source_env.errors
+                or source_env.payload is None
+                or source_env.payload.value is None
+            ):
                 failed_count += 1
                 errors.append(_join_errors(source_env.errors) or "upsert_source failed")
                 continue
@@ -973,7 +989,11 @@ class DefaultIngestionService(IngestionService):
             chunk_env = self._embedding_authority_service.upsert_chunks(
                 meta=svc_meta, items=chunk_inputs
             )
-            if chunk_env.errors or chunk_env.payload is None:
+            if (
+                chunk_env.errors
+                or chunk_env.payload is None
+                or chunk_env.payload.value is None
+            ):
                 failed_count += 1
                 errors.append(_join_errors(chunk_env.errors) or "upsert_chunks failed")
                 continue
@@ -987,7 +1007,11 @@ class DefaultIngestionService(IngestionService):
                 meta=svc_meta,
                 texts=[chunk.text for chunk in chunks],
             )
-            if embed_env.errors or embed_env.payload is None:
+            if (
+                embed_env.errors
+                or embed_env.payload is None
+                or embed_env.payload.value is None
+            ):
                 failed_count += 1
                 errors.append(_join_errors(embed_env.errors) or "embed_batch failed")
                 continue
@@ -1003,7 +1027,11 @@ class DefaultIngestionService(IngestionService):
             vector_env = self._embedding_authority_service.upsert_embedding_vectors(
                 meta=svc_meta, items=vector_inputs
             )
-            if vector_env.errors or vector_env.payload is None:
+            if (
+                vector_env.errors
+                or vector_env.payload is None
+                or vector_env.payload.value is None
+            ):
                 failed_count += 1
                 errors.append(
                     _join_errors(vector_env.errors) or "upsert_embedding_vectors failed"
@@ -1155,15 +1183,28 @@ class DefaultIngestionService(IngestionService):
             },
             start_state="paused",
         )
-        if create_env.errors:
-            error_text = "; ".join(error.message for error in create_env.errors)
+        if (
+            create_env.errors
+            or create_env.payload is None
+            or create_env.payload.value is None
+        ):
+            error_text = (
+                "; ".join(error.message for error in create_env.errors)
+                if create_env.errors
+                else "job create returned no payload"
+            )
             self._repository.update_ingestion_status(
                 ingestion_id=ingestion_id,
                 status=IngestionStatus.failed.value,
                 last_error=error_text,
                 updated_at=_utc_now(),
             )
-            return failure(meta=meta, errors=create_env.errors)
+            from packages.brain_shared.errors import internal_error
+
+            return failure(
+                meta=meta,
+                errors=create_env.errors or [internal_error(error_text)],
+            )
 
         run_env = self._job_service.run_job_now(
             meta=job_meta,
@@ -1189,6 +1230,12 @@ class DefaultIngestionService(IngestionService):
         """Create and immediately run one job that indexes anchored artifacts."""
         if self._job_service is None:
             error_text = "Job Service is not available"
+            self._repository.update_ingestion_status(
+                ingestion_id=ingestion_id,
+                status=IngestionStatus.failed.value,
+                last_error=error_text,
+                updated_at=_utc_now(),
+            )
             from packages.brain_shared.errors import internal_error
 
             return failure(meta=meta, errors=[internal_error(error_text)])
@@ -1223,8 +1270,16 @@ class DefaultIngestionService(IngestionService):
             },
             start_state="paused",
         )
-        if create_env.errors:
-            error_text = _join_errors(create_env.errors)
+        if (
+            create_env.errors
+            or create_env.payload is None
+            or create_env.payload.value is None
+        ):
+            error_text = (
+                _join_errors(create_env.errors)
+                if create_env.errors
+                else "job create returned no payload"
+            )
             self._repository.update_indexing_run_status(
                 indexing_run_id=indexing_run.id,
                 status=IndexingRunStatus.failed.value,
@@ -1236,7 +1291,18 @@ class DefaultIngestionService(IngestionService):
                 updated_at=_utc_now(),
                 finished_at=_utc_now(),
             )
-            return failure(meta=meta, errors=create_env.errors)
+            self._repository.update_ingestion_status(
+                ingestion_id=ingestion_id,
+                status=IngestionStatus.failed.value,
+                last_error=error_text,
+                updated_at=_utc_now(),
+            )
+            from packages.brain_shared.errors import internal_error
+
+            return failure(
+                meta=meta,
+                errors=create_env.errors or [internal_error(error_text)],
+            )
 
         job_id = create_env.payload.value.job.id
         self._repository.update_indexing_run_job(
@@ -1257,6 +1323,12 @@ class DefaultIngestionService(IngestionService):
                 error=error_text,
                 updated_at=_utc_now(),
                 finished_at=_utc_now(),
+            )
+            self._repository.update_ingestion_status(
+                ingestion_id=ingestion_id,
+                status=IngestionStatus.failed.value,
+                last_error=error_text,
+                updated_at=_utc_now(),
             )
             return failure(meta=meta, errors=run_env.errors)
         return success(meta=meta, payload=run_env.payload.value)
@@ -1495,6 +1567,14 @@ class DefaultIngestionService(IngestionService):
                 "outcome — submit a new ingestion to supply the raw payload"
             )
 
+        if len(eligible) > 1:
+            _LOGGER.warning(
+                "store stage replay for ingestion %s has %d eligible prior outcomes; "
+                "using most recent (object_key=%s)",
+                record.id,
+                len(eligible),
+                eligible[-1].object_key,
+            )
         object_key = eligible[-1].object_key
         assert object_key is not None
 
@@ -1526,6 +1606,12 @@ class DefaultIngestionService(IngestionService):
             status=StageArtifactStatus.success.value,
             error=None,
             created_at=now,
+        )
+        self._record_provenance(
+            object_key=object_key,
+            record=record,
+            source_type=record.source_type,
+            now=now,
         )
         return StoreStageResult(
             ingestion_id=record.id,
@@ -1577,8 +1663,16 @@ class DefaultIngestionService(IngestionService):
                 original_filename=original_filename,
                 source_uri=source_uri,
             )
-            if put_envelope.errors:
-                error_text = "; ".join(e.message for e in put_envelope.errors)
+            if (
+                put_envelope.errors
+                or put_envelope.payload is None
+                or put_envelope.payload.value is None
+            ):
+                error_text = (
+                    "; ".join(e.message for e in put_envelope.errors)
+                    if put_envelope.errors
+                    else "OAS put_object returned no payload"
+                )
                 self._repository.create_stage_artifact_outcome(
                     ingestion_id=record.id,
                     stage="store",
@@ -1717,7 +1811,11 @@ class DefaultIngestionService(IngestionService):
             get_envelope = self._oas.get_object(
                 meta=oas_meta, object_key=raw_outcome.object_key
             )
-            if get_envelope.errors:
+            if (
+                get_envelope.errors
+                or get_envelope.payload is None
+                or get_envelope.payload.value is None
+            ):
                 err = f"object_key={raw_outcome.object_key} error=OAS get_object failed"
                 errors.append(err)
                 failed += 1
@@ -1793,7 +1891,11 @@ class DefaultIngestionService(IngestionService):
                         original_filename=_filename_for_ingestion(record.id, ext_ext),
                         source_uri=record.source_uri or "",
                     )
-                    if put_env.errors:
+                    if (
+                        put_env.errors
+                        or put_env.payload is None
+                        or put_env.payload.value is None
+                    ):
                         err = f"object_key={raw_outcome.object_key} error=OAS put_object failed for extracted artifact"
                         errors.append(err)
                         failed += 1
@@ -1882,7 +1984,11 @@ class DefaultIngestionService(IngestionService):
             get_envelope = self._oas.get_object(
                 meta=oas_meta, object_key=extracted_outcome.object_key
             )
-            if get_envelope.errors:
+            if (
+                get_envelope.errors
+                or get_envelope.payload is None
+                or get_envelope.payload.value is None
+            ):
                 err = f"object_key={extracted_outcome.object_key} error=OAS get_object failed"
                 errors.append(err)
                 failed += 1
@@ -1968,7 +2074,11 @@ class DefaultIngestionService(IngestionService):
                         original_filename=_filename_for_ingestion(record.id, norm_ext),
                         source_uri=record.source_uri or "",
                     )
-                    if put_env.errors:
+                    if (
+                        put_env.errors
+                        or put_env.payload is None
+                        or put_env.payload.value is None
+                    ):
                         err = f"object_key={extracted_outcome.object_key} error=OAS put_object failed for normalized artifact"
                         errors.append(err)
                         failed += 1
@@ -2070,7 +2180,11 @@ class DefaultIngestionService(IngestionService):
         for index, outcome in enumerate(eligible, start=1):
             assert outcome.object_key is not None
             get_env = self._oas.get_object(meta=svc_meta, object_key=outcome.object_key)
-            if get_env.errors:
+            if (
+                get_env.errors
+                or get_env.payload is None
+                or get_env.payload.value is None
+            ):
                 err = f"object_key={outcome.object_key} error=OAS get_object failed"
                 errors.append(err)
                 failed += 1
@@ -2107,6 +2221,17 @@ class DefaultIngestionService(IngestionService):
                     now=now,
                 )
 
+                # Write DB anchor record first so any subsequent retry sees this
+                # artifact as already claimed and skips it.  If the vault write
+                # below fails we delete this record so the retry can try again.
+                self._repository.upsert_anchor_note(
+                    ingestion_id=record.id,
+                    normalized_object_key=outcome.object_key,
+                    vault_path=note_path,
+                    created_at=now,
+                )
+
+                vault_write_ok = False
                 if not note_created:
                     intro = self._build_anchor_intro(record=record, now=now)
                     create_env = self._vas.create_file(
@@ -2122,6 +2247,9 @@ class DefaultIngestionService(IngestionService):
                             content=f"\n\n---\n\n{section}",
                         )
                         if append_env.errors:
+                            self._repository.delete_anchor_note(
+                                normalized_object_key=outcome.object_key
+                            )
                             err = f"object_key={outcome.object_key} error=VAS create/append file failed"
                             errors.append(err)
                             failed += 1
@@ -2136,6 +2264,7 @@ class DefaultIngestionService(IngestionService):
                             )
                             continue
                     note_created = True
+                    vault_write_ok = True
                 else:
                     append_env = self._vas.append_file(
                         meta=svc_meta,
@@ -2143,6 +2272,9 @@ class DefaultIngestionService(IngestionService):
                         content=f"\n\n---\n\n{section}",
                     )
                     if append_env.errors:
+                        self._repository.delete_anchor_note(
+                            normalized_object_key=outcome.object_key
+                        )
                         err = f"object_key={outcome.object_key} error=VAS append_file failed"
                         errors.append(err)
                         failed += 1
@@ -2156,23 +2288,19 @@ class DefaultIngestionService(IngestionService):
                             created_at=now,
                         )
                         continue
+                    vault_write_ok = True
 
-                self._repository.upsert_anchor_note(
-                    ingestion_id=record.id,
-                    normalized_object_key=outcome.object_key,
-                    vault_path=note_path,
-                    created_at=now,
-                )
-                self._repository.create_stage_artifact_outcome(
-                    ingestion_id=record.id,
-                    stage="anchor",
-                    object_key=outcome.object_key,
-                    parent_object_key=outcome.object_key,
-                    status=StageArtifactStatus.success.value,
-                    error=None,
-                    created_at=now,
-                )
-                anchored += 1
+                if vault_write_ok:
+                    self._repository.create_stage_artifact_outcome(
+                        ingestion_id=record.id,
+                        stage="anchor",
+                        object_key=outcome.object_key,
+                        parent_object_key=outcome.object_key,
+                        status=StageArtifactStatus.success.value,
+                        error=None,
+                        created_at=now,
+                    )
+                    anchored += 1
 
             except Exception as exc:  # noqa: BLE001
                 err = f"object_key={outcome.object_key} error={exc}"
@@ -2231,8 +2359,8 @@ class DefaultIngestionService(IngestionService):
         return (
             f"# Anchor Note: {record.id}\n"
             f"**Source Type:** {record.source_type}\n"
-            f"**Source URI:** {record.source_uri or 'unknown'}\n"
-            f"**Source Actor:** {record.source_actor or 'unknown'}\n"
+            f"**Source URI:** {self._escape_md_inline(record.source_uri or 'unknown')}\n"
+            f"**Source Actor:** {self._escape_md_inline(record.source_actor or 'unknown')}\n"
             f"**Ingestion Created:** {created}\n"
             f"**Anchor Run:** {rendered_now}\n\n---\n\n"
         )
@@ -2257,8 +2385,8 @@ class DefaultIngestionService(IngestionService):
             f"**Normalization Method:** {normalization_method or 'unknown'}",
             f"**Normalization Confidence:** {self._format_confidence(normalization_confidence)}",
             f"**Source Type:** {ingestion.source_type}",
-            f"**Source URI:** {ingestion.source_uri or 'unknown'}",
-            f"**Source Actor:** {ingestion.source_actor or 'unknown'}",
+            f"**Source URI:** {self._escape_md_inline(ingestion.source_uri or 'unknown')}",
+            f"**Source Actor:** {self._escape_md_inline(ingestion.source_actor or 'unknown')}",
         ]
         text_body = self._render_text_body(payload, mime_type)
         if text_body:
@@ -2288,6 +2416,13 @@ class DefaultIngestionService(IngestionService):
         except UnicodeDecodeError:
             decoded = payload.decode("utf-8", errors="replace")
         return decoded.strip() or None
+
+    @staticmethod
+    def _escape_md_inline(value: str) -> str:
+        """Escape characters that break Markdown link/table syntax for inline embedding."""
+        for ch in ("\\", "[", "]", "(", ")"):
+            value = value.replace(ch, f"\\{ch}")
+        return value.replace("\n", " ").replace("\r", " ")
 
     @staticmethod
     def _format_confidence(value: float | None) -> str:

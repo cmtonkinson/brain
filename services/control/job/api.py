@@ -54,10 +54,38 @@ class _ListJobsRequest(_MetaFields):
     cursor: str | None = None
 
 
+class _UpdateJobRequest(_MetaFields):
+    job_id: str
+    timezone: str | None = None
+    definition: dict[str, Any] | None = None
+    notes: str | None = None
+
+
+class _ExecutionIdRequest(_MetaFields):
+    execution_id: str
+
+
 class _ListExecutionsRequest(_MetaFields):
     job_id: str
     limit: int = 50
     cursor: str | None = None
+
+
+class _ListAuditsRequest(_MetaFields):
+    job_id: str
+    limit: int = 50
+    cursor: str | None = None
+
+
+class _ClaimExecutionRequest(_MetaFields):
+    worker_id: str = "worker"
+
+
+class _FailExecutionRequest(_MetaFields):
+    execution_id: str
+    error_message: str
+    error_code: str | None = None
+    is_retryable: bool = False
 
 
 class _ErrorOut(BaseModel):
@@ -119,6 +147,19 @@ def register_routes(*, router: APIRouter, service: JobService) -> None:
         )
         return _to_response(envelope)
 
+    @router.post("/jobs/update")
+    async def update_job(request: _UpdateJobRequest) -> _JobResponse:
+        meta = _meta_from(request)
+        envelope = await run_in_threadpool(
+            service.update_job,
+            meta=meta,
+            job_id=request.job_id,
+            timezone=request.timezone,
+            definition=request.definition,
+            notes=request.notes,
+        )
+        return _to_response(envelope)
+
     @router.post("/jobs/pause")
     async def pause_job(request: _PauseJobRequest) -> _JobResponse:
         meta = _meta_from(request)
@@ -154,6 +195,14 @@ def register_routes(*, router: APIRouter, service: JobService) -> None:
         )
         return _to_response(envelope)
 
+    @router.post("/jobs/executions/get")
+    async def get_execution(request: _ExecutionIdRequest) -> _JobResponse:
+        meta = _meta_from(request)
+        envelope = await run_in_threadpool(
+            service.get_execution, meta=meta, execution_id=request.execution_id
+        )
+        return _to_response(envelope)
+
     @router.post("/jobs/executions/list")
     async def list_executions(request: _ListExecutionsRequest) -> _JobResponse:
         meta = _meta_from(request)
@@ -166,10 +215,67 @@ def register_routes(*, router: APIRouter, service: JobService) -> None:
         )
         return _to_response(envelope)
 
+    @router.post("/jobs/audits/list")
+    async def list_job_audits(request: _ListAuditsRequest) -> _JobResponse:
+        meta = _meta_from(request)
+        envelope = await run_in_threadpool(
+            service.list_job_audits,
+            meta=meta,
+            job_id=request.job_id,
+            limit=request.limit,
+            cursor=request.cursor,
+        )
+        return _to_response(envelope)
+
+    @router.post("/jobs/predicate-evaluations/list")
+    async def list_predicate_evaluations(request: _ListAuditsRequest) -> _JobResponse:
+        meta = _meta_from(request)
+        envelope = await run_in_threadpool(
+            service.list_predicate_evaluations,
+            meta=meta,
+            job_id=request.job_id,
+            limit=request.limit,
+            cursor=request.cursor,
+        )
+        return _to_response(envelope)
+
     @router.post("/jobs/health")
     async def health(request: _MetaFields) -> _JobResponse:
         meta = _meta_from(request)
         envelope = await run_in_threadpool(service.health, meta=meta)
+        return _to_response(envelope)
+
+    @router.post("/jobs/executions/claim")
+    async def claim_next_execution(request: _ClaimExecutionRequest) -> _JobResponse:
+        meta = _meta_from(request)
+        envelope = await run_in_threadpool(
+            service.claim_next_execution,
+            meta=meta,
+            worker_id=request.worker_id,
+        )
+        return _to_response(envelope)
+
+    @router.post("/jobs/executions/complete")
+    async def complete_execution(request: _ExecutionIdRequest) -> _JobResponse:
+        meta = _meta_from(request)
+        envelope = await run_in_threadpool(
+            service.complete_execution,
+            meta=meta,
+            execution_id=request.execution_id,
+        )
+        return _to_response(envelope)
+
+    @router.post("/jobs/executions/fail")
+    async def fail_execution(request: _FailExecutionRequest) -> _JobResponse:
+        meta = _meta_from(request)
+        envelope = await run_in_threadpool(
+            service.fail_execution,
+            meta=meta,
+            execution_id=request.execution_id,
+            error_message=request.error_message,
+            error_code=request.error_code,
+            is_retryable=request.is_retryable,
+        )
         return _to_response(envelope)
 
 

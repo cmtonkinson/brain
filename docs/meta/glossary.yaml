@@ -1,7 +1,7 @@
 title: "Glossary of Terms"
 terms:
   - term: Actor
-    definition: "A client of the Brain Core SDK, such as the Agent, CLI, or Celery Worker."
+    definition: "A client of the Brain Core SDK, such as the Agent, CLI, or Worker."
   - term: Adapter
     definition: "A Resource which governs interaction with the outside world such as an MCP Server, messaging platform, web API, etc."
   - term: Component

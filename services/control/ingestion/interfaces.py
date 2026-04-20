@@ -224,6 +224,10 @@ class IngestionRepository(Protocol):
         """Return the anchor record for one normalized artifact key, if any."""
         ...
 
+    def delete_anchor_note(self, *, normalized_object_key: str) -> None:
+        """Remove the anchor note linkage for one normalized artifact."""
+        ...
+
     # -- indexing runs --
 
     def create_indexing_run(

@@ -67,6 +67,22 @@ This document covers how to set up, build, test, and contribute to Brain.
 | `make down` | Stop Docker Compose services |
 
 ------------------------------------------------------------------------
+## Optional Observability Stack
+Brain can run with a local observability overlay:
+```sh
+docker compose -f docker-compose.yaml -f docker-compose.observability.yaml up --build
+```
+
+The overlay enables process-level OTel export for Core and Agent, starts an OTel
+Collector, runs self-hosted Langfuse, adds Langfuse's required ClickHouse, and
+uses SeaweedFS as the S3-compatible blob store. It reuses the base Postgres and
+Redis services; Langfuse data is stored in a dedicated Postgres database and in
+SeaweedFS object prefixes, not in Brain service schemas or OAS.
+
+Before using the overlay, replace the `replace-me` values in `.env`, especially
+Langfuse secrets, SeaweedFS S3 credentials, and `LANGFUSE_OTEL_AUTH_HEADER`.
+
+------------------------------------------------------------------------
 ## Running Tests
 ```sh
 make test             # unit

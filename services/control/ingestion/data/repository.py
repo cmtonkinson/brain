@@ -107,7 +107,7 @@ class PostgresIngestionRepository:
         cursor: str | None,
     ) -> list[IngestionRecord]:
         """List ingestions with optional status filter and cursor pagination."""
-        stmt = select(ingestions).order_by(ingestions.c.created_at.desc()).limit(limit)
+        stmt = select(ingestions).order_by(ingestions.c.id.desc()).limit(limit)
         if status is not None:
             stmt = stmt.where(ingestions.c.status == status)
         if cursor is not None:
@@ -350,17 +350,30 @@ class PostgresIngestionRepository:
                 )
             else:
                 row_id = generate_ulid_bytes()
-                session.execute(
-                    extraction_metadata.insert().values(
-                        id=row_id,
-                        object_key=object_key,
-                        method=method,
-                        confidence=confidence,
-                        page_count=page_count,
-                        created_at=created_at,
-                        updated_at=created_at,
+                try:
+                    session.execute(
+                        extraction_metadata.insert().values(
+                            id=row_id,
+                            object_key=object_key,
+                            method=method,
+                            confidence=confidence,
+                            page_count=page_count,
+                            created_at=created_at,
+                            updated_at=created_at,
+                        )
                     )
-                )
+                except IntegrityError:
+                    session.rollback()
+                    session.execute(
+                        extraction_metadata.update()
+                        .where(extraction_metadata.c.object_key == object_key)
+                        .values(
+                            method=method,
+                            confidence=confidence,
+                            page_count=page_count,
+                            updated_at=created_at,
+                        )
+                    )
             row = (
                 session.execute(
                     select(extraction_metadata).where(
@@ -423,16 +436,28 @@ class PostgresIngestionRepository:
                 )
             else:
                 row_id = generate_ulid_bytes()
-                session.execute(
-                    normalization_metadata.insert().values(
-                        id=row_id,
-                        object_key=object_key,
-                        method=method,
-                        confidence=confidence,
-                        created_at=created_at,
-                        updated_at=created_at,
+                try:
+                    session.execute(
+                        normalization_metadata.insert().values(
+                            id=row_id,
+                            object_key=object_key,
+                            method=method,
+                            confidence=confidence,
+                            created_at=created_at,
+                            updated_at=created_at,
+                        )
                     )
-                )
+                except IntegrityError:
+                    session.rollback()
+                    session.execute(
+                        normalization_metadata.update()
+                        .where(normalization_metadata.c.object_key == object_key)
+                        .values(
+                            method=method,
+                            confidence=confidence,
+                            updated_at=created_at,
+                        )
+                    )
             row = (
                 session.execute(
                     select(normalization_metadata).where(
@@ -484,14 +509,27 @@ class PostgresIngestionRepository:
             if existing is not None:
                 return _to_provenance(existing)
             row_id = generate_ulid_bytes()
-            session.execute(
-                artifact_provenance.insert().values(
-                    id=row_id,
-                    object_key=object_key,
-                    created_at=created_at,
-                    updated_at=created_at,
+            try:
+                session.execute(
+                    artifact_provenance.insert().values(
+                        id=row_id,
+                        object_key=object_key,
+                        created_at=created_at,
+                        updated_at=created_at,
+                    )
                 )
-            )
+            except IntegrityError:
+                session.rollback()
+                row = (
+                    session.execute(
+                        select(artifact_provenance).where(
+                            artifact_provenance.c.object_key == object_key
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                return _to_provenance(row)
             row = (
                 session.execute(
                     select(artifact_provenance).where(
@@ -631,6 +669,15 @@ class PostgresIngestionRepository:
                 .first()
             )
             return _to_anchor(row) if row else None
+
+    def delete_anchor_note(self, *, normalized_object_key: str) -> None:
+        """Remove an anchor note record — used to roll back on vault write failure."""
+        with self._sessions.session() as session:
+            session.execute(
+                anchor_notes.delete().where(
+                    anchor_notes.c.normalized_object_key == normalized_object_key
+                )
+            )
 
     # ------------------------------------------------------------------
     # Indexing runs

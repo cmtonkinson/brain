@@ -513,6 +513,16 @@ Logic Skill
 - `object` _(object)_
 - `write_disposition` _(string)_
 
+### `slash-help`
+List all slash commands available via operator channels.  
+`logic_skill` `1.0.0`  
+Logic Skill  
+
+**Inputs:** None
+
+**Outputs:**
+- `string`: Formatted list of registered slash commands with descriptions.
+
 
 ------------------------------------------------------------------------
 _End of Capability Catalog_

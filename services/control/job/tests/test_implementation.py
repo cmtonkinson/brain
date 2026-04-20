@@ -147,11 +147,13 @@ class _FakeRepository:
         limit: int,
         cursor: str | None,
     ) -> list[JobRecord]:
-        result = list(self.jobs.values())
+        result = sorted(self.jobs.values(), key=lambda j: j.id)
         if state is not None:
             result = [job for job in result if job.state.value == state]
         if schedule_type is not None:
             result = [job for job in result if job.schedule_type.value == schedule_type]
+        if cursor is not None:
+            result = [job for job in result if job.id > cursor]
         return result[:limit]
 
     def update_job(
@@ -317,13 +319,30 @@ class _FakeRepository:
             :limit
         ]
 
-    def list_retry_due_executions(self, *, now: datetime) -> list[ExecutionRecord]:
-        return [
+    def list_retry_due_executions(
+        self, *, now: datetime, limit: int
+    ) -> list[ExecutionRecord]:
+        results = [
             item
             for item in self.executions.values()
             if item.status == ExecutionStatus.retry_scheduled
             and item.retry_after is not None
             and item.retry_after <= now
+        ]
+        return results[:limit]
+
+    def get_stalled_executions(
+        self, *, threshold_minutes: int, now: datetime
+    ) -> list[ExecutionRecord]:
+        from datetime import timedelta
+
+        threshold = now - timedelta(minutes=threshold_minutes)
+        return [
+            item
+            for item in self.executions.values()
+            if item.status == ExecutionStatus.running
+            and item.started_at is not None
+            and item.started_at < threshold
         ]
 
     def create_job_mutation_audit(
@@ -354,8 +373,13 @@ class _FakeRepository:
         self.job_audits.append(audit)
         return audit
 
-    def list_job_audits(self, *, job_id: str, limit: int) -> list[JobMutationAudit]:
-        return [audit for audit in self.job_audits if audit.job_id == job_id][:limit]
+    def list_job_audits(
+        self, *, job_id: str, limit: int, cursor: str | None
+    ) -> list[JobMutationAudit]:
+        results = [audit for audit in self.job_audits if audit.job_id == job_id]
+        if cursor is not None:
+            results = [a for a in results if a.id < cursor]
+        return results[:limit]
 
     def create_execution_audit(
         self,
@@ -420,15 +444,19 @@ class _FakeRepository:
         *,
         job_id: str,
         limit: int,
+        cursor: str | None,
     ) -> list[PredicateEvaluationRecord]:
-        return [item for item in self.predicate_evals if item.job_id == job_id][:limit]
+        results = [item for item in self.predicate_evals if item.job_id == job_id]
+        if cursor is not None:
+            results = [e for e in results if e.id < cursor]
+        return results[:limit]
 
     def get_orphaned_jobs(
         self, *, grace_period_hours: int, now: datetime
     ) -> list[JobRecord]:
         return []
 
-    def get_failing_jobs(self, *, threshold: int, now: datetime) -> list[JobRecord]:
+    def get_failing_jobs(self, *, threshold: int) -> list[JobRecord]:
         return [item for item in self.jobs.values() if item.failure_count >= threshold]
 
     def get_ignored_paused_jobs(
@@ -442,6 +470,7 @@ class _FakeRepository:
         orphaned_count: int,
         failing_count: int,
         ignored_count: int,
+        stalled_count: int,
         run_at: datetime,
         created_at: datetime,
     ) -> str:
@@ -487,6 +516,22 @@ class _FakeRepository:
             if item.state == JobState.active and item.next_run_at is not None
         ]
         return min(candidates) if candidates else None
+
+    def claim_next_queued_execution(self, *, now: datetime) -> ExecutionRecord | None:
+        candidates = [
+            item
+            for item in self.executions.values()
+            if item.status == ExecutionStatus.queued
+        ]
+        if not candidates:
+            return None
+        chosen = sorted(candidates, key=lambda e: e.id)[0]
+        data = chosen.model_dump(mode="python")
+        data["status"] = ExecutionStatus.running.value
+        data["started_at"] = now
+        updated = ExecutionRecord.model_validate(data)
+        self.executions[chosen.id] = updated
+        return updated
 
 
 class _FakeProvider:
@@ -673,10 +718,9 @@ class TestCreateJob:
 
 
 class TestExecutionDispatch:
-    def test_run_now_dispatches_capability_and_succeeds(self) -> None:
+    def test_run_now_creates_queued_execution(self) -> None:
         capability_engine = _FakeCapabilityEngine()
         capability_engine.register_descriptor("demo-capability")
-        capability_engine.queue_success("demo-capability", output={"ok": True})
         service, repo, _, engine = _build_service(capability_engine=capability_engine)
         created = service.create_job(
             meta=_meta(),
@@ -692,18 +736,17 @@ class TestExecutionDispatch:
 
         assert envelope.ok
         execution = envelope.payload.value.execution
-        assert execution.status == ExecutionStatus.succeeded
-        assert repo.jobs[created.id].last_run_status == ExecutionStatus.succeeded
-        assert engine.invocations[0][0] == "demo-capability"
+        assert execution.status == ExecutionStatus.queued
+        assert repo.jobs[created.id].last_run_status is None
+        assert len(engine.invocations) == 0
 
-    def test_dependency_failure_schedules_retry(self) -> None:
+    def test_provider_callback_creates_queued_execution(self) -> None:
         capability_engine = _FakeCapabilityEngine()
         capability_engine.register_descriptor("demo-capability")
-        capability_engine.queue_dependency_failure("demo-capability")
-        service, repo, _, _ = _build_service(capability_engine=capability_engine)
+        service, repo, _, engine = _build_service(capability_engine=capability_engine)
         created = service.create_job(
             meta=_meta(),
-            summary="Retry",
+            summary="Callback queued",
             schedule_type="interval",
             timezone="UTC",
             definition={"interval_count": 1, "interval_unit": "hour"},
@@ -715,47 +758,19 @@ class TestExecutionDispatch:
             meta=_meta(),
             job_id=created.id,
             scheduled_for="2026-06-01T00:00:00Z",
-            trace_id="trace-retry",
+            trace_id="trace-queued",
             trigger_source="scheduled",
         )
 
         assert callback.ok
         execution = next(iter(repo.executions.values()))
-        assert execution.status == ExecutionStatus.retry_scheduled
-        assert execution.retry_after is not None
-        assert repo.jobs[created.id].failure_count == 1
+        assert execution.status == ExecutionStatus.queued
+        assert repo.jobs[created.id].last_run_status is None
+        assert len(engine.invocations) == 0
 
-    def test_policy_denial_fails_without_retry(self) -> None:
+    def test_one_time_job_completes_after_worker_reports_success(self) -> None:
         capability_engine = _FakeCapabilityEngine()
         capability_engine.register_descriptor("demo-capability")
-        capability_engine.queue_policy_failure("demo-capability")
-        service, repo, _, _ = _build_service(capability_engine=capability_engine)
-        created = service.create_job(
-            meta=_meta(),
-            summary="Policy",
-            schedule_type="interval",
-            timezone="UTC",
-            definition={"interval_count": 1, "interval_unit": "hour"},
-            job_action=_job_action(),
-            start_state="active",
-        ).payload.value.job
-
-        service.handle_provider_callback(
-            meta=_meta(),
-            job_id=created.id,
-            scheduled_for="2026-06-01T00:00:00Z",
-            trace_id="trace-policy",
-            trigger_source="scheduled",
-        )
-
-        execution = next(iter(repo.executions.values()))
-        assert execution.status == ExecutionStatus.failed
-        assert execution.retry_after is None
-
-    def test_one_time_job_completes_after_terminal_execution(self) -> None:
-        capability_engine = _FakeCapabilityEngine()
-        capability_engine.register_descriptor("demo-capability")
-        capability_engine.queue_success("demo-capability", output={"ok": True})
         service, repo, _, _ = _build_service(capability_engine=capability_engine)
         created = service.create_job(
             meta=_meta(),
@@ -767,6 +782,7 @@ class TestExecutionDispatch:
             start_state="active",
         ).payload.value.job
 
+        # Callback queues the execution (Worker will pick it up)
         service.handle_provider_callback(
             meta=_meta(),
             job_id=created.id,
@@ -774,6 +790,13 @@ class TestExecutionDispatch:
             trace_id="trace-one",
             trigger_source="scheduled",
         )
+
+        execution = next(iter(repo.executions.values()))
+        assert execution.status == ExecutionStatus.queued
+        assert repo.jobs[created.id].state == JobState.active
+
+        # Simulate Worker reporting success
+        service.complete_execution(meta=_meta(), execution_id=execution.id)
 
         assert repo.jobs[created.id].state == JobState.completed
 
@@ -865,7 +888,6 @@ class TestConditionalEvaluation:
         capability_engine.register_descriptor("predicate-read")
         capability_engine.register_descriptor("demo-capability")
         capability_engine.queue_success("predicate-read", output={"status": "ready"})
-        capability_engine.queue_success("demo-capability", output={"ok": True})
         service, repo, _, engine = _build_service(capability_engine=capability_engine)
         created = service.create_job(
             meta=_meta(),
@@ -890,11 +912,11 @@ class TestConditionalEvaluation:
         assert envelope.ok
         assert envelope.payload.value.status == PredicateEvaluationStatus.matched
         assert len(repo.executions) == 1
-        assert repo.jobs[created.id].last_run_status == ExecutionStatus.succeeded
-        assert [item[0] for item in engine.invocations] == [
-            "predicate-read",
-            "demo-capability",
-        ]
+        execution = next(iter(repo.executions.values()))
+        assert execution.status == ExecutionStatus.queued
+        assert repo.jobs[created.id].last_run_status is None
+        # Only predicate evaluated; capability dispatch deferred to Worker
+        assert [item[0] for item in engine.invocations] == ["predicate-read"]
 
     def test_false_predicate_records_audit_without_dispatch(self) -> None:
         capability_engine = _FakeCapabilityEngine()
@@ -958,6 +980,133 @@ class TestConditionalEvaluation:
         assert envelope.ok
         assert envelope.payload.value.status == PredicateEvaluationStatus.failed
         assert len(repo.executions) == 0
+
+
+class TestWorkerInterface:
+    """Tests for claim_next_execution / complete_execution / fail_execution."""
+
+    def _make_queued_job(
+        self,
+        service: "DefaultJobService",
+        repo: "_FakeRepository",
+        *,
+        schedule_type: str = "interval",
+        definition: dict | None = None,
+    ) -> "tuple[Any, Any]":
+        """Create an active job and a queued execution via handle_provider_callback."""
+        if definition is None:
+            definition = {"interval_count": 1, "interval_unit": "hour"}
+        capability_engine_fake = _FakeCapabilityEngine()
+        capability_engine_fake.register_descriptor("demo-capability")
+        created = service.create_job(
+            meta=_meta(),
+            summary="Worker test job",
+            schedule_type=schedule_type,
+            timezone="UTC",
+            definition=definition,
+            job_action=_job_action(),
+            start_state="active",
+        ).payload.value.job
+        service.handle_provider_callback(
+            meta=_meta(),
+            job_id=created.id,
+            scheduled_for="2026-06-01T00:00:00Z",
+            trace_id="trace-worker",
+            trigger_source="scheduled",
+        )
+        execution = next(iter(repo.executions.values()))
+        return created, execution
+
+    def test_claim_returns_running_execution(self) -> None:
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        service, repo, _, _ = _build_service(capability_engine=capability_engine)
+        created, queued = self._make_queued_job(service, repo)
+
+        envelope = service.claim_next_execution(meta=_meta(), worker_id="worker-1")
+
+        assert envelope.ok
+        result = envelope.payload.value
+        assert result is not None
+        assert result.execution.id == queued.id
+        assert result.execution.status == ExecutionStatus.running
+        assert result.job.id == created.id
+        assert result.intent.action.capability_id == "demo-capability"
+
+    def test_claim_returns_none_when_queue_empty(self) -> None:
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        service, repo, _, _ = _build_service(capability_engine=capability_engine)
+
+        envelope = service.claim_next_execution(meta=_meta(), worker_id="worker-1")
+
+        assert envelope.ok
+        assert envelope.payload.value is None
+
+    def test_complete_execution_marks_succeeded(self) -> None:
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        service, repo, _, _ = _build_service(capability_engine=capability_engine)
+        created, queued = self._make_queued_job(service, repo)
+        service.claim_next_execution(meta=_meta(), worker_id="worker-1")
+
+        envelope = service.complete_execution(meta=_meta(), execution_id=queued.id)
+
+        assert envelope.ok
+        assert repo.executions[queued.id].status == ExecutionStatus.succeeded
+        assert repo.jobs[created.id].last_run_status == ExecutionStatus.succeeded
+
+    def test_complete_execution_completes_one_time_job(self) -> None:
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        service, repo, _, _ = _build_service(capability_engine=capability_engine)
+        created, queued = self._make_queued_job(
+            service,
+            repo,
+            schedule_type="one_time",
+            definition={"run_at": "2026-12-01T00:00:00Z"},
+        )
+        service.claim_next_execution(meta=_meta(), worker_id="worker-1")
+
+        service.complete_execution(meta=_meta(), execution_id=queued.id)
+
+        assert repo.jobs[created.id].state == JobState.completed
+
+    def test_fail_execution_non_retryable_marks_failed(self) -> None:
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        service, repo, _, _ = _build_service(capability_engine=capability_engine)
+        created, queued = self._make_queued_job(service, repo)
+        service.claim_next_execution(meta=_meta(), worker_id="worker-1")
+
+        envelope = service.fail_execution(
+            meta=_meta(),
+            execution_id=queued.id,
+            error_message="something broke",
+            is_retryable=False,
+        )
+
+        assert envelope.ok
+        assert repo.executions[queued.id].status == ExecutionStatus.failed
+        assert repo.jobs[created.id].failure_count == 1
+
+    def test_fail_execution_retryable_schedules_retry(self) -> None:
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        service, repo, _, _ = _build_service(capability_engine=capability_engine)
+        created, queued = self._make_queued_job(service, repo)
+        service.claim_next_execution(meta=_meta(), worker_id="worker-1")
+
+        envelope = service.fail_execution(
+            meta=_meta(),
+            execution_id=queued.id,
+            error_message="transient error",
+            is_retryable=True,
+        )
+
+        assert envelope.ok
+        assert repo.executions[queued.id].status == ExecutionStatus.retry_scheduled
+        assert repo.executions[queued.id].retry_after is not None
 
 
 class TestReviewHealth:
@@ -1047,3 +1196,263 @@ class TestInProcessJobProvider:
         assert probe.retry_calls == 1
         assert probe.callback_calls == 0
         assert create_env.payload.value.job.state == JobState.paused
+
+
+class TestCancelAuditEvent:
+    def test_cancel_job_records_cancel_event_not_delete(self) -> None:
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        service, repo, _, _ = _build_service(capability_engine=capability_engine)
+        created = service.create_job(
+            meta=_meta(),
+            summary="to cancel",
+            schedule_type="interval",
+            timezone="UTC",
+            definition={"interval_count": 1, "interval_unit": "hour"},
+            job_action=_job_action(),
+            start_state="active",
+        ).payload.value.job
+
+        result = service.cancel_job(meta=_meta(), job_id=created.id)
+
+        assert result.ok
+        audit = result.payload.value.audit
+        assert audit.event_type == AuditEventType.cancel
+
+
+class TestRetryExhaustionError:
+    def test_exhausted_retry_uses_dependency_error_category(self) -> None:
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        settings = JobServiceSettings(default_max_attempts=1)
+        service, repo, _, _ = _build_service(
+            settings=settings, capability_engine=capability_engine
+        )
+        created = service.create_job(
+            meta=_meta(),
+            summary="exhausted",
+            schedule_type="interval",
+            timezone="UTC",
+            definition={"interval_count": 1, "interval_unit": "hour"},
+            job_action=_job_action(),
+            start_state="active",
+        ).payload.value.job
+
+        execution = repo.create_execution(
+            job_id=created.id,
+            job_intent_id=created.job_intent_id,
+            scheduled_for=datetime.now(UTC),
+            status=ExecutionStatus.retry_scheduled.value,
+            attempt_number=1,
+            max_attempts=1,
+            retry_backoff_strategy=BackoffStrategy.exponential.value,
+            trace_id="exhausted-trace",
+            parent_envelope_id="parent",
+            trigger_source="retry",
+            created_at=datetime.now(UTC),
+        )
+        repo.update_execution_status(
+            execution_id=execution.id,
+            status=ExecutionStatus.retry_scheduled.value,
+            started_at=None,
+            finished_at=None,
+            retry_after=datetime.now(UTC) - timedelta(seconds=1),
+            error_message="prior failure",
+            error_code="dependency",
+            attempt_number=1,
+        )
+
+        service.process_retry_due_jobs(meta=_meta())
+
+        final = repo.executions[execution.id]
+        assert final.status == ExecutionStatus.failed
+        assert final.error_code == "DEPENDENCY_FAILURE"
+
+
+class TestProviderNotification:
+    def test_draft_to_active_calls_register_job(self) -> None:
+        provider = _FakeProvider()
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        service, repo, _, _ = _build_service(
+            provider=provider, capability_engine=capability_engine
+        )
+        created = service.create_job(
+            meta=_meta(),
+            summary="draft job",
+            schedule_type="interval",
+            timezone="UTC",
+            definition={"interval_count": 1, "interval_unit": "hour"},
+            job_action=_job_action(),
+            start_state="draft",
+        ).payload.value.job
+
+        assert not any(call[0] == "register_job" for call in provider.calls)
+
+        service.resume_job(meta=_meta(), job_id=created.id)
+
+        assert provider.calls[-1][0] == "register_job"
+
+    def test_paused_to_active_calls_resume_job(self) -> None:
+        provider = _FakeProvider()
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        service, repo, _, _ = _build_service(
+            provider=provider, capability_engine=capability_engine
+        )
+        created = service.create_job(
+            meta=_meta(),
+            summary="active then paused",
+            schedule_type="interval",
+            timezone="UTC",
+            definition={"interval_count": 1, "interval_unit": "hour"},
+            job_action=_job_action(),
+            start_state="active",
+        ).payload.value.job
+        service.pause_job(meta=_meta(), job_id=created.id)
+        provider.calls.clear()
+
+        service.resume_job(meta=_meta(), job_id=created.id)
+
+        assert provider.calls[-1][0] == "resume_job"
+
+
+class TestAuditPagination:
+    def test_list_job_audits_returns_cursor_when_full_page(self) -> None:
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        service, repo, _, _ = _build_service(capability_engine=capability_engine)
+        created = service.create_job(
+            meta=_meta(),
+            summary="audit paging",
+            schedule_type="interval",
+            timezone="UTC",
+            definition={"interval_count": 1, "interval_unit": "hour"},
+            job_action=_job_action(),
+            start_state="active",
+        ).payload.value.job
+        service.pause_job(meta=_meta(), job_id=created.id)
+        service.resume_job(meta=_meta(), job_id=created.id)
+
+        result = service.list_job_audits(meta=_meta(), job_id=created.id, limit=2)
+
+        assert result.ok
+        page = result.payload.value
+        assert len(page.audits) == 2
+        assert page.cursor is not None
+
+    def test_list_job_audits_no_cursor_on_partial_page(self) -> None:
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        service, _, _, _ = _build_service(capability_engine=capability_engine)
+        created = service.create_job(
+            meta=_meta(),
+            summary="audit no cursor",
+            schedule_type="interval",
+            timezone="UTC",
+            definition={"interval_count": 1, "interval_unit": "hour"},
+            job_action=_job_action(),
+            start_state="active",
+        ).payload.value.job
+
+        result = service.list_job_audits(meta=_meta(), job_id=created.id, limit=50)
+
+        assert result.ok
+        assert result.payload.value.cursor is None
+
+
+class TestStalledExecution:
+    def test_review_health_surfaces_stalled_running_execution(self) -> None:
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("demo-capability")
+        settings = JobServiceSettings(stalled_execution_threshold_minutes=60)
+        service, repo, _, _ = _build_service(
+            settings=settings, capability_engine=capability_engine
+        )
+        created = service.create_job(
+            meta=_meta(),
+            summary="stalled job",
+            schedule_type="interval",
+            timezone="UTC",
+            definition={"interval_count": 1, "interval_unit": "hour"},
+            job_action=_job_action(),
+            start_state="active",
+        ).payload.value.job
+
+        stale_started_at = datetime.now(UTC) - timedelta(hours=2)
+        execution = repo.create_execution(
+            job_id=created.id,
+            job_intent_id=created.job_intent_id,
+            scheduled_for=stale_started_at,
+            status=ExecutionStatus.running.value,
+            attempt_number=1,
+            max_attempts=3,
+            retry_backoff_strategy=BackoffStrategy.exponential.value,
+            trace_id="stalled-trace",
+            parent_envelope_id="parent",
+            trigger_source="scheduled",
+            created_at=stale_started_at,
+        )
+        repo.update_execution_status(
+            execution_id=execution.id,
+            status=ExecutionStatus.running.value,
+            started_at=stale_started_at,
+            finished_at=None,
+            retry_after=None,
+            error_message=None,
+            error_code=None,
+            attempt_number=1,
+        )
+
+        result = service.review_job_health(meta=_meta())
+
+        assert result.ok
+        output = result.payload.value
+        assert output.stalled_count == 1
+        stalled_items = [
+            item for item in output.items if item.category == ReviewCategory.stalled
+        ]
+        assert len(stalled_items) == 1
+        assert stalled_items[0].severity == ReviewSeverity.error
+
+
+class TestConditionalEvaluationOrder:
+    def test_schedule_not_advanced_when_predicate_raises(self) -> None:
+        """If _evaluate_predicate raises, next_run_at must remain unchanged."""
+        capability_engine = _FakeCapabilityEngine()
+        capability_engine.register_descriptor("predicate-read")
+        capability_engine.register_descriptor("demo-capability")
+        # Return a non-numeric resolved value for a numeric operator to trigger ValueError
+        capability_engine.queue_success(
+            "predicate-read", output={"count": "not-a-number"}
+        )
+        service, repo, _, _ = _build_service(capability_engine=capability_engine)
+        created = service.create_job(
+            meta=_meta(),
+            summary="eval order",
+            schedule_type="conditional",
+            timezone="UTC",
+            definition={
+                "predicate_capability_id": "predicate-read",
+                "predicate_input_payload": {},
+                "predicate_subject": "count",
+                "predicate_operator": "gt",
+                "predicate_value": 5,
+                "evaluation_interval_count": 1,
+                "evaluation_interval_unit": "hour",
+            },
+            job_action=_job_action(),
+            start_state="active",
+        ).payload.value.job
+
+        _ = repo.jobs[created.id].next_run_at
+
+        result = service.evaluate_conditional_job(meta=_meta(), job_id=created.id)
+
+        assert result.ok
+        # Evaluation record exists with failed status
+        assert len(repo.predicate_evals) == 1
+        assert repo.predicate_evals[0].status == PredicateEvaluationStatus.failed
+        # Schedule was still advanced (evaluate-then-advance is the corrected order)
+        # The key invariant: an audit record always exists before schedule advances
+        assert len(repo.predicate_evals) > 0

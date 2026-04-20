@@ -1,7 +1,7 @@
 """In-process job provider using a lightweight polling thread.
 
 Satisfies the ``JobProviderAdapter`` protocol without any external
-scheduling infrastructure (e.g. Celery). A single daemon thread polls
+scheduling infrastructure. A single daemon thread polls
 for the next due job and invokes ``handle_provider_callback`` directly.
 """
 

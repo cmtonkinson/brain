@@ -411,6 +411,31 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
             )
         return success(meta=meta, payload=self._descriptor_from_manifest(manifest))
 
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("meta",),
+    )
+    def resolve_slash_command(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        name: str,
+    ) -> Envelope[CapabilityDescriptor | None]:
+        """Return the descriptor for a slash command by name or alias."""
+        try:
+            validate_meta(meta)
+        except ValueError as exc:
+            return failure(
+                meta=meta,
+                errors=[validation_error(str(exc), code=codes.INVALID_ARGUMENT)],
+            )
+
+        manifest = self._registry.resolve_slash_command(name=name.strip().lower())
+        if manifest is None:
+            return success(meta=meta, payload=None)
+        return success(meta=meta, payload=self._descriptor_from_manifest(manifest))
+
     def sync_capability_discovery_index(self) -> None:
         """Refresh the derived capability discovery index against enabled manifests."""
         if (
@@ -723,6 +748,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
 
     def _descriptor_from_manifest(self, manifest: object) -> CapabilityDescriptor:
         """Project one registered manifest into the agent-facing descriptor shape."""
+        sc = manifest.slash_command
         return CapabilityDescriptor(
             capability_id=manifest.capability_id,
             kind=manifest.kind,
@@ -735,6 +761,13 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
             requires_approval=manifest.requires_approval,
             side_effects=manifest.side_effects,
             required_capabilities=manifest.required_capabilities,
+            slash_command_name=(
+                sc.name or manifest.capability_id if sc is not None else None
+            ),
+            slash_command_aliases=(sc.aliases if sc is not None else ()),
+            slash_command_description=(
+                sc.description or manifest.summary if sc is not None else None
+            ),
         )
 
     def _required_params(self, input_schema: dict[str, Any] | None) -> tuple[str, ...]:

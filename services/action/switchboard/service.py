@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from packages.brain_sdk.client import BrainClient
 from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from resources.adapters.signal.adapter import SignalAdapter
@@ -67,6 +68,7 @@ def build_switchboard_service(
     cache_service: CacheAuthorityService,
     signal_adapter: SignalAdapter | None = None,
     attention_router_service: AttentionRouterService | None = None,
+    brain_client: BrainClient | None = None,
 ) -> SwitchboardService:
     """Build default Switchboard implementation from typed settings."""
     from resources.adapters.signal import (
@@ -87,6 +89,7 @@ def build_switchboard_service(
         cache_service=cache_service,
         attention_router_service=attention_router_service,
         approval_response_settings=settings.core.profile.approval_responses,
+        brain_client=brain_client,
     )
 
 

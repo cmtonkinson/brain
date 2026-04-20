@@ -56,9 +56,46 @@ class PublicApiObservabilitySettings(BaseModel):
     otel: PublicApiOtelSettings = Field(default_factory=PublicApiOtelSettings)
 
 
+class OtlpObservabilitySettings(BaseModel):
+    """OTLP exporter settings for process-level telemetry."""
+
+    endpoint: str = "http://otel-collector:4318"
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
+class TraceObservabilitySettings(BaseModel):
+    """Trace export settings."""
+
+    enabled: bool = True
+    sample_ratio: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class MetricObservabilitySettings(BaseModel):
+    """Metric export settings."""
+
+    enabled: bool = True
+
+
+class LlmObservabilitySettings(BaseModel):
+    """LLM observability settings."""
+
+    enabled: bool = True
+    backend: Literal["langfuse"] = "langfuse"
+    capture_content: bool = True
+
+
 class ObservabilitySettings(BaseModel):
     """Global observability configuration."""
 
+    enabled: bool = False
+    otlp: OtlpObservabilitySettings = Field(default_factory=OtlpObservabilitySettings)
+    traces: TraceObservabilitySettings = Field(
+        default_factory=TraceObservabilitySettings
+    )
+    metrics: MetricObservabilitySettings = Field(
+        default_factory=MetricObservabilitySettings
+    )
+    llm: LlmObservabilitySettings = Field(default_factory=LlmObservabilitySettings)
     public_api: PublicApiObservabilitySettings = Field(
         default_factory=PublicApiObservabilitySettings
     )
@@ -261,6 +298,14 @@ class AgentActorSettings(ActorNamespaceSettings):
     tool_loop_tier2_hop_threshold: int = Field(default=3, ge=1)
 
 
+class WorkerActorSettings(ActorNamespaceSettings):
+    """Worker Actor runtime settings."""
+
+    source: str = "worker"
+    max_workers: int = Field(default=4, ge=1, le=32)
+    poll_interval_seconds: float = Field(default=2.0, gt=0)
+
+
 class ActorSettings(BaseSettings):
     """Actor runtime settings — loaded from actors.yaml."""
 
@@ -272,17 +317,13 @@ class ActorSettings(BaseSettings):
     )
 
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     core: ActorCoreConnectionSettings = Field(
         default_factory=ActorCoreConnectionSettings
     )
     cli: CliActorSettings = Field(default_factory=CliActorSettings)
     agent: AgentActorSettings = Field(default_factory=AgentActorSettings)
-    beat: ActorNamespaceSettings = Field(
-        default_factory=lambda: ActorNamespaceSettings(source="beat")
-    )
-    worker: ActorNamespaceSettings = Field(
-        default_factory=lambda: ActorNamespaceSettings(source="worker")
-    )
+    worker: WorkerActorSettings = Field(default_factory=WorkerActorSettings)
 
     _config_path: ClassVar[Path] = DEFAULT_ACTORS_CONFIG_PATH
 

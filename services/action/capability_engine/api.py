@@ -41,6 +41,9 @@ class _CapabilityDescriptorOut(BaseModel):
     requires_approval: bool
     side_effects: tuple[str, ...]
     required_capabilities: tuple[str, ...]
+    slash_command_name: str | None = None
+    slash_command_aliases: tuple[str, ...] = ()
+    slash_command_description: str | None = None
 
 
 class _ErrorOut(BaseModel):
@@ -73,6 +76,20 @@ class _DescribeOneRequest(BaseModel):
     envelope_id: str | None = None
     parent_id: str = ""
     capability_id: str
+
+
+class _SlashLookupRequest(BaseModel):
+    source: str = "unknown"
+    principal: str = "unknown"
+    trace_id: str | None = None
+    envelope_id: str | None = None
+    parent_id: str = ""
+    name: str
+
+
+class _SlashLookupResponse(BaseModel):
+    capability: _CapabilityDescriptorOut | None
+    errors: list[_ErrorOut]
 
 
 class _CapabilitySearchHitOut(BaseModel):
@@ -205,6 +222,28 @@ def register_routes(*, router: APIRouter, service: CapabilityEngineService) -> N
             errors=[_error_out(e) for e in result.errors],
         )
 
+    @router.post("/capabilities/slash-lookup", response_model=_SlashLookupResponse)
+    async def slash_lookup(request: Request) -> _SlashLookupResponse:
+        body = await read_json_body(request)
+        req = _SlashLookupRequest.model_validate(body)
+        meta = _meta_from_request(
+            req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
+        )
+        result = await run_in_threadpool(
+            service.resolve_slash_command,
+            meta=meta,
+            name=req.name,
+        )
+        capability = (
+            None
+            if result.payload is None or result.payload.value is None
+            else _descriptor_out(result.payload.value)
+        )
+        return _SlashLookupResponse(
+            capability=capability,
+            errors=[_error_out(e) for e in result.errors],
+        )
+
     @router.post("/capabilities/invoke", response_model=_InvokeResponse)
     async def invoke_capability(request: Request) -> _InvokeResponse:
         body = await read_json_body(request)
@@ -274,6 +313,9 @@ def _descriptor_out(d: CapabilityDescriptor) -> _CapabilityDescriptorOut:
         requires_approval=d.requires_approval,
         side_effects=d.side_effects,
         required_capabilities=d.required_capabilities,
+        slash_command_name=d.slash_command_name,
+        slash_command_aliases=d.slash_command_aliases,
+        slash_command_description=d.slash_command_description,
     )
 
 

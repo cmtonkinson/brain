@@ -9,6 +9,7 @@ from packages.brain_sdk.calls import (
     ConsoleEnqueueResult,
     ConsoleResponseMessage,
     CoreHealthResult,
+    JobClaimResult,
     LmsChatResult,
     LmsToolChatResult,
     MemoryContextBlock,
@@ -21,6 +22,9 @@ from packages.brain_sdk.calls import (
     call_capability_describe,
     call_capability_invoke,
     call_core_health,
+    call_job_claim_execution,
+    call_job_complete_execution,
+    call_job_fail_execution,
     call_lms_chat,
     call_lms_chat_with_tools,
     call_memory_assemble_context,
@@ -31,6 +35,7 @@ from packages.brain_sdk.calls import (
     call_memory_record_outbound_candidate,
     call_memory_record_outbound_delivery,
     call_memory_record_response,
+    call_slash_lookup,
     call_switchboard_enqueue_console,
     call_switchboard_poll_console_response,
     call_switchboard_poll_operator_instruction,
@@ -129,6 +134,20 @@ class BrainClient:
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
             capability_id=capability_id,
+        )
+
+    def resolve_slash_command(
+        self,
+        *,
+        name: str,
+        meta: MetaOverrides | None = None,
+    ) -> CapabilityDescriptor | None:
+        """Return the capability descriptor bound to a slash command name or alias."""
+        return call_slash_lookup(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            name=name,
         )
 
     def invoke_capability(
@@ -371,6 +390,54 @@ class BrainClient:
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
             message_text=message_text,
+        )
+
+    def job_claim_execution(
+        self,
+        *,
+        worker_id: str = "worker",
+        meta: MetaOverrides | None = None,
+    ) -> JobClaimResult | None:
+        """Claim the next queued job execution.  Returns None when nothing queued."""
+        return call_job_claim_execution(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            worker_id=worker_id,
+        )
+
+    def job_complete_execution(
+        self,
+        *,
+        execution_id: str,
+        meta: MetaOverrides | None = None,
+    ) -> None:
+        """Report a successful execution result to the Job Service."""
+        call_job_complete_execution(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            execution_id=execution_id,
+        )
+
+    def job_fail_execution(
+        self,
+        *,
+        execution_id: str,
+        error_message: str,
+        error_code: str | None = None,
+        is_retryable: bool = False,
+        meta: MetaOverrides | None = None,
+    ) -> None:
+        """Report a failed execution result to the Job Service."""
+        call_job_fail_execution(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            execution_id=execution_id,
+            error_message=error_message,
+            error_code=error_code,
+            is_retryable=is_retryable,
         )
 
     def switchboard_poll_console_response(

@@ -9,7 +9,6 @@ import yaml
 from packages.brain_shared.config import (
     ApprovalResponseSettings,
     ActorCoreConnectionSettings,
-    ActorNamespaceSettings,
     CoreRuntimeSettings,
     CoreSettings,
     CoreBootSettings,
@@ -25,7 +24,11 @@ from packages.brain_shared.config import (
     load_resources_settings,
     resolve_component_settings,
 )
-from packages.brain_shared.config.models import AgentActorSettings, CliActorSettings
+from packages.brain_shared.config.models import (
+    AgentActorSettings,
+    CliActorSettings,
+    WorkerActorSettings,
+)
 from packages.brain_shared.config.models import OperatorProfileSettings
 from resources.adapters.llm.config import resolve_llm_adapter_settings
 from resources.adapters.llm.config import LlmAdapterSettings
@@ -149,6 +152,10 @@ def test_load_core_settings_uses_model_defaults_when_sources_missing(
     assert settings.boot.boot_retry_attempts == 3
     assert settings.http.host == "0.0.0.0"
     assert settings.http.port == 8898
+    assert settings.observability.enabled is False
+    assert settings.observability.otlp.endpoint == "http://otel-collector:4318"
+    assert settings.observability.llm.backend == "langfuse"
+    assert settings.observability.llm.capture_content is True
     assert settings.profile.operator.signal_contact_e164 == "+12222222222"
     assert settings.profile.operator_name == "Operator"
 
@@ -539,11 +546,11 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
             **LoggingSettings().model_dump(mode="json"),
             "process_name": "agent",
         },
+        "observability": ObservabilitySettings().model_dump(mode="json"),
         "core": ActorCoreConnectionSettings().model_dump(mode="json"),
         "cli": CliActorSettings().model_dump(mode="json"),
         "agent": AgentActorSettings().model_dump(mode="json"),
-        "beat": ActorNamespaceSettings(source="beat").model_dump(mode="json"),
-        "worker": ActorNamespaceSettings(source="worker").model_dump(mode="json"),
+        "worker": WorkerActorSettings().model_dump(mode="json"),
     }
 
     assert yaml.safe_load(

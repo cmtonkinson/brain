@@ -7,6 +7,31 @@ logging:
   process_name: agent
   environment: dev
 
+observability:
+  enabled: false
+  otlp:
+    endpoint: http://otel-collector:4318
+    headers: {}
+  traces:
+    enabled: true
+    sample_ratio: 1.0
+  metrics:
+    enabled: true
+  llm:
+    enabled: true
+    backend: langfuse
+    capture_content: true
+  public_api:
+    otel:
+      meter_name: brain.public_api
+      tracer_name: brain.public_api
+      metric_public_api_calls_total: brain_public_api_calls_total
+      metric_public_api_duration_ms: brain_public_api_duration_ms
+      metric_public_api_errors_total: brain_public_api_errors_total
+      metric_instrumentation_failures_total: brain_public_api_instrumentation_failures_total
+      metric_qdrant_ops_total: brain_qdrant_ops_total
+      metric_qdrant_op_duration_ms: brain_qdrant_op_duration_ms
+
 core:
   host: 127.0.0.1
   port: 8898
@@ -29,10 +54,8 @@ agent:
   tool_return_max_chars: 8000
   tool_loop_tier2_hop_threshold: 3
 
-beat:
-  principal: operator
-  source: beat
-
 worker:
   principal: operator
   source: worker
+  max_workers: 4
+  poll_interval_seconds: 2.0

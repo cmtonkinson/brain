@@ -196,6 +196,7 @@ class ListAuditsRequest(_ValidationModel):
 
     job_id: str = Field(min_length=1)
     limit: int = Field(default=50, ge=1, le=_MAX_PAGE_SIZE)
+    cursor: str | None = None
 
 
 class HandleCallbackRequest(_ValidationModel):
@@ -205,6 +206,21 @@ class HandleCallbackRequest(_ValidationModel):
     scheduled_for: datetime
     trace_id: str = Field(min_length=1)
     trigger_source: str = Field(min_length=1)
+
+
+class ClaimExecutionRequest(_ValidationModel):
+    """Validated claim-execution request shape."""
+
+    worker_id: str = Field(min_length=1, default="worker")
+
+
+class FailExecutionRequest(_ValidationModel):
+    """Validated fail-execution request shape."""
+
+    execution_id: str = Field(min_length=1)
+    error_message: str = Field(min_length=1, max_length=2048)
+    error_code: str | None = None
+    is_retryable: bool = False
 
 
 # ---------------------------------------------------------------------------

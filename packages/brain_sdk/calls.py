@@ -54,6 +54,9 @@ class CapabilityDescriptor:
     side_effects: tuple[str, ...]
     required_capabilities: tuple[str, ...]
     simple_output_path: str | None = None
+    slash_command_name: str | None = None
+    slash_command_aliases: tuple[str, ...] = ()
+    slash_command_description: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,6 +302,33 @@ def call_capability_describe(
             message="capabilities.describe_one domain failure: missing capability",
             operation="capabilities.describe_one",
         )
+    return _capability_descriptor(capability)
+
+
+def call_slash_lookup(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    name: str,
+) -> CapabilityDescriptor | None:
+    """Look up one capability descriptor by slash command name or alias."""
+    data = _post_json(
+        operation="capabilities.slash_lookup",
+        http=http,
+        url="/capabilities/slash-lookup",
+        body={**metadata, "name": name},
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="capabilities.slash_lookup",
+        errors=_errors_from_data(data),
+    )
+    capability = data.get("capability")
+    if capability is None:
+        return None
+    if not isinstance(capability, dict):
+        return None
     return _capability_descriptor(capability)
 
 
@@ -707,6 +737,117 @@ def call_memory_record_response(
     return bool(data.get("payload"))
 
 
+@dataclass(frozen=True, slots=True)
+class JobClaimResult:
+    """Claimed execution details needed by a Worker Actor to execute a job."""
+
+    execution_id: str
+    job_id: str
+    capability_id: str
+    input_payload: dict[str, Any]
+    actor: str
+    trace_id: str
+    parent_envelope_id: str
+    attempt_number: int
+    max_attempts: int
+
+
+def call_job_claim_execution(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    worker_id: str = "worker",
+) -> JobClaimResult | None:
+    """Claim the next queued job execution for a Worker Actor.
+
+    Returns None when no queued execution is available.
+    """
+    data = _post_json(
+        operation="jobs.executions.claim",
+        http=http,
+        url="/jobs/executions/claim",
+        body={**metadata, "worker_id": worker_id},
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="jobs.executions.claim",
+        errors=_errors_from_data(data),
+    )
+    payload = data.get("payload")
+    if payload is None:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    execution = payload.get("execution") or {}
+    intent = payload.get("intent") or {}
+    action = intent.get("action") or {}
+    if not isinstance(execution, dict):
+        return None
+    return JobClaimResult(
+        execution_id=str(execution.get("id", "")),
+        job_id=str(execution.get("job_id", "")),
+        capability_id=str(action.get("capability_id", "")),
+        input_payload=dict(action.get("input_payload") or {}),
+        actor=str(intent.get("created_by_actor", "")),
+        trace_id=str(execution.get("trace_id", "")),
+        parent_envelope_id=str(execution.get("parent_envelope_id", "")),
+        attempt_number=int(execution.get("attempt_number", 1)),
+        max_attempts=int(execution.get("max_attempts", 1)),
+    )
+
+
+def call_job_complete_execution(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    execution_id: str,
+) -> None:
+    """Report a successful execution result to the Job Service."""
+    data = _post_json(
+        operation="jobs.executions.complete",
+        http=http,
+        url="/jobs/executions/complete",
+        body={**metadata, "execution_id": execution_id},
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="jobs.executions.complete",
+        errors=_errors_from_data(data),
+    )
+
+
+def call_job_fail_execution(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    execution_id: str,
+    error_message: str,
+    error_code: str | None = None,
+    is_retryable: bool = False,
+) -> None:
+    """Report a failed execution result to the Job Service."""
+    data = _post_json(
+        operation="jobs.executions.fail",
+        http=http,
+        url="/jobs/executions/fail",
+        body={
+            **metadata,
+            "execution_id": execution_id,
+            "error_message": error_message,
+            "error_code": error_code,
+            "is_retryable": is_retryable,
+        },
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="jobs.executions.fail",
+        errors=_errors_from_data(data),
+    )
+
+
 def call_switchboard_poll_operator_instruction(
     *,
     http: object,
@@ -890,6 +1031,19 @@ def _capability_descriptor(value: object) -> CapabilityDescriptor:
         side_effects=tuple(str(entry) for entry in item.get("side_effects", ())),
         required_capabilities=tuple(
             str(entry) for entry in item.get("required_capabilities", ())
+        ),
+        slash_command_name=(
+            None
+            if item.get("slash_command_name") is None
+            else str(item.get("slash_command_name"))
+        ),
+        slash_command_aliases=tuple(
+            str(entry) for entry in item.get("slash_command_aliases", ())
+        ),
+        slash_command_description=(
+            None
+            if item.get("slash_command_description") is None
+            else str(item.get("slash_command_description"))
         ),
     )
 

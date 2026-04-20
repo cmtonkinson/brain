@@ -81,7 +81,15 @@ def _run_command(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _docker_available() -> bool:
-    """Return True when docker CLI is callable in the current environment."""
+    """Return True when docker CLI is callable and published ports are reachable.
+
+    Returns False under nektos/act (ACT=true) because act runs inside a
+    container and publishes ports to the outer host's loopback — those
+    addresses are unreachable from within the act container, so ephemeral
+    container fixtures would time out rather than skip cleanly.
+    """
+    if os.getenv("ACT"):
+        return False
     try:
         _run_command("docker", "version")
     except FileNotFoundError, subprocess.CalledProcessError:

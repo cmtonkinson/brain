@@ -22,6 +22,7 @@ from packages.brain_shared.config import CoreRuntimeSettings, load_core_runtime_
 from packages.brain_shared.logging import configure_logging, get_logger
 from packages.brain_shared.http.server import create_app, create_server
 from packages.brain_shared.manifest import ComponentManifest, get_registry
+from packages.brain_shared.observability import bootstrap_observability
 
 _LOGGER = get_logger(__name__)
 _RUNNING = True
@@ -190,6 +191,11 @@ def main() -> None:
         json_output=settings.core.logging.json_output,
         process_name=settings.core.logging.process_name,
         environment=settings.core.logging.environment,
+    )
+    bootstrap_observability(
+        settings=settings.core.observability,
+        service_name=str(settings.core.logging.process_name),
+        environment=str(settings.core.logging.environment),
     )
 
     imported = import_registered_component_modules()

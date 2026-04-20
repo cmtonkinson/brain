@@ -120,7 +120,7 @@ class MessageInput(Widget, can_focus=False):
         self.query_one("#input-field", ExpandingTextArea).clear()
 
     def action_open_editor(self) -> None:
-        """Spawn $EDITOR with a temp file, send contents on exit."""
+        """Spawn $EDITOR with a temp file; load contents into input buffer on exit."""
         editor = self._editor
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -141,7 +141,10 @@ class MessageInput(Widget, can_focus=False):
             with open(tmp_path) as f:
                 text = f.read().rstrip("\n")
             if text:
-                self.post_message(self.Submitted(text))
+                field = self.query_one("#input-field", ExpandingTextArea)
+                field.load_text(text)
+                field.move_cursor(field.document.end)
+                field.focus()
         except FileNotFoundError:
             self.app.notify(f"Editor not found: {editor!r}", severity="error")
         finally:

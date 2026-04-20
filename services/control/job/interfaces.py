@@ -240,8 +240,16 @@ class JobRepository(Protocol):
         """List executions for one job with cursor pagination."""
         ...
 
-    def list_retry_due_executions(self, *, now: datetime) -> list[ExecutionRecord]:
+    def list_retry_due_executions(
+        self, *, now: datetime, limit: int
+    ) -> list[ExecutionRecord]:
         """List executions with status retry_scheduled and retry_after <= now."""
+        ...
+
+    def get_stalled_executions(
+        self, *, threshold_minutes: int, now: datetime
+    ) -> list[ExecutionRecord]:
+        """List executions stuck in running state beyond threshold_minutes."""
         ...
 
     # -- audits --
@@ -262,7 +270,9 @@ class JobRepository(Protocol):
         """Persist one job mutation audit entry."""
         ...
 
-    def list_job_audits(self, *, job_id: str, limit: int) -> list[JobMutationAudit]:
+    def list_job_audits(
+        self, *, job_id: str, limit: int, cursor: str | None
+    ) -> list[JobMutationAudit]:
         """List mutation audits for one job."""
         ...
 
@@ -302,7 +312,7 @@ class JobRepository(Protocol):
         ...
 
     def list_predicate_evaluations(
-        self, *, job_id: str, limit: int
+        self, *, job_id: str, limit: int, cursor: str | None
     ) -> list[PredicateEvaluationRecord]:
         """List predicate evaluations for one job."""
         ...
@@ -315,7 +325,7 @@ class JobRepository(Protocol):
         """List active jobs with next_run_at past due beyond grace period."""
         ...
 
-    def get_failing_jobs(self, *, threshold: int, now: datetime) -> list[JobRecord]:
+    def get_failing_jobs(self, *, threshold: int) -> list[JobRecord]:
         """List active jobs with failure_count >= threshold."""
         ...
 
@@ -331,6 +341,7 @@ class JobRepository(Protocol):
         orphaned_count: int,
         failing_count: int,
         ignored_count: int,
+        stalled_count: int,
         run_at: datetime,
         created_at: datetime,
     ) -> str:
@@ -364,4 +375,15 @@ class JobRepository(Protocol):
 
     def get_next_run_time(self) -> datetime | None:
         """Return the earliest next_run_at across all active jobs."""
+        ...
+
+    # -- worker claim --
+
+    def claim_next_queued_execution(self, *, now: datetime) -> ExecutionRecord | None:
+        """Atomically claim the oldest queued execution, transitioning it to running.
+
+        Uses SELECT ... FOR UPDATE SKIP LOCKED so concurrent callers do not
+        double-claim the same execution.  Returns None when no queued execution
+        is available.
+        """
         ...

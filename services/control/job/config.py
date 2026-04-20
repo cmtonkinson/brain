@@ -20,6 +20,8 @@ class JobServiceSettings(BaseModel):
     orphan_grace_period_hours: int = Field(default=24, ge=1)
     consecutive_failure_threshold: int = Field(default=3, ge=1)
     ignored_pause_age_days: int = Field(default=30, ge=1)
+    stalled_execution_threshold_minutes: int = Field(default=60, ge=1)
+    retry_batch_size: int = Field(default=100, ge=1)
     provider_poll_interval_seconds: float = Field(default=15.0, gt=0)
 
     @field_validator("default_backoff_strategy")

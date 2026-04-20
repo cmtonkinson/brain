@@ -12,6 +12,7 @@ from fastapi import FastAPI, Request, Response
 
 from .errors import InvalidBodyError, InvalidJsonBodyError, MissingHeaderError
 from packages.brain_shared.logging import get_logger
+from packages.brain_shared.observability import is_observability_enabled
 
 _LOGGER = get_logger(__name__)
 
@@ -32,6 +33,7 @@ def create_app(
 ) -> FastAPI:
     """Create a FastAPI app with project defaults."""
     app = FastAPI(title=title, version=version)
+    _instrument_fastapi_app(app)
     if log_requests:
         _install_request_logging(app)
     return app
@@ -78,6 +80,18 @@ def _install_request_logging(app: FastAPI) -> None:
             },
         )
         return response
+
+
+def _instrument_fastapi_app(app: FastAPI) -> None:
+    """Attach FastAPI OTel instrumentation when process observability is active."""
+    if not is_observability_enabled():
+        return
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+        FastAPIInstrumentor.instrument_app(app)
+    except ImportError:
+        return
 
 
 def get_header(

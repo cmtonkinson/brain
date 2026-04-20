@@ -30,6 +30,7 @@ def build_component(
     *, settings: CoreRuntimeSettings, components: Mapping[str, object]
 ) -> object:
     """Build concrete runtime instance for this registered service component."""
+    from packages.brain_sdk.client import BrainSdkClient
     from resources.adapters.signal.adapter import SignalAdapter
     from services.action.attention_router.service import AttentionRouterService
     from services.action.switchboard.service import build_switchboard_service
@@ -44,14 +45,17 @@ def build_component(
         raise TypeError("adapter_signal")
 
     attention_router = components.get("service_attention_router")
-    if attention_router is not None and not isinstance(
-        attention_router, AttentionRouterService
-    ):
+    if attention_router is None:
+        raise KeyError("service_attention_router")
+    if not isinstance(attention_router, AttentionRouterService):
         raise TypeError("service_attention_router")
+
+    brain_client = BrainSdkClient(source="switchboard", principal="operator")
 
     return build_switchboard_service(
         settings=settings,
         cache_service=cache_service,
         signal_adapter=signal_adapter,
         attention_router_service=attention_router,
+        brain_client=brain_client,
     )

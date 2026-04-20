@@ -1,0 +1,181 @@
+services:
+  brain-core:
+    environment:
+      BRAIN_CORE_OBSERVABILITY__ENABLED: "true"
+      BRAIN_CORE_OBSERVABILITY__OTLP__ENDPOINT: http://otel-collector:4318
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  brain-agent:
+    environment:
+      BRAIN_ACTORS_OBSERVABILITY__ENABLED: "true"
+      BRAIN_ACTORS_OBSERVABILITY__OTLP__ENDPOINT: http://otel-collector:4318
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.142.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    environment:
+      LANGFUSE_OTEL_AUTH_HEADER: ${LANGFUSE_OTEL_AUTH_HEADER:-Basic replace-me}
+    volumes:
+      - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "${BRAIN_OTEL_COLLECTOR_PORT_BIND:-4318:4318}"
+    depends_on:
+      langfuse-web:
+        condition: service_started
+
+  langfuse-web:
+    image: docker.io/langfuse/langfuse:3
+    restart: unless-stopped
+    environment: &langfuse-env
+      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-replace-me}
+      DATABASE_URL: postgresql://langfuse:${LANGFUSE_POSTGRES_PASSWORD:-replace-me}@postgres:5432/langfuse
+      SALT: ${LANGFUSE_SALT:-replace-me}
+      ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
+      LANGFUSE_LOG_FORMAT: json
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: ${LANGFUSE_CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-replace-me}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_AUTH: ""
+      REDIS_TLS_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${SEAWEEDFS_S3_ACCESS_KEY_ID:-replace-me}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${SEAWEEDFS_S3_SECRET_ACCESS_KEY:-replace-me}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://seaweedfs:8333
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${SEAWEEDFS_S3_ACCESS_KEY_ID:-replace-me}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${SEAWEEDFS_S3_SECRET_ACCESS_KEY:-replace-me}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT:-http://localhost:8333}
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: ${LANGFUSE_S3_BATCH_EXPORT_ENABLED:-false}
+      LANGFUSE_S3_BATCH_EXPORT_BUCKET: langfuse
+      LANGFUSE_S3_BATCH_EXPORT_PREFIX: exports/
+      LANGFUSE_S3_BATCH_EXPORT_REGION: us-east-1
+      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: http://seaweedfs:8333
+      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT:-http://localhost:8333}
+      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: ${SEAWEEDFS_S3_ACCESS_KEY_ID:-replace-me}
+      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: ${SEAWEEDFS_S3_SECRET_ACCESS_KEY:-replace-me}
+      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: "true"
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-}
+    ports:
+      - "${LANGFUSE_WEB_PORT_BIND:-3000:3000}"
+    depends_on:
+      langfuse-postgres-init:
+        condition: service_completed_successfully
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seaweedfs-bucket-init:
+        condition: service_completed_successfully
+
+  langfuse-worker:
+    image: docker.io/langfuse/langfuse-worker:3
+    restart: unless-stopped
+    environment:
+      <<: *langfuse-env
+    depends_on:
+      langfuse-postgres-init:
+        condition: service_completed_successfully
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seaweedfs-bucket-init:
+        condition: service_completed_successfully
+
+  langfuse-postgres-init:
+    image: postgres:16
+    restart: "no"
+    environment:
+      PGPASSWORD: brain
+      LANGFUSE_POSTGRES_PASSWORD: ${LANGFUSE_POSTGRES_PASSWORD:-replace-me}
+    command:
+      - sh
+      - -ec
+      - |
+        psql --host postgres --username brain --dbname brain --tuples-only --command "SELECT 1 FROM pg_roles WHERE rolname = 'langfuse'" | grep -q 1 || psql --host postgres --username brain --dbname brain --command "CREATE ROLE langfuse LOGIN PASSWORD '$${LANGFUSE_POSTGRES_PASSWORD}'"
+        psql --host postgres --username brain --dbname brain --tuples-only --command "SELECT 1 FROM pg_database WHERE datname = 'langfuse'" | grep -q 1 || createdb --host postgres --username brain --owner langfuse langfuse
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:25.11
+    restart: unless-stopped
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: ${LANGFUSE_CLICKHOUSE_USER:-clickhouse}
+      CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-replace-me}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    ports:
+      - "${LANGFUSE_CLICKHOUSE_HTTP_PORT_BIND:-127.0.0.1:8123:8123}"
+      - "${LANGFUSE_CLICKHOUSE_NATIVE_PORT_BIND:-127.0.0.1:9000:9000}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.97
+    restart: unless-stopped
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333"]
+    volumes:
+      - langfuse_seaweedfs_data:/data
+    ports:
+      - "${SEAWEEDFS_S3_PORT_BIND:-8333:8333}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8333 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  seaweedfs-bucket-init:
+    image: amazon/aws-cli:2.32.17
+    restart: "no"
+    environment:
+      AWS_ACCESS_KEY_ID: ${SEAWEEDFS_S3_ACCESS_KEY_ID:-replace-me}
+      AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_S3_SECRET_ACCESS_KEY:-replace-me}
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        aws --endpoint-url http://seaweedfs:8333 s3api head-bucket --bucket langfuse 2>/dev/null || aws --endpoint-url http://seaweedfs:8333 s3api create-bucket --bucket langfuse
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
+volumes:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_seaweedfs_data:

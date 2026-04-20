@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from packages.brain_sdk.client import BrainClient
 from packages.brain_shared.approval import normalize_approval_intent
 from packages.brain_shared.config import ApprovalResponseSettings, CoreRuntimeSettings
 from packages.brain_shared.envelope import (
@@ -62,6 +64,43 @@ from services.state.cache_authority.service import CacheAuthorityService
 
 _LOGGER = get_logger(__name__)
 _POLL_INTERVAL_SECONDS = 0.25
+_SLASH_COMMAND_RE = re.compile(r"^/([a-zA-Z][a-zA-Z0-9-]*)(?:\s+(.*))?$", re.DOTALL)
+_NAMED_ARG_RE = re.compile(r"--([a-zA-Z][a-zA-Z0-9_-]*)(?:[ =](\S+))?")
+
+
+def _parse_slash_command(message_text: str) -> tuple[str, str] | None:
+    """Return (command_name, args_text) or None if not a slash command."""
+    m = _SLASH_COMMAND_RE.match(message_text.strip())
+    if m is None:
+        return None
+    return m.group(1).lower(), (m.group(2) or "").strip()
+
+
+def _parse_slash_args(
+    args_text: str, input_schema: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Parse '--key value' named args from slash command argument text."""
+    if not args_text.strip():
+        return {}
+    result: dict[str, Any] = {}
+    for m in _NAMED_ARG_RE.finditer(args_text):
+        key = m.group(1).replace("-", "_")
+        result[key] = m.group(2) if m.group(2) is not None else True
+    return result
+
+
+def _render_slash_output(output: Any, simple_output_path: str | None) -> str:
+    """Format capability output for delivery to the operator."""
+    if output is None:
+        return "Done."
+    if isinstance(output, str):
+        return output
+    if simple_output_path:
+        val: Any = output
+        for part in simple_output_path.split("."):
+            val = val.get(part) if isinstance(val, dict) else None
+        return str(val) if val is not None else json.dumps(output, indent=2)
+    return json.dumps(output, indent=2)
 
 
 class DefaultSwitchboardService(SwitchboardService):
@@ -76,6 +115,7 @@ class DefaultSwitchboardService(SwitchboardService):
         cache_service: CacheAuthorityService,
         attention_router_service: AttentionRouterService | None = None,
         approval_response_settings: ApprovalResponseSettings | None = None,
+        brain_client: BrainClient | None = None,
     ) -> None:
         self._settings = settings
         self._identity = identity
@@ -87,9 +127,69 @@ class DefaultSwitchboardService(SwitchboardService):
             if approval_response_settings is not None
             else ApprovalResponseSettings()
         )
+        self._brain_client = brain_client
         self._operator_e164 = _normalize_e164(
             raw=identity.operator_signal_contact_e164,
             default_dial_code=identity.default_dial_code,
+        )
+
+    def _handle_slash_command(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        command_name: str,
+        args_text: str,
+        source: str,
+    ) -> Envelope[ConsoleEnqueueResult]:
+        """Resolve and invoke one slash command inline; route output via ARS."""
+        if self._brain_client is None:
+            output = f"/{command_name}: slash commands not available (brain_client not configured)."
+        else:
+            descriptor = self._brain_client.resolve_slash_command(name=command_name)
+            if descriptor is None:
+                output = f"Unknown command: /{command_name}. Type /help for available commands."
+            else:
+                input_payload = _parse_slash_args(args_text, descriptor.input_schema)
+                try:
+                    result = self._brain_client.invoke_capability(
+                        capability_id=descriptor.capability_id,
+                        input_payload=input_payload,
+                        actor="operator",
+                        channel=source,
+                    )
+                    output = _render_slash_output(
+                        result.output, descriptor.simple_output_path
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    output = f"/{command_name} failed: {exc}"
+
+        if self._attention_router_service is not None:
+            route_meta = new_meta(
+                kind=meta.kind,
+                source=str(SERVICE_COMPONENT_ID),
+                principal=meta.principal,
+                trace_id=meta.trace_id,
+                parent_id=meta.envelope_id,
+            )
+            self._attention_router_service.route_notification(
+                meta=route_meta,
+                channel=source,
+                message=output,
+                force=True,
+            )
+        else:
+            _LOGGER.warning(
+                "slash command output cannot be routed: no attention_router_service",
+                extra={"command": command_name, "source": source},
+            )
+
+        _LOGGER.debug(
+            "switchboard handled slash command",
+            extra={"command": command_name, "source": source},
+        )
+        return success(
+            meta=meta,
+            payload=ConsoleEnqueueResult(queued=False, queue_name=""),
         )
 
     @classmethod
@@ -260,6 +360,16 @@ class DefaultSwitchboardService(SwitchboardService):
         if errors:
             return failure(meta=meta, errors=errors)
         assert request is not None
+
+        parsed = _parse_slash_command(request.message_text)
+        if parsed is not None:
+            command_name, args_text = parsed
+            return self._handle_slash_command(
+                meta=meta,
+                command_name=command_name,
+                args_text=args_text,
+                source="console",
+            )
 
         message = NormalizedOperatorMessage(
             source="console",

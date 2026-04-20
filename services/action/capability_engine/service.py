@@ -59,6 +59,18 @@ class CapabilityEngineService(ABC):
         """Return the full descriptor for one registered capability."""
 
     @abstractmethod
+    def resolve_slash_command(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        name: str,
+    ) -> Envelope[CapabilityDescriptor | None]:
+        """Return the descriptor for a slash command by name or alias.
+
+        Returns ``None`` payload when no capability is bound to the given name.
+        """
+
+    @abstractmethod
     def invoke_capability(
         self,
         *,

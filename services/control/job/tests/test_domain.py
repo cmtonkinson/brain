@@ -102,6 +102,7 @@ class TestEnumValues:
             "update",
             "pause",
             "resume",
+            "cancel",
             "delete",
             "run_now",
         }

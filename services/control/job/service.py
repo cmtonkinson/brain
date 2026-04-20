@@ -9,14 +9,16 @@ from packages.brain_shared.envelope import Envelope, EnvelopeMeta
 from services.action.capability_engine.service import CapabilityEngineService
 from services.control.job.domain import (
     CallbackResult,
+    ClaimExecutionResult,
     ExecutionListResult,
     ExecutionRecord,
     HealthStatus,
+    JobAuditListResult,
     JobListResult,
-    JobMutationAudit,
     JobMutationResult,
     JobRecord,
     JobState,
+    PredicateEvaluationListResult,
     PredicateEvaluationRecord,
     ReviewOutput,
     RunJobNowResult,
@@ -147,7 +149,8 @@ class JobService(ABC):
         meta: EnvelopeMeta,
         job_id: str,
         limit: int = 50,
-    ) -> Envelope[list[JobMutationAudit]]:
+        cursor: str | None = None,
+    ) -> Envelope[JobAuditListResult]:
         """List mutation audit entries for one job."""
 
     @abstractmethod
@@ -157,7 +160,8 @@ class JobService(ABC):
         meta: EnvelopeMeta,
         job_id: str,
         limit: int = 50,
-    ) -> Envelope[list[PredicateEvaluationRecord]]:
+        cursor: str | None = None,
+    ) -> Envelope[PredicateEvaluationListResult]:
         """List predicate evaluation records for one conditional job."""
 
     # ------------------------------------------------------------------
@@ -208,6 +212,44 @@ class JobService(ABC):
         meta: EnvelopeMeta,
     ) -> Envelope[HealthStatus]:
         """Return Job Service and provider health state."""
+
+    # ------------------------------------------------------------------
+    # Worker Actor interface
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def claim_next_execution(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        worker_id: str = "worker",
+    ) -> Envelope[ClaimExecutionResult | None]:
+        """Atomically claim the next queued execution for a Worker Actor.
+
+        Returns a None payload when no queued execution is available.
+        Safe to call concurrently from multiple workers.
+        """
+
+    @abstractmethod
+    def complete_execution(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        execution_id: str,
+    ) -> Envelope[ExecutionRecord]:
+        """Mark one running execution as succeeded and update job run-state."""
+
+    @abstractmethod
+    def fail_execution(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        execution_id: str,
+        error_message: str,
+        error_code: str | None = None,
+        is_retryable: bool = False,
+    ) -> Envelope[ExecutionRecord]:
+        """Mark one running execution failed or schedule it for retry."""
 
 
 def build_job_service(
