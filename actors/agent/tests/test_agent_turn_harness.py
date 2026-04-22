@@ -23,8 +23,8 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
         "/memory/get_latest_or_create_session",
         "/capabilities/describe",
         "/capabilities/always-on",
-        "/memory/record_inbound_turn",
-        "/memory/assemble_snapshot",
+        "/capabilities/tool-system-hints",
+        "/memory/assemble_context",
         "/lms/chat-with-tools",
         "/capabilities/invoke",
     ]
@@ -53,7 +53,7 @@ def test_agent_turn_harness_preserves_trace_linkage_for_final_notify() -> None:
     result = run_agent_turn_scenario(AgentTurnScenario())
 
     assemble_call = next(
-        call for call in result.calls if call.path == "/memory/assemble_snapshot"
+        call for call in result.calls if call.path == "/memory/assemble_context"
     )
     lms_call = next(
         call for call in result.calls if call.path == "/lms/chat-with-tools"
@@ -180,8 +180,8 @@ def test_agent_turn_harness_keeps_tool_set_stable_after_discovery() -> None:
         "/memory/get_latest_or_create_session",
         "/capabilities/describe",
         "/capabilities/always-on",
-        "/memory/record_inbound_turn",
-        "/memory/assemble_snapshot",
+        "/capabilities/tool-system-hints",
+        "/memory/assemble_context",
         "/lms/chat-with-tools",
         "/capabilities/search",
         "/lms/chat-with-tools",

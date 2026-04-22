@@ -15,6 +15,7 @@ from services.action.capability_engine.domain import (
     CapabilityInvocationMetadata,
     CapabilityInvokeResult,
     CapabilitySearchHit,
+    ToolSystemHint,
 )
 from services.state.embedding_authority.service import EmbeddingAuthorityService
 
@@ -47,6 +48,12 @@ class CapabilityEngineService(ABC):
         limit: int | None = None,
     ) -> Envelope[tuple[CapabilitySearchHit, ...]]:
         """Return compact top-k semantic matches from the capability catalog."""
+
+    @abstractmethod
+    def list_tool_system_hints(
+        self, *, meta: EnvelopeMeta
+    ) -> Envelope[tuple[ToolSystemHint, ...]]:
+        """Return compact orientation hints for systems reachable through tools."""
 
     @abstractmethod
     def describe_capability(

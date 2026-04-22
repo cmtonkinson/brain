@@ -57,7 +57,7 @@ The following components may use Docker as a fallback source:
 - `agent`
 - `signal`
 - `postgres`
-- `redis`
+- `valkey`
 - `qdrant`
 
 Source preference:

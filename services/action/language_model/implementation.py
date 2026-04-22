@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Sequence
+from typing import Any, Iterator, Sequence
 
 from pydantic import BaseModel, ValidationError
 
@@ -24,6 +26,10 @@ from packages.brain_shared.errors import (
     validation_error,
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
+from packages.brain_shared.observability import (
+    is_llm_content_capture_enabled,
+    is_observability_enabled,
+)
 from resources.adapters.llm import (
     AdapterDependencyError,
     AdapterInternalError,
@@ -71,6 +77,7 @@ from services.action.language_model.validation import (
 _LOGGER = get_logger(__name__)
 _CACHE_WRITE_PREMIUM_MULTIPLIER = 0.25
 _CACHE_READ_DISCOUNT_MULTIPLIER = 0.90
+_LANGFUSE_GENERATION_TYPE = "generation"
 
 
 @dataclass(frozen=True)
@@ -146,12 +153,32 @@ class DefaultLanguageModelService(LanguageModelService):
 
         resolved = self._resolve_chat_profile(profile=request.profile)
         try:
-            result = self._adapter.chat(
+            with _lms_generation_observation(
+                meta=meta,
+                operation="chat",
                 provider=resolved.provider,
                 model=resolved.model,
-                system_prompt=request.system_prompt,
-                prompt=request.prompt,
-            )
+                profile=request.profile.value,
+                request_phase="initial",
+            ) as span:
+                result = self._adapter.chat(
+                    provider=resolved.provider,
+                    model=resolved.model,
+                    system_prompt=request.system_prompt,
+                    prompt=request.prompt,
+                )
+                _complete_lms_generation_observation(
+                    span=span,
+                    outcome="success",
+                    provider=result.provider,
+                    model=result.model,
+                    finish_reason="stop",
+                    raw_call=result.raw_call,
+                    observation_input={
+                        "message": request.prompt,
+                        "request_phase": "initial",
+                    },
+                )
         except AdapterDependencyError as exc:
             self._append_call_audit(
                 meta=meta,
@@ -340,11 +367,33 @@ class DefaultLanguageModelService(LanguageModelService):
         resolved = self._resolve_chat_profile(profile=effective_profile)
         request_phase = _request_phase_for_inference_request(request.inference_request)
         try:
-            result = self._adapter.chat_with_tools(
+            with _lms_generation_observation(
+                meta=meta,
+                operation="chat_with_tools",
                 provider=resolved.provider,
                 model=resolved.model,
-                inference_request=request.inference_request,
-            )
+                profile=effective_profile.value,
+                request_phase=request_phase,
+                session_id=request.inference_request.meta.conversation_episode_id,
+                mas_session_id=request.inference_request.meta.session_id,
+            ) as span:
+                result = self._adapter.chat_with_tools(
+                    provider=resolved.provider,
+                    model=resolved.model,
+                    inference_request=request.inference_request,
+                )
+                _complete_lms_generation_observation(
+                    span=span,
+                    outcome="success",
+                    provider=result.provider,
+                    model=result.model,
+                    finish_reason=result.finish_reason,
+                    raw_call=result.raw_call,
+                    observation_input=_langfuse_observation_input(
+                        request.inference_request,
+                        request_phase=request_phase,
+                    ),
+                )
         except AdapterDependencyError as exc:
             audit_row = self._append_call_audit(
                 meta=meta,
@@ -842,6 +891,35 @@ def _tool_chat_outcome_kind(*, result: Any) -> str:
     return "empty"
 
 
+def _langfuse_observation_input(
+    request: InferenceRequest, *, request_phase: str
+) -> dict[str, object]:
+    """Return compact Langfuse-facing input for one tool-capable LMS call."""
+    operator = request.current_turn.operator_message
+    payload: dict[str, object] = {
+        "request_phase": request_phase,
+        "message": operator.message_text,
+        "channel": operator.channel,
+    }
+    if operator.sender_e164 != "":
+        payload["sender_e164"] = operator.sender_e164
+    tool_results: list[dict[str, object]] = []
+    for event in request.live_events:
+        if event.kind != "tool_result_batch":
+            continue
+        for result in event.results:
+            tool_results.append(
+                {
+                    "tool_name": result.tool_name,
+                    "status": result.status,
+                    "is_error": result.is_error,
+                }
+            )
+    if tool_results:
+        payload["tool_results"] = tool_results
+    return payload
+
+
 def _provider_request_json(raw_call: AdapterProviderCallAudit) -> dict[str, object]:
     """Serialize provider request artifacts into one JSON document."""
     return {
@@ -907,6 +985,182 @@ def _provider_cache_usage(response_json: object | None) -> tuple[int, int]:
     except TypeError, ValueError:
         read_tokens = 0
     return max(0, created_tokens), max(0, read_tokens)
+
+
+@contextmanager
+def _lms_generation_observation(
+    *,
+    meta: EnvelopeMeta,
+    operation: str,
+    provider: str,
+    model: str,
+    profile: str,
+    request_phase: str,
+    session_id: str = "",
+    mas_session_id: str = "",
+) -> Iterator[object | None]:
+    """Create one Langfuse-compatible OTel generation span for a provider call."""
+    if not is_observability_enabled():
+        yield None
+        return
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        yield None
+        return
+
+    tracer = trace.get_tracer("brain.lms")
+    with tracer.start_as_current_span(f"lms.{operation}") as span:
+        _set_span_attributes(
+            span,
+            {
+                "langfuse.observation.type": _LANGFUSE_GENERATION_TYPE,
+                "langfuse.observation.model.name": model,
+                "langfuse.trace.name": "brain.turn",
+                "langfuse.user.id": meta.principal,
+                "langfuse.session.id": session_id,
+                "langfuse.trace.metadata.brain_trace_id": meta.trace_id,
+                "langfuse.trace.metadata.brain_envelope_id": meta.envelope_id,
+                "langfuse.trace.metadata.brain_source": meta.source,
+                "langfuse.trace.metadata.mas_session_id": mas_session_id,
+                "langfuse.observation.metadata.operation": operation,
+                "langfuse.observation.metadata.profile": profile,
+                "langfuse.observation.metadata.request_phase": request_phase,
+                "gen_ai.operation.name": operation,
+                "gen_ai.system": provider,
+                "gen_ai.request.model": model,
+            },
+        )
+        try:
+            yield span
+        except Exception as exc:
+            _record_lms_generation_error_on_span(span=span, exc=exc)
+            raise
+
+
+def _complete_lms_generation_observation(
+    *,
+    span: object | None,
+    outcome: str,
+    provider: str,
+    model: str,
+    finish_reason: str,
+    raw_call: AdapterProviderCallAudit | None,
+    observation_input: object | None = None,
+) -> None:
+    """Attach provider result details to one active generation span."""
+    if span is None:
+        return
+
+    request_json = None if raw_call is None else _provider_request_json(raw_call)
+    response_json = None if raw_call is None else _provider_response_json(raw_call)
+    usage = _provider_usage_details(response_json)
+    attributes: dict[str, object | None] = {
+        "gen_ai.system": provider,
+        "gen_ai.response.model": model,
+        "gen_ai.response.finish_reasons": [finish_reason] if finish_reason else None,
+        "langfuse.observation.model.name": model,
+        "langfuse.observation.metadata.outcome": outcome,
+        "langfuse.observation.metadata.finish_reason": finish_reason,
+        "langfuse.observation.usage_details": _json_dumps_or_empty(usage),
+    }
+    input_tokens = usage.get("input")
+    output_tokens = usage.get("output")
+    if isinstance(input_tokens, int):
+        attributes["gen_ai.usage.input_tokens"] = input_tokens
+    if isinstance(output_tokens, int):
+        attributes["gen_ai.usage.output_tokens"] = output_tokens
+    if is_llm_content_capture_enabled():
+        attributes["langfuse.observation.input"] = _json_dumps_or_empty(
+            request_json if observation_input is None else observation_input
+        )
+        attributes["langfuse.observation.output"] = _json_dumps_or_empty(response_json)
+    _set_span_attributes(span, attributes)
+
+
+def _record_lms_generation_error_on_span(*, span: object, exc: Exception) -> None:
+    """Attach provider failure details to one generation span."""
+    raw_call = getattr(exc, "raw_call", None)
+    if isinstance(raw_call, AdapterProviderCallAudit):
+        _complete_lms_generation_observation(
+            span=span,
+            outcome="error",
+            provider="",
+            model="",
+            finish_reason="",
+            raw_call=raw_call,
+        )
+    record_exception = getattr(span, "record_exception", None)
+    if callable(record_exception):
+        record_exception(exc)
+    try:
+        from opentelemetry.trace.status import Status, StatusCode
+
+        set_status = getattr(span, "set_status", None)
+        if callable(set_status):
+            set_status(Status(StatusCode.ERROR, str(exc)))
+    except ImportError:
+        pass
+    _set_span_attributes(
+        span,
+        {
+            "langfuse.observation.level": "ERROR",
+            "langfuse.observation.status_message": str(exc),
+            "langfuse.observation.metadata.outcome": "error",
+        },
+    )
+
+
+def _provider_usage_details(response_json: object | None) -> dict[str, int]:
+    """Return Langfuse usage details extracted from a provider response body."""
+    if not isinstance(response_json, dict):
+        return {}
+    body = response_json.get("body")
+    if not isinstance(body, dict):
+        return {}
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        return {}
+
+    values = {
+        "input": _non_negative_int(usage.get("input_tokens")),
+        "output": _non_negative_int(usage.get("output_tokens")),
+        "cache_creation_input_tokens": _non_negative_int(
+            usage.get("cache_creation_input_tokens")
+        ),
+        "cache_read_input_tokens": _non_negative_int(
+            usage.get("cache_read_input_tokens")
+        ),
+    }
+    return {key: value for key, value in values.items() if value > 0}
+
+
+def _non_negative_int(value: object) -> int:
+    """Coerce a provider usage field to a non-negative integer."""
+    try:
+        return max(0, int(value))
+    except TypeError:
+        return 0
+    except ValueError:
+        return 0
+
+
+def _set_span_attributes(span: object, attributes: dict[str, object | None]) -> None:
+    """Attach non-empty OTel-compatible attributes to one span."""
+    set_attribute = getattr(span, "set_attribute", None)
+    if not callable(set_attribute):
+        return
+    for key, value in attributes.items():
+        if value in (None, "", {}, []):
+            continue
+        set_attribute(key, value)
+
+
+def _json_dumps_or_empty(value: object | None) -> str:
+    """Serialize one value for Langfuse JSON-string observation fields."""
+    if value is None:
+        return ""
+    return json.dumps(value, sort_keys=True, default=str)
 
 
 def _placed_cachepoint_ordinal(

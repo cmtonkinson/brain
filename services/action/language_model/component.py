@@ -24,6 +24,9 @@ MANIFEST = register_component(
             {ModuleRoot("services.action.language_model.service")}
         ),
         owns_resources=frozenset({ComponentId("adapter_llm")}),
+        exposes_capabilities=True,
+        tool_system_label="Language Model Service",
+        tool_system_summary="LLM inference and embedding generation.",
     )
 )
 

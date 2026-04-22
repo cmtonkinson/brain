@@ -80,6 +80,34 @@ class TestHttpMcpAdapterListTools:
                 adapter.list_tools()
 
 
+class TestHttpMcpAdapterListServers:
+    """list_servers() over HTTP."""
+
+    def test_returns_servers(self) -> None:
+        adapter = HttpMcpAdapter(
+            settings=McpAdapterSettings(base_url="http://test:8763")
+        )
+        payload = {
+            "servers": [
+                {
+                    "server_id": "filesystem-ro",
+                    "connected": True,
+                    "tool_count": 4,
+                    "detail": "ok",
+                    "instruction_summary": "read access to home",
+                }
+            ]
+        }
+        with patch.object(
+            adapter._client, "get", return_value=_mock_response(body=payload)
+        ):
+            servers = adapter.list_servers()
+
+        assert len(servers) == 1
+        assert servers[0].server_id == "filesystem-ro"
+        assert servers[0].instruction_summary == "read access to home"
+
+
 class TestHttpMcpAdapterCallTool:
     """call_tool() over HTTP."""
 

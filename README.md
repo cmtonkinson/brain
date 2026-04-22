@@ -69,22 +69,24 @@ All other services are run with Docker Compose:
 - Brain MCP Adapter sidecar, connecting to configured MCP servers
 - Secure messaging thanks to [Signal]
 - Durable working state and application logs are kept in [Postgres]
-- Caching and queueing are handled by [Redis]
+- Caching and queueing are handled by [Valkey]
 - Vector search for semantic embeddings is powered by [Qdrant]
+- Object Authority blob bytes are stored in [SeaweedFS]
 
 Host port assignments (non-standard range to avoid conflicts):
 
 | Port | Service | Protocol |
 |------|---------|---------|
 | 8760 | Postgres | TCP |
-| 8761 | Redis | TCP |
+| 8761 | Valkey | TCP |
 | 8762 | Qdrant | HTTP |
+| 8333 | SeaweedFS S3 API | HTTP |
 | 8898 | Brain Core | HTTP |
 
 There is also an optional OpenTelemetry-based observability stack in
 `docker-compose.observability.yaml`. It routes Brain traces through an OTel
-Collector to self-hosted [Langfuse], backed by [ClickHouse], the existing
-[Postgres] and [Redis] services, and [SeaweedFS] for S3-compatible blob storage.
+Collector to self-hosted [Langfuse], backed by [ClickHouse] and the existing
+[Postgres], [Valkey], and [SeaweedFS] services.
 See [Observability](docs/observability.md) for connection details, required
 secrets, environment variables, and startup checks.
 
@@ -145,7 +147,7 @@ environment setup, and how to build/test.
 [Prometheus]: https://prometheus.io
 [PydanticAI]: https://ai.pydantic.dev
 [Qdrant]: https://qdrant.tech
-[Redis]: https://redis.io
+[Valkey]: https://valkey.io
 [SeaweedFS]: https://github.com/seaweedfs/seaweedfs
 [Signal]: https://signal.org
 [cAdvisor]: https://github.com/google/cadvisor

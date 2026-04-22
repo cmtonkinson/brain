@@ -90,6 +90,7 @@ class InferenceMeta(_InferenceModel):
 
     trace_id: str
     session_id: str
+    conversation_episode_id: str = ""
     source: str
     principal: str
     envelope_id: str | None = None

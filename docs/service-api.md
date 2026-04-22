@@ -53,6 +53,9 @@ _Invoke by package ``capability_id`` (no version arg) and return normalized poli
 `resolve_slash_command(*, meta: EnvelopeMeta, name: str) -> Envelope[CapabilityDescriptor | None]`  
 _Return the descriptor for a slash command by name or alias._
 
+`list_tool_system_hints(*, meta: EnvelopeMeta) -> Envelope[tuple[ToolSystemHint, ...]]`  
+_Return compact orientation hints for systems reachable through tools._
+
 ------------------------------------------------------------------------
 ## `LanguageModelService`
 - Module: `services/action/language_model/service.py`
@@ -304,7 +307,7 @@ _Re-queue retry-scheduled executions past their retry_after time._
 - Summary: Public API for component-scoped cache and queue operations.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
-_Return CAS and Redis substrate readiness._
+_Return CAS and Valkey substrate readiness._
 
 `peek_queue(*, meta: EnvelopeMeta, component_id: str, queue: str) -> Envelope[QueueEntry | None]`  
 _Peek next component-scoped queue value without removal._
@@ -400,8 +403,11 @@ _List known specs._
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
 _Return MAS and Postgres substrate readiness._
 
-`assemble_context(*, meta: EnvelopeMeta, session_id: str, message: str) -> Envelope[ContextBlock]`  
-_Backward-compatible wrapper for the historical snapshot flow._
+`assemble_context(*, meta: EnvelopeMeta, session_id: str, message: str, instruction: InboundInstructionRecord | None = None) -> Envelope[TurnContext]`  
+_Resolve the active session, record inbound turn, and assemble context._
+
+`compact_dialogue(*, meta: EnvelopeMeta, session_id: str) -> Envelope[SessionRecord]`  
+_Force-summarize all visible turns and advance dialogue frontier to latest._
 
 `update_focus(*, meta: EnvelopeMeta, session_id: str, content: str) -> Envelope[FocusRecord]`  
 _Persist explicit focus content with budget-aware compaction semantics._

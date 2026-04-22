@@ -3,15 +3,70 @@ receivers:
     protocols:
       http:
         endpoint: 0.0.0.0:4318
+  filelog/brain_core:
+    include:
+      - /logs/core.log
+    start_at: end
+    operators:
+      - type: json_parser
+        parse_from: body
+      - type: move
+        from: attributes.message
+        to: body
+      - type: add
+        field: resource["service.name"]
+        value: brain-core
+      - type: severity_parser
+        parse_from: attributes.level
+      - type: time_parser
+        parse_from: attributes.timestamp
+        layout_type: gotime
+        layout: "2006-01-02T15:04:05.999999Z07:00"
+  filelog/brain_agent:
+    include:
+      - /logs/agent.log
+    start_at: end
+    operators:
+      - type: json_parser
+        parse_from: body
+      - type: move
+        from: attributes.message
+        to: body
+      - type: add
+        field: resource["service.name"]
+        value: brain-agent
+      - type: severity_parser
+        parse_from: attributes.level
+      - type: time_parser
+        parse_from: attributes.timestamp
+        layout_type: gotime
+        layout: "2006-01-02T15:04:05.999999Z07:00"
 
 processors:
+  filter/drop_healthchecks:
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsMatch(name, "^(GET|POST) /(.*/)?healthz?$")'
+        - 'IsMatch(attributes["http.route"], "^/(.*/)?healthz?$")'
+        - 'IsMatch(attributes["url.path"], "^/(.*/)?healthz?$")'
+        - 'IsMatch(attributes["http.target"], "^/(.*/)?healthz?(\\?.*)?$")'
+        - 'IsMatch(attributes["http.url"], ".*/(.*/)?healthz?(\\?.*)?$")'
   batch: {}
+  batch/logs:
+    timeout: 1s
+    send_batch_size: 512
+    send_batch_max_size: 1024
 
 exporters:
   otlphttp/langfuse:
     endpoint: http://langfuse-web:3000/api/public/otel
     headers:
-      Authorization: ${env:LANGFUSE_OTEL_AUTH_HEADER}
+      Authorization: "${env:LANGFUSE_OTEL_AUTH_HEADER}"
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+  prometheus:
+    endpoint: 0.0.0.0:9464
 
 service:
   pipelines:
@@ -19,6 +74,22 @@ service:
       receivers:
         - otlp
       processors:
+        - filter/drop_healthchecks
         - batch
       exporters:
         - otlphttp/langfuse
+    metrics:
+      receivers:
+        - otlp
+      processors:
+        - batch
+      exporters:
+        - prometheus
+    logs:
+      receivers:
+        - filelog/brain_core
+        - filelog/brain_agent
+      processors:
+        - batch/logs
+      exporters:
+        - otlphttp/loki

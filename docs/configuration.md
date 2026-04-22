@@ -50,7 +50,9 @@ BRAIN_CORE__HEALTH__MAX_TIMEOUT_SECONDS=1.0
 BRAIN_RESOURCES__SUBSTRATE__POSTGRES__URL=postgresql+psycopg://user:pass@host:5432/db
 BRAIN_RESOURCES__SUBSTRATE__POSTGRES__POOL_SIZE=10
 BRAIN_RESOURCES__SUBSTRATE__QDRANT__URL=http://qdrant:6333
-BRAIN_RESOURCES__SUBSTRATE__REDIS__URL=redis://redis:6379/0
+BRAIN_RESOURCES__SUBSTRATE__VALKEY__URL=valkey://valkey:6379/0
+BRAIN_RESOURCES__SUBSTRATE__SEAWEEDFS__ENDPOINT_URL=http://seaweedfs:8333
+BRAIN_RESOURCES__SUBSTRATE__SEAWEEDFS__BUCKET=brain-oas
 BRAIN_RESOURCES__ADAPTER__LITELLM__BASE_URL=http://llm:4000
 BRAIN_RESOURCES_ADAPTER__SIGNAL__BASE_URL=http://signal-api:8080
 BRAIN_ACTORS__CORE__HOST=127.0.0.1
@@ -167,32 +169,36 @@ Qdrant substrate defaults.
 | `distance_metric` | `cosine` | Vector distance metric. One of `cosine`, `dot`, `euclid`. |
 | `request_timeout_seconds` | `10.0` | Per-request timeout for Qdrant operations. Must be > 0. |
 
-### `resources.substrate.redis`
-Redis substrate connection defaults.
+### `resources.substrate.valkey`
+Valkey substrate connection defaults.
 
 | Key | Default | Description |
 |---|---|---|
-| `url` | `redis://redis:6379/0` | Redis URL. When non-empty, this is authoritative and split fields are ignored for URL construction. |
-| `host` | `redis` | Hostname used when `url` is unset/blank and split-field URL mode is used. |
+| `url` | `valkey://valkey:6379/0` | Valkey URL. When non-empty, this is authoritative and split fields are ignored for URL construction. |
+| `host` | `valkey` | Hostname used when `url` is unset/blank and split-field URL mode is used. |
 | `port` | `6379` | Port used when split-field URL mode is used. Must be > 0. |
-| `db` | `0` | Redis logical database index used when split-field URL mode is used. Must be >= 0. |
-| `username` | `""` | Optional Redis username for split-field URL mode. |
-| `password` | `""` | Optional inline Redis password for split-field URL mode. Mutually exclusive with `password_env`. |
-| `password_env` | `""` | Optional environment variable name containing Redis password for split-field URL mode. |
-| `ssl` | `false` | Use TLS (`rediss://`) in split-field URL mode. |
+| `db` | `0` | Valkey logical database index used when split-field URL mode is used. Must be >= 0. |
+| `username` | `""` | Optional Valkey username for split-field URL mode. |
+| `password` | `""` | Optional inline Valkey password for split-field URL mode. Mutually exclusive with `password_env`. |
+| `password_env` | `""` | Optional environment variable name containing Valkey password for split-field URL mode. |
+| `ssl` | `false` | Use TLS (`valkeys://`) in split-field URL mode. |
 | `connect_timeout_seconds` | `5.0` | Socket connect timeout in seconds. Must be > 0. |
 | `socket_timeout_seconds` | `5.0` | Socket operation timeout in seconds. Must be > 0. |
-| `health_timeout_seconds` | `1.0` | Timeout budget in seconds for Redis health probes. Must be > 0. |
+| `health_timeout_seconds` | `1.0` | Timeout budget in seconds for Valkey health probes. Must be > 0. |
 | `max_connections` | `20` | Maximum client pool connections. Must be > 0. |
 
-### `resources.substrate.filesystem`
-Filesystem substrate defaults for OAS blob persistence.
+### `resources.substrate.seaweedfs`
+SeaweedFS S3-compatible substrate defaults for OAS blob persistence.
 
 | Key | Default | Description |
 |---|---|---|
-| `root_dir` | `./var/blobs` | Root directory where blob files are persisted. |
-| `temp_prefix` | `blobtmp` | Prefix used for temporary files created during atomic writes. |
-| `fsync_writes` | `true` | When `true`, fsync temp files before atomic replace. |
+| `endpoint_url` | `http://seaweedfs:8333` | Base URL for the SeaweedFS S3-compatible API. |
+| `bucket` | `brain-oas` | Bucket used for OAS-managed blob bytes. |
+| `region` | `us-east-1` | S3 region value supplied to clients. |
+| `access_key_id` | `replace-me` | Access key supplied to S3 clients and bucket initialization. |
+| `secret_access_key` | `replace-me` | Secret key supplied to S3 clients and bucket initialization. |
+| `key_prefix` | `objects` | Prefix applied to OAS blob provider keys. |
+| `request_timeout_seconds` | `10.0` | Per-request timeout for SeaweedFS S3 operations. Must be > 0. |
 | `default_extension` | `blob` | Default extension used when OAS put requests omit extension. |
 
 ### `resources.adapter.llm`
@@ -249,7 +255,7 @@ Cache Authority Service runtime settings.
 
 | Key | Default | Description |
 |---|---|---|
-| `key_prefix` | `brain` | Non-empty prefix used for Redis key and queue namespacing. |
+| `key_prefix` | `brain` | Non-empty prefix used for Valkey key and queue namespacing. |
 | `default_ttl_seconds` | `300` | Default TTL applied when `set_value` is called without explicit TTL. Must be > 0. |
 | `allow_non_expiring_keys` | `true` | When `true`, `ttl_seconds=0` is allowed and maps to non-expiring keys. |
 
@@ -261,6 +267,7 @@ Memory Authority Service runtime settings.
 | `min_turns_to_keep` | `10` | Minimum number of unsummarized dialogue turns retained verbatim after rolling summary compaction. Must be >= 0. |
 | `max_turns_to_keep` | `20` | Threshold at which inline rolling-summary compaction triggers for the unsummarized verbatim backlog. Must be > 0 and >= `min_turns_to_keep`. |
 | `focus_token_budget` | `512` | Hard token ceiling for session focus content. Must be > 0. |
+| `conversation_episode_idle_seconds` | `3600` | Idle gap after which MAS rotates the conversation episode id used for observability session grouping. Must be >= 0. |
 
 ### `core.service.object_authority`
 Object Authority Service runtime settings.

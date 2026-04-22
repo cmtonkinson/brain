@@ -6,6 +6,7 @@ from packages.brain_shared.config import ObservabilitySettings
 from packages.brain_shared.observability import bootstrap as bootstrap_module
 from packages.brain_shared.observability import (
     bootstrap_observability,
+    is_llm_content_capture_enabled,
     is_observability_enabled,
     pydantic_ai_instrumentation_settings,
 )
@@ -26,6 +27,7 @@ def test_bootstrap_observability_disabled_is_noop() -> None:
     assert result.metrics_enabled is False
     assert result.instrumented_httpx is False
     assert is_observability_enabled() is False
+    assert is_llm_content_capture_enabled() is False
 
 
 def test_pydantic_ai_instrumentation_settings_respects_llm_capture_config() -> None:

@@ -17,6 +17,7 @@ from services.state.memory_authority.domain import (
     DialogueTurn,
     InboundInstructionRecord,
     SessionRecord,
+    TurnContext,
     TurnDirection,
     TurnRecord,
 )
@@ -107,6 +108,7 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
                 token_count=3,
                 reasoning_level=None,
                 trace_id="trace",
+                conversation_episode_id="episode",
                 principal="operator",
                 created_at=datetime.now(UTC),
             ),
@@ -122,6 +124,14 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
                 reference_snippets=[],
             ),
         )
+        self.turn_context_result = success(
+            meta=_meta(),
+            payload=TurnContext(
+                session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                inbound_turn=self.record_inbound_result.payload.value,
+                context=self.assemble_result.payload.value,
+            ),
+        )
         self.record_outbound_candidate_result = success(
             meta=_meta(),
             payload=TurnRecord(
@@ -135,6 +145,7 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
                 token_count=42,
                 reasoning_level="standard",
                 trace_id="trace",
+                conversation_episode_id="episode",
                 principal="operator",
                 created_at=datetime.now(UTC),
             ),
@@ -227,7 +238,9 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
         meta,
         session_id: str,
         message: str,
+        instruction: InboundInstructionRecord | None = None,
     ):
+        del instruction
         self.assemble_calls.append(
             _AssembleCall(
                 session_id=session_id,
@@ -236,7 +249,7 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
                 principal=meta.principal,
             )
         )
-        return self.assemble_result
+        return self.turn_context_result
 
     def record_response(
         self,
@@ -268,6 +281,10 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
         raise NotImplementedError
 
     def clear_session(self, *, meta, session_id: str):
+        del meta, session_id
+        raise NotImplementedError
+
+    def compact_dialogue(self, *, meta, session_id: str):
         del meta, session_id
         raise NotImplementedError
 
@@ -319,19 +336,22 @@ def test_assemble_context_route_forwards_request_and_returns_payload() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["payload"]["current_focus"] == "current focus"
-    assert payload["payload"]["recent_conversation_summary"] == "prior summary"
-    assert payload["payload"]["recent_turns"][0]["content"] == "hello"
+    assert payload["payload"]["session_id"] == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    assert payload["payload"]["inbound_turn"]["content"] == "hello"
+    assert payload["payload"]["context"]["current_focus"] == "current focus"
+    assert (
+        payload["payload"]["context"]["recent_conversation_summary"] == "prior summary"
+    )
+    assert payload["payload"]["context"]["recent_turns"][0]["content"] == "hello"
     assert payload["errors"] == []
-    assert service.record_inbound_calls == [
-        _TurnCall(
+    assert service.assemble_calls == [
+        _AssembleCall(
             session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
             message="hello",
             source="sdk",
             principal="operator",
         )
     ]
-    assert service.assemble_snapshot_calls == [("01ARZ3NDEKTSV4RRFFQ69G5FAV", "sdk")]
 
 
 def test_record_response_route_forwards_request_and_maps_errors() -> None:

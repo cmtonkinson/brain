@@ -1,5 +1,5 @@
 # Cache Authority Service
-State _Service_ that owns scoped cache and queue behavior, gates Redis access, and exposes envelope-based cache/queue APIs to other components.
+State _Service_ that owns scoped cache and queue behavior, gates Valkey access, and exposes envelope-based cache/queue APIs to other components.
 
 ------------------------------------------------------------------------
 ## What This Component Is
@@ -17,13 +17,13 @@ Core module roles:
 ------------------------------------------------------------------------
 ## Boundary and Ownership
 CAS is a State-System _Service_ (`layer=1`, `system="state"`) and declares
-ownership of `substrate_redis` in
+ownership of `substrate_valkey` in
 `services/state/cache_authority/component.py`.
 
 Authority boundaries:
 - CAS owns scoped key/queue naming semantics and TTL policy.
 - CAS owns request validation and error mapping at service boundaries.
-- Redis substrate is infrastructure dependency only; business behavior remains
+- Valkey substrate is infrastructure dependency only; business behavior remains
   in CAS.
 
 ------------------------------------------------------------------------
@@ -32,7 +32,7 @@ Primary interactions with the rest of Brain:
 - callers use `CacheAuthorityService` (`service.py`) as the canonical in-process
   API surface.
 - CAS validates requests and metadata, builds scoped keys/queues, and delegates
-  Redis operations to `RedisSubstrate`.
+  Valkey operations to `ValkeySubstrate`.
 - CAS returns typed envelopes with payloads from `domain.py` and shared
   structured errors.
 - CAS health checks use substrate `ping` and publish service/substrate readiness
@@ -46,13 +46,13 @@ Primary interactions with the rest of Brain:
 3. Metadata and request payloads are validated with models in
    `validation.py`.
 4. CAS applies component-scoped key/queue naming and TTL resolution rules.
-5. CAS delegates data operations to Redis substrate methods.
+5. CAS delegates data operations to Valkey substrate methods.
 6. CAS returns typed envelopes with payload or structured errors.
 
 ------------------------------------------------------------------------
 ## Failure Modes and Error Semantics
 - metadata/request validation failures return validation-category errors.
-- Redis runtime failures are mapped to dependency-category errors.
+- Valkey runtime failures are mapped to dependency-category errors.
 - malformed stored JSON payloads are surfaced as internal-category errors.
 - queue read operations return success with `None` payload when empty.
 - health returns service readiness plus substrate readiness/details.
@@ -64,8 +64,8 @@ CAS service settings are sourced from `components.service.cache_authority`:
 - `default_ttl_seconds`
 - `allow_non_expiring_keys`
 
-CAS consumes Redis substrate settings from `components.substrate.redis` via
-`resolve_redis_settings(...)`.
+CAS consumes Valkey substrate settings from `components.substrate.valkey` via
+`resolve_valkey_settings(...)`.
 
 See `docs/configuration.md` for canonical key definitions and environment
 override rules.
@@ -76,8 +76,8 @@ Component tests:
 - `services/state/cache_authority/tests/test_cache_service.py`
 
 Related substrate coverage:
-- `resources/substrates/redis/tests/test_redis_config.py`
-- `resources/substrates/redis/tests/test_redis_substrate.py`
+- `resources/substrates/valkey/tests/test_valkey_config.py`
+- `resources/substrates/valkey/tests/test_valkey_substrate.py`
 
 Project-wide validation command:
 ```bash
@@ -88,7 +88,7 @@ make test
 ## Contributor Notes
 - Keep `service.py` as the authoritative CAS API surface for callers.
 - Keep request and payload contracts in Pydantic models with strict validation.
-- Keep Redis dependency details inside CAS implementation and substrate modules.
+- Keep Valkey dependency details inside CAS implementation and substrate modules.
 - Preserve component-scoped namespacing semantics (`component_id` + key/queue).
 - If API or config shape changes, update this README and
   `docs/configuration.md` in the same change.

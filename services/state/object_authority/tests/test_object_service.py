@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
 from services.state.object_authority.config import ObjectAuthoritySettings
+from resources.substrates.seaweedfs import BlobHealthStatus
 from services.state.object_authority.domain import (
     ObjectMetadata,
     ObjectRecord,
@@ -27,12 +28,16 @@ class _BlobWriteCall:
 
 
 class _FakeBlobStore:
-    """In-memory filesystem substrate fake for OAS behavior tests."""
+    """In-memory blob substrate fake for OAS behavior tests."""
 
     def __init__(self) -> None:
         self.rows: dict[tuple[str, str], bytes] = {}
         self.write_calls: list[_BlobWriteCall] = []
         self.raise_on_write: Exception | None = None
+
+    def health(self) -> BlobHealthStatus:
+        """Return ready fake substrate health."""
+        return BlobHealthStatus(ready=True, detail="ok")
 
     def write_blob(self, *, digest_hex: str, extension: str, content: bytes) -> None:
         self.write_calls.append(
@@ -262,8 +267,8 @@ def test_put_uses_default_extension_when_blank() -> None:
     assert result.payload.value.object.metadata.extension == "blob"
 
 
-def test_put_maps_filesystem_errors_to_dependency() -> None:
-    """Filesystem write failures should map to dependency-category errors."""
+def test_put_maps_blob_substrate_errors_to_dependency() -> None:
+    """Blob substrate write failures should map to dependency-category errors."""
     service, _repo, blob = _service()
     blob.raise_on_write = RuntimeError("disk full")
 

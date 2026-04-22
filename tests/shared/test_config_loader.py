@@ -33,11 +33,11 @@ from packages.brain_shared.config.models import OperatorProfileSettings
 from resources.adapters.llm.config import resolve_llm_adapter_settings
 from resources.adapters.llm.config import LlmAdapterSettings
 from resources.adapters.signal.config import SignalAdapterSettings
-from resources.substrates.filesystem.config import FilesystemSubstrateSettings
 from resources.substrates.obsidian.config import ObsidianSubstrateSettings
 from resources.substrates.postgres.config import PostgresSettings
 from resources.substrates.qdrant.config import QdrantSettings
-from resources.substrates.redis.config import RedisSettings
+from resources.substrates.seaweedfs.config import SeaweedFSSubstrateSettings
+from resources.substrates.valkey.config import ValkeySettings
 from services.action.attention_router.config import AttentionRouterServiceSettings
 from services.action.capability_engine.config import CapabilityEngineSettings
 from services.action.language_model.config import LanguageModelServiceSettings
@@ -455,7 +455,6 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
         (sample_dir / "resources.yaml.sample").read_text(encoding="utf-8")
     ) == {
         "substrate": {
-            "filesystem": FilesystemSubstrateSettings().model_dump(mode="json"),
             "obsidian": {
                 "base_url": ObsidianSubstrateSettings().base_url,
                 "timeout_seconds": ObsidianSubstrateSettings().timeout_seconds,
@@ -463,7 +462,8 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
             },
             "postgres": PostgresSettings().model_dump(mode="json"),
             "qdrant": QdrantSettings().model_dump(mode="json"),
-            "redis": RedisSettings().model_dump(mode="json"),
+            "seaweedfs": SeaweedFSSubstrateSettings().model_dump(mode="json"),
+            "valkey": ValkeySettings().model_dump(mode="json"),
         },
         "adapter": {
             "llm": {

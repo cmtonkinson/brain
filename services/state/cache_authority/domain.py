@@ -37,7 +37,7 @@ class QueueDepth(BaseModel):
 
 
 class HealthStatus(BaseModel):
-    """CAS and Redis readiness status payload."""
+    """CAS and Valkey readiness status payload."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

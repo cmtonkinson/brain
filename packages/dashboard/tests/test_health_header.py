@@ -32,8 +32,8 @@ def test_render_health_no_red():
 
 
 def test_render_health_unknown_dim():
-    text = _render_health([_health("redis", "unknown")])
-    # redis should show ??
+    text = _render_health([_health("valkey", "unknown")])
+    # valkey should show ??
     assert "??" in text
 
 

@@ -53,6 +53,8 @@ sessions = Table(
     Column("focus_token_count", Integer, nullable=True),
     Column("dialogue_summary", Text, nullable=True),
     Column("dialogue_summary_token_count", Integer, nullable=True),
+    Column("current_conversation_episode_id", String(26), nullable=True),
+    Column("last_episode_inbound_at", DateTime(timezone=True), nullable=True),
     Column(
         "dialogue_start_turn_id",
         _ulid_domain(),
@@ -102,6 +104,7 @@ turns = Table(
     Column("token_count", Integer, nullable=True),
     Column("reasoning_level", String(64), nullable=True),
     Column("trace_id", String(64), nullable=False),
+    Column("conversation_episode_id", String(26), nullable=False, server_default=""),
     Column("principal", String(128), nullable=False),
     Column("source", String(128), nullable=True),
     Column("sender_e164", String(32), nullable=True),

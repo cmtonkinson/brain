@@ -71,9 +71,15 @@ class ToolCallResult:
 
 
 class ServerStatus:
-    """Health status for one MCP server."""
+    """Status and operator-facing hint metadata for one MCP server."""
 
-    __slots__ = ("server_id", "connected", "tool_count", "detail")
+    __slots__ = (
+        "server_id",
+        "connected",
+        "tool_count",
+        "detail",
+        "instruction_summary",
+    )
 
     def __init__(
         self,
@@ -82,11 +88,13 @@ class ServerStatus:
         connected: bool,
         tool_count: int,
         detail: str,
+        instruction_summary: str,
     ) -> None:
         self.server_id = server_id
         self.connected = connected
         self.tool_count = tool_count
         self.detail = detail
+        self.instruction_summary = instruction_summary
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to JSON-safe dict."""
@@ -95,6 +103,7 @@ class ServerStatus:
             "connected": self.connected,
             "tool_count": self.tool_count,
             "detail": self.detail,
+            "instruction_summary": self.instruction_summary,
         }
 
 
@@ -177,12 +186,14 @@ class McpClientManager:
             connected = server_id in self._sessions
             tool_count = len(self._tools_cache.get(server_id, []))
             detail = self._server_errors.get(server_id, "ok" if connected else "not connected")
+            server_config = self._config.servers[server_id]
             statuses.append(
                 ServerStatus(
                     server_id=server_id,
                     connected=connected,
                     tool_count=tool_count,
                     detail=detail,
+                    instruction_summary=server_config.instruction_summary,
                 )
             )
         return statuses

@@ -48,6 +48,7 @@ class McpServerHealthStatus(BaseModel):
     connected: bool
     tool_count: int
     detail: str
+    instruction_summary: str = ""
 
 
 class McpAdapterHealthStatus(BaseModel):
@@ -69,6 +70,9 @@ class McpAdapter(Protocol):
 
     def list_tools(self) -> tuple[McpToolInfo, ...]:
         """Return all discovered MCP tools across all configured servers."""
+
+    def list_servers(self) -> tuple[McpServerHealthStatus, ...]:
+        """Return configured MCP server statuses and operator-facing summaries."""
 
     def call_tool(
         self,

@@ -27,6 +27,9 @@ MANIFEST = register_component(
             }
         ),
         owns_resources=frozenset(),
+        exposes_capabilities=True,
+        tool_system_label="Utility Service",
+        tool_system_summary="Lightweight reusable helper operations.",
     )
 )
 

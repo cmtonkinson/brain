@@ -125,7 +125,7 @@ class _FakeCacheService(CacheAuthorityService):
         if self.push_errors:
             return failure(
                 meta=_meta(),
-                errors=[dependency_error("redis unavailable")],
+                errors=[dependency_error("valkey unavailable")],
             )
         return success(meta=_meta(), payload=1)
 
@@ -134,7 +134,9 @@ class _FakeCacheService(CacheAuthorityService):
         self.pop_calls.append(_QueuePopCall(component_id=component_id, queue=queue))
         next_value = self.pop_results.pop(0) if self.pop_results else None
         if next_value == "dependency_error":
-            return failure(meta=_meta(), errors=[dependency_error("redis unavailable")])
+            return failure(
+                meta=_meta(), errors=[dependency_error("valkey unavailable")]
+            )
         payload = next_value if isinstance(next_value, QueueEntry) else None
         return success(meta=_meta(), payload=payload)
 

@@ -10,6 +10,7 @@ from services.state.memory_authority.domain import (
     DialogueTurn,
     FocusRecord,
     InboundInstructionRecord,
+    SessionRecord,
     TurnDirection,
     TurnRecord,
     estimate_token_count,
@@ -37,6 +38,7 @@ class DialogueModule:
         session_id: str,
         content: str,
         trace_id: str,
+        conversation_episode_id: str,
         principal: str,
         instruction: InboundInstructionRecord | None = None,
     ) -> TurnRecord:
@@ -51,6 +53,7 @@ class DialogueModule:
             token_count=estimate_token_count(content),
             reasoning_level=None,
             trace_id=trace_id,
+            conversation_episode_id=conversation_episode_id,
             principal=principal,
             source=None if instruction is None else instruction.source,
             instruction=instruction,
@@ -66,6 +69,7 @@ class DialogueModule:
         token_count: int,
         reasoning_level: str,
         trace_id: str,
+        conversation_episode_id: str,
         principal: str,
     ) -> TurnRecord:
         """Append one outbound assistant turn."""
@@ -79,6 +83,7 @@ class DialogueModule:
             token_count=token_count,
             reasoning_level=reasoning_level,
             trace_id=trace_id,
+            conversation_episode_id=conversation_episode_id,
             principal=principal,
         )
 
@@ -102,14 +107,14 @@ class DialogueModule:
             visible_turns = [
                 turn for turn in visible_turns if turn.id != exclude_turn_id
             ]
-        if not visible_turns:
-            return "", []
-
         summary_text = (
             ""
             if session is None or session.dialogue_summary is None
             else session.dialogue_summary
         )
+        if not visible_turns:
+            return summary_text, []
+
         turns_to_render = visible_turns
         if len(visible_turns) > self._max_turns_to_keep:
             turns_to_absorb = len(visible_turns) - self._min_turns_to_keep
@@ -139,6 +144,50 @@ class DialogueModule:
             for turn in turns_to_render
         ]
         return summary_text, recent_dialogue
+
+    def compact(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+        focus: FocusRecord | None,
+    ) -> SessionRecord | None:
+        """Force-absorb all visible turns into the rolling summary.
+
+        Advances ``dialogue_start_turn_id`` to the latest visible turn so that
+        the next context assembly returns zero recent verbatim turns — only
+        focus and summary remain.
+        """
+        session = self._repository.get_session(session_id=session_id)
+        if session is None:
+            return None
+
+        turns = self._repository.list_turns(session_id=session_id)
+        visible_turns = self._turns_after_pointer(
+            turns=turns, pointer_turn_id=session.dialogue_start_turn_id
+        )
+        if not visible_turns:
+            return session
+
+        existing_summary = (
+            "" if session.dialogue_summary is None else session.dialogue_summary
+        )
+        updated_summary = self._roll_summary(
+            meta=meta,
+            existing_summary=existing_summary,
+            focus=focus,
+            run=visible_turns,
+        )
+        if updated_summary is None:
+            return session
+
+        updated_session = self._repository.update_dialogue_summary(
+            session_id=session_id,
+            dialogue_summary=updated_summary,
+            dialogue_summary_token_count=estimate_token_count(updated_summary),
+            dialogue_start_turn_id=visible_turns[-1].id,
+        )
+        return updated_session if updated_session is not None else session
 
     def _roll_summary(
         self,

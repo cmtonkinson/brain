@@ -238,19 +238,19 @@ def _resolved_dashboard_defaults(
         ),
     )
 
-    redis_url = _str_from_env(
+    valkey_url = _str_from_env(
         env,
-        "BRAIN_RESOURCES__SUBSTRATE__REDIS__URL",
+        "BRAIN_RESOURCES__SUBSTRATE__VALKEY__URL",
         str(
-            _nested(resources_mapping, "substrate", "redis", "url")
-            or "redis://localhost:8761/0"
+            _nested(resources_mapping, "substrate", "valkey", "url")
+            or "valkey://localhost:8761/0"
         ),
     )
-    redis_health_timeout = _float_from_env(
+    valkey_health_timeout = _float_from_env(
         env,
-        "BRAIN_RESOURCES__SUBSTRATE__REDIS__HEALTH_TIMEOUT_SECONDS",
+        "BRAIN_RESOURCES__SUBSTRATE__VALKEY__HEALTH_TIMEOUT_SECONDS",
         float(
-            _nested(resources_mapping, "substrate", "redis", "health_timeout_seconds")
+            _nested(resources_mapping, "substrate", "valkey", "health_timeout_seconds")
             or 1.0
         ),
     )
@@ -305,9 +305,9 @@ def _resolved_dashboard_defaults(
             core_timeout_seconds=core_timeout,
             postgres_url=postgres_url,
             postgres_timeout_seconds=postgres_health_timeout,
-            redis_url=redis_url,
-            redis_connect_timeout_seconds=redis_health_timeout,
-            redis_socket_timeout_seconds=redis_health_timeout,
+            valkey_url=valkey_url,
+            valkey_connect_timeout_seconds=valkey_health_timeout,
+            valkey_socket_timeout_seconds=valkey_health_timeout,
             signal_health_url=_replace_url_path(signal_base_url, SIGNAL_HEALTH_PATH),
             signal_timeout_seconds=signal_health_timeout,
             qdrant_health_url=_replace_url_path(qdrant_url, "/healthz"),

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .health import HealthAggregator, HealthConfig
     from .logs import DockerLogSource, FileLogSource, LogBuffer, LogDataSource
     from .postgres import BasePostgresDataSource, PostgresConnectionConfig
-    from .redis import BaseRedisDataSource, RedisConnectionConfig
+    from .valkey import BaseValkeyDataSource, ValkeyConnectionConfig
 
 __all__ = [
     "BasePollingDataSource",
@@ -27,8 +27,8 @@ __all__ = [
     "LogDataSource",
     "BasePostgresDataSource",
     "PostgresConnectionConfig",
-    "BaseRedisDataSource",
-    "RedisConnectionConfig",
+    "BaseValkeyDataSource",
+    "ValkeyConnectionConfig",
 ]
 
 
@@ -57,12 +57,12 @@ def __getattr__(name: str) -> object:
         from .postgres import PostgresConnectionConfig  # noqa: PLC0415
 
         return PostgresConnectionConfig
-    if name == "BaseRedisDataSource":
-        from .redis import BaseRedisDataSource  # noqa: PLC0415
+    if name == "BaseValkeyDataSource":
+        from .valkey import BaseValkeyDataSource  # noqa: PLC0415
 
-        return BaseRedisDataSource
-    if name == "RedisConnectionConfig":
-        from .redis import RedisConnectionConfig  # noqa: PLC0415
+        return BaseValkeyDataSource
+    if name == "ValkeyConnectionConfig":
+        from .valkey import ValkeyConnectionConfig  # noqa: PLC0415
 
-        return RedisConnectionConfig
+        return ValkeyConnectionConfig
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

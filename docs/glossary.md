@@ -11,6 +11,7 @@ _This document is generated from `docs/meta/glossary.yaml`. Do not edit by hand.
 - **Capability SDK &mdash;** The SDK for definition, registration, and management of Capabilities (Ops and Skills) including logic and metadata such as Policy declarations.
 - **Component &mdash;** An isolated unit of responsibility or work. Each _Actor_, _Service_, and _Resource_ is a _Component_.
 - **Control System &mdash;** The _System_ housing higher-order executive functions by composing functionality from the _State System_ and _Action System_.
+- **Conversation Episode &mdash;** A MAS-owned grouping of related dialogue turns within a _Session_. Conversation Episodes rotate on explicit boundaries or configured idle gaps and are used for observability _Session_ grouping such as Langfuse sessions.
 - **Envelope &mdash;** The structured message wrapper used for all cross-_Layer_ and cross-_Service_ communication, consisting of metadata, payload, and errors.
 - **Layer &mdash;** An abstract 'horizontal' segment of Brain architecture defined by its purpose and access control rules. There are three Layers: 0, 1, and 2.
 - **Manifest &mdash;** The self-registration declaration that each _Component_ exports to join the global registry at import time.
@@ -21,11 +22,13 @@ _This document is generated from `docs/meta/glossary.yaml`. Do not edit by hand.
 - **Public API &mdash;** The internal, native, Python surface exported by a given _Service_. The _Public Api_ is the canonical interface for any _Service_.
 - **Resource &mdash;** Trustees of side effects. All real-world consequences are gated by a _Resource_ _Component_. Types are `Substrate` and `Adapter`.
 - **Service &mdash;** The primary carriers of business logic, responsible for coordinating _System_ state and behavior.
+- **Session &mdash;** A MAS-owned durable memory continuity scope for dialogue, focus, and rolling summaries. A _Session_ may contain multiple Conversation Episodes over time.
 - **Skill &mdash;** A compound _Capability_ implementing either a sequence of Ops or custom Python code.
 - **State System &mdash;** The _System_ responsible for durable data, comprised of Authority Services and _Substrate_ Resources.
 - **Substrate &mdash;** A _Resource_ which governs state, such as a database, document store, or cache.
 - **System &mdash;** An abstract 'vertical' segment of Brain architecture defined by its ontological purpose. There are three Systems: State, Action and Control.
 - **Trace &mdash;** A `trace_id`-scoped execution episode linking causally related Envelopes. Cross-_Trace_ causality is preserved via `parent_id` references.
+- **Turn &mdash;** One persisted dialogue item in a _Session_, either inbound from the _Operator_ or outbound from Brain. Turns carry _Trace_ and _Conversation Episode_ identifiers for correlation.
 
 
 ------------------------------------------------------------------------

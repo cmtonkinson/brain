@@ -72,6 +72,9 @@ class ServiceManifest(ComponentManifest):
     layer: Literal[1]
     public_api_roots: FrozenSet[ModuleRoot]
     owns_resources: Optional[FrozenSet[ComponentId]] = None
+    exposes_capabilities: bool = False
+    tool_system_label: str = ""
+    tool_system_summary: str = ""
 
     def __post_init__(self) -> None:
         """Validate service-specific invariants."""
@@ -80,6 +83,10 @@ class ServiceManifest(ComponentManifest):
             raise ManifestError("public_api_roots must not be empty")
         for root in self.public_api_roots:
             validate_module_root(root)
+        if self.exposes_capabilities and self.tool_system_summary.strip() == "":
+            raise ManifestError(
+                "tool_system_summary must be non-empty when exposes_capabilities is true"
+            )
 
     @property
     def schema_name(self) -> str:

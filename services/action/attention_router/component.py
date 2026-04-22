@@ -27,6 +27,9 @@ MANIFEST = register_component(
             }
         ),
         owns_resources=frozenset(),
+        exposes_capabilities=True,
+        tool_system_label="Attention Router Service",
+        tool_system_summary="Policy-aware outbound notification routing.",
     )
 )
 

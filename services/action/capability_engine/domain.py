@@ -257,6 +257,19 @@ class CapabilitySearchHit(BaseModel):
     summary: str
 
 
+class ToolSystemHint(BaseModel):
+    """Compact Agent-facing hint for one system reachable through tools."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    system_id: str
+    label: str
+    summary: str
+    kind: Literal["core", "mcp"]
+    ready: bool | None = None
+    tool_count: int | None = None
+
+
 class CapabilityDiscoveryStateRow(BaseModel):
     """Durable CES-owned state for one indexed capability discovery document."""
 

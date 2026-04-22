@@ -3,6 +3,8 @@ services:
     environment:
       BRAIN_CORE_OBSERVABILITY__ENABLED: "true"
       BRAIN_CORE_OBSERVABILITY__OTLP__ENDPOINT: http://otel-collector:4318
+      BRAIN_CORE_LOGGING__FILE_CAPTURE_ENABLED: "true"
+      BRAIN_CORE_LOGGING__FILE_CAPTURE_DIRECTORY: /app/logs
     depends_on:
       otel-collector:
         condition: service_started
@@ -11,6 +13,8 @@ services:
     environment:
       BRAIN_ACTORS_OBSERVABILITY__ENABLED: "true"
       BRAIN_ACTORS_OBSERVABILITY__OTLP__ENDPOINT: http://otel-collector:4318
+      BRAIN_ACTORS_LOGGING__FILE_CAPTURE_ENABLED: "true"
+      BRAIN_ACTORS_LOGGING__FILE_CAPTURE_DIRECTORY: /app/logs
     depends_on:
       otel-collector:
         condition: service_started
@@ -23,10 +27,61 @@ services:
       LANGFUSE_OTEL_AUTH_HEADER: ${LANGFUSE_OTEL_AUTH_HEADER:-Basic replace-me}
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - ./logs:/logs:ro
     ports:
       - "${BRAIN_OTEL_COLLECTOR_PORT_BIND:-4318:4318}"
+      - "${BRAIN_OTEL_COLLECTOR_PROM_PORT_BIND:-127.0.0.1:9464:9464}"
     depends_on:
       langfuse-web:
+        condition: service_started
+      loki:
+        condition: service_started
+
+  prometheus:
+    image: docker.io/prom/prometheus:v3
+    restart: unless-stopped
+    user: "0:0"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./data/prometheus:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT_BIND:-127.0.0.1:9090:9090}"
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  loki:
+    image: docker.io/grafana/loki:3
+    restart: unless-stopped
+    user: "0:0"
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./config/loki.yaml:/etc/loki/loki.yaml:ro
+      - ./data/loki:/loki
+    ports:
+      - "${LOKI_PORT_BIND:-127.0.0.1:3100:3100}"
+
+  grafana:
+    image: docker.io/grafana/grafana:latest
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-replace-me}
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "${GRAFANA_PORT_BIND:-127.0.0.1:3001:3000}"
+    depends_on:
+      prometheus:
+        condition: service_started
+      loki:
         condition: service_started
 
   langfuse-web:
@@ -35,7 +90,7 @@ services:
     environment: &langfuse-env
       NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
       NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-replace-me}
-      DATABASE_URL: postgresql://langfuse:${LANGFUSE_POSTGRES_PASSWORD:-replace-me}@postgres:5432/langfuse
+      DATABASE_URL: ${LANGFUSE_DATABASE_URL:-postgresql://langfuse:${LANGFUSE_POSTGRES_PASSWORD:-replace-me}@postgres:5432/langfuse}
       SALT: ${LANGFUSE_SALT:-replace-me}
       ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
       TELEMETRY_ENABLED: ${LANGFUSE_TELEMETRY_ENABLED:-false}
@@ -45,9 +100,8 @@ services:
       CLICKHOUSE_USER: ${LANGFUSE_CLICKHOUSE_USER:-clickhouse}
       CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-replace-me}
       CLICKHOUSE_CLUSTER_ENABLED: "false"
-      REDIS_HOST: redis
+      REDIS_HOST: valkey
       REDIS_PORT: "6379"
-      REDIS_AUTH: ""
       REDIS_TLS_ENABLED: "false"
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
@@ -88,7 +142,7 @@ services:
         condition: service_completed_successfully
       clickhouse:
         condition: service_healthy
-      redis:
+      valkey:
         condition: service_healthy
       seaweedfs-bucket-init:
         condition: service_completed_successfully
@@ -103,7 +157,7 @@ services:
         condition: service_completed_successfully
       clickhouse:
         condition: service_healthy
-      redis:
+      valkey:
         condition: service_healthy
       seaweedfs-bucket-init:
         condition: service_completed_successfully
@@ -124,17 +178,33 @@ services:
       postgres:
         condition: service_healthy
 
+  clickhouse-data-init:
+    image: alpine:3.23
+    restart: "no"
+    environment:
+      CLICKHOUSE_UID: ${LANGFUSE_CLICKHOUSE_UID:-101}
+      CLICKHOUSE_GID: ${LANGFUSE_CLICKHOUSE_GID:-101}
+    volumes:
+      - ./data/clickhouse/data:/var/lib/clickhouse
+      - ./data/clickhouse/logs:/var/log/clickhouse-server
+    command:
+      - sh
+      - -ec
+      - |
+        mkdir -p /var/lib/clickhouse /var/log/clickhouse-server
+        chown -R "$${CLICKHOUSE_UID}:$${CLICKHOUSE_GID}" /var/lib/clickhouse /var/log/clickhouse-server
+
   clickhouse:
     image: docker.io/clickhouse/clickhouse-server:25.11
     restart: unless-stopped
-    user: "101:101"
+    user: "${LANGFUSE_CLICKHOUSE_UID:-101}:${LANGFUSE_CLICKHOUSE_GID:-101}"
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: ${LANGFUSE_CLICKHOUSE_USER:-clickhouse}
       CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-replace-me}
     volumes:
-      - langfuse_clickhouse_data:/var/lib/clickhouse
-      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+      - ./data/clickhouse/data:/var/lib/clickhouse
+      - ./data/clickhouse/logs:/var/log/clickhouse-server
     ports:
       - "${LANGFUSE_CLICKHOUSE_HTTP_PORT_BIND:-127.0.0.1:8123:8123}"
       - "${LANGFUSE_CLICKHOUSE_NATIVE_PORT_BIND:-127.0.0.1:9000:9000}"
@@ -144,21 +214,9 @@ services:
       timeout: 5s
       retries: 10
       start_period: 1s
-
-  seaweedfs:
-    image: chrislusf/seaweedfs:3.97
-    restart: unless-stopped
-    command: ["server", "-dir=/data", "-s3", "-s3.port=8333"]
-    volumes:
-      - langfuse_seaweedfs_data:/data
-    ports:
-      - "${SEAWEEDFS_S3_PORT_BIND:-8333:8333}"
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8333 || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 5s
+    depends_on:
+      clickhouse-data-init:
+        condition: service_completed_successfully
 
   seaweedfs-bucket-init:
     image: amazon/aws-cli:2.32.17
@@ -174,8 +232,3 @@ services:
     depends_on:
       seaweedfs:
         condition: service_healthy
-
-volumes:
-  langfuse_clickhouse_data:
-  langfuse_clickhouse_logs:
-  langfuse_seaweedfs_data:

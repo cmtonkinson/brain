@@ -14,6 +14,7 @@ from services.state.memory_authority.domain import (
     HealthStatus,
     InboundInstructionRecord,
     SessionRecord,
+    TurnContext,
     TurnRecord,
 )
 
@@ -79,8 +80,9 @@ class MemoryAuthorityService(ABC):
         meta: EnvelopeMeta,
         session_id: str,
         message: str,
-    ) -> Envelope[ContextBlock]:
-        """Backward-compatible wrapper for the historical snapshot flow."""
+        instruction: InboundInstructionRecord | None = None,
+    ) -> Envelope[TurnContext]:
+        """Resolve the active session, record inbound turn, and assemble context."""
 
     @abstractmethod
     def record_response(
@@ -114,6 +116,15 @@ class MemoryAuthorityService(ABC):
         session_id: str,
     ) -> Envelope[bool]:
         """Advance dialogue pointer and clear focus without deleting historical data."""
+
+    @abstractmethod
+    def compact_dialogue(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+    ) -> Envelope[SessionRecord]:
+        """Force-summarize all visible turns and advance dialogue frontier to latest."""
 
     @abstractmethod
     def create_session(self, *, meta: EnvelopeMeta) -> Envelope[SessionRecord]:
@@ -163,6 +174,7 @@ __all__ = [
     "InboundInstructionRecord",
     "MemoryAuthorityService",
     "SessionRecord",
+    "TurnContext",
     "TurnRecord",
     "build_memory_authority_service",
 ]

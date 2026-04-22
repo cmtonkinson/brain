@@ -29,6 +29,7 @@ _DIR_SERVICE_LABELS = {
     "embedding": "Embedding Authority Service",
     "ingestion": "Ingestion Service",
     "job": "Job Service",
+    "memory": "Memory Authority Service",
     "object": "Object Authority Service",
     "utility": "Utility Service",
     "vault": "Vault Authority Service",

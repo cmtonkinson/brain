@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from packages.brain_shared.envelope import EnvelopeKind, new_meta
-from resources.substrates.redis import RedisSubstrate
+from resources.substrates.valkey import ValkeySubstrate
 from services.state.cache_authority.config import CacheAuthoritySettings
 from services.state.cache_authority.implementation import DefaultCacheAuthorityService
 
@@ -33,7 +33,7 @@ class _QueueCall:
     queue: str
 
 
-class _FakeBackend(RedisSubstrate):
+class _FakeBackend(ValkeySubstrate):
     """In-memory backend fake for CAS behavior tests."""
 
     def __init__(self) -> None:
@@ -114,7 +114,7 @@ def _meta() -> object:
 
 
 def test_set_value_uses_default_ttl_and_component_scoped_key() -> None:
-    """Set should apply default TTL and write under component-scoped Redis key."""
+    """Set should apply default TTL and write under component-scoped Valkey key."""
     service, backend = _service()
 
     response = service.set_value(
@@ -255,7 +255,7 @@ def test_queue_push_pop_peek_are_fifo_and_scoped() -> None:
 def test_dependency_failures_map_to_dependency_error() -> None:
     """Substrate exceptions should map to dependency-category envelope failures."""
     service, backend = _service()
-    backend.raise_on_push = RuntimeError("redis unavailable")
+    backend.raise_on_push = RuntimeError("valkey unavailable")
 
     response = service.push_queue(
         meta=_meta(),

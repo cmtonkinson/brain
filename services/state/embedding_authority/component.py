@@ -28,6 +28,9 @@ MANIFEST = register_component(
         ),
         # EAS owns Qdrant substrate; Postgres is shared infrastructure.
         owns_resources=frozenset({ComponentId("substrate_qdrant")}),
+        exposes_capabilities=True,
+        tool_system_label="Embedding Authority Service",
+        tool_system_summary="Semantic vector indexing and search over derived text chunks.",
     )
 )
 

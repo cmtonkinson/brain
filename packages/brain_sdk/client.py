@@ -14,11 +14,14 @@ from packages.brain_sdk.calls import (
     LmsToolChatResult,
     MemoryContextBlock,
     MemorySessionRef,
+    MemoryTurnContext,
     MemoryTurnRecord,
     SwitchboardOperatorInstruction,
+    ToolSystemHint,
     call_capabilities_describe,
     call_capabilities_list_always_on,
     call_capabilities_search,
+    call_capabilities_tool_system_hints,
     call_capability_describe,
     call_capability_invoke,
     call_core_health,
@@ -29,6 +32,7 @@ from packages.brain_sdk.calls import (
     call_lms_chat_with_tools,
     call_memory_assemble_context,
     call_memory_assemble_snapshot,
+    call_memory_compact_dialogue,
     call_memory_create_session,
     call_memory_get_latest_or_create_session,
     call_memory_record_inbound_turn,
@@ -120,6 +124,16 @@ class BrainClient:
             timeout_seconds=self._config.timeout_seconds,
             query=query,
             limit=limit,
+        )
+
+    def list_tool_system_hints(
+        self, *, meta: MetaOverrides | None = None
+    ) -> tuple[ToolSystemHint, ...]:
+        """Return compact orientation hints for systems reachable through tools."""
+        return call_capabilities_tool_system_hints(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
         )
 
     def describe_capability(
@@ -229,15 +243,17 @@ class BrainClient:
         *,
         session_id: str,
         message: str,
+        instruction: SwitchboardOperatorInstruction | None = None,
         meta: MetaOverrides | None = None,
-    ) -> MemoryContextBlock:
-        """Append one inbound turn and return the assembled MAS context."""
+    ) -> MemoryTurnContext:
+        """Resolve active MAS session, record inbound turn, and return context."""
         return call_memory_assemble_context(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
             session_id=session_id,
             message=message,
+            instruction=instruction,
         )
 
     def memory_record_inbound_turn(
@@ -296,6 +312,20 @@ class BrainClient:
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
+        )
+
+    def memory_compact_dialogue(
+        self,
+        *,
+        session_id: str,
+        meta: MetaOverrides | None = None,
+    ) -> MemorySessionRef:
+        """Force-summarize all visible turns and advance dialogue frontier."""
+        return call_memory_compact_dialogue(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            session_id=session_id,
         )
 
     def memory_record_response(

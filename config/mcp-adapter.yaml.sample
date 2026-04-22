@@ -3,16 +3,19 @@ port: 8763
 timeout_seconds: 30.0
 servers:
   eventkit:
+    instruction_summary: "(macOS) access to my Calendars and Reminders"
     transport: http
     url: http://host.docker.internal:7411/eventkit/rpc
     headers:
       Authorization: "Bearer CHANGE_ME"
   filesystem-ro:
+    instruction_summary: "read access to my $HOME directory"
     transport: http
     url: http://host.docker.internal:7411/filesystem-ro/rpc
     headers:
       Authorization: "Bearer CHANGE_ME"
   filesystem-rw:
+    instruction_summary: "full access to the system /tmp directory"
     transport: stdio
     command: npx
     args: [-y, "@modelcontextprotocol/server-filesystem", /tmp]

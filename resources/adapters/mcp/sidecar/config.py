@@ -19,6 +19,7 @@ class McpServerConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     transport: Literal["stdio", "http"]
+    instruction_summary: str = ""
 
     # stdio fields
     command: str = ""

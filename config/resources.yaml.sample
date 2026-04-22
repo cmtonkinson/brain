@@ -1,9 +1,4 @@
 substrate:
-  filesystem:
-    root_dir: ./var/blobs
-    temp_prefix: blobtmp
-    fsync_writes: true
-    default_extension: blob
   obsidian:
     base_url: http://host.docker.internal:27123
     timeout_seconds: 10.0
@@ -26,9 +21,18 @@ substrate:
     url: http://qdrant:6333
     request_timeout_seconds: 10.0
     distance_metric: cosine
-  redis:
-    url: redis://redis:6379/0
-    host: redis
+  seaweedfs:
+    endpoint_url: http://seaweedfs:8333
+    bucket: brain-oas
+    region: us-east-1
+    access_key_id: replace-me
+    secret_access_key: replace-me
+    key_prefix: objects
+    request_timeout_seconds: 10.0
+    default_extension: blob
+  valkey:
+    url: valkey://valkey:6379/0
+    host: valkey
     port: 6379
     db: 0
     username: ""

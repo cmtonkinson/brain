@@ -13,6 +13,7 @@ _SERVICE_VERSION = "0.1.0"
 _OTLP_TRACES_PATH = "/v1/traces"
 _OTLP_METRICS_PATH = "/v1/metrics"
 _BOOTSTRAPPED = False
+_LLM_CONTENT_CAPTURE_ENABLED = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,11 @@ def is_observability_enabled() -> bool:
     return _BOOTSTRAPPED
 
 
+def is_llm_content_capture_enabled() -> bool:
+    """Return whether LLM telemetry may include prompt and completion content."""
+    return _BOOTSTRAPPED and _LLM_CONTENT_CAPTURE_ENABLED
+
+
 def bootstrap_observability(
     *,
     settings: ObservabilitySettings,
@@ -39,7 +45,7 @@ def bootstrap_observability(
     service_version: str = _SERVICE_VERSION,
 ) -> ObservabilityBootstrapResult:
     """Initialize OpenTelemetry providers and common instrumentation once."""
-    global _BOOTSTRAPPED
+    global _BOOTSTRAPPED, _LLM_CONTENT_CAPTURE_ENABLED
     if not settings.enabled:
         return ObservabilityBootstrapResult(
             enabled=False,
@@ -123,6 +129,9 @@ def bootstrap_observability(
 
         HTTPXClientInstrumentor().instrument()
         _BOOTSTRAPPED = True
+        _LLM_CONTENT_CAPTURE_ENABLED = bool(
+            settings.llm.enabled and settings.llm.capture_content
+        )
         _LOGGER.info(
             "observability initialized",
             extra={
@@ -187,6 +196,7 @@ def _otlp_endpoint(base: str, suffix: str) -> str:
 
 def _reset_for_tests() -> None:
     """Reset process-local bootstrap state for unit tests."""
-    global _BOOTSTRAPPED
+    global _BOOTSTRAPPED, _LLM_CONTENT_CAPTURE_ENABLED
     _BOOTSTRAPPED = False
+    _LLM_CONTENT_CAPTURE_ENABLED = False
     _build_pydantic_ai_instrumentation_settings.cache_clear()

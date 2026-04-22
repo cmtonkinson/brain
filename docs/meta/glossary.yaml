@@ -22,6 +22,8 @@ terms:
     definition: "The interface on top of the Public API for direct consumption (via HTTP) by Layer 2. This is the only system interface available to Actors."
   - term: Capability
     definition: "A governed, testable unit of action with a clear input/output contract, bounded authority, and inspectable results. Types are `Op` and `Skill`."
+  - term: Conversation Episode
+    definition: "A MAS-owned grouping of related dialogue turns within a Session. Conversation Episodes rotate on explicit boundaries or configured idle gaps and are used for observability session grouping such as Langfuse sessions."
   - term: Envelope
     definition: "The structured message wrapper used for all cross-Layer and cross-Service communication, consisting of metadata, payload, and errors."
   - term: Op
@@ -32,6 +34,8 @@ terms:
     definition: "The accountable identity for a request, propagated unchanged across calls in Envelope metadata. Examples: `operator`, `core`, or a Service name."
   - term: Provider
     definition: "The concrete backing surface behind a Resource, such as a containerized system, a host process/file, or some third-party API. Resources are Brain-facing interfaces over Providers."
+  - term: Session
+    definition: "A MAS-owned durable memory continuity scope for dialogue, focus, and rolling summaries. A Session may contain multiple Conversation Episodes over time."
   - term: Skill
     definition: "A compound Capability implementing either a sequence of Ops or custom Python code."
   - term: Action System
@@ -46,3 +50,5 @@ terms:
     definition: "The System responsible for durable data, comprised of Authority Services and Substrate Resources."
   - term: Trace
     definition: "A `trace_id`-scoped execution episode linking causally related Envelopes. Cross-trace causality is preserved via `parent_id` references."
+  - term: Turn
+    definition: "One persisted dialogue item in a Session, either inbound from the Operator or outbound from Brain. Turns carry trace and Conversation Episode identifiers for correlation."

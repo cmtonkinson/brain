@@ -26,6 +26,7 @@ COMPONENT_README_GLOBS = (
     "resources/**/README.md",
     "actors/**/README.md",
 )
+IGNORED_TARGET_PARTS = frozenset({".pytest_cache", ".ruff_cache", "__pycache__"})
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 H2_RE = re.compile(r"^##\s+.+")
@@ -113,7 +114,14 @@ def _discover_targets(repo_root: Path, requested_paths: list[str]) -> tuple[Path
         *docs_paths,
         *component_readmes,
     }
-    return tuple(sorted(unique_targets))
+    return tuple(
+        sorted(path for path in unique_targets if not _is_ignored_target(path))
+    )
+
+
+def _is_ignored_target(path: Path) -> bool:
+    """Return True when path belongs to generated local tool state."""
+    return bool(IGNORED_TARGET_PARTS.intersection(path.parts))
 
 
 def _headings_for_lines(lines: list[str]) -> tuple[Heading, ...]:

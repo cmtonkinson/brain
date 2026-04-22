@@ -49,6 +49,10 @@ def create_app(*, config: McpAdapterConfig) -> FastAPI:
         tools = await manager.list_tools()
         return {"tools": [t.to_dict() for t in tools]}
 
+    @app.get("/servers")
+    async def list_servers() -> dict[str, Any]:
+        return {"servers": [s.to_dict() for s in manager.server_statuses()]}
+
     @app.post("/tools/call")
     async def call_tool(request: ToolCallRequest) -> dict[str, Any]:
         try:

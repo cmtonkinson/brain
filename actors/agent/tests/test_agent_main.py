@@ -47,6 +47,7 @@ from packages.brain_sdk import (
     MemoryDialogueTurn,
     MemorySessionRef,
     SwitchboardOperatorInstruction,
+    ToolSystemHint,
 )
 from packages.brain_sdk.errors import SdkErrorDetail
 
@@ -201,6 +202,25 @@ def test_render_system_prompt_returns_rendered_default_personality() -> None:
     assert "Refer to me as 'boss'" in prompt
     assert "Appendix" in prompt
     assert "system_prompt_append" not in prompt
+
+
+def test_render_system_tool_hints_uses_prompt_artifacts() -> None:
+    """Tool-system hints should render through SDK prompt templates."""
+    from packages.brain_sdk.personality import render_system_tool_hints
+
+    rendered = render_system_tool_hints(
+        (
+            ToolSystemHint(
+                system_id="filesystem-ro",
+                label="filesystem-ro",
+                summary="read access to home",
+                kind="mcp",
+            ),
+        )
+    )
+
+    assert "available services" in rendered
+    assert "* filesystem-ro: read access to home" in rendered
 
 
 def test_render_system_prompt_template_rejects_unresolved_placeholders() -> None:
@@ -374,6 +394,7 @@ def test_build_inference_request_translates_tool_loop_history() -> None:
 
     result = main._build_inference_request(
         session_id="session-1",
+        conversation_episode_id="episode-1",
         source="agent",
         principal="operator",
         meta=None,
@@ -389,6 +410,7 @@ def test_build_inference_request_translates_tool_loop_history() -> None:
         meta=InferenceMeta(
             trace_id="",
             session_id="session-1",
+            conversation_episode_id="episode-1",
             source="agent",
             principal="operator",
             envelope_id="",
@@ -459,6 +481,7 @@ def test_build_inference_request_marks_explicit_cache_mode() -> None:
 
     result = main._build_inference_request(
         session_id="session-1",
+        conversation_episode_id="episode-1",
         source="agent",
         principal="operator",
         meta=None,
@@ -502,6 +525,7 @@ def test_build_inference_request_batches_tool_returns_and_sets_status() -> None:
 
     result = main._build_inference_request(
         session_id="session-1",
+        conversation_episode_id="episode-1",
         source="agent",
         principal="operator",
         meta=None,
@@ -582,6 +606,7 @@ def test_build_inference_request_assigns_cache_marker_to_tool_result_batch() -> 
 
     result = main._build_inference_request(
         session_id="session-1",
+        conversation_episode_id="episode-1",
         source="agent",
         principal="operator",
         meta=None,
@@ -1034,6 +1059,56 @@ def test_create_runtime_includes_system_prompt_append_in_prompt_and_blocks() -> 
     )
     assert any(
         append_text in block.text
+        for block in runtime.model._system_blocks  # pyright: ignore[reportPrivateUsage]
+    )
+
+
+def test_create_runtime_includes_tool_system_hints_in_prompt_and_blocks() -> None:
+    """Runtime creation should append compact tool-system orientation hints."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def memory_create_session(self):
+            return MemorySessionRef(session_id="session-1")
+
+        def memory_get_latest_or_create_session(self):
+            return MemorySessionRef(session_id="session-1")
+
+        def describe_capabilities(self):
+            return ()
+
+        def list_always_on_capabilities(self):
+            return ()
+
+        def list_tool_system_hints(self):
+            return (
+                ToolSystemHint(
+                    system_id="service_vault_authority",
+                    label="Vault Authority Service",
+                    summary="Personal Knowledge Base access.",
+                    kind="core",
+                ),
+                ToolSystemHint(
+                    system_id="filesystem-ro",
+                    label="filesystem-ro",
+                    summary="read access to home",
+                    kind="mcp",
+                    ready=True,
+                    tool_count=4,
+                ),
+            )
+
+    runtime = main._create_runtime(
+        client=_FakeClient(),
+        settings=_actor_settings_stub(),
+    )
+
+    assert any(
+        "Vault Authority Service" in str(item)
+        for item in runtime.agent._system_prompts  # pyright: ignore[reportPrivateUsage]
+    )
+    assert any(
+        "filesystem-ro: read access to home" in block.text
         for block in runtime.model._system_blocks  # pyright: ignore[reportPrivateUsage]
     )
 

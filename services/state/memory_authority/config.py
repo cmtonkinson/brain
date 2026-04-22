@@ -16,6 +16,7 @@ class MemoryAuthoritySettings(BaseModel):
     min_turns_to_keep: int = Field(default=10, ge=0)
     max_turns_to_keep: int = Field(default=20, gt=0)
     focus_token_budget: int = Field(default=512, gt=0)
+    conversation_episode_idle_seconds: int = Field(default=3600, ge=0)
 
     def model_post_init(self, __context: object) -> None:
         """Require the moving summary threshold to be >= the retained minimum."""

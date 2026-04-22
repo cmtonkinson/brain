@@ -5,6 +5,7 @@
 /capabilities/invoke: execute tool calls
 /capabilities/search: semantically search the enabled Capability catalog and return compact matches
 /capabilities/slash-lookup: resolve one capability descriptor by slash command name or alias
+/capabilities/tool-system-hints: return compact orientation hints for systems reachable through tools
 /lms/chat: direct access to model inference without CES/PS overhead
 /lms/chat-with-tools: direct access to tool-capable model inference without CES/PS overhead
 /memory/create_session: create one new MAS session for the agent
@@ -14,6 +15,7 @@
 /memory/record_inbound_turn: persist one inbound MAS turn before prompt assembly
 /memory/record_outbound_candidate: persist one outbound MAS candidate turn before delivery
 /memory/record_outbound_delivery: persist the final delivery state for one outbound MAS turn
+/memory/compact_dialogue: force-summarize all visible turns and advance dialogue frontier
 /memory/record_response: persist one outbound MAS response turn
 /switchboard/enqueue_console_message: accept and enqueue one inbound console operator message
 /attention-router/poll_console_response: dequeue the next queued Brain response for the console channel

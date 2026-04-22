@@ -22,6 +22,7 @@ from packages.brain_shared.language_model import (
 def make_inference_request(
     *,
     session_id: str = "session-1",
+    conversation_episode_id: str = "episode-1",
     trace_id: str = "trace-1",
     source: str = "tests",
     principal: str = "operator",
@@ -40,6 +41,7 @@ def make_inference_request(
         meta=InferenceMeta(
             trace_id=trace_id,
             session_id=session_id,
+            conversation_episode_id=conversation_episode_id,
             source=source,
             principal=principal,
             envelope_id=envelope_id,

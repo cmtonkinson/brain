@@ -883,6 +883,53 @@ def test_chat_with_tools_appends_turn_cache_hop_telemetry() -> None:
     assert row.estimated_net_token_equiv == 40.0
 
 
+def test_lms_generation_observation_maps_langfuse_usage_and_content(
+    monkeypatch,
+) -> None:
+    """Provider audit payloads should map to Langfuse generation attributes."""
+    from services.action.language_model import implementation as module
+
+    class _Span:
+        """In-memory span for observation attribute assertions."""
+
+        def __init__(self) -> None:
+            self.attributes: dict[str, object] = {}
+
+        def set_attribute(self, key: str, value: object) -> None:
+            self.attributes[key] = value
+
+    monkeypatch.setattr(module, "is_llm_content_capture_enabled", lambda: True)
+    span = _Span()
+    module._complete_lms_generation_observation(
+        span=span,
+        outcome="success",
+        provider="anthropic",
+        model="claude-test",
+        finish_reason="stop",
+        raw_call=AdapterProviderCallAudit(
+            request_body={"model": "claude-test", "messages": []},
+            response_body={
+                "model": "claude-test",
+                "usage": {
+                    "input_tokens": 11,
+                    "output_tokens": 7,
+                    "cache_creation_input_tokens": 3,
+                    "cache_read_input_tokens": 5,
+                },
+            },
+        ),
+        observation_input={"message": "hello", "request_phase": "initial"},
+    )
+
+    assert span.attributes["langfuse.observation.model.name"] == "claude-test"
+    assert span.attributes["gen_ai.system"] == "anthropic"
+    assert span.attributes["gen_ai.usage.input_tokens"] == 11
+    assert span.attributes["gen_ai.usage.output_tokens"] == 7
+    assert '"input": 11' in span.attributes["langfuse.observation.usage_details"]
+    assert '"message": "hello"' in span.attributes["langfuse.observation.input"]
+    assert "claude-test" in span.attributes["langfuse.observation.output"]
+
+
 def test_chat_error_appends_audit_row_with_error_outcome() -> None:
     """Adapter failures should still append one audit row with raw request data."""
     adapter = _FakeAdapter()

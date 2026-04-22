@@ -60,7 +60,7 @@ def _compose(
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """Run one docker compose command with the generated override file."""
-    return _run(
+    args = (
         "docker",
         "compose",
         "-f",
@@ -68,10 +68,23 @@ def _compose(
         "-f",
         str(override_file),
         *compose_args,
-        env=env,
-        input_text=input_text,
-        check=check,
     )
+    try:
+        return _run(
+            *args,
+            env=env,
+            input_text=input_text,
+            check=check,
+        )
+    except subprocess.CalledProcessError as exc:
+        print(f"=== failed command ===\n{' '.join(args)}")
+        if exc.stdout:
+            print("=== failed stdout ===")
+            print(exc.stdout)
+        if exc.stderr:
+            print("=== failed stderr ===")
+            print(exc.stderr)
+        raise
 
 
 def _write_smoke_configs(*, config_dir: Path) -> None:
@@ -153,6 +166,17 @@ def _write_smoke_configs(*, config_dir: Path) -> None:
         ),
         encoding="utf-8",
     )
+    (config_dir / "mcp-adapter.yaml").write_text(
+        "\n".join(
+            [
+                "host: 0.0.0.0",
+                "port: 8763",
+                "timeout_seconds: 30.0",
+                "servers: {}",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
 
 def _write_override_file(
@@ -166,16 +190,18 @@ def _write_override_file(
     fake_llm_state = tmp_root / "fake-llm"
     fake_obsidian_state = tmp_root / "fake-obsidian"
     postgres_data = tmp_root / "postgres"
-    redis_data = tmp_root / "redis"
+    valkey_data = tmp_root / "valkey"
     qdrant_data = tmp_root / "qdrant"
+    seaweedfs_data = tmp_root / "seaweedfs"
     generated_dir = config_dir / "generated"
     for path in (
         fake_signal_state,
         fake_llm_state,
         fake_obsidian_state,
         postgres_data,
-        redis_data,
+        valkey_data,
         qdrant_data,
+        seaweedfs_data,
     ):
         path.mkdir(parents=True, exist_ok=True)
 
@@ -202,7 +228,7 @@ def _write_override_file(
                 ],
                 "depends_on": {
                     "postgres": {"condition": "service_healthy"},
-                    "redis": {"condition": "service_healthy"},
+                    "valkey": {"condition": "service_healthy"},
                     "qdrant": {"condition": "service_started"},
                     "llm-fake": {"condition": "service_healthy"},
                     "obsidian-fake": {"condition": "service_healthy"},
@@ -216,17 +242,27 @@ def _write_override_file(
                     f"{REPO_ROOT / 'scripts' / 'healthcheck-agent.sh'}:/usr/local/bin/brain-healthcheck:ro",
                 ],
             },
+            "brain-mcp": {
+                "restart": "no",
+                "volumes": [
+                    f"{config_dir}:/app/config:ro",
+                ],
+            },
             "postgres": {
                 "restart": "no",
                 "volumes": [f"{postgres_data}:/var/lib/postgresql/data"],
             },
-            "redis": {
+            "valkey": {
                 "restart": "no",
-                "volumes": [f"{redis_data}:/data"],
+                "volumes": [f"{valkey_data}:/data"],
             },
             "qdrant": {
                 "restart": "no",
                 "volumes": [f"{qdrant_data}:/qdrant/storage"],
+            },
+            "seaweedfs": {
+                "restart": "no",
+                "volumes": [f"{seaweedfs_data}:/data"],
             },
             "signal-api": {
                 "image": fake_http_image,
@@ -503,8 +539,9 @@ def _build_smoke_environment() -> dict[str, str]:
         **os.environ,
         "BRAIN_CORE_PORT_BIND": "127.0.0.1::8898",
         "BRAIN_POSTGRES_PORT_BIND": "127.0.0.1::5432",
-        "BRAIN_REDIS_PORT_BIND": "127.0.0.1::6379",
+        "BRAIN_VALKEY_PORT_BIND": "127.0.0.1::6379",
         "BRAIN_QDRANT_PORT_BIND": "127.0.0.1::6333",
+        "SEAWEEDFS_S3_PORT_BIND": "127.0.0.1::8333",
         "PYTHON_VERSION": PYTHON_VERSION.split(".")[0]
         + "."
         + PYTHON_VERSION.split(".")[1],

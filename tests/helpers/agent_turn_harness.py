@@ -20,6 +20,7 @@ from packages.brain_sdk import (
     MemoryContextBlock,
     MemoryDialogueTurn,
     SwitchboardOperatorInstruction,
+    ToolSystemHint,
 )
 from packages.brain_shared.http.client import HttpClient
 from packages.brain_shared.ids import generate_ulid_str
@@ -41,6 +42,7 @@ class AgentTurnScenario:
     session_id: str = field(default_factory=generate_ulid_str)
     capabilities: tuple[CapabilityDescriptor, ...] = ()
     always_on_capabilities: tuple[CapabilityDescriptor, ...] = ()
+    tool_system_hints: tuple[ToolSystemHint, ...] = ()
     search_results: tuple[CapabilitySearchHit, ...] = ()
     described_capabilities: dict[str, CapabilityDescriptor] = field(
         default_factory=dict
@@ -181,6 +183,24 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                     "errors": [],
                 },
             )
+        if path == "/capabilities/tool-system-hints":
+            return _json_response(
+                request,
+                {
+                    "systems": [
+                        {
+                            "system_id": item.system_id,
+                            "label": item.label,
+                            "summary": item.summary,
+                            "kind": item.kind,
+                            "ready": item.ready,
+                            "tool_count": item.tool_count,
+                        }
+                        for item in scenario.tool_system_hints
+                    ],
+                    "errors": [],
+                },
+            )
         if path == "/capabilities/describe-one":
             capability_id = str(body.get("capability_id", "")).strip()
             descriptor = scenario.described_capabilities.get(capability_id)
@@ -213,19 +233,39 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                 request,
                 {
                     "payload": {
-                        "current_focus": scenario.context.current_focus,
-                        "recent_conversation_summary": (
-                            scenario.context.recent_conversation_summary
-                        ),
-                        "recent_turns": [
-                            {
-                                "role": turn.role,
-                                "content": turn.content,
-                                "is_summary": turn.is_summary,
-                            }
-                            for turn in scenario.context.recent_turns
-                        ],
-                        "reference_snippets": list(scenario.context.reference_snippets),
+                        "session_id": scenario.session_id,
+                        "inbound_turn": {
+                            "id": generate_ulid_str(),
+                            "session_id": scenario.session_id,
+                            "direction": "inbound",
+                            "content": str(body.get("message", "")),
+                            "role": "user",
+                            "model": None,
+                            "provider": None,
+                            "token_count": 3,
+                            "reasoning_level": None,
+                            "trace_id": body.get("trace_id", ""),
+                            "conversation_episode_id": generate_ulid_str(),
+                            "principal": body.get("principal", ""),
+                            "created_at": "2026-04-12T00:00:00+00:00",
+                        },
+                        "context": {
+                            "current_focus": scenario.context.current_focus,
+                            "recent_conversation_summary": (
+                                scenario.context.recent_conversation_summary
+                            ),
+                            "recent_turns": [
+                                {
+                                    "role": turn.role,
+                                    "content": turn.content,
+                                    "is_summary": turn.is_summary,
+                                }
+                                for turn in scenario.context.recent_turns
+                            ],
+                            "reference_snippets": list(
+                                scenario.context.reference_snippets
+                            ),
+                        },
                     },
                     "errors": [],
                 },
@@ -245,6 +285,7 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                         "token_count": 3,
                         "reasoning_level": None,
                         "trace_id": body.get("trace_id", ""),
+                        "conversation_episode_id": generate_ulid_str(),
                         "principal": body.get("principal", ""),
                         "created_at": "2026-04-12T00:00:00+00:00",
                     },
@@ -289,6 +330,7 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                         "token_count": int(body.get("token_count", 0)),
                         "reasoning_level": str(body.get("reasoning_level", "")),
                         "trace_id": body.get("trace_id", ""),
+                        "conversation_episode_id": "",
                         "principal": body.get("principal", ""),
                         "created_at": "2026-04-12T00:00:00+00:00",
                     },

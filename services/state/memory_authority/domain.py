@@ -37,6 +37,16 @@ class ContextBlock(BaseModel):
     reference_snippets: list[str]
 
 
+class TurnContext(BaseModel):
+    """MAS-resolved turn-start context for one inbound operator message."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    session_id: str
+    inbound_turn: "TurnRecord"
+    context: ContextBlock
+
+
 class InboundInstructionRecord(BaseModel):
     """Full inbound operator instruction metadata persisted with the turn."""
 
@@ -89,6 +99,8 @@ class SessionRecord(BaseModel):
     dialogue_summary: str | None
     dialogue_summary_token_count: int | None
     dialogue_start_turn_id: str | None
+    current_conversation_episode_id: str | None = None
+    last_episode_inbound_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -119,6 +131,7 @@ class TurnRecord(BaseModel):
     token_count: int | None
     reasoning_level: str | None
     trace_id: str
+    conversation_episode_id: str
     principal: str
     source: str | None = None
     sender_e164: str | None = None

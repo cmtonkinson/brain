@@ -59,6 +59,18 @@ class HttpMcpAdapter:
         body = response.json()
         return tuple(McpToolInfo.model_validate(t) for t in body.get("tools", []))
 
+    def list_servers(self) -> tuple[McpServerHealthStatus, ...]:
+        """Fetch configured MCP server statuses and operator-facing summaries."""
+        try:
+            response = self._client.get("/servers")
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise McpServerConnectionError(f"sidecar unreachable: {exc}") from exc
+        body = response.json()
+        return tuple(
+            McpServerHealthStatus.model_validate(s) for s in body.get("servers", [])
+        )
+
     def call_tool(
         self,
         *,

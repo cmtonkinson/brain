@@ -30,6 +30,11 @@ from packages.brain_shared.errors import (
 from services.action.capability_engine.op_handler_bridge import OpHandlerBridgeError
 from packages.brain_shared.ids import generate_ulid_str
 from packages.brain_shared.logging import get_logger, public_api_instrumented
+from packages.brain_shared.manifest import get_registry
+from services.action.capability_engine.mcp_op_handler_bridge import (
+    is_mcp_call_target,
+    parse_mcp_call_target,
+)
 from services.action.capability_engine.component import SERVICE_COMPONENT_ID
 from services.action.capability_engine.config import (
     CapabilityEngineSettings,
@@ -45,6 +50,7 @@ from services.action.capability_engine.domain import (
     CapabilityInvokeResult,
     CapabilityPolicySummary,
     CapabilitySearchHit,
+    ToolSystemHint,
 )
 from services.action.capability_engine.data.repository import (
     InMemoryCapabilityDiscoveryStateRepository,
@@ -361,6 +367,56 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
                 payload=(),
             )
         return success(meta=meta, payload=tuple(results))
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("meta",),
+    )
+    def list_tool_system_hints(
+        self, *, meta: EnvelopeMeta
+    ) -> Envelope[tuple[ToolSystemHint, ...]]:
+        """Return compact orientation hints for systems reachable through tools."""
+        try:
+            validate_meta(meta)
+        except ValueError as exc:
+            return failure(
+                meta=meta,
+                errors=[validation_error(str(exc), code=codes.INVALID_ARGUMENT)],
+                payload=(),
+            )
+
+        hints = [*_service_tool_system_hints()]
+        list_servers = getattr(self._mcp_adapter, "list_servers", None)
+        if callable(list_servers):
+            for server in list_servers():
+                summary = str(getattr(server, "instruction_summary", "")).strip()
+                server_id = str(getattr(server, "server_id", "")).strip()
+                if summary == "" or server_id == "":
+                    continue
+                hints.append(
+                    ToolSystemHint(
+                        system_id=server_id,
+                        label=server_id,
+                        summary=summary,
+                        kind="mcp",
+                        ready=bool(getattr(server, "connected", False)),
+                        tool_count=int(getattr(server, "tool_count", 0)),
+                    )
+                )
+
+        return success(
+            meta=meta,
+            payload=tuple(
+                sorted(
+                    hints,
+                    key=lambda item: (
+                        0 if item.kind == "core" else 1,
+                        item.system_id,
+                    ),
+                )
+            ),
+        )
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -710,17 +766,32 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         documents: dict[str, _CapabilityDiscoveryDocument] = {}
         for manifest in self._registry.list_manifests():
             required_params = self._required_params(manifest.input_schema)
-            text = "\n".join(
-                (
-                    f"capability_id: {manifest.capability_id}",
-                    f"summary: {manifest.summary}",
-                    f"required_params: {', '.join(required_params)}",
+            lines = [
+                f"capability_id: {manifest.capability_id}",
+                f"summary: {manifest.summary}",
+                f"required_params: {', '.join(required_params)}",
+            ]
+            mcp_server_id = ""
+            mcp_tool_name = ""
+            if getattr(manifest, "kind", "") == "mcp_op" and is_mcp_call_target(
+                manifest.call_target
+            ):
+                mcp_server_id, mcp_tool_name = parse_mcp_call_target(
+                    manifest.call_target
                 )
-            )
+                lines.extend(
+                    (
+                        f"server_id: {mcp_server_id}",
+                        f"tool_name: {mcp_tool_name}",
+                    )
+                )
+            text = "\n".join(lines)
             digest_payload = {
                 "capability_id": manifest.capability_id,
                 "summary": manifest.summary,
                 "required_params": list(required_params),
+                "mcp_server_id": mcp_server_id,
+                "mcp_tool_name": mcp_tool_name,
                 "embedding_profile": self._capability_embedding_profile_fingerprint,
             }
             documents[manifest.capability_id] = _CapabilityDiscoveryDocument(
@@ -1072,6 +1143,28 @@ def _error_category_to_reason_code(category: ErrorCategory) -> str:
         ErrorCategory.POLICY: "policy_error",
     }
     return _MAP.get(category, "internal_error")
+
+
+def _service_tool_system_hints() -> tuple[ToolSystemHint, ...]:
+    """Return service-owned tool-system hints from registered service manifests."""
+    hints: list[ToolSystemHint] = []
+    for service in get_registry().list_services():
+        summary = service.tool_system_summary.strip()
+        if not service.exposes_capabilities or summary == "":
+            continue
+        service_id = str(service.id)
+        label = service.tool_system_label.strip() or service_id
+        hints.append(
+            ToolSystemHint(
+                system_id=service_id,
+                label=label,
+                summary=summary,
+                kind="core",
+                ready=None,
+                tool_count=None,
+            )
+        )
+    return tuple(hints)
 
 
 def _resolve_capability_embedding_profile_fingerprint(

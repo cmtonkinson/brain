@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+from typing import Any, Sequence
 
 from packages.brain_shared.language_model import InferenceSystemBlock
 
@@ -11,6 +12,12 @@ _PERSONALITIES_DIR = Path(__file__).parent / "personalities"
 _SYSTEM_PROMPT_TEMPLATE_PATH = Path(__file__).parent / "system_prompt_template.txt"
 _SYSTEM_PROMPT_INSTRUCTIONS_PATH = (
     Path(__file__).parent / "system_prompt_instructions.txt"
+)
+_SYSTEM_TOOL_HINTS_TEMPLATE_PATH = (
+    Path(__file__).parent / "system_tool_hints_template.txt"
+)
+_SYSTEM_TOOL_HINT_ITEM_TEMPLATE_PATH = (
+    Path(__file__).parent / "system_tool_hint_item_template.txt"
 )
 _TEMPLATE_VAR_RE = re.compile(r"\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}")
 
@@ -41,6 +48,7 @@ def render_system_prompt(
     personality: str = "default",
     *,
     operator_profile: str = "Refer to me as 'boss'",
+    system_tool_hints: str = "",
     system_prompt_append: str = "",
 ) -> str:
     """Load one personality and render the system prompt template.
@@ -53,24 +61,44 @@ def render_system_prompt(
             f"personality '{personality}' not found at {personality_path}"
         )
     template = _SYSTEM_PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8")
-    blocks = render_system_prompt_blocks(
-        personality,
-        operator_profile=operator_profile,
-        system_prompt_append=system_prompt_append,
-    )
+    personality_text = personality_path.read_text(encoding="utf-8")
+    instructions_text = _SYSTEM_PROMPT_INSTRUCTIONS_PATH.read_text(encoding="utf-8")
     return _render_template(
         template,
-        personality=blocks[0].text,
-        operator_profile=blocks[1].text,
-        system_prompt_instructions=blocks[2].text,
-        system_prompt_append="",
+        personality=personality_text,
+        operator_profile=operator_profile,
+        system_prompt_instructions=instructions_text,
+        system_tool_hints=system_tool_hints,
+        system_prompt_append=system_prompt_append,
     )
+
+
+def render_system_tool_hints(hints: Sequence[Any]) -> str:
+    """Render compact tool-system hints from runtime-provided hint objects."""
+    item_template = _SYSTEM_TOOL_HINT_ITEM_TEMPLATE_PATH.read_text(encoding="utf-8")
+    items: list[str] = []
+    for hint in hints:
+        summary = str(getattr(hint, "summary", "")).strip()
+        if summary == "":
+            continue
+        system_id = str(getattr(hint, "system_id", "")).strip()
+        label = str(getattr(hint, "label", "")).strip() or system_id
+        if label == "":
+            continue
+        items.append(
+            _render_template(item_template, label=label, summary=summary).strip()
+        )
+    if len(items) == 0:
+        return ""
+    template = _SYSTEM_TOOL_HINTS_TEMPLATE_PATH.read_text(encoding="utf-8")
+    return _render_template(template, tool_system_hint_items="\n".join(items))
 
 
 def render_system_prompt_blocks(
     personality: str = "default",
     *,
     operator_profile: str = "Refer to me as 'boss'",
+    system_tool_hints: str = "",
     system_prompt_append: str = "",
 ) -> tuple[InferenceSystemBlock, ...]:
     """Load one personality and return canonical system blocks for inference."""
@@ -81,9 +109,11 @@ def render_system_prompt_blocks(
         )
     personality_text = personality_path.read_text(encoding="utf-8")
     instructions_text = _SYSTEM_PROMPT_INSTRUCTIONS_PATH.read_text(encoding="utf-8")
-    combined_instructions = instructions_text
-    if system_prompt_append != "":
-        combined_instructions = f"{instructions_text}\n{system_prompt_append}"
+    combined_instructions = "\n".join(
+        item
+        for item in (instructions_text, system_tool_hints, system_prompt_append)
+        if item != ""
+    )
     return (
         InferenceSystemBlock(kind="assistant_persona", text=personality_text),
         InferenceSystemBlock(kind="operator_profile", text=operator_profile),

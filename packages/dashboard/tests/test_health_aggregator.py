@@ -104,12 +104,12 @@ def test_probe_postgres_ok() -> None:
     assert result.state == "ok"
 
 
-def test_probe_redis_ok() -> None:
+def test_probe_valkey_ok() -> None:
     agg = _make_agg()
     client = MagicMock()
     client.ping.return_value = True
-    with patch("redis.Redis.from_url", return_value=client):
-        result = agg._probe_redis(_now())
+    with patch("valkey.Valkey.from_url", return_value=client):
+        result = agg._probe_valkey(_now())
     assert result.state == "ok"
     client.close.assert_called_once()
 
@@ -142,9 +142,9 @@ def test_fetch_returns_seven_components() -> None:
             ):
                 with patch.object(
                     agg,
-                    "_probe_redis",
+                    "_probe_valkey",
                     return_value=ComponentHealth(
-                        name="redis", state="ok", checked_at=_now()
+                        name="valkey", state="ok", checked_at=_now()
                     ),
                 ):
                     results = agg._fetch()
@@ -154,7 +154,7 @@ def test_fetch_returns_seven_components() -> None:
         "core",
         "agent",
         "postgres",
-        "redis",
+        "valkey",
         "signal",
         "qdrant",
         "gateway",
@@ -185,8 +185,8 @@ def test_load_dashboard_config_sources_runtime_health_defaults(tmp_path: Path) -
                 "    pool_size: 7",
                 "    health_timeout_seconds: 3.0",
                 "    connect_timeout_seconds: 9.0",
-                "  redis:",
-                "    url: redis://cache-host:6380/2",
+                "  valkey:",
+                "    url: valkey://cache-host:6380/2",
                 "    health_timeout_seconds: 4.0",
                 "  qdrant:",
                 "    url: http://qdrant-host:6333",
@@ -225,7 +225,7 @@ def test_load_dashboard_config_sources_runtime_health_defaults(tmp_path: Path) -
         config.health.postgres_url
         == "postgresql+psycopg://db-user:db-pass@db-host:5432/brain"
     )
-    assert config.health.redis_url == "redis://cache-host:6380/2"
+    assert config.health.valkey_url == "valkey://cache-host:6380/2"
     assert config.health.signal_health_url == "http://signal-host:8080/v1/health"
     assert config.health.qdrant_health_url == "http://qdrant-host:6333/healthz"
     assert config.health.gateway_health_url == "http://127.0.0.1:7412/health"

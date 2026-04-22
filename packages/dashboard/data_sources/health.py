@@ -17,7 +17,7 @@ from packages.dashboard.data_sources.postgres import normalize_postgres_dsn
 from packages.dashboard.models.data_source import RetentionPolicy
 from packages.dashboard.models.health import ComponentHealth
 
-COMPONENTS = ("core", "agent", "postgres", "redis", "signal", "qdrant", "gateway")
+COMPONENTS = ("core", "agent", "postgres", "valkey", "signal", "qdrant", "gateway")
 
 
 class HealthConfig(BaseModel):
@@ -31,9 +31,9 @@ class HealthConfig(BaseModel):
     agent_freshness_seconds: float = Field(default=30.0, gt=0)
     postgres_url: str = "postgresql+psycopg://brain:brain@localhost:8760/brain"
     postgres_timeout_seconds: float = Field(default=1.0, gt=0)
-    redis_url: str = "redis://localhost:8761/0"
-    redis_connect_timeout_seconds: float = Field(default=1.0, gt=0)
-    redis_socket_timeout_seconds: float = Field(default=1.0, gt=0)
+    valkey_url: str = "valkey://localhost:8761/0"
+    valkey_connect_timeout_seconds: float = Field(default=1.0, gt=0)
+    valkey_socket_timeout_seconds: float = Field(default=1.0, gt=0)
     signal_health_url: str | None = None
     signal_timeout_seconds: float = Field(default=0.5, gt=0)
     qdrant_health_url: str = "http://localhost:8762/healthz"
@@ -63,7 +63,7 @@ class HealthAggregator(BasePollingDataSource[list[ComponentHealth]]):
             ),
             self._probe_agent(now),
             self._probe_postgres(now),
-            self._probe_redis(now),
+            self._probe_valkey(now),
             self._probe_http_component(
                 name="signal",
                 url=self._config.signal_health_url,
@@ -173,16 +173,16 @@ class HealthAggregator(BasePollingDataSource[list[ComponentHealth]]):
             )
         return self._component(name="postgres", state="ok", detail=None, now=now)
 
-    def _probe_redis(self, now: datetime) -> ComponentHealth:
-        """Probe Redis with one direct PING."""
-        import redis  # noqa: PLC0415
+    def _probe_valkey(self, now: datetime) -> ComponentHealth:
+        """Probe Valkey with one direct PING."""
+        import valkey  # noqa: PLC0415
 
         client = None
         try:
-            client = redis.Redis.from_url(
-                self._config.redis_url,
-                socket_connect_timeout=self._config.redis_connect_timeout_seconds,
-                socket_timeout=self._config.redis_socket_timeout_seconds,
+            client = valkey.Valkey.from_url(
+                self._config.valkey_url,
+                socket_connect_timeout=self._config.valkey_connect_timeout_seconds,
+                socket_timeout=self._config.valkey_socket_timeout_seconds,
                 decode_responses=True,
             )
             ready = bool(client.ping())
@@ -192,7 +192,7 @@ class HealthAggregator(BasePollingDataSource[list[ComponentHealth]]):
             if "refused" in lowered or "auth" in lowered or "wrongpass" in lowered:
                 state = "no"
             return self._component(
-                name="redis",
+                name="valkey",
                 state=state,
                 detail=str(exc) or type(exc).__name__,
                 now=now,
@@ -206,7 +206,7 @@ class HealthAggregator(BasePollingDataSource[list[ComponentHealth]]):
 
         state = "ok" if ready else "no"
         detail = None if ready else "PING returned false"
-        return self._component(name="redis", state=state, detail=detail, now=now)
+        return self._component(name="valkey", state=state, detail=detail, now=now)
 
     def _component(
         self,

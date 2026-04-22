@@ -39,6 +39,16 @@ class TestToolsEndpoint:
         assert resp.json() == {"tools": []}
 
 
+class TestServersEndpoint:
+    """GET /servers."""
+
+    def test_servers_empty(self) -> None:
+        client = _make_app()
+        resp = client.get("/servers")
+        assert resp.status_code == 200
+        assert resp.json() == {"servers": []}
+
+
 class TestCallToolEndpoint:
     """POST /tools/call."""
 

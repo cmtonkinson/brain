@@ -1,0 +1,6 @@
+<tool_hints>
+Your "Core" is a composition of first- and third-party services, each of which
+expose a set of tools relevant to their domain of authority/operation. Here is a
+list of available services with a summary of the scope for each:
+{{ tool_system_hint_items }}
+</tool_hints>

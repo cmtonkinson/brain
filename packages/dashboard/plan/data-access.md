@@ -62,7 +62,7 @@ Dashboard data flow is split into four explicit layers.
 ### 1. Raw Acquisition
 Substrate-specific readers fetch raw state from:
 - Postgres
-- Redis
+- Valkey
 - files
 - Docker
 - host-local probes
@@ -109,7 +109,7 @@ The dashboard must _never_ write to any Brain-owned state.
 
 This applies to:
 - Postgres (all schemas)
-- Redis
+- Valkey
 - the filesystem (Brain-owned logs, heartbeat files, vault)
 - any Brain HTTP endpoint that mutates state
 
@@ -119,7 +119,7 @@ not merely by convention.
 Enforcement:
 - Postgres connections should use a read-only connection mode or a restricted
   database role when practical
-- Redis connections should use read-only commands only
+- Valkey connections should use read-only commands only
 - HTTP calls must target health/alive endpoints only, never mutation endpoints
 - filesystem access must be read-only opens
 
@@ -154,13 +154,13 @@ The dashboard does not use Brain's SQLAlchemy engine, ORM models, or session
 infrastructure. It connects independently, using its own lightweight database
 access layer.
 
-### Redis
-The dashboard connects to Redis using the same connection parameters Brain Core
+### Valkey
+The dashboard connects to Valkey using the same connection parameters Brain Core
 uses.
 
 Source of connection parameters:
-- `resources.yaml` under `substrate.redis`
-- environment variables following the `BRAIN_RESOURCES__SUBSTRATE__REDIS__*`
+- `resources.yaml` under `substrate.valkey`
+- environment variables following the `BRAIN_RESOURCES__SUBSTRATE__VALKEY__*`
   convention
 
 Connection behavior:
@@ -312,7 +312,7 @@ substrate, schema (where applicable), and nature of each access.
 
 ### Header
 - Postgres: connectivity ping only (no schema, no application queries)
-- Redis: `PING` only
+- Valkey: `PING` only
 - HTTP: health endpoints for core, signal, qdrant, gateway
 - Docker: container inspect for core, agent, signal, qdrant
 - Host process liveness: gateway
@@ -376,7 +376,7 @@ A view must not know or care whether its data arrived via:
 - a periodic SQL poll
 - a Postgres LISTEN/NOTIFY push
 - a trigger-driven callback
-- a Redis subscription
+- a Valkey subscription
 - a filesystem watch
 
 The view asks its data source for the current state. The data source is
@@ -489,7 +489,7 @@ _Pull-driven (polling):_
 _Push-driven (event):_
 - the data source receives notifications when data changes
 - possible mechanisms include Postgres LISTEN/NOTIFY, DB-level triggers,
-  filesystem watches, or Redis pub/sub
+  filesystem watches, or Valkey pub/sub
 - more responsive, but requires deciding on a notification surface
 
 ### Current Default

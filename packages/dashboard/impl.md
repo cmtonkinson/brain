@@ -44,7 +44,7 @@ Real polling pipeline; no Textual.
   `get_history()`, `get_viewport()`, `is_stale()`, `last_refreshed_at()`; polling loop machinery
 - `data_sources/postgres.py` — real `psycopg` connection (read-only), implement base class;
   queries stay placeholder `SELECT 1` for now
-- `data_sources/redis.py` — real connection skeleton, base class, error isolation
+- `data_sources/valkey.py` — real connection skeleton, base class, error isolation
 - `data_sources/logs.py` — `FileLogSource`, `DockerLogSource`; ring buffer, event normalization
 - `data_sources/health.py` (new) — `HealthAggregator` running 7-component probe/normalize/aggregate
 - `config.py` — expand `DashboardConfig` with per-source poll cadence, timeouts, retention;

@@ -37,12 +37,12 @@ read-only access to operational state. Dashboard:
 The dashboard converts raw substrate data into compact view models under
 `models/` before rendering views inside panes. Primary observability inputs:
 - PostgreSQL runtime state
-- Redis queue/cache state
+- Valkey queue/cache state
 - local files and logs
 - Docker/container runtime state
 
 Dashboard data flow is layered:
-- raw acquisition: substrate reads from Postgres, Redis, files, Docker, host
+- raw acquisition: substrate reads from Postgres, Valkey, files, Docker, host
   probes, and health endpoints
 - normalized records: canonical dashboard records with stable ids, timestamps,
   correlation fields, and provenance

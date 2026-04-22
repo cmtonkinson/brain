@@ -17,6 +17,40 @@ HTTP_API_SRC    := $(shell (printf '%s\n' packages/brain_core/health_api.py; fin
 CAPABILITY_DOC  := docs/capabilities.md
 CAPABILITY_GEN  := scripts/generate_capability_docs.py
 CAPABILITY_SRC  := $(shell find capabilities -type f | sort)
+APP_COMPOSE_FILES := --file docker-compose.yaml
+STACK_COMPOSE_FILES := --file docker-compose.yaml --file docker-compose.observability.yaml
+APP_SERVICES     := \
+	valkey \
+	brain-mcp \
+	postgres \
+	qdrant \
+	seaweedfs \
+	seaweedfs-oas-bucket-init \
+	brain-core \
+	signal-api \
+	brain-agent
+APP_PRIVATE_SERVICES := \
+	brain-agent \
+	brain-core \
+	brain-mcp \
+	qdrant \
+	signal-api
+O11Y_SHARED_SERVICES := \
+	postgres \
+	seaweedfs \
+	valkey
+O11Y_SERVICES   := \
+	otel-collector \
+	prometheus \
+	loki \
+	grafana \
+	langfuse-web \
+	langfuse-worker \
+	langfuse-postgres-init \
+	clickhouse-data-init \
+	clickhouse \
+	seaweedfs-bucket-init
+O11Y_UP_SERVICES := $(O11Y_SHARED_SERVICES) $(O11Y_SERVICES)
 DIAGRAM_SRC     := img/diagrams.drawio
 DIAGRAM_GEN     := img/export-diagrams.sh
 DIAGRAM_PNGS    := \
@@ -49,7 +83,7 @@ ifeq ($(INTEGRATION),1)
 PYTEST_INTEGRATION_ENV := BRAIN_RUN_INTEGRATION_REAL=1
 endif
 
-.PHONY: all deps deps-upgrade switch-python clean check format test test-only test-all docs up down integration outline smoke smoke-only smoke-e2e smoke-docker
+.PHONY: all deps deps-upgrade switch-python clean check format test test-only test-all docs up down ps app-up app-down app-down-all o11y-up o11y-down stack-up stack-down integration outline smoke smoke-only smoke-e2e smoke-docker
 
 define run_gate
 	@set +e; \
@@ -138,7 +172,12 @@ smoke-only:
 		resources/adapters/signal/tests/test_signal_adapter_wire_integration.py \
 		tests/integration/test_agent_e2e_smoke.py)
 
-docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(HTTP_API_DOC) $(CAPABILITY_DOC) $(DIAGRAM_PNGS)
+docs:
+	$(PY) $(GLOSSARY_GEN)
+	$(PY) $(SERVICE_API_GEN)
+	$(PY) $(HTTP_API_GEN)
+	$(PY) $(CAPABILITY_GEN)
+	$(DIAGRAM_GEN) $(DIAGRAM_SRC)
 
 $(GLOSSARY_DOC): $(GLOSSARY_SRC) $(GLOSSARY_GEN)
 	$(PY) $(GLOSSARY_GEN)
@@ -155,11 +194,36 @@ $(CAPABILITY_DOC): $(CAPABILITY_SRC) $(CAPABILITY_GEN)
 $(DIAGRAM_PNGS): $(DIAGRAM_SRC) $(DIAGRAM_GEN)
 	$(DIAGRAM_GEN) $(DIAGRAM_SRC)
 
-up:
-	PYTHON_VERSION=$(PYTHON_VERSION) docker compose up --build --detach
+#############################################################################
+# development conveniences
+#############################################################################
+up: app-up
 
-down:
-	docker compose down
+down: stack-down
+
+ps:
+	docker compose $(STACK_COMPOSE_FILES) ps
+
+app-up:
+	PYTHON_VERSION=$(PYTHON_VERSION) docker compose $(APP_COMPOSE_FILES) up --build --detach
+
+app-down:
+	docker compose $(STACK_COMPOSE_FILES) rm --force --stop $(APP_PRIVATE_SERVICES)
+
+app-down-all:
+	docker compose $(APP_COMPOSE_FILES) rm --force --stop $(APP_SERVICES)
+
+o11y-up:
+	PYTHON_VERSION=$(PYTHON_VERSION) docker compose $(STACK_COMPOSE_FILES) up --build --detach $(O11Y_UP_SERVICES)
+
+o11y-down:
+	docker compose $(STACK_COMPOSE_FILES) rm --force --stop $(O11Y_SERVICES)
+
+stack-up:
+	PYTHON_VERSION=$(PYTHON_VERSION) docker compose $(STACK_COMPOSE_FILES) up --build --detach
+
+stack-down:
+	docker compose $(STACK_COMPOSE_FILES) down
 
 outline:
 	@tree -d -I __pycache__ -I tests -I data -I migrations packages resources services actors

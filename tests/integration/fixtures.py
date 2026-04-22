@@ -28,7 +28,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _COMPOSE_PATH = _REPO_ROOT / "docker-compose.yaml"
 _IMAGE_DEFAULTS: dict[str, str] = {
     "postgres": "postgres:16",
-    "redis": "redis:7-alpine",
+    "valkey": "valkey/valkey:8-alpine",
     "qdrant": "qdrant/qdrant:v1.17",
 }
 
@@ -116,16 +116,16 @@ def _wait_for_tcp(host: str, port: int, *, timeout_seconds: float = 30.0) -> Non
     raise TimeoutError(f"timed out waiting for TCP endpoint {host}:{port}")
 
 
-def _wait_for_redis_ready(
+def _wait_for_valkey_ready(
     host: str, port: int, *, timeout_seconds: float = 30.0
 ) -> None:
-    """Wait until Redis responds to PING over the wire."""
-    import redis as redis_lib
+    """Wait until Valkey responds to PING over the wire."""
+    import valkey as valkey_lib
 
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         try:
-            client = redis_lib.Redis(host=host, port=port, socket_timeout=1)
+            client = valkey_lib.Valkey(host=host, port=port, socket_timeout=1)
             try:
                 if client.ping():
                     return
@@ -133,7 +133,7 @@ def _wait_for_redis_ready(
                 client.close()
         except Exception:  # noqa: BLE001
             time.sleep(0.2)
-    raise TimeoutError(f"timed out waiting for Redis readiness at {host}:{port}")
+    raise TimeoutError(f"timed out waiting for Valkey readiness at {host}:{port}")
 
 
 def _wait_for_qdrant_ready(
@@ -305,19 +305,19 @@ def migrated_integration_settings(
 
 
 @pytest.fixture(scope="session")
-def redis_url() -> Iterator[str]:
-    """Yield one temporary Redis URL for integration tests."""
+def valkey_url() -> Iterator[str]:
+    """Yield one temporary Valkey URL for integration tests."""
     if not real_provider_tests_enabled():
         pytest.skip("real-provider integration tests disabled")
     if not _docker_available():
         pytest.skip("docker unavailable for integration tests")
     container = _start_container(
-        image=_service_image("redis"),
+        image=_service_image("valkey"),
         container_port=6379,
     )
-    _wait_for_redis_ready(container.host, container.port)
+    _wait_for_valkey_ready(container.host, container.port)
     try:
-        yield f"redis://{container.host}:{container.port}/0"
+        yield f"valkey://{container.host}:{container.port}/0"
     finally:
         _stop_container(container.container_id)
 

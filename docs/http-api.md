@@ -45,6 +45,11 @@ _Response: `_SearchResponse`_
 _Handler: `slash_lookup`_
 _Response: `_SlashLookupResponse`_
 
+
+`POST /capabilities/tool-system-hints` &mdash; return compact orientation hints for systems reachable through tools  
+_Handler: `list_tool_system_hints`_
+_Response: `_ToolSystemHintsResponse`_
+
 ------------------------------------------------------------------------
 ## `services/action/language_model/api.py`
 `POST /lms/chat` &mdash; direct access to model inference without CES/PS overhead  
@@ -218,8 +223,14 @@ _Summary: Append one inbound message and return the assembled MAS context block.
 
 `POST /memory/assemble_snapshot` &mdash; return the stable historical MAS snapshot without the live inbound turn  
 _Handler: `assemble_snapshot`_
-_Response: `_AssembleContextResponse`_
+_Response: `_AssembleSnapshotResponse`_
 _Summary: Return the historical MAS context snapshot without the live turn._
+
+
+`POST /memory/compact_dialogue` &mdash; force-summarize all visible turns and advance dialogue frontier  
+_Handler: `compact_dialogue`_
+_Response: `_SessionResponse`_
+_Summary: Force-summarize all visible turns and advance dialogue frontier._
 
 
 `POST /memory/create_session` &mdash; create one new MAS session for the agent  

@@ -12,7 +12,7 @@ class DockerDataSource:
             "brain-core": "healthy",
             "brain-agent": "healthy",
             "postgres": "healthy",
-            "redis": "healthy",
+            "valkey": "healthy",
             "signal": "healthy",
             "qdrant": "healthy",
             "gateway": "healthy",

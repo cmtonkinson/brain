@@ -47,6 +47,8 @@ class _FakeMemoryRepository:
             dialogue_summary=None,
             dialogue_summary_token_count=None,
             dialogue_start_turn_id=None,
+            current_conversation_episode_id=generate_ulid_str(),
+            last_episode_inbound_at=None,
             created_at=now,
             updated_at=now,
         )
@@ -143,6 +145,7 @@ class _FakeMemoryRepository:
         token_count: int | None,
         reasoning_level: str | None,
         trace_id: str,
+        conversation_episode_id: str,
         principal: str,
         source: str | None = None,
         instruction: InboundInstructionRecord | None = None,
@@ -159,6 +162,7 @@ class _FakeMemoryRepository:
             token_count=token_count,
             reasoning_level=reasoning_level,
             trace_id=trace_id,
+            conversation_episode_id=conversation_episode_id,
             principal=principal,
             source=source,
             sender_e164=None if instruction is None else instruction.sender_e164,
@@ -187,6 +191,33 @@ class _FakeMemoryRepository:
         )
         self.turns.setdefault(session_id, []).append(record)
         return record
+
+    def resolve_conversation_episode(
+        self,
+        *,
+        session_id: str,
+        inbound_at: datetime,
+        idle_seconds: int,
+    ) -> str | None:
+        """Return or create one in-memory conversation episode id."""
+        session = self.sessions.get(session_id)
+        if session is None:
+            return None
+        rotate = session.current_conversation_episode_id is None
+        if not rotate and session.last_episode_inbound_at is not None:
+            rotate = (
+                inbound_at - session.last_episode_inbound_at
+            ).total_seconds() > idle_seconds
+        episode_id = (
+            generate_ulid_str() if rotate else session.current_conversation_episode_id
+        )
+        self.sessions[session_id] = session.model_copy(
+            update={
+                "current_conversation_episode_id": episode_id,
+                "last_episode_inbound_at": inbound_at,
+            }
+        )
+        return episode_id
 
     def list_turns(self, *, session_id: str) -> list[TurnRecord]:
         """List turns for one session."""
@@ -328,6 +359,7 @@ def _build_service(
     min_turns_to_keep: int = 10,
     max_turns_to_keep: int = 20,
     focus_token_budget: int = 512,
+    conversation_episode_idle_seconds: int = 3600,
 ) -> tuple[
     DefaultMemoryAuthorityService, _FakeMemoryRepository, _FakeLanguageModelService
 ]:
@@ -336,6 +368,7 @@ def _build_service(
         min_turns_to_keep=min_turns_to_keep,
         max_turns_to_keep=max_turns_to_keep,
         focus_token_budget=focus_token_budget,
+        conversation_episode_idle_seconds=conversation_episode_idle_seconds,
     )
     repository = _FakeMemoryRepository()
     language_model = _FakeLanguageModelService()
@@ -376,6 +409,18 @@ def test_session_create_clear_and_get() -> None:
     )
 
 
+def test_create_session_mints_initial_conversation_episode() -> None:
+    """New MAS sessions should start a new conversation episode."""
+    service, _repository, _ = _build_service()
+
+    created = service.create_session(meta=_meta())
+
+    assert created.ok
+    assert created.payload is not None
+    assert created.payload.value.current_conversation_episode_id not in (None, "")
+    assert created.payload.value.last_episode_inbound_at is None
+
+
 def test_assemble_context_returns_expected_shape() -> None:
     """Assembled context should return the historical snapshot before the new turn."""
     service, repository, _ = _build_service()
@@ -397,7 +442,7 @@ def test_assemble_context_returns_expected_shape() -> None:
 
     assert result.ok
     assert result.payload is not None
-    block = result.payload.value
+    block = result.payload.value.context
     assert block.current_focus == "focus state"
     assert block.recent_conversation_summary == ""
     assert [turn.content for turn in block.recent_turns] == ["prior assistant"]
@@ -462,12 +507,12 @@ def test_dialogue_respects_recent_and_older_boundaries() -> None:
     assert context.ok
     assert context.payload is not None
 
-    recent_turns = context.payload.value.recent_turns
+    recent_turns = context.payload.value.context.recent_turns
     assert len(recent_turns) == 2
     assert recent_turns[-1].content == "assistant-4"
     assert recent_turns[-1].is_summary is False
     assert all(item.content != "latest-user" for item in recent_turns)
-    assert context.payload.value.recent_conversation_summary != ""
+    assert context.payload.value.context.recent_conversation_summary != ""
     assert repository.sessions[session_id].dialogue_start_turn_id is not None
     assert repository.sessions[session_id].dialogue_summary is not None
 
@@ -544,6 +589,63 @@ def test_record_inbound_turn_persists_turn_metadata() -> None:
     assert turns[0].id == turn.id
 
 
+def test_record_inbound_turn_rotates_conversation_episode_after_idle_gap() -> None:
+    """Inbound turns should reuse or rotate MAS-owned conversation episodes by idle gap."""
+    service, _repository, _ = _build_service(conversation_episode_idle_seconds=60)
+    created = service.create_session(meta=_meta())
+    assert created.payload is not None
+    session_id = created.payload.value.id
+    initial_episode_id = created.payload.value.current_conversation_episode_id
+
+    first = service.record_inbound_turn(
+        meta=_meta(),
+        session_id=session_id,
+        message="first",
+        instruction=InboundInstructionRecord(
+            sender_e164="+12025550100",
+            message_text="first",
+            timestamp_ms=1_710_000_000_000,
+            source_device="1",
+            source="signal",
+        ),
+    )
+    second = service.record_inbound_turn(
+        meta=_meta(),
+        session_id=session_id,
+        message="second",
+        instruction=InboundInstructionRecord(
+            sender_e164="+12025550100",
+            message_text="second",
+            timestamp_ms=1_710_000_030_000,
+            source_device="1",
+            source="signal",
+        ),
+    )
+    third = service.record_inbound_turn(
+        meta=_meta(),
+        session_id=session_id,
+        message="third",
+        instruction=InboundInstructionRecord(
+            sender_e164="+12025550100",
+            message_text="third",
+            timestamp_ms=1_710_000_120_001,
+            source_device="1",
+            source="signal",
+        ),
+    )
+
+    assert first.payload is not None
+    assert second.payload is not None
+    assert third.payload is not None
+    assert first.payload.value.conversation_episode_id == initial_episode_id
+    assert second.payload.value.conversation_episode_id == (
+        first.payload.value.conversation_episode_id
+    )
+    assert third.payload.value.conversation_episode_id != (
+        first.payload.value.conversation_episode_id
+    )
+
+
 def test_assemble_snapshot_excludes_current_live_turn() -> None:
     """assemble_snapshot should omit the current live inbound turn from dialogue."""
     service, _, _ = _build_service()
@@ -601,6 +703,162 @@ def test_summary_rolls_forward_without_dropping_older_history() -> None:
     session = repository.sessions[session_id]
     assert session.dialogue_summary is not None
     assert session.dialogue_start_turn_id is not None
-    assert [turn.content for turn in assembled.payload.value.recent_turns] == [
+    assert [turn.content for turn in assembled.payload.value.context.recent_turns] == [
         "assistant-3"
     ]
+
+
+def test_compact_dialogue_absorbs_all_visible_turns() -> None:
+    """compact_dialogue should fold all visible turns into summary and zero out recent turns."""
+    service, repository, language_model = _build_service(
+        min_turns_to_keep=2, max_turns_to_keep=20
+    )
+    created = service.create_session(meta=_meta())
+    assert created.payload is not None
+    session_id = created.payload.value.id
+
+    for idx in range(5):
+        _ = service.record_response(
+            meta=_meta(),
+            session_id=session_id,
+            content=f"assistant-{idx}",
+            model="test",
+            provider="unit",
+            token_count=3,
+            reasoning_level="standard",
+        )
+
+    language_model.next_text = "compacted summary of five turns"
+    result = service.compact_dialogue(meta=_meta(), session_id=session_id)
+
+    assert result.ok
+    assert result.payload is not None
+    session = result.payload.value
+    assert session.dialogue_summary == "compacted summary of five turns"
+    assert session.dialogue_start_turn_id == repository.turns[session_id][-1].id
+
+    # Next snapshot should have zero recent turns.
+    snapshot = service.assemble_snapshot(
+        meta=_meta(), session_id=session_id, exclude_latest=False
+    )
+    assert snapshot.ok
+    assert snapshot.payload is not None
+    assert snapshot.payload.value.recent_turns == []
+    assert snapshot.payload.value.recent_conversation_summary != ""
+
+
+def test_compact_dialogue_noop_when_no_visible_turns() -> None:
+    """compact_dialogue should be a no-op when no visible turns exist."""
+    service, _repository, language_model = _build_service()
+    created = service.create_session(meta=_meta())
+    assert created.payload is not None
+    session_id = created.payload.value.id
+
+    calls_before = len(language_model.calls)
+    result = service.compact_dialogue(meta=_meta(), session_id=session_id)
+
+    assert result.ok
+    assert result.payload is not None
+    assert result.payload.value.dialogue_summary is None
+    assert result.payload.value.dialogue_start_turn_id is None
+    assert len(language_model.calls) == calls_before
+
+
+def test_compact_dialogue_with_existing_summary() -> None:
+    """compact_dialogue should fold new turns into an existing rolling summary."""
+    service, repository, language_model = _build_service(
+        min_turns_to_keep=2, max_turns_to_keep=4
+    )
+    created = service.create_session(meta=_meta())
+    assert created.payload is not None
+    session_id = created.payload.value.id
+
+    # Generate enough turns to trigger auto-compaction.
+    language_model.next_text = "auto summary"
+    for idx in range(6):
+        _ = service.record_response(
+            meta=_meta(),
+            session_id=session_id,
+            content=f"assistant-{idx}",
+            model="test",
+            provider="unit",
+            token_count=3,
+            reasoning_level="standard",
+        )
+    # Trigger auto-compaction via assemble.
+    _ = service.assemble_context(meta=_meta(), session_id=session_id, message="trigger")
+    session_before = repository.sessions[session_id]
+    assert session_before.dialogue_summary is not None
+
+    # Add more turns after auto-compaction.
+    for idx in range(3):
+        _ = service.record_response(
+            meta=_meta(),
+            session_id=session_id,
+            content=f"post-compact-{idx}",
+            model="test",
+            provider="unit",
+            token_count=3,
+            reasoning_level="standard",
+        )
+
+    # Now force compact — should fold remaining visible turns into existing summary.
+    language_model.next_text = "fully compacted summary"
+    result = service.compact_dialogue(meta=_meta(), session_id=session_id)
+
+    assert result.ok
+    assert result.payload is not None
+    assert result.payload.value.dialogue_summary == "fully compacted summary"
+    assert (
+        result.payload.value.dialogue_start_turn_id
+        == repository.turns[session_id][-1].id
+    )
+
+    # Verify zero recent turns after compact.
+    snapshot = service.assemble_snapshot(
+        meta=_meta(), session_id=session_id, exclude_latest=False
+    )
+    assert snapshot.ok
+    assert snapshot.payload.value.recent_turns == []
+
+
+def test_compact_dialogue_session_not_found() -> None:
+    """compact_dialogue should return not-found for non-existent session."""
+    service, _, _ = _build_service()
+
+    result = service.compact_dialogue(
+        meta=_meta(), session_id="01JAAAAAAAAAAAAAAAAAAAAAAAA"
+    )
+
+    assert not result.ok
+    assert len(result.errors) > 0
+
+
+def test_compact_dialogue_preserves_focus() -> None:
+    """compact_dialogue should leave focus state unchanged."""
+    service, repository, language_model = _build_service()
+    created = service.create_session(meta=_meta())
+    assert created.payload is not None
+    session_id = created.payload.value.id
+
+    _ = service.update_focus(
+        meta=_meta(), session_id=session_id, content="important focus"
+    )
+    for idx in range(3):
+        _ = service.record_response(
+            meta=_meta(),
+            session_id=session_id,
+            content=f"assistant-{idx}",
+            model="test",
+            provider="unit",
+            token_count=3,
+            reasoning_level="standard",
+        )
+
+    language_model.next_text = "compact result"
+    result = service.compact_dialogue(meta=_meta(), session_id=session_id)
+
+    assert result.ok
+    session = repository.sessions[session_id]
+    assert session.focus == "important focus"
+    assert session.dialogue_summary == "compact result"

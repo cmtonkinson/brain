@@ -812,6 +812,97 @@ def test_search_capabilities_returns_compact_hits_from_internal_search() -> None
     )
 
 
+def test_list_tool_system_hints_combines_service_and_mcp_hints(monkeypatch) -> None:
+    """Tool-system hints should combine manifest-owned services and MCP servers."""
+    from services.action.capability_engine import implementation as module
+
+    class _Registry:
+        def list_services(self):
+            return (
+                type(
+                    "_Service",
+                    (),
+                    {
+                        "id": "service_vault_authority",
+                        "exposes_capabilities": True,
+                        "tool_system_label": "Vault Authority Service",
+                        "tool_system_summary": "Personal Knowledge Base access.",
+                    },
+                )(),
+                type(
+                    "_Hidden",
+                    (),
+                    {
+                        "id": "service_policy_service",
+                        "exposes_capabilities": False,
+                        "tool_system_label": "",
+                        "tool_system_summary": "",
+                    },
+                )(),
+            )
+
+    class _McpAdapter:
+        def list_servers(self):
+            return (
+                type(
+                    "_Server",
+                    (),
+                    {
+                        "server_id": "filesystem-ro",
+                        "connected": True,
+                        "tool_count": 4,
+                        "instruction_summary": "read access to home",
+                    },
+                )(),
+            )
+
+    monkeypatch.setattr(module, "get_registry", lambda: _Registry())
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(),
+        policy_service=_FakePolicyService(),
+        registry=CapabilityRegistry(),
+        mcp_adapter=_McpAdapter(),
+    )
+
+    result = service.list_tool_system_hints(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="agent", principal="operator")
+    )
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert [item.system_id for item in result.payload.value] == [
+        "service_vault_authority",
+        "filesystem-ro",
+    ]
+    assert result.payload.value[1].kind == "mcp"
+    assert result.payload.value[1].tool_count == 4
+
+
+def test_mcp_discovery_document_includes_server_and_tool_identity() -> None:
+    """MCP capability embeddings should include server/tool identity for disambiguation."""
+    registry = CapabilityRegistry()
+    registry.register_manifest(
+        manifest=OpCapabilityManifest(
+            capability_id="mcp-filesystem-ro-read-file",
+            kind="mcp_op",
+            version="0.1.0",
+            summary="Read a file.",
+            call_target="mcp:filesystem-ro:read_file",
+        )
+    )
+    service = DefaultCapabilityEngineService(
+        settings=CapabilityEngineSettings(),
+        policy_service=_FakePolicyService(),
+        registry=registry,
+    )
+
+    documents = service._capability_discovery_documents()
+
+    document = documents["mcp-filesystem-ro-read-file"]
+    assert "server_id: filesystem-ro" in document.text
+    assert "tool_name: read_file" in document.text
+
+
 def test_ces_health_does_not_depend_on_policy_service_health() -> None:
     class _FailingPolicyService(_FakePolicyService):
         def health(self, *, meta: Any):

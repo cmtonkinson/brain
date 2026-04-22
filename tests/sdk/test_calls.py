@@ -175,6 +175,46 @@ def test_call_capabilities_search_success() -> None:
     )
 
 
+def test_call_capabilities_tool_system_hints_success() -> None:
+    """Tool-system hint wrapper should return compact typed hints."""
+    from packages.brain_sdk.calls import call_capabilities_tool_system_hints
+
+    http = _fake_http(
+        {
+            "systems": [
+                {
+                    "system_id": "service_vault_authority",
+                    "label": "Vault Authority Service",
+                    "summary": "Personal Knowledge Base access.",
+                    "kind": "core",
+                    "ready": None,
+                    "tool_count": None,
+                },
+                {
+                    "system_id": "filesystem-ro",
+                    "label": "filesystem-ro",
+                    "summary": "read access to home",
+                    "kind": "mcp",
+                    "ready": True,
+                    "tool_count": 4,
+                },
+            ],
+            "errors": [],
+        }
+    )
+
+    result = call_capabilities_tool_system_hints(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+    )
+
+    assert len(result) == 2
+    assert result[0].system_id == "service_vault_authority"
+    assert result[1].kind == "mcp"
+    assert result[1].tool_count == 4
+
+
 def test_call_capability_describe_success() -> None:
     """Capability-describe-one wrapper should return a single typed descriptor."""
     from packages.brain_sdk.calls import call_capability_describe
@@ -377,18 +417,36 @@ def test_call_lms_chat_with_tools_success() -> None:
 
 
 def test_call_memory_assemble_context_success() -> None:
-    """MAS assemble-context wrapper should return the typed context payload."""
+    """MAS assemble-context wrapper should return the typed turn-context payload."""
     from packages.brain_sdk.calls import call_memory_assemble_context
 
     http = _fake_http(
         {
             "payload": {
-                "current_focus": "current focus",
-                "recent_conversation_summary": "prior summary",
-                "recent_turns": [
-                    {"role": "user", "content": "hello", "is_summary": False}
-                ],
-                "reference_snippets": ["snippet"],
+                "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                "inbound_turn": {
+                    "id": "turn-inbound",
+                    "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                    "direction": "inbound",
+                    "content": "hello",
+                    "role": "user",
+                    "model": None,
+                    "provider": None,
+                    "token_count": 3,
+                    "reasoning_level": None,
+                    "trace_id": "trace",
+                    "conversation_episode_id": "episode",
+                    "principal": "operator",
+                    "created_at": "2026-04-12T00:00:00+00:00",
+                },
+                "context": {
+                    "current_focus": "current focus",
+                    "recent_conversation_summary": "prior summary",
+                    "recent_turns": [
+                        {"role": "user", "content": "hello", "is_summary": False}
+                    ],
+                    "reference_snippets": ["snippet"],
+                },
             },
             "errors": [],
         }
@@ -402,10 +460,12 @@ def test_call_memory_assemble_context_success() -> None:
         message="hello",
     )
 
-    assert result.current_focus == "current focus"
-    assert result.recent_conversation_summary == "prior summary"
-    assert result.recent_turns[0].content == "hello"
-    assert result.reference_snippets == ("snippet",)
+    assert result.session_id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    assert result.inbound_turn.content == "hello"
+    assert result.context.current_focus == "current focus"
+    assert result.context.recent_conversation_summary == "prior summary"
+    assert result.context.recent_turns[0].content == "hello"
+    assert result.context.reference_snippets == ("snippet",)
 
 
 def test_call_memory_record_inbound_turn_success() -> None:
@@ -426,6 +486,7 @@ def test_call_memory_record_inbound_turn_success() -> None:
                 "token_count": 3,
                 "reasoning_level": None,
                 "trace_id": "trace",
+                "conversation_episode_id": "episode",
                 "principal": "operator",
                 "created_at": "2026-04-12T00:00:00+00:00",
             },
@@ -458,6 +519,7 @@ def test_call_memory_record_inbound_turn_success() -> None:
     assert result.id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
     assert result.direction == "inbound"
     assert result.content == "hello"
+    assert result.conversation_episode_id == "episode"
     assert (
         http.post_json.call_args.kwargs["json"]["instruction"]["sender_e164"]
         == "+12025550100"
@@ -573,6 +635,7 @@ def test_call_memory_record_outbound_candidate_success() -> None:
                 "token_count": 42,
                 "reasoning_level": "standard",
                 "trace_id": "trace",
+                "conversation_episode_id": "episode",
                 "principal": "operator",
                 "created_at": "2026-04-12T00:00:00+00:00",
             },

@@ -73,6 +73,7 @@ resources/
   substrates/                   # Substrate Resources (state)
     postgres/                   # Shared Infrastructure (bootstrap, engine, sessions)
     qdrant/                     # Vector search backend
+    seaweedfs/                  # S3-compatible blob storage backend
 ```
 
 Each _Resource_ exports a `MANIFEST` via `component.py` with a

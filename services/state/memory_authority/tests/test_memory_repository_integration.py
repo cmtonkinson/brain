@@ -28,6 +28,8 @@ def test_session_turn_and_summary_roundtrip(migrated_integration_settings) -> No
     repo = PostgresMemoryRepository(runtime.schema_sessions)
 
     session = repo.create_session()
+    assert session.current_conversation_episode_id not in (None, "")
+    assert session.last_episode_inbound_at is None
     first = repo.insert_turn(
         session_id=session.id,
         direction=TurnDirection.INBOUND,
@@ -38,6 +40,7 @@ def test_session_turn_and_summary_roundtrip(migrated_integration_settings) -> No
         token_count=None,
         reasoning_level=None,
         trace_id="trace-1",
+        conversation_episode_id="episode-1",
         principal="operator",
     )
     second = repo.insert_turn(
@@ -50,6 +53,7 @@ def test_session_turn_and_summary_roundtrip(migrated_integration_settings) -> No
         token_count=3,
         reasoning_level="standard",
         trace_id="trace-1",
+        conversation_episode_id="episode-1",
         principal="operator",
     )
 
@@ -73,6 +77,7 @@ def test_turn_metadata_and_delivery_roundtrip(migrated_integration_settings) -> 
         token_count=None,
         reasoning_level=None,
         trace_id="trace-2",
+        conversation_episode_id="episode-2",
         principal="operator",
         source="signal",
         instruction=InboundInstructionRecord(
@@ -100,6 +105,7 @@ def test_turn_metadata_and_delivery_roundtrip(migrated_integration_settings) -> 
         token_count=3,
         reasoning_level="standard",
         trace_id="trace-2",
+        conversation_episode_id="episode-2",
         principal="operator",
         delivery=OutboundDeliveryRecord(state="candidate"),
     )

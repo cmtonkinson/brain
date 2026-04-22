@@ -202,6 +202,7 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
                 token_count=token_count,
                 reasoning_level=reasoning_level,
                 trace_id="trace-1",
+                conversation_episode_id="episode-1",
                 principal="operator",
                 created_at=datetime.now(UTC),
             ),
@@ -240,6 +241,9 @@ class _FakeMemoryAuthorityService(MemoryAuthorityService):
         raise NotImplementedError
 
     def clear_session(self, *, meta, session_id: str):
+        raise NotImplementedError
+
+    def compact_dialogue(self, *, meta, session_id: str):
         raise NotImplementedError
 
     def create_session(self, *, meta):

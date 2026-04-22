@@ -23,10 +23,10 @@ from packages.brain_shared.errors import (
     validation_error,
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
-from resources.substrates.filesystem import (
-    FilesystemBlobSubstrate,
-    LocalFilesystemBlobSubstrate,
-    resolve_filesystem_substrate_settings,
+from resources.substrates.seaweedfs import (
+    BlobSubstrate,
+    SeaweedFSBlobSubstrate,
+    resolve_seaweedfs_substrate_settings,
 )
 from resources.substrates.postgres.errors import normalize_postgres_error
 from services.state.object_authority.component import SERVICE_COMPONENT_ID
@@ -56,14 +56,14 @@ _LOGGER = get_logger(__name__)
 
 
 class DefaultObjectAuthorityService(ObjectAuthorityService):
-    """Default OAS implementation with Postgres authority and filesystem blobs."""
+    """Default OAS implementation with Postgres authority and SeaweedFS blobs."""
 
     def __init__(
         self,
         *,
         settings: ObjectAuthoritySettings,
         repository: ObjectRepository,
-        blob_store: FilesystemBlobSubstrate,
+        blob_store: BlobSubstrate,
         default_extension: str,
     ) -> None:
         self._settings = settings
@@ -77,13 +77,13 @@ class DefaultObjectAuthorityService(ObjectAuthorityService):
     ) -> "DefaultObjectAuthorityService":
         """Build OAS from typed settings and owned resources."""
         service_settings = resolve_object_authority_settings(settings)
-        fs_settings = resolve_filesystem_substrate_settings(settings)
+        seaweedfs_settings = resolve_seaweedfs_substrate_settings(settings)
         runtime = ObjectPostgresRuntime.from_settings(settings)
         return cls(
             settings=service_settings,
             repository=PostgresObjectRepository(runtime.schema_sessions),
-            blob_store=LocalFilesystemBlobSubstrate(settings=fs_settings),
-            default_extension=fs_settings.default_extension,
+            blob_store=SeaweedFSBlobSubstrate(settings=seaweedfs_settings),
+            default_extension=seaweedfs_settings.default_extension,
         )
 
     @public_api_instrumented(
@@ -91,10 +91,11 @@ class DefaultObjectAuthorityService(ObjectAuthorityService):
         component_id=str(SERVICE_COMPONENT_ID),
     )
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
-        """Return OAS readiness based on owned Postgres repository availability."""
+        """Return OAS readiness based on owned repository and substrate availability."""
         validate_meta(meta)
         try:
             self._repository.get_object_by_key(object_key="__brain_health_check__")
+            substrate_health = self._blob_store.health()
         except Exception as exc:  # noqa: BLE001
             if _is_postgres_error(exc):
                 return failure(meta=meta, errors=[normalize_postgres_error(exc)])
@@ -103,8 +104,8 @@ class DefaultObjectAuthorityService(ObjectAuthorityService):
             meta=meta,
             payload=HealthStatus(
                 service_ready=True,
-                substrate_ready=True,
-                detail="ok",
+                substrate_ready=substrate_health.ready,
+                detail=substrate_health.detail,
             ),
         )
 

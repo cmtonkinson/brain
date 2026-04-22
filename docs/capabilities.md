@@ -212,6 +212,39 @@ Native Op over `Ingestion Service index_anchored_ingestion()`
 - `failed_count` _(integer)_ Number of anchored artifacts that failed indexing.
 
 ------------------------------------------------------------------------
+## `Memory Authority Service`
+### `dialogue-compact`
+Summarize all recent turns and compress context to summary-only.  
+`native_op` `1.0.0`  
+Native Op over `Memory Authority Service compact_dialogue()`  
+
+**Inputs:**
+- `session_id` _(string)_ The session to compact
+
+**Outputs:**
+- `id` _(string)_ Session ULID
+- `dialogue_summary` _(string | null)_ Updated rolling summary
+- `dialogue_summary_token_count` _(integer | null)_ Token count of new summary
+- `dialogue_start_turn_id` _(string | null)_ Advanced frontier pointer
+
+### `session-new`
+Create a fresh MAS session.  
+`native_op` `1.0.0`  
+Native Op over `Memory Authority Service create_session()`  
+
+**Inputs:** None
+
+**Outputs:**
+- `id` _(string)_ The new session ULID
+- `focus` _(string | null)_ Always null for a fresh session
+- `focus_token_count` _(integer | null)_ Always null for a fresh session
+- `dialogue_summary` _(string | null)_ Always null for a fresh session
+- `dialogue_summary_token_count` _(integer | null)_ Always null for a fresh session
+- `dialogue_start_turn_id` _(string | null)_ Always null for a fresh session
+- `created_at` _(string)_ ISO-8601 creation timestamp
+- `updated_at` _(string)_ ISO-8601 update timestamp
+
+------------------------------------------------------------------------
 ## `Object Authority Service`
 ### `object-delete`
 Delete one persisted object by canonical object key.  

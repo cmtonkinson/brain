@@ -26,10 +26,12 @@ class TestMcpServerConfig:
             transport="http",
             url="http://localhost:7411/eventkit/rpc",
             headers={"Authorization": "Bearer token"},
+            instruction_summary="Calendar and reminder access",
         )
         assert cfg.transport == "http"
         assert cfg.url == "http://localhost:7411/eventkit/rpc"
         assert cfg.headers["Authorization"] == "Bearer token"
+        assert cfg.instruction_summary == "Calendar and reminder access"
 
     def test_rejects_invalid_transport(self) -> None:
         with pytest.raises(ValidationError):

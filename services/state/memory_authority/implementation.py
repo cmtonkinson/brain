@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from packages.brain_shared.config import CoreRuntimeSettings
@@ -41,6 +43,7 @@ from services.state.memory_authority.domain import (
     HealthStatus,
     InboundInstructionRecord,
     SessionRecord,
+    TurnContext,
     TurnRecord,
 )
 from services.state.memory_authority.focus import FocusCompactionError, FocusModule
@@ -189,10 +192,20 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             if session is None:
                 return self._session_not_found(meta=meta, session_id=request.session_id)
 
+            inbound_at = _inbound_at(instruction)
+            episode_id = self._repository.resolve_conversation_episode(
+                session_id=request.session_id,
+                inbound_at=inbound_at,
+                idle_seconds=self._settings.conversation_episode_idle_seconds,
+            )
+            if episode_id is None:
+                return self._session_not_found(meta=meta, session_id=request.session_id)
+
             turn = self._dialogue.append_inbound(
                 session_id=request.session_id,
                 content=request.message,
                 trace_id=meta.trace_id,
+                conversation_episode_id=episode_id,
                 principal=meta.principal,
                 instruction=instruction,
             )
@@ -283,6 +296,7 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             if session is None:
                 return self._session_not_found(meta=meta, session_id=request.session_id)
 
+            episode_id = session.current_conversation_episode_id or ""
             turn = self._dialogue.append_outbound(
                 session_id=request.session_id,
                 content=request.content,
@@ -291,6 +305,7 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
                 token_count=request.token_count,
                 reasoning_level=request.reasoning_level,
                 trace_id=meta.trace_id,
+                conversation_episode_id=episode_id,
                 principal=meta.principal,
             )
             return success(meta=meta, payload=turn)
@@ -354,16 +369,34 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         meta: EnvelopeMeta,
         session_id: str,
         message: str,
-    ) -> Envelope[ContextBlock]:
-        """Backward-compatible wrapper for inbound recording plus snapshot assembly."""
+        instruction: InboundInstructionRecord | None = None,
+    ) -> Envelope[TurnContext]:
+        """Resolve active session, record inbound turn, and return assembled context."""
+        resolved_session = self._repository.get_latest_session()
+        if resolved_session is None:
+            resolved_session = self._repository.create_session()
+        resolved_session_id = resolved_session.id
         inbound = self.record_inbound_turn(
             meta=meta,
-            session_id=session_id,
+            session_id=resolved_session_id,
             message=message,
+            instruction=instruction,
         )
         if not inbound.ok:
             return failure(meta=meta, errors=inbound.errors)
-        return self.assemble_snapshot(meta=meta, session_id=session_id)
+        assert inbound.payload is not None
+        snapshot = self.assemble_snapshot(meta=meta, session_id=resolved_session_id)
+        if not snapshot.ok:
+            return failure(meta=meta, errors=snapshot.errors)
+        assert snapshot.payload is not None
+        return success(
+            meta=meta,
+            payload=TurnContext(
+                session_id=resolved_session_id,
+                inbound_turn=inbound.payload.value,
+                context=snapshot.payload.value,
+            ),
+        )
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -472,6 +505,42 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
             return success(meta=meta, payload=True)
         except Exception as exc:  # noqa: BLE001
             return self._handle_exception(meta=meta, operation="clear_session", exc=exc)
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("session_id",),
+    )
+    def compact_dialogue(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        session_id: str,
+    ) -> Envelope[SessionRecord]:
+        """Force-summarize all visible turns and advance dialogue frontier."""
+        request, errors = self._validate_request(
+            meta=meta,
+            model=_SessionRequest,
+            payload={"session_id": session_id},
+        )
+        if errors:
+            return failure(meta=meta, errors=errors)
+        assert request is not None
+
+        try:
+            focus = self._focus.read(session_id=request.session_id)
+            updated = self._dialogue.compact(
+                meta=meta,
+                session_id=request.session_id,
+                focus=focus,
+            )
+            if updated is None:
+                return self._session_not_found(meta=meta, session_id=request.session_id)
+            return success(meta=meta, payload=updated)
+        except Exception as exc:  # noqa: BLE001
+            return self._handle_exception(
+                meta=meta, operation="compact_dialogue", exc=exc
+            )
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -651,3 +720,13 @@ class DefaultMemoryAuthorityService(MemoryAuthorityService):
         """Return whether exception appears to originate from SQL stack."""
         module_name = type(exc).__module__
         return "sqlalchemy" in module_name or "psycopg" in module_name
+
+
+def _inbound_at(instruction: InboundInstructionRecord | None) -> datetime:
+    """Return the operator-message timestamp used for episode rotation."""
+    if instruction is None or instruction.timestamp_ms is None:
+        return datetime.now(UTC)
+    try:
+        return datetime.fromtimestamp(instruction.timestamp_ms / 1000, tz=UTC)
+    except OSError, OverflowError, ValueError:
+        return datetime.now(UTC)

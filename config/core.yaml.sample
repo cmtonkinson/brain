@@ -96,6 +96,7 @@ service:
     min_turns_to_keep: 10
     max_turns_to_keep: 20
     focus_token_budget: 512
+    conversation_episode_idle_seconds: 3600
   object_authority:
     digest_algorithm: sha256
     digest_version: b1

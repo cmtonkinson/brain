@@ -57,13 +57,20 @@ class TestServerStatus:
     """ServerStatus serialization."""
 
     def test_to_dict(self) -> None:
-        s = ServerStatus(server_id="fs", connected=True, tool_count=3, detail="ok")
+        s = ServerStatus(
+            server_id="fs",
+            connected=True,
+            tool_count=3,
+            detail="ok",
+            instruction_summary="read files",
+        )
         d = s.to_dict()
         assert d == {
             "server_id": "fs",
             "connected": True,
             "tool_count": 3,
             "detail": "ok",
+            "instruction_summary": "read files",
         }
 
 

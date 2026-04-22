@@ -17,6 +17,7 @@ from services.action.capability_engine.domain import (
     CapabilityInvocationMetadata,
     CapabilityInvokeResult,
     CapabilitySearchHit,
+    ToolSystemHint,
 )
 from services.action.capability_engine.service import CapabilityEngineService
 
@@ -100,6 +101,20 @@ class _CapabilitySearchHitOut(BaseModel):
 
 class _SearchResponse(BaseModel):
     results: list[_CapabilitySearchHitOut]
+    errors: list[_ErrorOut]
+
+
+class _ToolSystemHintOut(BaseModel):
+    system_id: str
+    label: str
+    summary: str
+    kind: str
+    ready: bool | None = None
+    tool_count: int | None = None
+
+
+class _ToolSystemHintsResponse(BaseModel):
+    systems: list[_ToolSystemHintOut]
     errors: list[_ErrorOut]
 
 
@@ -199,6 +214,26 @@ def register_routes(*, router: APIRouter, service: CapabilityEngineService) -> N
         )
         return _SearchResponse(
             results=hits,
+            errors=[_error_out(e) for e in result.errors],
+        )
+
+    @router.post(
+        "/capabilities/tool-system-hints", response_model=_ToolSystemHintsResponse
+    )
+    async def list_tool_system_hints(request: Request) -> _ToolSystemHintsResponse:
+        body = await read_json_body(request)
+        req = _DescribeRequest.model_validate(body)
+        meta = _meta_from_request(
+            req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
+        )
+        result = await run_in_threadpool(service.list_tool_system_hints, meta=meta)
+        systems = (
+            []
+            if result.payload is None
+            else [_tool_system_hint_out(item) for item in result.payload.value]
+        )
+        return _ToolSystemHintsResponse(
+            systems=systems,
             errors=[_error_out(e) for e in result.errors],
         )
 
@@ -324,6 +359,17 @@ def _search_hit_out(value: CapabilitySearchHit) -> _CapabilitySearchHitOut:
         capability_id=value.capability_id,
         required_params=list(value.required_params),
         summary=value.summary,
+    )
+
+
+def _tool_system_hint_out(value: ToolSystemHint) -> _ToolSystemHintOut:
+    return _ToolSystemHintOut(
+        system_id=value.system_id,
+        label=value.label,
+        summary=value.summary,
+        kind=value.kind,
+        ready=value.ready,
+        tool_count=value.tool_count,
     )
 
 

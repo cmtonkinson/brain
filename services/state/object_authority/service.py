@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 
 from packages.brain_shared.config import CoreRuntimeSettings
 from packages.brain_shared.envelope import Envelope, EnvelopeMeta
-from resources.substrates.filesystem.substrate import FilesystemBlobSubstrate
+from resources.substrates.seaweedfs.substrate import BlobSubstrate
 from services.state.object_authority.domain import (
     HealthStatus,
     ObjectGetResult,
@@ -55,12 +55,12 @@ class ObjectAuthorityService(ABC):
 def build_object_authority_service(
     *,
     settings: CoreRuntimeSettings,
-    blob_store: FilesystemBlobSubstrate | None = None,
+    blob_store: BlobSubstrate | None = None,
 ) -> ObjectAuthorityService:
     """Build default Object Authority implementation from typed settings."""
-    from resources.substrates.filesystem import (
-        LocalFilesystemBlobSubstrate,
-        resolve_filesystem_substrate_settings,
+    from resources.substrates.seaweedfs import (
+        SeaweedFSBlobSubstrate,
+        resolve_seaweedfs_substrate_settings,
     )
     from services.state.object_authority.config import resolve_object_authority_settings
     from services.state.object_authority.data import (
@@ -71,11 +71,11 @@ def build_object_authority_service(
         DefaultObjectAuthorityService,
     )
 
-    fs_settings = resolve_filesystem_substrate_settings(settings)
+    seaweedfs_settings = resolve_seaweedfs_substrate_settings(settings)
     runtime = ObjectPostgresRuntime.from_settings(settings)
     return DefaultObjectAuthorityService(
         settings=resolve_object_authority_settings(settings),
         repository=PostgresObjectRepository(runtime.schema_sessions),
-        blob_store=blob_store or LocalFilesystemBlobSubstrate(settings=fs_settings),
-        default_extension=fs_settings.default_extension,
+        blob_store=blob_store or SeaweedFSBlobSubstrate(settings=seaweedfs_settings),
+        default_extension=seaweedfs_settings.default_extension,
     )

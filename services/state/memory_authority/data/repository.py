@@ -9,6 +9,7 @@ from typing import Protocol
 from sqlalchemy import desc, insert, select, update
 
 from packages.brain_shared.ids import (
+    generate_ulid_str,
     generate_ulid_bytes,
     ulid_bytes_to_str,
     ulid_str_to_bytes,
@@ -64,6 +65,15 @@ class MemoryRepository(Protocol):
     ) -> SessionRecord | None:
         """Update rolling summary text and checkpoint for one session."""
 
+    def resolve_conversation_episode(
+        self,
+        *,
+        session_id: str,
+        inbound_at: datetime,
+        idle_seconds: int,
+    ) -> str | None:
+        """Return the current or newly rotated conversation episode id."""
+
     def insert_turn(
         self,
         *,
@@ -76,6 +86,7 @@ class MemoryRepository(Protocol):
         token_count: int | None,
         reasoning_level: str | None,
         trace_id: str,
+        conversation_episode_id: str,
         principal: str,
         source: str | None = None,
         instruction: InboundInstructionRecord | None = None,
@@ -107,6 +118,7 @@ class PostgresMemoryRepository:
     def create_session(self) -> SessionRecord:
         """Create and return one new session row."""
         session_id = generate_ulid_bytes()
+        episode_id = generate_ulid_str()
         with self._sessions.session() as session:
             session.execute(
                 insert(sessions).values(
@@ -116,6 +128,8 @@ class PostgresMemoryRepository:
                     dialogue_summary=None,
                     dialogue_summary_token_count=None,
                     dialogue_start_turn_id=None,
+                    current_conversation_episode_id=episode_id,
+                    last_episode_inbound_at=None,
                 )
             )
             row = (
@@ -256,6 +270,60 @@ class PostgresMemoryRepository:
             )
             return _to_session(row)
 
+    def resolve_conversation_episode(
+        self,
+        *,
+        session_id: str,
+        inbound_at: datetime,
+        idle_seconds: int,
+    ) -> str | None:
+        """Return the current or newly rotated conversation episode id."""
+        session_id_bytes = ulid_str_to_bytes(session_id)
+        normalized_inbound_at = (
+            inbound_at.replace(tzinfo=UTC)
+            if inbound_at.tzinfo is None
+            else inbound_at.astimezone(UTC)
+        )
+        with self._sessions.session() as session:
+            row = (
+                session.execute(
+                    select(sessions).where(sessions.c.id == session_id_bytes)
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                return None
+
+            current_episode = row.get("current_conversation_episode_id")
+            current_episode_id = (
+                "" if current_episode is None else str(current_episode).strip()
+            )
+            last_inbound = row.get("last_episode_inbound_at")
+            rotate = current_episode_id == ""
+            if not rotate:
+                if isinstance(last_inbound, datetime):
+                    last_at = (
+                        last_inbound.replace(tzinfo=UTC)
+                        if last_inbound.tzinfo is None
+                        else last_inbound.astimezone(UTC)
+                    )
+                    rotate = (
+                        normalized_inbound_at - last_at
+                    ).total_seconds() > idle_seconds
+
+            episode_id = generate_ulid_str() if rotate else current_episode_id
+            session.execute(
+                update(sessions)
+                .where(sessions.c.id == session_id_bytes)
+                .values(
+                    current_conversation_episode_id=episode_id,
+                    last_episode_inbound_at=normalized_inbound_at,
+                    updated_at=datetime.now(UTC),
+                )
+            )
+            return episode_id
+
     def insert_turn(
         self,
         *,
@@ -268,6 +336,7 @@ class PostgresMemoryRepository:
         token_count: int | None,
         reasoning_level: str | None,
         trace_id: str,
+        conversation_episode_id: str,
         principal: str,
         source: str | None = None,
         instruction: InboundInstructionRecord | None = None,
@@ -294,6 +363,7 @@ class PostgresMemoryRepository:
                     token_count=token_count,
                     reasoning_level=reasoning_level,
                     trace_id=trace_id,
+                    conversation_episode_id=conversation_episode_id,
                     principal=principal,
                     source=resolved_source,
                     **instruction_values,
@@ -388,6 +458,16 @@ def _to_session(row: Mapping[str, object]) -> SessionRecord:
             if pointer is None
             else ulid_bytes_to_str(_row_bytes(row, "dialogue_start_turn_id"))
         ),
+        current_conversation_episode_id=(
+            None
+            if row.get("current_conversation_episode_id") is None
+            else str(row["current_conversation_episode_id"])
+        ),
+        last_episode_inbound_at=(
+            None
+            if row.get("last_episode_inbound_at") is None
+            else _row_dt(row, "last_episode_inbound_at")
+        ),
         created_at=_row_dt(row, "created_at"),
         updated_at=_row_dt(row, "updated_at"),
     )
@@ -408,6 +488,7 @@ def _to_turn(row: Mapping[str, object]) -> TurnRecord:
             None if row.get("reasoning_level") is None else str(row["reasoning_level"])
         ),
         trace_id=str(row["trace_id"]),
+        conversation_episode_id=str(row["conversation_episode_id"]),
         principal=str(row["principal"]),
         source=(None if row.get("source") is None else str(row["source"])),
         sender_e164=(

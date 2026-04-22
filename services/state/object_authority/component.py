@@ -23,7 +23,10 @@ MANIFEST = register_component(
         public_api_roots=frozenset(
             {ModuleRoot("services.state.object_authority.service")}
         ),
-        owns_resources=frozenset({ComponentId("substrate_filesystem")}),
+        owns_resources=frozenset({ComponentId("substrate_seaweedfs")}),
+        exposes_capabilities=True,
+        tool_system_label="Object Authority Service",
+        tool_system_summary="Durable content-addressed blob storage.",
     )
 )
 
@@ -36,5 +39,5 @@ def build_component(
 
     return build_object_authority_service(
         settings=settings,
-        blob_store=components.get("substrate_filesystem"),
+        blob_store=components.get("substrate_seaweedfs"),
     )

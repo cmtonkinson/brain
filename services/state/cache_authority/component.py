@@ -23,7 +23,10 @@ MANIFEST = register_component(
         public_api_roots=frozenset(
             {ModuleRoot("services.state.cache_authority.service")}
         ),
-        owns_resources=frozenset({ComponentId("substrate_redis")}),
+        owns_resources=frozenset({ComponentId("substrate_valkey")}),
+        exposes_capabilities=True,
+        tool_system_label="Cache Authority Service",
+        tool_system_summary="Component-scoped cache values and FIFO queues.",
     )
 )
 
@@ -36,5 +39,5 @@ def build_component(
 
     return build_cache_authority_service(
         settings=settings,
-        backend=components.get("substrate_redis"),
+        backend=components.get("substrate_valkey"),
     )

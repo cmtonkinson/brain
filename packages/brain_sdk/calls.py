@@ -69,6 +69,18 @@ class CapabilitySearchHit:
 
 
 @dataclass(frozen=True, slots=True)
+class ToolSystemHint:
+    """Compact orientation hint for one system reachable through tools."""
+
+    system_id: str
+    label: str
+    summary: str
+    kind: str
+    ready: bool | None = None
+    tool_count: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class PolicyDecision:
     """Policy decision metadata returned from capability invocation."""
 
@@ -136,6 +148,15 @@ class MemoryContextBlock:
 
 
 @dataclass(frozen=True, slots=True)
+class MemoryTurnContext:
+    """MAS-resolved turn-start context payload."""
+
+    session_id: str
+    inbound_turn: "MemoryTurnRecord"
+    context: MemoryContextBlock
+
+
+@dataclass(frozen=True, slots=True)
 class MemoryTurnRecord:
     """One MAS turn record payload."""
 
@@ -149,6 +170,7 @@ class MemoryTurnRecord:
     token_count: int | None
     reasoning_level: str | None
     trace_id: str
+    conversation_episode_id: str
     principal: str
     created_at: datetime
 
@@ -275,6 +297,27 @@ def call_capabilities_search(
         errors=_errors_from_data(data),
     )
     return tuple(_capability_search_hit(item) for item in data.get("results", ()))
+
+
+def call_capabilities_tool_system_hints(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+) -> tuple[ToolSystemHint, ...]:
+    """Return compact system-orientation hints for capability discovery."""
+    data = _post_json(
+        operation="capabilities.tool_system_hints",
+        http=http,
+        url="/capabilities/tool-system-hints",
+        body=metadata,
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="capabilities.tool_system_hints",
+        errors=_errors_from_data(data),
+    )
+    return tuple(_tool_system_hint(item) for item in data.get("systems", ()))
 
 
 def call_capability_describe(
@@ -468,8 +511,12 @@ def call_memory_assemble_context(
     timeout_seconds: float,
     session_id: str,
     message: str,
-) -> MemoryContextBlock:
-    """Append one inbound turn and return the assembled MAS context."""
+    instruction: SwitchboardOperatorInstruction | None = None,
+) -> MemoryTurnContext:
+    """Resolve active MAS session, record inbound turn, and return context."""
+    instruction_body: dict[str, object] | None = None
+    if instruction is not None:
+        instruction_body = _instruction_body(instruction)
     data = _post_json(
         operation="memory.assemble_context",
         http=http,
@@ -478,6 +525,7 @@ def call_memory_assemble_context(
             **metadata,
             "session_id": session_id,
             "message": message,
+            "instruction": instruction_body,
         },
         timeout_seconds=timeout_seconds,
     )
@@ -491,7 +539,7 @@ def call_memory_assemble_context(
             message="memory.assemble_context domain failure: missing payload",
             operation="memory.assemble_context",
         )
-    return _memory_context_block(payload)
+    return _memory_turn_context(payload)
 
 
 def call_memory_record_inbound_turn(
@@ -506,20 +554,7 @@ def call_memory_record_inbound_turn(
     """Persist one inbound turn and return the recorded turn payload."""
     instruction_body: dict[str, object] | None = None
     if instruction is not None:
-        instruction_body = {
-            "sender_e164": instruction.sender_e164,
-            "message_text": instruction.message_text,
-            "timestamp_ms": instruction.timestamp_ms,
-            "source_device": instruction.source_device,
-            "source": instruction.source,
-            "group_id": instruction.group_id,
-            "quote_target_timestamp_ms": instruction.quote_target_timestamp_ms,
-            "reaction_target_timestamp_ms": instruction.reaction_target_timestamp_ms,
-            "reaction_emoji": instruction.reaction_emoji,
-            "approval_intent": instruction.approval_intent,
-            "reply_to_proposal_token": instruction.reply_to_proposal_token,
-            "reaction_to_proposal_token": instruction.reaction_to_proposal_token,
-        }
+        instruction_body = _instruction_body(instruction)
     data = _post_json(
         operation="memory.record_inbound_turn",
         http=http,
@@ -543,6 +578,24 @@ def call_memory_record_inbound_turn(
             operation="memory.record_inbound_turn",
         )
     return _memory_turn_record(payload)
+
+
+def _instruction_body(instruction: SwitchboardOperatorInstruction) -> dict[str, object]:
+    """Serialize one Switchboard instruction into MAS HTTP payload shape."""
+    return {
+        "sender_e164": instruction.sender_e164,
+        "message_text": instruction.message_text,
+        "timestamp_ms": instruction.timestamp_ms,
+        "source_device": instruction.source_device,
+        "source": instruction.source,
+        "group_id": instruction.group_id,
+        "quote_target_timestamp_ms": instruction.quote_target_timestamp_ms,
+        "reaction_target_timestamp_ms": instruction.reaction_target_timestamp_ms,
+        "reaction_emoji": instruction.reaction_emoji,
+        "approval_intent": instruction.approval_intent,
+        "reply_to_proposal_token": instruction.reply_to_proposal_token,
+        "reaction_to_proposal_token": instruction.reaction_to_proposal_token,
+    }
 
 
 def call_memory_assemble_snapshot(
@@ -700,6 +753,40 @@ def call_memory_get_latest_or_create_session(
             operation="memory.get_latest_or_create_session",
         )
     return MemorySessionRef(session_id=session_id)
+
+
+def call_memory_compact_dialogue(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    session_id: str,
+) -> MemorySessionRef:
+    """Force-summarize all visible turns and advance dialogue frontier."""
+    data = _post_json(
+        operation="memory.compact_dialogue",
+        http=http,
+        url="/memory/compact_dialogue",
+        body={**metadata, "session_id": session_id},
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="memory.compact_dialogue",
+        errors=_errors_from_data(data),
+    )
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        raise BrainDomainError(
+            message="memory.compact_dialogue domain failure: missing payload",
+            operation="memory.compact_dialogue",
+        )
+    sid = str(payload.get("id", "")).strip()
+    if sid == "":
+        raise BrainDomainError(
+            message="memory.compact_dialogue domain failure: missing session id",
+            operation="memory.compact_dialogue",
+        )
+    return MemorySessionRef(session_id=sid)
 
 
 def call_memory_record_response(
@@ -1060,6 +1147,21 @@ def _capability_search_hit(value: object) -> CapabilitySearchHit:
     )
 
 
+def _tool_system_hint(value: object) -> ToolSystemHint:
+    """Map one raw tool-system hint payload into the SDK dataclass."""
+    item = value if isinstance(value, dict) else {}
+    ready = item.get("ready")
+    tool_count = item.get("tool_count")
+    return ToolSystemHint(
+        system_id=str(item.get("system_id", "")),
+        label=str(item.get("label", "")),
+        summary=str(item.get("summary", "")),
+        kind=str(item.get("kind", "")),
+        ready=ready if isinstance(ready, bool) else None,
+        tool_count=tool_count if isinstance(tool_count, int) else None,
+    )
+
+
 def _schema(value: object) -> dict[str, Any] | None:
     """Return one schema payload when it is object-shaped."""
     if not isinstance(value, dict):
@@ -1137,8 +1239,25 @@ def _memory_turn_record(value: dict[str, Any]) -> MemoryTurnRecord:
             else str(value.get("reasoning_level"))
         ),
         trace_id=str(value.get("trace_id", "")),
+        conversation_episode_id=str(value.get("conversation_episode_id", "")),
         principal=str(value.get("principal", "")),
         created_at=datetime.fromisoformat(str(value.get("created_at"))),
+    )
+
+
+def _memory_turn_context(value: dict[str, Any]) -> MemoryTurnContext:
+    """Map one raw MAS turn-context payload into the SDK dataclass."""
+    inbound = value.get("inbound_turn")
+    context = value.get("context")
+    if not isinstance(inbound, dict) or not isinstance(context, dict):
+        raise BrainDomainError(
+            message="memory.assemble_context domain failure: invalid payload",
+            operation="memory.assemble_context",
+        )
+    return MemoryTurnContext(
+        session_id=str(value.get("session_id", "")),
+        inbound_turn=_memory_turn_record(inbound),
+        context=_memory_context_block(context),
     )
 
 
@@ -1298,6 +1417,25 @@ def search_capabilities(
     )
 
 
+def list_tool_system_hints(
+    *,
+    client: object,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> tuple[ToolSystemHint, ...]:
+    """High-level SDK wrapper for capability tool-system orientation hints."""
+    return client.list_tool_system_hints(  # type: ignore[union-attr]
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        ),
+    )
+
+
 def describe_capability(
     *,
     client: object,
@@ -1413,8 +1551,8 @@ def memory_assemble_context(
     source: str = "",
     trace_id: str | None = None,
     parent_id: str | None = None,
-) -> MemoryContextBlock:
-    """High-level SDK wrapper for MAS assemble-context."""
+) -> MemoryTurnContext:
+    """High-level SDK wrapper for MAS turn-context assembly."""
     return client.memory_assemble_context(  # type: ignore[union-attr]
         session_id=session_id,
         message=message,

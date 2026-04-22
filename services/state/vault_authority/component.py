@@ -24,6 +24,9 @@ MANIFEST = register_component(
             {ModuleRoot("services.state.vault_authority.service")}
         ),
         owns_resources=frozenset({ComponentId("substrate_obsidian")}),
+        exposes_capabilities=True,
+        tool_system_label="Vault Authority Service",
+        tool_system_summary="Personal Knowledge Base access through the Obsidian vault.",
     )
 )
 

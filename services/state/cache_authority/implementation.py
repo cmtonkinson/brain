@@ -23,10 +23,10 @@ from packages.brain_shared.errors import (
     validation_error,
 )
 from packages.brain_shared.logging import get_logger, public_api_instrumented
-from resources.substrates.redis import (
-    RedisClientSubstrate,
-    RedisSubstrate,
-    resolve_redis_settings,
+from resources.substrates.valkey import (
+    ValkeyClientSubstrate,
+    ValkeySubstrate,
+    resolve_valkey_settings,
 )
 from services.state.cache_authority.component import SERVICE_COMPONENT_ID
 from services.state.cache_authority.config import (
@@ -54,13 +54,13 @@ _LOGGER = get_logger(__name__)
 
 
 class DefaultCacheAuthorityService(CacheAuthorityService):
-    """Default CAS implementation backed by Redis substrate resource."""
+    """Default CAS implementation backed by Valkey substrate resource."""
 
     def __init__(
         self,
         *,
         settings: CacheAuthoritySettings,
-        backend: RedisSubstrate,
+        backend: ValkeySubstrate,
     ) -> None:
         self._settings = settings
         self._backend = backend
@@ -69,12 +69,12 @@ class DefaultCacheAuthorityService(CacheAuthorityService):
     def from_settings(
         cls, settings: CoreRuntimeSettings
     ) -> "DefaultCacheAuthorityService":
-        """Build CAS and owned Redis substrate from typed root settings."""
+        """Build CAS and owned Valkey substrate from typed root settings."""
         service_settings = resolve_cache_authority_settings(settings)
-        redis_settings = resolve_redis_settings(settings)
+        valkey_settings = resolve_valkey_settings(settings)
         return cls(
             settings=service_settings,
-            backend=RedisClientSubstrate(settings=redis_settings),
+            backend=ValkeyClientSubstrate(settings=valkey_settings),
         )
 
     @public_api_instrumented(
@@ -110,7 +110,7 @@ class DefaultCacheAuthorityService(CacheAuthorityService):
         if ttl_error is not None:
             return failure(meta=meta, errors=[ttl_error])
 
-        redis_key = _cache_key(
+        valkey_key = _cache_key(
             key_prefix=self._settings.key_prefix,
             component_id=request.component_id,
             key=request.key,
@@ -119,7 +119,7 @@ class DefaultCacheAuthorityService(CacheAuthorityService):
 
         try:
             self._backend.set_value(
-                key=redis_key,
+                key=valkey_key,
                 value=serialized,
                 ttl_seconds=effective_ttl,
             )
@@ -158,13 +158,13 @@ class DefaultCacheAuthorityService(CacheAuthorityService):
             return failure(meta=meta, errors=errors)
         assert request is not None
 
-        redis_key = _cache_key(
+        valkey_key = _cache_key(
             key_prefix=self._settings.key_prefix,
             component_id=request.component_id,
             key=request.key,
         )
         try:
-            serialized = self._backend.get_value(key=redis_key)
+            serialized = self._backend.get_value(key=valkey_key)
         except Exception as exc:  # noqa: BLE001
             return self._dependency_failure(meta=meta, operation="get_value", exc=exc)
 
@@ -207,13 +207,13 @@ class DefaultCacheAuthorityService(CacheAuthorityService):
             return failure(meta=meta, errors=errors)
         assert request is not None
 
-        redis_key = _cache_key(
+        valkey_key = _cache_key(
             key_prefix=self._settings.key_prefix,
             component_id=request.component_id,
             key=request.key,
         )
         try:
-            deleted = self._backend.delete_value(key=redis_key)
+            deleted = self._backend.delete_value(key=valkey_key)
         except Exception as exc:  # noqa: BLE001
             return self._dependency_failure(
                 meta=meta,
@@ -332,7 +332,7 @@ class DefaultCacheAuthorityService(CacheAuthorityService):
         component_id=str(SERVICE_COMPONENT_ID),
     )
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
-        """Return CAS-level readiness with shallow Redis ping probe."""
+        """Return CAS-level readiness with shallow Valkey ping probe."""
         try:
             validate_meta(meta)
         except ValueError as exc:
@@ -349,7 +349,7 @@ class DefaultCacheAuthorityService(CacheAuthorityService):
                 payload=HealthStatus(
                     service_ready=True,
                     substrate_ready=False,
-                    detail=str(exc) or "redis ping failed",
+                    detail=str(exc) or "valkey ping failed",
                 ),
             )
 
@@ -358,7 +358,7 @@ class DefaultCacheAuthorityService(CacheAuthorityService):
             payload=HealthStatus(
                 service_ready=True,
                 substrate_ready=bool(substrate_ready),
-                detail="ok" if substrate_ready else "redis ping returned false",
+                detail="ok" if substrate_ready else "valkey ping returned false",
             ),
         )
 
@@ -422,7 +422,7 @@ class DefaultCacheAuthorityService(CacheAuthorityService):
                     f"{operation} failed",
                     code=codes.DEPENDENCY_UNAVAILABLE,
                     metadata={
-                        "resource": "substrate_redis",
+                        "resource": "substrate_valkey",
                         "exception_type": type(exc).__name__,
                     },
                 )
@@ -478,12 +478,12 @@ class DefaultCacheAuthorityService(CacheAuthorityService):
 
 
 def _cache_key(*, key_prefix: str, component_id: str, key: str) -> str:
-    """Compose canonical Redis key for component-scoped cache values."""
+    """Compose canonical Valkey key for component-scoped cache values."""
     return f"{key_prefix}:cache:{component_id}:{key}"
 
 
 def _queue_key(*, key_prefix: str, component_id: str, queue: str) -> str:
-    """Compose canonical Redis key for component-scoped queue values."""
+    """Compose canonical Valkey key for component-scoped queue values."""
     return f"{key_prefix}:queue:{component_id}:{queue}"
 
 

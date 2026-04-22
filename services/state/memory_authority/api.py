@@ -12,6 +12,8 @@ from packages.brain_shared.http.server import read_json_body
 from services.state.memory_authority.domain import (
     ContextBlock,
     InboundInstructionRecord,
+    SessionRecord,
+    TurnContext,
     TurnRecord,
 )
 from services.state.memory_authority.service import MemoryAuthorityService
@@ -59,6 +61,12 @@ class _AssembleSnapshotRequest(_RequestMeta):
     exclude_latest: bool = True
 
 
+class _CompactDialogueRequest(_RequestMeta):
+    """Inbound body for MAS dialogue compaction requests."""
+
+    session_id: str
+
+
 class _RecordOutboundCandidateRequest(_RequestMeta):
     """Inbound body for MAS outbound-candidate recording requests."""
 
@@ -95,6 +103,13 @@ class _ErrorOut(BaseModel):
 class _AssembleContextResponse(BaseModel):
     """Serialized response body for MAS assemble-context."""
 
+    payload: TurnContext | None
+    errors: list[_ErrorOut]
+
+
+class _AssembleSnapshotResponse(BaseModel):
+    """Serialized response body for MAS assemble-snapshot."""
+
     payload: ContextBlock | None
     errors: list[_ErrorOut]
 
@@ -110,6 +125,13 @@ class _BoolResponse(BaseModel):
     """Serialized response body for MAS boolean turn state operations."""
 
     payload: bool | None
+    errors: list[_ErrorOut]
+
+
+class _SessionResponse(BaseModel):
+    """Serialized response body for MAS session state operations."""
+
+    payload: SessionRecord | None
     errors: list[_ErrorOut]
 
 
@@ -177,8 +199,8 @@ def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> No
         meta = _meta_from_request(
             req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
         )
-        inbound = await run_in_threadpool(
-            service.record_inbound_turn,
+        result = await run_in_threadpool(
+            service.assemble_context,
             meta=meta,
             session_id=req.session_id,
             message=req.message,
@@ -188,20 +210,10 @@ def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> No
                 else InboundInstructionRecord(**req.instruction.model_dump())
             ),
         )
-        if inbound.payload is None:
-            return _AssembleContextResponse(
-                payload=None,
-                errors=[_error_out(error) for error in inbound.errors],
-            )
-        snapshot = await run_in_threadpool(
-            service.assemble_snapshot,
-            meta=meta,
-            session_id=req.session_id,
-        )
-        payload = None if snapshot.payload is None else snapshot.payload.value
+        payload = None if result.payload is None else result.payload.value
         return _AssembleContextResponse(
             payload=payload,
-            errors=[_error_out(error) for error in snapshot.errors],
+            errors=[_error_out(error) for error in result.errors],
         )
 
     @router.post(
@@ -234,9 +246,9 @@ def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> No
 
     @router.post(
         "/memory/assemble_snapshot",
-        response_model=_AssembleContextResponse,
+        response_model=_AssembleSnapshotResponse,
     )
-    async def assemble_snapshot(request: Request) -> _AssembleContextResponse:
+    async def assemble_snapshot(request: Request) -> _AssembleSnapshotResponse:
         """Return the historical MAS context snapshot without the live turn."""
         body = await read_json_body(request)
         req = _AssembleSnapshotRequest.model_validate(body)
@@ -250,7 +262,7 @@ def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> No
             exclude_latest=req.exclude_latest,
         )
         payload = None if result.payload is None else result.payload.value
-        return _AssembleContextResponse(
+        return _AssembleSnapshotResponse(
             payload=payload,
             errors=[_error_out(error) for error in result.errors],
         )
@@ -329,6 +341,28 @@ def register_routes(*, router: APIRouter, service: MemoryAuthorityService) -> No
         )
         payload = None if result.payload is None else result.payload.value
         return _BoolResponse(
+            payload=payload,
+            errors=[_error_out(error) for error in result.errors],
+        )
+
+    @router.post(
+        "/memory/compact_dialogue",
+        response_model=_SessionResponse,
+    )
+    async def compact_dialogue(request: Request) -> _SessionResponse:
+        """Force-summarize all visible turns and advance dialogue frontier."""
+        body = await read_json_body(request)
+        req = _CompactDialogueRequest.model_validate(body)
+        meta = _meta_from_request(
+            req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
+        )
+        result = await run_in_threadpool(
+            service.compact_dialogue,
+            meta=meta,
+            session_id=req.session_id,
+        )
+        payload = None if result.payload is None else result.payload.value
+        return _SessionResponse(
             payload=payload,
             errors=[_error_out(error) for error in result.errors],
         )

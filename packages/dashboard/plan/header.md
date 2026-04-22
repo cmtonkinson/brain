@@ -16,7 +16,7 @@ The header must always render components in this exact order:
 1. `core`
 2. `agent`
 3. `postgres`
-4. `redis`
+4. `valkey`
 5. `signal`
 6. `qdrant`
 7. `gateway`
@@ -183,15 +183,15 @@ Reasoning:
 - the header should reflect substrate availability, not application data
   semantics
 
-### `redis`
+### `valkey`
 Primary and only canonical check:
-- Redis `PING`
+- Valkey `PING`
 
 Exact behavior:
 - if `PING` succeeds, normalize to `OK`
-- if Redis responds negatively or with an explicit error state, normalize to
+- if Valkey responds negatively or with an explicit error state, normalize to
   `NO`
-- if Redis cannot be reached or the probe fails, normalize to `??`
+- if Valkey cannot be reached or the probe fails, normalize to `??`
 
 ### `signal`
 Primary check:
@@ -311,7 +311,7 @@ Rendered mapping:
 The header render format is:
 
 ```text
-core OK  agent OK  postgres OK  redis ??  signal NO  qdrant OK  gateway ??
+core OK  agent OK  postgres OK  valkey ??  signal NO  qdrant OK  gateway ??
 ```
 
 Rules:

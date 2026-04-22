@@ -9,6 +9,9 @@
 
 <instructions>
 {{ system_prompt_instructions }}
+
+{{ system_tool_hints }}
+
 {{ system_prompt_append }}
 </instructions>
 

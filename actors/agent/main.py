@@ -47,8 +47,10 @@ from packages.brain_sdk import (
     MetaOverrides,
     SdkErrorDetail,
     SwitchboardOperatorInstruction,
+    ToolSystemHint,
     render_system_prompt,
     render_system_prompt_blocks,
+    render_system_tool_hints,
 )
 from packages.brain_sdk.errors import BrainSdkError
 from packages.brain_shared.config import (
@@ -223,14 +225,24 @@ def _render_prompt_template(template: str, /, **values: str) -> str:
 
 
 def _call_with_optional_meta(func, /, *, meta: MetaOverrides | None, **kwargs: Any):
-    """Call one SDK-style method, omitting ``meta`` for legacy fake clients."""
+    """Call one SDK-style method while tolerating legacy fake client signatures."""
     try:
-        parameters = inspect.signature(func).parameters
+        signature = inspect.signature(func)
+        parameters = signature.parameters
     except TypeError, ValueError:
-        parameters = {}
-    if "meta" in parameters:
         return func(meta=meta, **kwargs)
-    return func(**kwargs)
+    accepts_kwargs = any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    filtered_kwargs = (
+        kwargs
+        if accepts_kwargs
+        else {key: value for key, value in kwargs.items() if key in parameters}
+    )
+    if "meta" in parameters or accepts_kwargs:
+        return func(meta=meta, **filtered_kwargs)
+    return func(**filtered_kwargs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,6 +267,7 @@ class _TurnState:
     actor: str = "operator"
     channel: str = ""
     trace_id: str = ""
+    conversation_episode_id: str = ""
     root_envelope_id: str = ""
     current_model_envelope_id: str = ""
     always_on_capability_ids: frozenset[str] = frozenset()
@@ -584,6 +597,7 @@ class _BrainSdkToolModel(Model):
                         for repair_attempt in range(_INVALID_TOOL_CALL_REPAIR_ATTEMPTS):
                             inference_request = _build_inference_request(
                                 session_id=self._session_id,
+                                conversation_episode_id=self._turn_state.conversation_episode_id,
                                 source=self._source,
                                 principal=self._principal,
                                 meta=request_meta,
@@ -812,6 +826,7 @@ def _content_has_cache_point(value: object) -> bool:
 def _build_inference_request(
     *,
     session_id: str,
+    conversation_episode_id: str,
     source: str,
     principal: str,
     meta: MetaOverrides | None,
@@ -918,6 +933,7 @@ def _build_inference_request(
         meta=InferenceMeta(
             trace_id="" if meta is None or meta.trace_id is None else meta.trace_id,
             session_id=session_id,
+            conversation_episode_id=conversation_episode_id,
             source=source,
             principal=principal,
             envelope_id=""
@@ -1775,6 +1791,21 @@ def _derive_lms_request_timeout_seconds(core_runtime_settings) -> float:
     )
 
 
+def _list_tool_system_hints(client: BrainClient) -> tuple[ToolSystemHint, ...]:
+    """Return tool-system hints when the connected Core exposes them."""
+    list_hints = getattr(client, "list_tool_system_hints", None)
+    if not callable(list_hints):
+        return ()
+    try:
+        return tuple(list_hints())
+    except BrainSdkError as exc:
+        _LOGGER.warning(
+            "brain agent tool-system hints unavailable",
+            extra={"error_type": type(exc).__name__, "error_message": str(exc)},
+        )
+        return ()
+
+
 def _create_runtime(
     *,
     client: BrainClient,
@@ -1797,18 +1828,21 @@ def _create_runtime(
             session = client.memory_get_latest_or_create_session()
         except Exception:
             session = client.memory_create_session()
+    capabilities = client.describe_capabilities()
+    always_on_capabilities = client.list_always_on_capabilities()
+    tool_system_hints = render_system_tool_hints(_list_tool_system_hints(client))
     system_prompt = render_system_prompt(
         personality,
         operator_profile=operator_profile,
+        system_tool_hints=tool_system_hints,
         system_prompt_append=system_prompt_append,
     )
     system_blocks = render_system_prompt_blocks(
         personality,
         operator_profile=operator_profile,
+        system_tool_hints=tool_system_hints,
         system_prompt_append=system_prompt_append,
     )
-    capabilities = client.describe_capabilities()
-    always_on_capabilities = client.list_always_on_capabilities()
     denied_capability_ids = frozenset(
         item.strip()
         for item in settings.agent.capability_discovery_deny_list
@@ -2397,20 +2431,47 @@ async def _process_instruction(
             "brain.source": instruction.source,
         }
     )
-    _inbound_turn = await asyncio.to_thread(
-        _call_with_optional_meta,
-        runtime.client.memory_record_inbound_turn,
-        meta=runtime.turn_state.nested_call_meta(),
-        session_id=runtime.session_id,
-        message=_instruction_context_message(instruction),
-        instruction=instruction,
+    assemble_context = getattr(runtime.client, "memory_assemble_context", None)
+    if callable(assemble_context):
+        turn_context = await asyncio.to_thread(
+            _call_with_optional_meta,
+            assemble_context,
+            meta=runtime.turn_state.nested_call_meta(),
+            session_id=runtime.session_id,
+            message=_instruction_context_message(instruction),
+            instruction=instruction,
+        )
+    else:
+        _inbound_turn = await asyncio.to_thread(
+            _call_with_optional_meta,
+            runtime.client.memory_record_inbound_turn,
+            meta=runtime.turn_state.nested_call_meta(),
+            session_id=runtime.session_id,
+            message=_instruction_context_message(instruction),
+            instruction=instruction,
+        )
+        context = await asyncio.to_thread(
+            _call_with_optional_meta,
+            runtime.client.memory_assemble_snapshot,
+            meta=runtime.turn_state.nested_call_meta(),
+            session_id=runtime.session_id,
+        )
+        turn_context = type(
+            "_TurnContext",
+            (),
+            {
+                "session_id": runtime.session_id,
+                "inbound_turn": _inbound_turn,
+                "context": context,
+            },
+        )()
+    runtime.session_id = turn_context.session_id
+    runtime.model._session_id = turn_context.session_id
+    _inbound_turn = turn_context.inbound_turn
+    runtime.turn_state.conversation_episode_id = getattr(
+        _inbound_turn, "conversation_episode_id", ""
     )
-    context = await asyncio.to_thread(
-        _call_with_optional_meta,
-        runtime.client.memory_assemble_snapshot,
-        meta=runtime.turn_state.nested_call_meta(),
-        session_id=runtime.session_id,
-    )
+    context = turn_context.context
     runtime.turn_state.actor = "operator"
     runtime.turn_state.channel = instruction.source
     runtime.turn_state.reply_to_proposal_token = (
