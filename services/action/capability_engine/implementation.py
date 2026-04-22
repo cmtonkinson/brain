@@ -30,12 +30,6 @@ from packages.brain_shared.errors import (
 from services.action.capability_engine.op_handler_bridge import OpHandlerBridgeError
 from packages.brain_shared.ids import generate_ulid_str
 from packages.brain_shared.logging import get_logger, public_api_instrumented
-from resources.adapters.utcp_code_mode import (
-    LocalFileUtcpCodeModeAdapter,
-    UtcpCodeModeAdapter,
-    UtcpCodeModeLoadResult,
-    resolve_utcp_code_mode_adapter_settings,
-)
 from services.action.capability_engine.component import SERVICE_COMPONENT_ID
 from services.action.capability_engine.config import (
     CapabilityEngineSettings,
@@ -163,8 +157,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         language_model_service: LanguageModelService | None = None,
         embedding_authority_service: EmbeddingAuthorityService | None = None,
         registry: CapabilityRegistry,
-        code_mode_adapter: UtcpCodeModeAdapter | None = None,
-        code_mode_config: UtcpCodeModeLoadResult | None = None,
+        mcp_adapter: object | None = None,
         audit_repository: CapabilityInvocationAuditRepository | None = None,
         discovery_state_repository: CapabilityDiscoveryStateRepository | None = None,
         capability_embedding_profile_fingerprint: str = "",
@@ -174,8 +167,7 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         self._language_model_service = language_model_service
         self._embedding_authority_service = embedding_authority_service
         self._registry = registry
-        self._code_mode_adapter = code_mode_adapter
-        self._code_mode_config = code_mode_config
+        self._mcp_adapter = mcp_adapter
         self._audit_repository = (
             audit_repository or InMemoryCapabilityInvocationAuditRepository()
         )
@@ -204,11 +196,6 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
         resolved = resolve_capability_engine_settings(settings)
         active_registry = registry or CapabilityRegistry()
         active_registry.discover(root=Path(resolved.discovery_root))
-        code_mode_adapter_settings = resolve_utcp_code_mode_adapter_settings(settings)
-        code_mode_adapter = LocalFileUtcpCodeModeAdapter(
-            settings=code_mode_adapter_settings
-        )
-        code_mode_config = code_mode_adapter.load()
         runtime = CapabilityEnginePostgresRuntime.from_settings(settings)
         return cls(
             settings=resolved,
@@ -216,8 +203,6 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
             language_model_service=language_model_service,
             embedding_authority_service=embedding_authority_service,
             registry=active_registry,
-            code_mode_adapter=code_mode_adapter,
-            code_mode_config=code_mode_config,
             audit_repository=PostgresCapabilityInvocationAuditRepository(
                 runtime.schema_sessions
             ),

@@ -25,7 +25,7 @@ MANIFEST = register_component(
         public_api_roots=frozenset(
             {ModuleRoot("services.action.capability_engine.service")}
         ),
-        owns_resources=frozenset({ComponentId("adapter_utcp_code_mode")}),
+        owns_resources=frozenset({ComponentId("adapter_mcp")}),
     )
 )
 
@@ -56,14 +56,15 @@ def build_component(
         policy_service=policy_service,
         language_model_service=language_model_service,
         embedding_authority_service=embedding_authority_service,
-        code_mode_adapter=components.get("adapter_utcp_code_mode"),
+        mcp_adapter=components.get("adapter_mcp"),
     )
 
 
 def after_boot(
     *, settings: CoreRuntimeSettings, components: Mapping[str, object]
 ) -> None:
-    """Load capability manifests and auto-register Op handlers."""
+    """Load capability manifests, register MCP tools, and wire handlers."""
+    from resources.adapters.mcp.adapter import McpAdapter
     from services.action.capability_engine.domain import OpCapabilityManifest
     from services.action.capability_engine.domain import SkillCapabilityManifest
     from services.action.capability_engine.implementation import (
@@ -71,6 +72,14 @@ def after_boot(
     )
     from services.action.capability_engine.logic_handler_bridge import (
         build_logic_skill_handler,
+    )
+    from services.action.capability_engine.mcp_op_handler_bridge import (
+        build_mcp_op_handler,
+        is_mcp_call_target,
+        parse_mcp_call_target,
+    )
+    from services.action.capability_engine.mcp_schema_loader import (
+        load_mcp_output_schemas,
     )
     from services.action.capability_engine.op_handler_bridge import build_op_handler
     from services.action.capability_engine.pipeline_handler_bridge import (
@@ -85,6 +94,21 @@ def after_boot(
         root=Path(service._settings.discovery_root)
     )
 
+    # Load operator-supplied MCP output schema overrides.
+    mcp_output_schemas = load_mcp_output_schemas(
+        root=Path(service._settings.discovery_root)
+    )
+
+    # Dynamic MCP tool registration from sidecar.
+    mcp_adapter = components.get("adapter_mcp")
+    if isinstance(mcp_adapter, McpAdapter):
+        _register_mcp_tools(
+            service=service,
+            adapter=mcp_adapter,
+            output_schemas=mcp_output_schemas,
+        )
+
+    # Register handlers for all discovered manifests.
     for manifest in service._registry.list_manifests():
         if (
             service._registry.resolve_handler(capability_id=manifest.capability_id)
@@ -92,10 +116,21 @@ def after_boot(
         ):
             continue
         if isinstance(manifest, OpCapabilityManifest):
-            handler = build_op_handler(
-                call_target=manifest.call_target,
-                components=components,
-            )
+            if is_mcp_call_target(manifest.call_target):
+                if isinstance(mcp_adapter, McpAdapter):
+                    server_id, tool_name = parse_mcp_call_target(manifest.call_target)
+                    handler = build_mcp_op_handler(
+                        server_id=server_id,
+                        tool_name=tool_name,
+                        adapter=mcp_adapter,
+                    )
+                else:
+                    continue
+            else:
+                handler = build_op_handler(
+                    call_target=manifest.call_target,
+                    components=components,
+                )
             service._registry.register_handler(
                 capability_id=manifest.capability_id,
                 handler=handler,
@@ -133,6 +168,57 @@ def after_boot(
                 capability_id=manifest.capability_id,
                 handler=handler,
             )
+
+
+def _register_mcp_tools(
+    *,
+    service: object,
+    adapter: object,
+    output_schemas: dict[str, object],
+) -> None:
+    """Dynamically register each MCP tool as an mcp_op capability."""
+    from resources.adapters.mcp.adapter import McpAdapter
+    from services.action.capability_engine.domain import OpCapabilityManifest
+    from services.action.capability_engine.implementation import (
+        DefaultCapabilityEngineService,
+    )
+    from services.action.capability_engine.mcp_op_handler_bridge import (
+        build_mcp_op_handler,
+        mcp_capability_id,
+    )
+    from services.action.capability_engine.mcp_schema_loader import (
+        resolve_mcp_output_schema,
+    )
+
+    assert isinstance(service, DefaultCapabilityEngineService)
+    assert isinstance(adapter, McpAdapter)
+
+    for tool_info in adapter.list_tools():
+        capability_id = mcp_capability_id(tool_info.server_id, tool_info.tool_name)
+        if service._registry.resolve_manifest(capability_id=capability_id) is not None:
+            continue
+        output_schema = resolve_mcp_output_schema(output_schemas, tool_info.server_id)
+        manifest = OpCapabilityManifest(
+            capability_id=capability_id,
+            kind="mcp_op",
+            version="0.1.0",
+            summary=tool_info.description
+            or f"{tool_info.server_id} {tool_info.tool_name}",
+            call_target=f"mcp:{tool_info.server_id}:{tool_info.tool_name}",
+            input_schema=tool_info.input_schema,
+            output_schema=output_schema,
+            side_effects=("external",),
+        )
+        service._registry.register_manifest(manifest=manifest)
+        handler = build_mcp_op_handler(
+            server_id=tool_info.server_id,
+            tool_name=tool_info.tool_name,
+            adapter=adapter,
+        )
+        service._registry.register_handler(
+            capability_id=capability_id,
+            handler=handler,
+        )
 
 
 def _discover_capability_package_dirs(*, root: Path) -> dict[str, Path]:

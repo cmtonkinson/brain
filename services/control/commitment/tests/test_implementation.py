@@ -688,14 +688,14 @@ def test_create_commitment_normalizes_date_due_by_and_creates_follow_up_job() ->
     envelope = service.create_commitment(
         meta=_meta(),
         description="Submit report",
-        due_by=date(2026, 4, 20),
+        due_by=date(2099, 4, 20),
         due_timezone="America/New_York",
     )
 
     assert envelope.ok
     record = envelope.payload.value.commitment
     assert record is not None
-    assert record.due_by == datetime(2026, 4, 21, 3, 59, 59, tzinfo=UTC)
+    assert record.due_by == datetime(2099, 4, 21, 3, 59, 59, tzinfo=UTC)
     assert envelope.payload.value.job_link is not None
     assert len(jobs.created_jobs) == 1
     assert repo.get_job_link(commitment_id=record.id) is not None
@@ -921,7 +921,7 @@ def test_loop_closure_renegotiate_reopens_missed_commitment_and_reschedules() ->
         meta=_meta(),
         commitment_id=record.id,
         intent="renegotiate",
-        new_due_by=date(2026, 4, 25),
+        new_due_by=date(2099, 4, 25),
         due_timezone="UTC",
         response_text="do it next week",
     )

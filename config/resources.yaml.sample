@@ -78,11 +78,6 @@ adapter:
     failure_backoff_max_seconds: 30.0
     failure_backoff_multiplier: 2.0
     failure_backoff_jitter_ratio: 0.2
-  utcp_code_mode:
-    code_mode:
-      defaults:
-        call_template_type: mcp
-      servers:
-        filesystem:
-          command: npx
-          args: [-y, "@modelcontextprotocol/server-filesystem", /tmp]
+  mcp:
+    base_url: http://brain-mcp:8763
+    timeout_seconds: 10.0

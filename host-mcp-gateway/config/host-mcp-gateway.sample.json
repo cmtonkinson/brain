@@ -18,6 +18,16 @@
       "autostart": true,
       "restart_policy": "on-failure",
       "startup_timeout_ms": 30000
+    },
+    {
+      "server_id": "filesystem-ro",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "--read-only", "/Users/chris"],
+      "working_dir": "",
+      "env": {},
+      "autostart": true,
+      "restart_policy": "on-failure",
+      "startup_timeout_ms": 30000
     }
   ]
 }

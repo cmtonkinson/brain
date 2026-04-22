@@ -75,10 +75,10 @@ def _meta():
     return new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator")
 
 
-def test_from_settings_succeeds_with_inline_utcp_settings(
+def test_from_settings_succeeds_with_mcp_adapter_settings(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """CES from_settings should succeed with valid inline code_mode settings."""
+    """CES from_settings should succeed with MCP adapter settings."""
     from packages.brain_shared.config import (
         CoreRuntimeSettings,
         CoreSettings,
@@ -97,11 +97,9 @@ def test_from_settings_succeeds_with_inline_utcp_settings(
         ),
         resources=ResourcesSettings(
             adapter={  # type: ignore[arg-type]
-                "utcp_code_mode": {
-                    "code_mode": {
-                        "defaults": {"call_template_type": "mcp"},
-                        "servers": {"filesystem": {"command": "npx"}},
-                    }
+                "mcp": {
+                    "base_url": "http://brain-mcp:8763",
+                    "timeout_seconds": 10.0,
                 }
             }
         ),

@@ -521,20 +521,9 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
                 "failure_backoff_multiplier": SignalAdapterSettings().failure_backoff_multiplier,
                 "failure_backoff_jitter_ratio": SignalAdapterSettings().failure_backoff_jitter_ratio,
             },
-            "utcp_code_mode": {
-                "code_mode": {
-                    "defaults": {"call_template_type": "mcp"},
-                    "servers": {
-                        "filesystem": {
-                            "command": "npx",
-                            "args": [
-                                "-y",
-                                "@modelcontextprotocol/server-filesystem",
-                                "/tmp",
-                            ],
-                        }
-                    },
-                }
+            "mcp": {
+                "base_url": "http://brain-mcp:8763",
+                "timeout_seconds": 10.0,
             },
         },
     }

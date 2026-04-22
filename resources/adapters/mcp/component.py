@@ -1,4 +1,4 @@
-"""Component declaration for UTCP code-mode adapter resource."""
+"""Component declaration for the MCP adapter resource."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from packages.brain_shared.manifest import (
     register_component,
 )
 
-RESOURCE_COMPONENT_ID = ComponentId("adapter_utcp_code_mode")
+RESOURCE_COMPONENT_ID = ComponentId("adapter_mcp")
 
 MANIFEST = register_component(
     ResourceManifest(
@@ -20,7 +20,7 @@ MANIFEST = register_component(
         layer=0,
         system="action",
         kind="adapter",
-        module_roots=frozenset({ModuleRoot("resources.adapters.utcp_code_mode")}),
+        module_roots=frozenset({ModuleRoot("resources.adapters.mcp")}),
         owner_service_id=ComponentId("service_capability_engine"),
     )
 )
@@ -31,13 +31,7 @@ def build_component(
 ) -> object:
     """Build concrete runtime instance for this registered resource component."""
     del components
-    from resources.adapters.utcp_code_mode.config import (
-        resolve_utcp_code_mode_adapter_settings,
-    )
-    from resources.adapters.utcp_code_mode.utcp_code_mode_adapter import (
-        LocalFileUtcpCodeModeAdapter,
-    )
+    from resources.adapters.mcp.config import resolve_mcp_adapter_settings
+    from resources.adapters.mcp.http_mcp_adapter import HttpMcpAdapter
 
-    return LocalFileUtcpCodeModeAdapter(
-        settings=resolve_utcp_code_mode_adapter_settings(settings),
-    )
+    return HttpMcpAdapter(settings=resolve_mcp_adapter_settings(settings))

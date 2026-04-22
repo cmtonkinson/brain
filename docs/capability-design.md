@@ -125,13 +125,18 @@ wrapper around a single method from the Public API of some L1 Service.
   exact service function to invoke (e.g., `service_vault_authority.get_file`).
 
 ### 2. MCP Op
-_Note: This capability type is future/planned for integration with Code-Mode._
-MCP Ops are similar to Native Ops, but instead of wrapping a first-party
-primative, they wrap a single MCP UTCP/Code-Mode call.
+MCP Ops wrap a single MCP tool call, routed through the MCP Adapter sidecar.
 - **`kind`**: `"mcp_op"`
-- **Purpose**: To expose an agent-facing tool provided by the Master Control
-  Program (MCP) as a native capability.
-- **Structure & Implementation**: To be determined.
+- **Purpose**: Expose MCP tools as first-class, policy-gated CES capabilities.
+- **`call_target`**: `"mcp:{server_id}:{tool_name}"` — identifies the MCP
+  server and tool to invoke via the adapter.
+- **Discovery**: At boot, CES calls `adapter.list_tools()` and dynamically
+  registers each discovered tool as an `OpCapabilityManifest`. Static
+  `capability.json` manifests with `kind: "mcp_op"` are also supported.
+- **Output schema**: Not provided by the MCP protocol. Operator-supplied
+  overrides can be placed in `capabilities/mcp-return-schema/<server>.json`.
+  MCP ops without an output schema override cannot participate in Pipeline
+  Skills.
 
 ### 3. Pipeline Skill
 Pipeline Skills are a declarative way to chain together multiple capabilities in

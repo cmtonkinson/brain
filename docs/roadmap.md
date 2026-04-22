@@ -5,7 +5,7 @@ Phased implementation plan and current development status.
 ## Phase 1: (✅ done) ~~Text interaction + memory + MCP tools~~
 - ~~Obsidian Local REST API integration (read/write)~~
 - ~~Archival memory workflows~~
-- ~~Code-Mode (UTCP) for MCP tool calls~~
+- ~~MCP Adapter for MCP tool calls~~
 - ~~Signal messaging with allowlisted senders~~
 - ~~Vault indexer + Qdrant semantic search~~
 - ~~Optional observability stack (OTel)~~
@@ -20,8 +20,8 @@ Phased implementation plan and current development status.
 ------------------------------------------------------------------------
 ## Phase 3: (⚠️ in progress) Refactor
 - ~~Define clean subsystem boundaries & responsibilities~~
-- Refactor codebase along clean boundaries with crisp public APIs
-- Extensive testing for enforcement of new semantics
+- ~~Refactor codebase along clean boundaries with crisp public APIs~~
+- ~~Extensive testing for enforcement of new semantics~~
 - Review all documentation to ensure truth & alignment with actual system
 
 ------------------------------------------------------------------------

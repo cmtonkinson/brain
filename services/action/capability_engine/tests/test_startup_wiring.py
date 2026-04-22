@@ -59,30 +59,37 @@ def _base_settings(tmp_path: Path) -> CoreRuntimeSettings:
         ),
         resources=ResourcesSettings(
             adapter={  # type: ignore[arg-type]
-                "utcp_code_mode": {
-                    "code_mode": {
-                        "defaults": {"call_template_type": "mcp"},
-                        "servers": {
-                            "filesystem": {
-                                "command": "npx",
-                                "args": [
-                                    "-y",
-                                    "@modelcontextprotocol/server-filesystem",
-                                    "/tmp",
-                                ],
-                            }
-                        },
-                    }
+                "mcp": {
+                    "base_url": "http://brain-mcp:8763",
+                    "timeout_seconds": 10.0,
                 }
             }
         ),
     )
 
 
-def test_ces_from_settings_fails_when_utcp_has_no_servers(
+def test_ces_from_settings_succeeds_with_mcp_adapter_settings(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """CES startup should fail hard when code_mode has no mcp templates."""
+    """CES startup should succeed with MCP adapter settings configured."""
+    monkeypatch.setattr(
+        "services.action.capability_engine.implementation.CapabilityEnginePostgresRuntime.from_settings",
+        lambda _settings: _FakeRuntime(schema_sessions=object()),
+    )
+    settings = _base_settings(tmp_path)
+
+    service = DefaultCapabilityEngineService.from_settings(
+        settings,
+        policy_service=_FakePolicyService(),
+    )
+
+    assert isinstance(service, DefaultCapabilityEngineService)
+
+
+def test_ces_from_settings_succeeds_without_mcp_adapter_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """CES startup should succeed even without MCP adapter config."""
     monkeypatch.setattr(
         "services.action.capability_engine.implementation.CapabilityEnginePostgresRuntime.from_settings",
         lambda _settings: _FakeRuntime(schema_sessions=object()),
@@ -95,39 +102,10 @@ def test_ces_from_settings_fails_when_utcp_has_no_servers(
                 }
             }
         ),
-        resources=ResourcesSettings(
-            adapter={  # type: ignore[arg-type]
-                "utcp_code_mode": {
-                    "code_mode": {
-                        "defaults": {"call_template_type": "mcp"},
-                        "servers": {"dummy": {"command": "echo"}},
-                    }
-                }
-            }
-        ),
+        resources=ResourcesSettings(),
     )
-    # A config with a non-mcp template type would raise UtcpCodeModeConfigSchemaError —
-    # here we just verify the service can be constructed when settings are valid.
     service = DefaultCapabilityEngineService.from_settings(
         settings,
         policy_service=_FakePolicyService(),
     )
-    assert isinstance(service, DefaultCapabilityEngineService)
-
-
-def test_ces_from_settings_succeeds_with_valid_inline_settings(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """CES startup should succeed when inline code_mode settings are valid."""
-    monkeypatch.setattr(
-        "services.action.capability_engine.implementation.CapabilityEnginePostgresRuntime.from_settings",
-        lambda _settings: _FakeRuntime(schema_sessions=object()),
-    )
-    settings = _base_settings(tmp_path)
-
-    service = DefaultCapabilityEngineService.from_settings(
-        settings,
-        policy_service=_FakePolicyService(),
-    )
-
     assert isinstance(service, DefaultCapabilityEngineService)

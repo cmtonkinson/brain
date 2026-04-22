@@ -15,7 +15,7 @@ Provide a host-side gateway that runs MCP servers which require macOS APIs and e
 ### Non-Goals
 - Running MCP servers inside the container.
 - Providing a full MCP client implementation inside the container.
-- Replacing UTCP/Code-Mode in the agent.
+- Replacing MCP Adapter in the agent.
 
 ### Top-Level Layout
 Create a new top-level directory for the gateway:
@@ -148,7 +148,7 @@ Never return partial MCP responses. If the MCP server dies mid-request:
 
 ### Integration with Brain
 In the container:
-- UTCP/Code-Mode config should point MCP servers to the gateway endpoint instead of spawning locally.
+- MCP Adapter config should point MCP servers to the gateway endpoint instead of spawning locally.
 - The agent never runs host MCP servers directly.
 
 In the host:
@@ -159,7 +159,7 @@ In the host:
 ### Compatibility Constraints
 - macOS only for host MCP servers that use EventKit.
 - Gateway must run on macOS host and be reachable from Docker.
-- Agent remains containerized and unmodified except for UTCP config.
+- Agent remains containerized and unmodified except for MCP adapter config.
 
 ### Testing Expectations
 Manual:
@@ -175,5 +175,5 @@ Automated (if added later):
 ### Rollout Plan
 1. Implement gateway with minimal features: config, spawn, route, auth.
 2. Add EventKit MCP server to gateway config.
-3. Update UTCP config in `~/.config/brain/` to use gateway.
+3. Update MCP adapter config in `~/.config/brain/` to use gateway.
 4. Validate end-to-end from container to EventKit.

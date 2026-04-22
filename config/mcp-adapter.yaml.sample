@@ -1,0 +1,18 @@
+host: 0.0.0.0
+port: 8763
+timeout_seconds: 30.0
+servers:
+  eventkit:
+    transport: http
+    url: http://host.docker.internal:7411/eventkit/rpc
+    headers:
+      Authorization: "Bearer CHANGE_ME"
+  filesystem-ro:
+    transport: http
+    url: http://host.docker.internal:7411/filesystem-ro/rpc
+    headers:
+      Authorization: "Bearer CHANGE_ME"
+  filesystem-rw:
+    transport: stdio
+    command: npx
+    args: [-y, "@modelcontextprotocol/server-filesystem", /tmp]

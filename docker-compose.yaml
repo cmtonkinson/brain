@@ -1,4 +1,5 @@
 services:
+
   brain-core:
     build:
       context: .
@@ -25,6 +26,8 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
+      brain-mcp:
+        condition: service_healthy
     command: ["python", "-m", "packages.brain_core.main"]
 
   brain-agent:
@@ -50,19 +53,24 @@ services:
         condition: service_healthy
     command: ["python", "-m", "actors.agent.main"]
 
-  signal-api:
-    image: ${SIGNAL_CLI_REST_API_IMAGE:-bbernhard/signal-cli-rest-api:latest}
+  brain-mcp:
+    build:
+      context: ./resources/adapters/mcp/sidecar
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.14}
     restart: unless-stopped
-    depends_on:
-      brain-core:
-        condition: service_healthy
     environment:
-      LOG_LEVEL: warn
-      MODE: ${SIGNAL_CLI_REST_API_MODE:-json-rpc}
-      JSON_RPC_IGNORE_ATTACHMENTS: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_ATTACHMENTS:-true}
-      JSON_RPC_IGNORE_STORIES: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_STORIES:-true}
+      MCP_ADAPTER_CONFIG_FILE: /app/config/mcp-adapter.yaml
     volumes:
-      - ${SIGNAL_CLI_CONFIG_DIR:-./data/signal-cli}:/home/.local/share/signal-cli
+      - ${HOME}/.config/brain:/app/config:ro
+      - ${BRAIN_MCP_FILESYSTEM_RO_SOURCE:-${HOME}}:/mnt/host:ro
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail", "http://127.0.0.1:8763/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
 
   redis:
     image: redis:7-alpine
@@ -105,3 +113,17 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+
+  signal-api:
+    image: ${SIGNAL_CLI_REST_API_IMAGE:-bbernhard/signal-cli-rest-api:latest}
+    restart: unless-stopped
+    depends_on:
+      brain-core:
+        condition: service_healthy
+    environment:
+      LOG_LEVEL: warn
+      MODE: ${SIGNAL_CLI_REST_API_MODE:-json-rpc}
+      JSON_RPC_IGNORE_ATTACHMENTS: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_ATTACHMENTS:-true}
+      JSON_RPC_IGNORE_STORIES: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_STORIES:-true}
+    volumes:
+      - ${SIGNAL_CLI_CONFIG_DIR:-./data/signal-cli}:/home/.local/share/signal-cli

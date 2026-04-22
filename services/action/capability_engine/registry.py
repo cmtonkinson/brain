@@ -295,6 +295,8 @@ class CapabilityRegistry:
     ) -> None:
         for capability_id, manifest in manifests.items():
             if isinstance(manifest, OpCapabilityManifest):
+                if manifest.kind == "mcp_op":
+                    continue
                 contract = call_targets.get(manifest.call_target)
                 if contract is None:
                     raise ValueError(
