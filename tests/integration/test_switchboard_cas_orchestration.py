@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from services.action.switchboard.tests.test_switchboard_integration import (
     _FakeCacheService,
     _FakeSignalAdapter,

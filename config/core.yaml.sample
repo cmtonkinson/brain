@@ -54,6 +54,7 @@ profile:
   operator_name: Operator
   brain_name: Brain
   brain_verbosity: normal
+  preferred_timezone: UTC
 
 boot:
   run_migrations_on_startup: true

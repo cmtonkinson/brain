@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.envelope import EnvelopeMeta
+from lib.shared.envelope import EnvelopeMeta
 from services.state.memory_authority.dialogue import DialogueModule
 from services.state.memory_authority.domain import ContextBlock
 from services.state.memory_authority.focus import FocusModule

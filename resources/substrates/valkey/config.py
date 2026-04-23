@@ -7,7 +7,7 @@ from urllib.parse import quote_plus
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
+from lib.shared.config import CoreRuntimeSettings, resolve_component_settings
 from resources.substrates.valkey.component import RESOURCE_COMPONENT_ID
 
 

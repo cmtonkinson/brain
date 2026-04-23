@@ -1,8 +1,8 @@
 # HTTP API
-_This document is generated from `packages/brain_core/health_api.py` and `services/*/*/api.py`, with route intent from `docs/meta/http-routes.yaml`. Do not edit by hand._
+_This document is generated from `lib/core/health_api.py` and `services/*/*/api.py`, with route intent from `docs/meta/http-routes.yaml`. Do not edit by hand._
 
 ------------------------------------------------------------------------
-## `packages/brain_core/health_api.py`
+## `lib/core/health_api.py`
 `GET /health` &mdash; full-system diagnostic health check  
 _Handler: `health`_
 _Response: `_HealthResponse`_
@@ -78,6 +78,10 @@ _Summary: Pop the next queued operator instruction, optionally long-polling._
 ## `services/control/commitment/api.py`
 `POST /commitment/create` &mdash; create a commitment directly or persist a creation proposal  
 _Handler: `create_commitment`_
+
+
+`POST /commitment/extract-candidates` &mdash; extract zero or more commitment candidate signals from arbitrary text  
+_Handler: `extract_commitment_candidates`_
 
 
 `POST /commitment/get` &mdash; read one commitment by id  

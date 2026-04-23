@@ -6,7 +6,7 @@ from typing import Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
 
-from packages.brain_shared.ids import ulid_str_to_bytes
+from lib.shared.ids import ulid_str_to_bytes
 from services.state.embedding_authority.domain import (
     UpsertChunkInput,
     UpsertEmbeddingVectorInput,

@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 
-from packages.brain_shared.logging.config import (
+from lib.shared.logging.config import (
     JsonFormatter,
     VERBOSE,
     configure_logging,

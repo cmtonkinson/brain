@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Sequence
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from services.control.ingestion.config import IngestionServiceSettings
 from services.control.ingestion.domain import (
     AnchorRecord,
@@ -508,8 +508,8 @@ class _FakeOAS:
         original_filename: str,
         source_uri: str,
     ):
-        from packages.brain_shared.envelope import success, failure
-        from packages.brain_shared.errors import internal_error
+        from lib.shared.envelope import success, failure
+        from lib.shared.errors import internal_error
 
         if self._fail_put:
             return failure(meta=meta, errors=[internal_error("OAS put failed")])
@@ -530,8 +530,8 @@ class _FakeOAS:
         return success(meta=meta, payload=self._make_put_result(key, "created"))
 
     def stat_object(self, *, meta, object_key: str):
-        from packages.brain_shared.envelope import success, failure
-        from packages.brain_shared.errors import not_found_error
+        from lib.shared.envelope import success, failure
+        from lib.shared.errors import not_found_error
 
         if self._fail_stat or object_key not in self._objects:
             return failure(
@@ -540,8 +540,8 @@ class _FakeOAS:
         return success(meta=meta, payload=self._make_object_record(object_key))
 
     def get_object(self, *, meta, object_key: str):
-        from packages.brain_shared.envelope import success, failure
-        from packages.brain_shared.errors import not_found_error
+        from lib.shared.envelope import success, failure
+        from lib.shared.errors import not_found_error
 
         if object_key not in self._objects:
             return failure(
@@ -558,8 +558,8 @@ class _FakeVAS:
         self.files: dict[str, str] = {}
 
     def create_file(self, *, meta, file_path: str, content: str):
-        from packages.brain_shared.envelope import failure, success
-        from packages.brain_shared.errors import conflict_error
+        from lib.shared.envelope import failure, success
+        from lib.shared.errors import conflict_error
 
         if file_path in self.files:
             return failure(meta=meta, errors=[conflict_error(f"exists: {file_path}")])
@@ -567,8 +567,8 @@ class _FakeVAS:
         return success(meta=meta, payload=object())
 
     def append_file(self, *, meta, file_path: str, content: str):
-        from packages.brain_shared.envelope import failure, success
-        from packages.brain_shared.errors import not_found_error
+        from lib.shared.envelope import failure, success
+        from lib.shared.errors import not_found_error
 
         if file_path not in self.files:
             return failure(meta=meta, errors=[not_found_error(f"missing: {file_path}")])
@@ -601,8 +601,8 @@ class _FakeJobService:
     ):
         from types import SimpleNamespace
 
-        from packages.brain_shared.envelope import failure, success
-        from packages.brain_shared.errors import dependency_error
+        from lib.shared.envelope import failure, success
+        from lib.shared.errors import dependency_error
 
         if self.fail_create:
             return failure(meta=meta, errors=[dependency_error("job create failed")])
@@ -626,8 +626,8 @@ class _FakeJobService:
     def run_job_now(self, *, meta, job_id: str):
         from types import SimpleNamespace
 
-        from packages.brain_shared.envelope import failure, success
-        from packages.brain_shared.errors import dependency_error
+        from lib.shared.envelope import failure, success
+        from lib.shared.errors import dependency_error
 
         if self.fail_run_now:
             return failure(meta=meta, errors=[dependency_error("job run_now failed")])
@@ -642,7 +642,7 @@ class _FakeUtilityService:
     def chunk_text(self, *, meta, text: str):
         from types import SimpleNamespace
 
-        from packages.brain_shared.envelope import success
+        from lib.shared.envelope import success
 
         return success(
             meta=meta,
@@ -656,7 +656,7 @@ class _FakeLanguageModelService:
     def embed_batch(self, *, meta, texts):
         from types import SimpleNamespace
 
-        from packages.brain_shared.envelope import success
+        from lib.shared.envelope import success
 
         return success(
             meta=meta,
@@ -678,7 +678,7 @@ class _FakeEmbeddingAuthorityService:
     def get_active_spec(self, *, meta):
         from types import SimpleNamespace
 
-        from packages.brain_shared.envelope import success
+        from lib.shared.envelope import success
 
         return success(meta=meta, payload=SimpleNamespace(id="spec-1"))
 
@@ -694,7 +694,7 @@ class _FakeEmbeddingAuthorityService:
     ):
         from types import SimpleNamespace
 
-        from packages.brain_shared.envelope import success
+        from lib.shared.envelope import success
 
         source = SimpleNamespace(id=f"source-{len(self.sources) + 1}")
         self.sources.append(
@@ -711,7 +711,7 @@ class _FakeEmbeddingAuthorityService:
     def upsert_chunks(self, *, meta, items):
         from types import SimpleNamespace
 
-        from packages.brain_shared.envelope import success
+        from lib.shared.envelope import success
 
         chunks = [
             SimpleNamespace(
@@ -726,7 +726,7 @@ class _FakeEmbeddingAuthorityService:
     def upsert_embedding_vectors(self, *, meta, items):
         from types import SimpleNamespace
 
-        from packages.brain_shared.envelope import success
+        from lib.shared.envelope import success
 
         records = [SimpleNamespace(chunk_id=item["chunk_id"]) for item in items]
         self.vectors.extend(records)
@@ -1261,7 +1261,7 @@ class TestAdvanceIngestion:
         called: list[str] = []
 
         def _dispatch_stage(*, meta, ingestion_id: str, stage: str):
-            from packages.brain_shared.envelope import success
+            from lib.shared.envelope import success
 
             called.append(stage)
             if stage == "extract":

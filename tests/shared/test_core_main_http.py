@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
 
-from packages.brain_core.main import _start_http_runtime
-from packages.brain_shared.config import (
+from lib.core.main import _start_http_runtime
+from lib.shared.config import (
     CoreHttpSettings,
     CoreRuntimeSettings,
     CoreSettings,
@@ -56,14 +56,14 @@ def test_start_http_runtime_registers_routes_and_starts() -> None:
         return None
 
     with (
-        patch("packages.brain_core.main.get_registry", return_value=registry),
+        patch("lib.core.main.get_registry", return_value=registry),
         patch(
-            "packages.brain_core.main._resolve_service_http_registrar",
+            "lib.core.main._resolve_service_http_registrar",
             side_effect=_resolver,
         ),
-        patch("packages.brain_core.main.create_server", return_value=fake_server),
-        patch("packages.brain_core.main.create_app") as mock_create_app,
-        patch("packages.brain_core.main.register_routes"),
+        patch("lib.core.main.create_server", return_value=fake_server),
+        patch("lib.core.main.create_app") as mock_create_app,
+        patch("lib.core.main.register_routes"),
     ):
         mock_app = MagicMock()
         mock_create_app.return_value = mock_app

@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from packages.brain_shared.envelope import (
+from lib.shared.envelope import (
     EnvelopeKind,
     EnvelopeMeta,
     empty,
@@ -16,8 +16,8 @@ from packages.brain_shared.envelope import (
     success,
     with_error,
 )
-from packages.brain_shared.envelope.envelope import Envelope
-from packages.brain_shared.errors import ErrorCategory, ErrorDetail
+from lib.shared.envelope.envelope import Envelope
+from lib.shared.errors import ErrorCategory, ErrorDetail
 
 
 def _meta() -> EnvelopeMeta:

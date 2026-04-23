@@ -12,12 +12,12 @@ from urllib.parse import quote, urlparse, urlunparse
 
 import aiohttp
 
-from packages.brain_shared.http import (
+from lib.shared.http import (
     HttpClient,
     HttpRequestError,
     HttpStatusError,
 )
-from packages.brain_shared.logging import get_logger, public_api_instrumented
+from lib.shared.logging import get_logger, public_api_instrumented
 from resources.adapters.signal.adapter import (
     SignalAdapter,
     SignalAdapterError,

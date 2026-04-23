@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from packages.brain_shared.language_model import InferenceRequest
+from lib.shared.language_model import InferenceRequest
 
 
 class ChatResponse(BaseModel):

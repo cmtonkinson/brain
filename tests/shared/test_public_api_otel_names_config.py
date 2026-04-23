@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.config import CoreSettings
-from packages.brain_shared.logging import public_api as public_api_module
+from lib.shared.config import CoreSettings
+from lib.shared.logging import public_api as public_api_module
 
 
 def test_public_api_otel_names_use_defaults_when_not_configured() -> None:

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from packages.brain_core.boot import BootContext
-from packages.brain_shared.config import (
+from lib.core.boot import BootContext
+from lib.shared.config import (
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,
 )
-from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
-from packages.brain_shared.errors import dependency_error
+from lib.shared.envelope import EnvelopeKind, failure, new_meta, success
+from lib.shared.errors import dependency_error
 from services.action.switchboard.boot import (
     boot as run_boot,
     register_switchboard_callback_on_boot,

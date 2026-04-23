@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta, success
-from packages.brain_shared.ids import generate_ulid_str
+from lib.shared.envelope import EnvelopeKind, new_meta, success
+from lib.shared.ids import generate_ulid_str
 from services.action.language_model.service import LanguageModelService
 from services.state.memory_authority.config import MemoryAuthoritySettings
 from services.state.memory_authority.domain import (

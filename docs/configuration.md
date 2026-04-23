@@ -18,7 +18,7 @@ Settings are resolved in this order (highest wins):
 2. **Environment variables** — service-specific prefixes, `__`-separated for nesting
 3. **Secrets config file** — `~/.config/brain/secrets.yaml` (if present)
 4. **Config file** — one of `core.yaml`, `resources.yaml`, or `actors.yaml`
-5. **Model defaults** — defined in `packages/brain_shared/config/models.py` and
+5. **Model defaults** — defined in `lib/shared/config/models.py` and
    component-local `config.py` modules
 
 `secrets.yaml` is loaded after the primary YAML file for each settings model, so
@@ -69,7 +69,7 @@ Agent runtime settings loaded from `actors.yaml`.
 |---|---|---|
 | `principal` | `operator` | Principal identity attached to outbound SDK calls from the agent actor. |
 | `source` | `agent` | Source identity attached to outbound SDK calls from the agent actor. |
-| `personality` | `default` | Named personality bundle used to render the agent system prompt at boot. Must match a file in `packages/brain_sdk/personalities/`. |
+| `personality` | `default` | Named personality bundle used to render the agent system prompt at boot. Must match a file in `lib/sdk/personalities/`. |
 | `operator_profile` | `Refer to me as 'boss'` | Operator-facing profile text injected into the agent system prompt. |
 | `system_prompt_append` | `""` | Optional additional prompt text appended to the agent instruction block at boot. |
 | `capability_discovery_deny_list` | `["attention-notify"]` | Capability ids excluded from dynamic discovery and activation. |
@@ -318,7 +318,7 @@ Capability Engine Service runtime settings.
 
 | Key | Default | Description |
 |---|---|---|
-| `discovery_root` | `capabilities` | Root directory scanned recursively for capability packages. Intermediate directories are organizational only; package directory names must still match `capability_id`. |
+| `discovery_root` | `capabilities` | Root directory scanned recursively for capability lib. Intermediate directories are organizational only; package directory names must still match `capability_id`. |
 | `default_max_autonomy` | `0` | Default engine autonomy ceiling used when evaluating capability execution. Must be >= 0. |
 
 ------------------------------------------------------------------------

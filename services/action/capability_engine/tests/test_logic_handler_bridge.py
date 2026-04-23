@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta, success
+from lib.shared.envelope import EnvelopeKind, new_meta, success
 from services.action.capability_engine.logic_handler_bridge import (
     build_logic_skill_handler,
 )

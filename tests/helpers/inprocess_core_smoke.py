@@ -12,22 +12,22 @@ from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
 from actors.agent import main as agent_main
-from packages.brain_sdk import (
+from lib.sdk import (
     BrainClient,
     BrainSdkConfig,
     CapabilityDescriptor,
     CapabilitySearchHit,
 )
-from packages.brain_shared.config import ActorSettings
-from packages.brain_shared.envelope import (
+from lib.shared.config import ActorSettings
+from lib.shared.envelope import (
     Envelope,
     EnvelopeKind,
     Payload,
     new_meta,
     success,
 )
-from packages.brain_shared.errors import ErrorDetail
-from packages.brain_shared.http.server import create_app
+from lib.shared.errors import ErrorDetail
+from lib.shared.http.server import create_app
 from resources.adapters.llm import (
     AdapterChatResult,
     AdapterEmbeddingResult,
@@ -583,7 +583,7 @@ def _error_body(error: ErrorDetail) -> dict[str, object]:
 
 
 def _settings():
-    from packages.brain_shared.config import (
+    from lib.shared.config import (
         CoreRuntimeSettings,
         CoreSettings,
         ResourcesSettings,

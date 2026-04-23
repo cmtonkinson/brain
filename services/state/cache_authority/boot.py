@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_core.boot import BootContext
+from lib.core.boot import BootContext
 
 dependencies: tuple[str, ...] = tuple()
 

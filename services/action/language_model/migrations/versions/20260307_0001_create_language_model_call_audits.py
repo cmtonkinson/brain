@@ -6,7 +6,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
+from lib.shared.ids.constants import ULID_DOMAIN_NAME
 from services.action.language_model.data.runtime import language_model_postgres_schema
 
 # revision identifiers, used by Alembic.

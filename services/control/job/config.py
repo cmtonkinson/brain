@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
+from lib.shared.config import CoreRuntimeSettings, resolve_component_settings
 from services.control.job.component import SERVICE_COMPONENT_ID
 from services.control.job.domain import BackoffStrategy
 

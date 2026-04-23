@@ -14,7 +14,7 @@ described in [Boundaries & Responsibilities](boundaries-and-responsibilities.md)
 | `docs/` | Architecture & contributor documentation |
 | `host-mcp-gateway/` | Go-based HTTP proxy for host-level MCP Servers |
 | `img/` | Diagrams and images referenced by docs and README |
-| `packages/` | Shared Python packages (see below) |
+| `lib/` | Shared Python packages (see below) |
 | `prompts/` | LLM prompt templates (`embedding/`, `inference/`, `config/`) |
 | `resources/` | L0 _Resource_ implementations |
 | `scripts/` | Build/generation scripts (glossary, service-api docs) |
@@ -81,13 +81,13 @@ Each _Resource_ exports a `MANIFEST` via `component.py` with a
 
 ------------------------------------------------------------------------
 ## Packages
-Shared code lives in `packages/`:
+Shared code lives in `lib/`:
 
 | Package | Purpose |
 |---|---|
-| `brain_shared/` | Cross-cutting utilities: `manifest.py` (_Component_ registry), `envelope/`, `errors/`, `http/` (internal HTTP wrappers), `ids/` (ULID helpers), `logging/`, `config/`, `embeddings.py`, `component_loader.py`; contract conventions for these shared types are defined in [Conventions](conventions.md) |
-| `brain_core/` | Brain Core runtime (L1 _Service_ orchestration) |
-| `brain_sdk/` | _Brain Core SDK_ for L2 _Actors_ (thin HTTP client over the Core Unix socket) |
+| `shared/` | Cross-cutting utilities: `manifest.py` (_Component_ registry), `envelope/`, `errors/`, `http/` (internal HTTP wrappers), `ids/` (ULID helpers), `logging/`, `config/`, `embeddings.py`, `component_loader.py`; contract conventions for these shared types are defined in [Conventions](conventions.md) |
+| `core/` | Brain Core runtime (L1 _Service_ orchestration) |
+| `sdk/` | _Brain Core SDK_ for L2 _Actors_ (thin HTTP client over the Core Unix socket) |
 | `capability_sdk/` | _Capability SDK_ for _Op_/_Skill_ registration and management |
 
 ## Configuration

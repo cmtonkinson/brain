@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from packages.brain_shared.language_model import (
+from lib.shared.language_model import (
     InferenceControls,
     InferenceParallelToolCalls,
     InferenceToolChoice,

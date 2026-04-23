@@ -10,7 +10,7 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path
 
-_RUNTIME_SCAN_ROOTS = ("services", "resources", "actors", "packages")
+_RUNTIME_SCAN_ROOTS = ("services", "resources", "actors", "lib")
 
 
 @dataclass(frozen=True)

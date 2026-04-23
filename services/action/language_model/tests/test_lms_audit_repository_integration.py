@@ -8,7 +8,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy import select
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from resources.adapters.llm import (
     AdapterChatToolCall,
     AdapterDependencyError,

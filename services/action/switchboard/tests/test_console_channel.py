@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta, success
-from packages.brain_shared.http.server import create_app
+from lib.shared.envelope import EnvelopeKind, new_meta, success
+from lib.shared.http.server import create_app
 from services.action.switchboard.api import register_routes
 from services.action.switchboard.domain import (
     ConsoleEnqueueResult,

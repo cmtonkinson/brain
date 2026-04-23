@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from packages.brain_shared.config import (
+from lib.shared.config import (
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,
 )
-from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
-from packages.brain_shared.errors import policy_error
+from lib.shared.envelope import EnvelopeKind, failure, new_meta, success
+from lib.shared.errors import policy_error
 from services.action.capability_engine.config import CapabilityEngineSettings
 from services.action.capability_engine.data.repository import (
     InMemoryCapabilityInvocationAuditRepository,

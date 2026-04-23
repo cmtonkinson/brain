@@ -29,7 +29,7 @@ from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.profiles import ModelProfile
 from pydantic_ai.tools import ToolDefinition
 
-from packages.brain_sdk import (
+from lib.sdk import (
     BrainClient,
     BrainConflictError,
     BrainDependencyError,
@@ -52,26 +52,28 @@ from packages.brain_sdk import (
     render_system_prompt_blocks,
     render_system_tool_hints,
 )
-from packages.brain_sdk.errors import BrainSdkError
-from packages.brain_shared.config import (
+from lib.sdk.errors import BrainSdkError
+from lib.shared.config import (
     ActorSettings,
     CoreRuntimeSettings,
     CoreSettings,
-    ObservabilitySettings,
     load_actor_settings,
     load_core_runtime_settings,
 )
-from packages.brain_shared.ids import generate_ulid_str
-from packages.brain_shared.language_model import (
+from lib.shared.ids import generate_ulid_str
+from lib.shared.language_model import (
     CachePointContentPart,
     ChatContentPart,
     ConversationSummaryContentPart,
     DialogueTurnContentPart,
+    EnvironmentContextContentPart,
     FocusContentPart,
     InferenceAssistantTextEvent,
     InferenceCache,
     InferenceControls,
     InferenceCurrentTurn,
+    InferenceEnvironmentContext,
+    InferenceEnvironmentItem,
     InferenceMemoryContext,
     InferenceMemoryTurn,
     InferenceMeta,
@@ -93,9 +95,10 @@ from packages.brain_shared.language_model import (
     ReferenceSnippetContentPart,
     TextContentPart,
 )
-from packages.brain_shared.observability import (
+from lib.sdk.environment import assemble_environment_context
+from lib.shared.observability import (
     bootstrap_observability,
-    pydantic_ai_instrumentation_settings,
+    is_observability_enabled,
 )
 from resources.adapters.llm.config import (
     max_timeout_retry_budget_seconds,
@@ -171,6 +174,164 @@ def _set_current_span_attributes(attributes: dict[str, object | None]) -> None:
         if value in (None, ""):
             continue
         span.set_attribute(key, value)
+
+
+def _set_span_attributes(span: object, attributes: dict[str, object | None]) -> None:
+    """Attach non-empty OTel-compatible attributes to one span."""
+    set_attribute = getattr(span, "set_attribute", None)
+    if not callable(set_attribute):
+        return
+    for key, value in attributes.items():
+        if value in (None, "", {}, []):
+            continue
+        set_attribute(key, value)
+
+
+def _json_dumps_or_empty(value: object | None) -> str:
+    """Serialize one value for Langfuse JSON-string observation fields."""
+    if value is None:
+        return ""
+    return json.dumps(value, sort_keys=True, default=str)
+
+
+def _operator_observation_input(
+    instruction: SwitchboardOperatorInstruction,
+) -> dict[str, object]:
+    """Return the Langfuse-facing root turn input payload."""
+    payload: dict[str, object] = {
+        "message": _instruction_context_message(instruction),
+        "channel": instruction.source,
+    }
+    if instruction.sender_e164 != "":
+        payload["sender_e164"] = instruction.sender_e164
+    if instruction.approval_intent is not None:
+        payload["approval_intent"] = instruction.approval_intent
+    if instruction.reaction_emoji is not None:
+        payload["reaction_emoji"] = instruction.reaction_emoji
+    return payload
+
+
+def _agent_turn_observation(
+    *,
+    runtime: "_AgentRuntime",
+    instruction: SwitchboardOperatorInstruction,
+):
+    """Create one Langfuse-compatible root span for an Agent turn."""
+    return _AgentTurnObservation(runtime=runtime, instruction=instruction)
+
+
+class _AgentTurnObservation:
+    """Context manager for one Langfuse-compatible Agent turn span."""
+
+    def __init__(
+        self,
+        *,
+        runtime: "_AgentRuntime",
+        instruction: SwitchboardOperatorInstruction,
+    ) -> None:
+        self._runtime = runtime
+        self._instruction = instruction
+        self._span: object | None = None
+
+    def __enter__(self) -> object | None:
+        """Start the root turn span when process observability is active."""
+        if not is_observability_enabled():
+            return None
+        try:
+            from opentelemetry import trace
+        except ImportError:
+            return None
+
+        tracer = trace.get_tracer("brain.agent")
+        manager = tracer.start_as_current_span("agent.turn")
+        span = manager.__enter__()
+        self._manager = manager
+        self._span = span
+        observation_input = _operator_observation_input(self._instruction)
+        input_json = _json_dumps_or_empty(observation_input)
+        _set_span_attributes(
+            span,
+            {
+                "langfuse.observation.type": "span",
+                "langfuse.trace.name": "brain.turn",
+                "langfuse.user.id": self._runtime.turn_state.actor,
+                "langfuse.session.id": self._runtime.session_id,
+                "langfuse.observation.input": input_json,
+                "langfuse.trace.input": input_json,
+                "langfuse.trace.metadata.brain_trace_id": self._runtime.turn_state.trace_id,
+                "langfuse.trace.metadata.brain_envelope_id": self._runtime.turn_state.root_envelope_id,
+                "langfuse.trace.metadata.brain_source": self._instruction.source,
+                "langfuse.trace.metadata.mas_session_id": self._runtime.session_id,
+                "langfuse.observation.metadata.operation": "agent.turn",
+                "brain.operation": "agent.turn",
+                "brain.trace_id": self._runtime.turn_state.trace_id,
+                "brain.envelope_id": self._runtime.turn_state.root_envelope_id,
+                "brain.session_id": self._runtime.session_id,
+                "brain.principal": self._runtime.turn_state.actor,
+                "brain.source": self._instruction.source,
+            },
+        )
+        return span
+
+    def __exit__(self, exc_type, exc, traceback) -> bool:
+        """Finish the root turn span and preserve raised exceptions."""
+        span = self._span
+        if span is not None and exc is not None:
+            record_exception = getattr(span, "record_exception", None)
+            if callable(record_exception):
+                record_exception(exc)
+            _set_span_attributes(
+                span,
+                {
+                    "langfuse.observation.level": "ERROR",
+                    "langfuse.observation.status_message": str(exc),
+                    "langfuse.observation.metadata.outcome": "error",
+                },
+            )
+        manager = getattr(self, "_manager", None)
+        if manager is not None:
+            return bool(manager.__exit__(exc_type, exc, traceback))
+        return False
+
+
+def _update_agent_turn_observation_session(
+    *,
+    span: object | None,
+    runtime: "_AgentRuntime",
+) -> None:
+    """Attach MAS-resolved session identifiers to the root turn span."""
+    if span is None:
+        return
+    session_id = runtime.turn_state.conversation_episode_id or runtime.session_id
+    _set_span_attributes(
+        span,
+        {
+            "langfuse.session.id": session_id,
+            "langfuse.trace.metadata.mas_session_id": runtime.session_id,
+            "langfuse.trace.metadata.conversation_episode_id": runtime.turn_state.conversation_episode_id,
+            "brain.session_id": runtime.session_id,
+            "brain.conversation_episode_id": runtime.turn_state.conversation_episode_id,
+        },
+    )
+
+
+def _complete_agent_turn_observation(
+    *,
+    span: object | None,
+    response_text: str,
+) -> None:
+    """Attach the final Agent response to the root turn span."""
+    if span is None:
+        return
+    output_json = _json_dumps_or_empty({"response": response_text})
+    _set_span_attributes(
+        span,
+        {
+            "langfuse.observation.output": output_json,
+            "langfuse.trace.output": output_json,
+            "langfuse.observation.metadata.outcome": "success",
+        },
+    )
 
 
 def _load_prompt_file(path: Path) -> str:
@@ -428,6 +589,7 @@ class _AgentRuntime:
     model: "_BrainSdkToolModel"
     agent: Agent[None, str]
     lms_request_timeout_seconds: float
+    environment_context_entries: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -509,7 +671,7 @@ def _write_heartbeat(*, path: Path | None = None) -> None:
 
 def _configure_logging(*, settings: ActorSettings) -> None:
     """Install shared dual-path logging for the long-lived agent process."""
-    from packages.brain_shared.logging import configure_logging
+    from lib.shared.logging import configure_logging
 
     configure_logging(
         level=str(settings.logging.level),
@@ -788,6 +950,7 @@ _CONTENT_PART_TYPES = (
     ConversationSummaryContentPart,
     DialogueTurnContentPart,
     ReferenceSnippetContentPart,
+    EnvironmentContextContentPart,
     OperatorMessageContentPart,
 )
 
@@ -845,6 +1008,7 @@ def _build_inference_request(
     recent_conversation_summary = ""
     recent_turns: list[InferenceMemoryTurn] = []
     reference_snippets: list[InferenceReferenceSnippet] = []
+    environment_context = InferenceEnvironmentContext()
     operator_message: InferenceOperatorMessage | None = None
     live_events: list[
         InferenceAssistantTextEvent
@@ -872,6 +1036,7 @@ def _build_inference_request(
                             recent_conversation_summary,
                             recent_turns,
                             reference_snippets,
+                            environment_context,
                             operator_message,
                         ) = _extract_context_from_content_parts(content_parts)
                         context_found = True
@@ -948,6 +1113,7 @@ def _build_inference_request(
             recent_turns=tuple(recent_turns),
             reference_snippets=tuple(reference_snippets),
         ),
+        environment_context=environment_context,
         current_turn=InferenceCurrentTurn(operator_message=operator_message),
         tools=tuple(
             _to_inference_tool_definition(
@@ -978,6 +1144,7 @@ def _contains_context_content_parts(parts: tuple[ChatContentPart, ...]) -> bool:
             | ConversationSummaryContentPart
             | DialogueTurnContentPart
             | ReferenceSnippetContentPart
+            | EnvironmentContextContentPart
             | OperatorMessageContentPart,
         )
         for item in parts
@@ -998,6 +1165,7 @@ def _extract_context_from_content_parts(
     str,
     list[InferenceMemoryTurn],
     list[InferenceReferenceSnippet],
+    InferenceEnvironmentContext,
     InferenceOperatorMessage | None,
 ]:
     """Extract canonical memory + current-turn data from structured prompt parts."""
@@ -1005,6 +1173,7 @@ def _extract_context_from_content_parts(
     recent_conversation_summary = ""
     recent_turns: list[InferenceMemoryTurn] = []
     reference_snippets: list[InferenceReferenceSnippet] = []
+    environment_items: list[InferenceEnvironmentItem] = []
     operator_message: InferenceOperatorMessage | None = None
     fallback_text_parts: list[str] = []
 
@@ -1024,6 +1193,8 @@ def _extract_context_from_content_parts(
                 )
         elif isinstance(item, ReferenceSnippetContentPart):
             reference_snippets.append(InferenceReferenceSnippet(text=item.text))
+        elif isinstance(item, EnvironmentContextContentPart):
+            environment_items.extend(item.items)
         elif isinstance(item, OperatorMessageContentPart):
             operator_message = InferenceOperatorMessage(
                 channel=item.channel,
@@ -1050,6 +1221,7 @@ def _extract_context_from_content_parts(
         recent_conversation_summary,
         recent_turns,
         reference_snippets,
+        InferenceEnvironmentContext(items=tuple(environment_items)),
         operator_message,
     )
 
@@ -1092,6 +1264,7 @@ def _to_content_parts(value: object) -> tuple[ChatContentPart, ...]:
         | ConversationSummaryContentPart
         | DialogueTurnContentPart
         | ReferenceSnippetContentPart
+        | EnvironmentContextContentPart
         | OperatorMessageContentPart,
     ):
         return (value,)
@@ -1737,7 +1910,7 @@ def _build_prepare_tools(*, turn_state: _TurnState):
     return _prepare_tools
 
 
-def _brain_sdk_config_from_settings(settings: ActorSettings) -> BrainSdkConfig:
+def _sdk_config_from_settings(settings: ActorSettings) -> BrainSdkConfig:
     """Project actor settings into the SDK client configuration model."""
     return BrainSdkConfig(
         host=str(settings.core.host),
@@ -1892,9 +2065,7 @@ def _create_runtime(
         tools=[*capability_tools, *runtime_tools],
         prepare_tools=_build_prepare_tools(turn_state=turn_state),
         history_processors=[history_processor],
-        instrument=pydantic_ai_instrumentation_settings(
-            getattr(settings, "observability", ObservabilitySettings())
-        ),
+        instrument=None,
     )
     return _AgentRuntime(
         client=client,
@@ -1904,6 +2075,9 @@ def _create_runtime(
         agent=agent,
         lms_request_timeout_seconds=(
             0.0 if lms_request_timeout_seconds is None else lms_request_timeout_seconds
+        ),
+        environment_context_entries=tuple(
+            getattr(settings.agent, "environment_context", ())
         ),
     )
 
@@ -1917,6 +2091,7 @@ def _format_user_prompt(
     *,
     instruction: SwitchboardOperatorInstruction,
     context: MemoryContextBlock,
+    environment_context: InferenceEnvironmentContext | None = None,
 ) -> list[UserContent]:
     """Build one structured user-context payload before the current instruction."""
     parts: list[UserContent] = [
@@ -1926,6 +2101,8 @@ def _format_user_prompt(
         ConversationSummaryContentPart(text=context.recent_conversation_summary),
         CachePoint(),
     ]
+    if environment_context is not None and len(environment_context.items) > 0:
+        parts.append(EnvironmentContextContentPart(items=environment_context.items))
     parts.extend(
         DialogueTurnContentPart(
             role=turn.role,
@@ -2421,108 +2598,135 @@ async def _process_instruction(
     """Handle one inbound operator instruction end-to-end."""
     runtime.turn_state.prune_pending_invocations()
     runtime.turn_state.begin_turn_trace()
-    _set_current_span_attributes(
-        {
-            "brain.operation": "agent.turn",
-            "brain.trace_id": runtime.turn_state.trace_id,
-            "brain.envelope_id": runtime.turn_state.root_envelope_id,
-            "brain.session_id": runtime.session_id,
-            "brain.principal": runtime.turn_state.actor,
-            "brain.source": instruction.source,
-        }
-    )
-    assemble_context = getattr(runtime.client, "memory_assemble_context", None)
-    if callable(assemble_context):
-        turn_context = await asyncio.to_thread(
-            _call_with_optional_meta,
-            assemble_context,
-            meta=runtime.turn_state.nested_call_meta(),
-            session_id=runtime.session_id,
-            message=_instruction_context_message(instruction),
-            instruction=instruction,
-        )
-    else:
-        _inbound_turn = await asyncio.to_thread(
-            _call_with_optional_meta,
-            runtime.client.memory_record_inbound_turn,
-            meta=runtime.turn_state.nested_call_meta(),
-            session_id=runtime.session_id,
-            message=_instruction_context_message(instruction),
-            instruction=instruction,
-        )
-        context = await asyncio.to_thread(
-            _call_with_optional_meta,
-            runtime.client.memory_assemble_snapshot,
-            meta=runtime.turn_state.nested_call_meta(),
-            session_id=runtime.session_id,
-        )
-        turn_context = type(
-            "_TurnContext",
-            (),
+    with _agent_turn_observation(runtime=runtime, instruction=instruction) as turn_span:
+        _set_current_span_attributes(
             {
-                "session_id": runtime.session_id,
-                "inbound_turn": _inbound_turn,
-                "context": context,
-            },
-        )()
-    runtime.session_id = turn_context.session_id
-    runtime.model._session_id = turn_context.session_id
-    _inbound_turn = turn_context.inbound_turn
-    runtime.turn_state.conversation_episode_id = getattr(
-        _inbound_turn, "conversation_episode_id", ""
-    )
-    context = turn_context.context
-    runtime.turn_state.actor = "operator"
-    runtime.turn_state.channel = instruction.source
-    runtime.turn_state.reply_to_proposal_token = (
-        ""
-        if instruction.reply_to_proposal_token is None
-        else instruction.reply_to_proposal_token
-    )
-    runtime.turn_state.reaction_to_proposal_token = (
-        ""
-        if instruction.reaction_to_proposal_token is None
-        else instruction.reaction_to_proposal_token
-    )
-    runtime.turn_state.reset_active_tools()
-    runtime.model.last_result = None
-    try:
-        result = await runtime.agent.run(
-            _format_user_prompt(instruction=instruction, context=context)
+                "brain.operation": "agent.turn",
+                "brain.trace_id": runtime.turn_state.trace_id,
+                "brain.envelope_id": runtime.turn_state.root_envelope_id,
+                "brain.session_id": runtime.session_id,
+                "brain.principal": runtime.turn_state.actor,
+                "brain.source": instruction.source,
+            }
         )
-        response_text = str(result.output).strip()
-        if response_text == "":
-            response_text = "I do not have a response yet."
-    except BrainSdkError as exc:
-        fallback_response = _classify_lms_failure_response(exc)
-        if fallback_response is None:
-            raise
-        _LOGGER.warning(
-            "brain agent lms request failed; returning fallback response",
-            extra={
-                "operation": getattr(exc, "operation", ""),
-                "error_type": type(exc).__name__,
-                "error_message": str(exc),
-                "fallback_kind": (
-                    "throttle"
-                    if fallback_response == _LMS_THROTTLE_RESPONSE
-                    else "timeout"
-                    if fallback_response == _LMS_TIMEOUT_RESPONSE
-                    else "generic"
-                ),
-            },
+        assemble_context = getattr(runtime.client, "memory_assemble_context", None)
+        if callable(assemble_context):
+            turn_context = await asyncio.to_thread(
+                _call_with_optional_meta,
+                assemble_context,
+                meta=runtime.turn_state.nested_call_meta(),
+                session_id=runtime.session_id,
+                message=_instruction_context_message(instruction),
+                instruction=instruction,
+            )
+        else:
+            _inbound_turn = await asyncio.to_thread(
+                _call_with_optional_meta,
+                runtime.client.memory_record_inbound_turn,
+                meta=runtime.turn_state.nested_call_meta(),
+                session_id=runtime.session_id,
+                message=_instruction_context_message(instruction),
+                instruction=instruction,
+            )
+            context = await asyncio.to_thread(
+                _call_with_optional_meta,
+                runtime.client.memory_assemble_snapshot,
+                meta=runtime.turn_state.nested_call_meta(),
+                session_id=runtime.session_id,
+            )
+            turn_context = type(
+                "_TurnContext",
+                (),
+                {
+                    "session_id": runtime.session_id,
+                    "inbound_turn": _inbound_turn,
+                    "context": context,
+                },
+            )()
+        runtime.session_id = turn_context.session_id
+        runtime.model._session_id = turn_context.session_id
+        _inbound_turn = turn_context.inbound_turn
+        runtime.turn_state.conversation_episode_id = getattr(
+            _inbound_turn, "conversation_episode_id", ""
         )
-        response_text = fallback_response
-    chat = runtime.model.last_result
-    await _route_outbound_response(
-        runtime=runtime,
-        instruction=instruction,
-        response_text=response_text,
-        model="brain-sdk-lms" if chat is None else chat.model,
-        provider="brain-sdk" if chat is None else chat.provider,
-        reasoning_level=runtime.model.last_used_profile_name,
-    )
-    return response_text
+        _update_agent_turn_observation_session(span=turn_span, runtime=runtime)
+        context = turn_context.context
+        runtime.turn_state.actor = "operator"
+        runtime.turn_state.channel = instruction.source
+        runtime.turn_state.reply_to_proposal_token = (
+            ""
+            if instruction.reply_to_proposal_token is None
+            else instruction.reply_to_proposal_token
+        )
+        runtime.turn_state.reaction_to_proposal_token = (
+            ""
+            if instruction.reaction_to_proposal_token is None
+            else instruction.reaction_to_proposal_token
+        )
+        environment_context, environment_diagnostics = await asyncio.to_thread(
+            assemble_environment_context,
+            client=runtime.client,
+            entries=runtime.environment_context_entries,
+            actor=runtime.turn_state.actor,
+            channel=runtime.turn_state.channel,
+            meta=runtime.turn_state.nested_call_meta(),
+        )
+        for diagnostic in environment_diagnostics:
+            _LOGGER.warning(
+                "brain agent environment context capability failed",
+                extra={
+                    "capability_id": diagnostic.capability_id,
+                    "error_type": diagnostic.error_type,
+                    "error_message": diagnostic.message,
+                },
+            )
+        runtime.turn_state.reset_active_tools()
+        runtime.model.last_result = None
+        try:
+            result = await runtime.agent.run(
+                _format_user_prompt(
+                    instruction=instruction,
+                    context=context,
+                    environment_context=environment_context,
+                )
+            )
+            response_text = str(result.output).strip()
+            if response_text == "":
+                response_text = "I do not have a response yet."
+        except BrainSdkError as exc:
+            fallback_response = _classify_lms_failure_response(exc)
+            if fallback_response is None:
+                raise
+            _LOGGER.warning(
+                "brain agent lms request failed; returning fallback response",
+                extra={
+                    "operation": getattr(exc, "operation", ""),
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                    "fallback_kind": (
+                        "throttle"
+                        if fallback_response == _LMS_THROTTLE_RESPONSE
+                        else "timeout"
+                        if fallback_response == _LMS_TIMEOUT_RESPONSE
+                        else "generic"
+                    ),
+                },
+            )
+            response_text = fallback_response
+        chat = runtime.model.last_result
+        await _route_outbound_response(
+            runtime=runtime,
+            instruction=instruction,
+            response_text=response_text,
+            model="brain-sdk-lms" if chat is None else chat.model,
+            provider="brain-sdk" if chat is None else chat.provider,
+            reasoning_level=runtime.model.last_used_profile_name,
+        )
+        _complete_agent_turn_observation(
+            span=turn_span,
+            response_text=response_text,
+        )
+        return response_text
 
 
 async def _route_outbound_response(
@@ -2589,7 +2793,7 @@ async def _run_main() -> None:
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGTERM, _handle_shutdown)
 
-    client = BrainClient(config=_brain_sdk_config_from_settings(settings))
+    client = BrainClient(config=_sdk_config_from_settings(settings))
     try:
         runtime = _create_runtime(
             client=client,

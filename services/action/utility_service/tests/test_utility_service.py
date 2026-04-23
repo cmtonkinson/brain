@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from services.action.utility_service.implementation import DefaultUtilityService
 
 
@@ -29,16 +29,20 @@ def test_chunk_text_returns_single_chunk_for_non_empty_content() -> None:
 
 
 def test_current_datetime_returns_utc_aware_timestamp() -> None:
-    """Clock access should return a UTC-aware datetime payload."""
-    service = DefaultUtilityService()
+    """Clock access should return UTC and operator-local datetime payload."""
+    service = DefaultUtilityService(preferred_timezone="America/New_York")
 
     result = service.current_datetime(meta=_meta())
 
     assert result.ok is True
     assert result.payload is not None
     current = result.payload.value
-    assert isinstance(current, datetime)
-    assert current.tzinfo == UTC
+    assert current.local_timezone == "America/New_York"
+    utc = datetime.fromisoformat(current.utc_timestamp)
+    local = datetime.fromisoformat(current.local_timestamp)
+    assert utc.tzinfo is not None
+    assert local.tzinfo is not None
+    assert utc.timestamp() == local.timestamp()
 
 
 def test_chunk_text_returns_empty_list_for_empty_content() -> None:

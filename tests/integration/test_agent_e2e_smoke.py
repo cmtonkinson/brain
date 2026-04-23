@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_sdk import CapabilityDescriptor, CapabilitySearchHit
+from lib.sdk import CapabilityDescriptor, CapabilitySearchHit
 from resources.adapters.llm import AdapterToolChatResult, AdapterChatToolCall
 from tests.helpers.inprocess_core_smoke import run_agent_e2e_smoke
 

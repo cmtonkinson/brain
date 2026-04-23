@@ -7,10 +7,10 @@ from typing import Any
 
 from sqlalchemy import text
 
-from packages.brain_shared.component_loader import import_registered_component_modules
-from packages.brain_shared.config import CoreRuntimeSettings, load_core_runtime_settings
-from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
-from packages.brain_shared.manifest import ServiceManifest, get_registry
+from lib.shared.component_loader import import_registered_component_modules
+from lib.shared.config import CoreRuntimeSettings, load_core_runtime_settings
+from lib.shared.ids.constants import ULID_DOMAIN_NAME
+from lib.shared.manifest import ServiceManifest, get_registry
 from resources.substrates.postgres.config import resolve_postgres_settings
 from resources.substrates.postgres.engine import create_postgres_engine
 

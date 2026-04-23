@@ -20,8 +20,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB
 
-from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
-from packages.brain_shared.ids import ulid_primary_key_column
+from lib.shared.ids.constants import ULID_DOMAIN_NAME
+from lib.shared.ids import ulid_primary_key_column
 from services.state.embedding_authority.data.runtime import embedding_postgres_schema
 
 metadata = MetaData()

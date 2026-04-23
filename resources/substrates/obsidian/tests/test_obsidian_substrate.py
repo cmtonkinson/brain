@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from packages.brain_shared.http import HttpRequestError, HttpStatusError
+from lib.shared.http import HttpRequestError, HttpStatusError
 from resources.substrates.obsidian import (
     ObsidianSubstrateAlreadyExistsError,
     ObsidianSubstrateConflictError,

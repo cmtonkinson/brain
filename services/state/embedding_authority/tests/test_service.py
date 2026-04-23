@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Mapping, Sequence
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
-from packages.brain_shared.ids import generate_ulid_str
+from lib.shared.envelope import EnvelopeKind, new_meta
+from lib.shared.ids import generate_ulid_str
 from services.state.embedding_authority.config import EmbeddingServiceSettings
 from services.state.embedding_authority.domain import (
     ChunkRecord,

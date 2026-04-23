@@ -5,8 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Sequence
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.envelope import Envelope, EnvelopeMeta
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.envelope import Envelope, EnvelopeMeta
 from resources.adapters.llm.adapter import LlmAdapter
 from services.action.language_model.domain import (
     ChatResponse,

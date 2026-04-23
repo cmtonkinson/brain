@@ -6,8 +6,8 @@ from collections.abc import Mapping
 import json
 from pathlib import Path
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.manifest import (
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.manifest import (
     ComponentId,
     ModuleRoot,
     ServiceManifest,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from actors.agent import main as agent_main
-from packages.brain_sdk import (
+from lib.sdk import (
     CapabilityDescriptor,
     CapabilitySearchHit,
     LmsChatToolCall,

@@ -7,7 +7,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from packages.brain_shared.config import load_core_runtime_settings
+from lib.shared.config import load_core_runtime_settings
 from resources.substrates.postgres.config import resolve_postgres_settings
 from services.action.policy_service.data.runtime import policy_service_postgres_schema
 from services.action.policy_service.data.schema import metadata

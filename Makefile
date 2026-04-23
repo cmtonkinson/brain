@@ -13,7 +13,7 @@ SERVICE_API_SRC := $(shell find services -type f -path 'services/*/*/service.py'
 HTTP_API_DOC    := docs/http-api.md
 HTTP_API_GEN    := scripts/generate_http_api_docs.py
 HTTP_API_META   := docs/meta/http-routes.yaml
-HTTP_API_SRC    := $(shell (printf '%s\n' packages/brain_core/health_api.py; find services -type f -path 'services/*/*/api.py' | sort))
+HTTP_API_SRC    := $(shell (printf '%s\n' lib/core/health_api.py; find services -type f -path 'services/*/*/api.py' | sort))
 CAPABILITY_DOC  := docs/capabilities.md
 CAPABILITY_GEN  := scripts/generate_capability_docs.py
 CAPABILITY_SRC  := $(shell find capabilities -type f | sort)
@@ -172,12 +172,7 @@ smoke-only:
 		resources/adapters/signal/tests/test_signal_adapter_wire_integration.py \
 		tests/integration/test_agent_e2e_smoke.py)
 
-docs:
-	$(PY) $(GLOSSARY_GEN)
-	$(PY) $(SERVICE_API_GEN)
-	$(PY) $(HTTP_API_GEN)
-	$(PY) $(CAPABILITY_GEN)
-	$(DIAGRAM_GEN) $(DIAGRAM_SRC)
+docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(HTTP_API_DOC) $(CAPABILITY_DOC) $(DIAGRAM_PNGS)
 
 $(GLOSSARY_DOC): $(GLOSSARY_SRC) $(GLOSSARY_GEN)
 	$(PY) $(GLOSSARY_GEN)
@@ -191,7 +186,7 @@ $(HTTP_API_DOC): $(HTTP_API_SRC) $(HTTP_API_GEN) $(HTTP_API_META)
 $(CAPABILITY_DOC): $(CAPABILITY_SRC) $(CAPABILITY_GEN)
 	$(PY) $(CAPABILITY_GEN)
 
-$(DIAGRAM_PNGS): $(DIAGRAM_SRC) $(DIAGRAM_GEN)
+$(DIAGRAM_PNGS) &: $(DIAGRAM_SRC) $(DIAGRAM_GEN)
 	$(DIAGRAM_GEN) $(DIAGRAM_SRC)
 
 #############################################################################
@@ -226,4 +221,4 @@ stack-down:
 	docker compose $(STACK_COMPOSE_FILES) down
 
 outline:
-	@tree -d -I __pycache__ -I tests -I data -I migrations packages resources services actors
+	@tree -d -I __pycache__ -I tests -I data -I migrations lib resources services actors

@@ -15,6 +15,16 @@ class TextChunk(BaseModel):
     reference_range: str
 
 
+class CurrentDateTime(BaseModel):
+    """Operator-aware current datetime payload."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    utc_timestamp: str
+    local_timestamp: str
+    local_timezone: str
+
+
 class HealthStatus(BaseModel):
     """Utility Service readiness payload."""
 

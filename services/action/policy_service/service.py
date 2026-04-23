@@ -5,8 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.envelope import Envelope, EnvelopeMeta
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.envelope import Envelope, EnvelopeMeta
 from services.action.attention_router.service import AttentionRouterService
 from services.action.policy_service.domain import (
     CapabilityInvocationRequest,

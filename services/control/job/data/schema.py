@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
-from packages.brain_shared.ids import ulid_primary_key_column
+from lib.shared.ids import ulid_primary_key_column
 from services.control.job.data.runtime import job_postgres_schema
 
 _SCHEMA = job_postgres_schema()

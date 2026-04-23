@@ -9,8 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from packages.brain_shared.component_loader import import_registered_component_modules
-from packages.brain_shared.manifest import (
+from lib.shared.component_loader import import_registered_component_modules
+from lib.shared.manifest import (
     ResourceManifest,
     ServiceManifest,
     get_registry,

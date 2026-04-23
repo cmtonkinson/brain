@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.envelope import Envelope, EnvelopeMeta
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.envelope import Envelope, EnvelopeMeta
 from resources.substrates.valkey import ValkeySubstrate
 from services.state.cache_authority.domain import (
     CacheEntry,

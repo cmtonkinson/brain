@@ -10,8 +10,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from packages.brain_shared.component_loader import import_registered_component_modules
-from packages.brain_shared.manifest import ServiceManifest, get_registry
+from lib.shared.component_loader import import_registered_component_modules
+from lib.shared.manifest import ServiceManifest, get_registry
 
 
 def test_registered_services_decorate_public_api_methods() -> None:

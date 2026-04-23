@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from packages.brain_shared.envelope import EnvelopeMeta
+from lib.shared.envelope import EnvelopeMeta
 from services.action.language_model.service import LanguageModelService
 from services.state.memory_authority.config import MemoryAuthoritySettings
 from services.state.memory_authority.data.repository import MemoryRepository

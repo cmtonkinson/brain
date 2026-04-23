@@ -8,16 +8,16 @@ import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
-from packages.brain_sdk.calls import JobClaimResult
-from packages.brain_sdk.client import BrainClient
-from packages.brain_sdk.config import BrainSdkConfig
-from packages.brain_sdk.errors import (
+from lib.sdk.calls import JobClaimResult
+from lib.sdk.client import BrainClient
+from lib.sdk.config import BrainSdkConfig
+from lib.sdk.errors import (
     BrainDependencyError,
     BrainDomainError,
     BrainTransportError,
 )
-from packages.brain_shared.config.loader import load_actor_settings
-from packages.brain_shared.logging import configure_logging, get_logger
+from lib.shared.config.loader import load_actor_settings
+from lib.shared.logging import configure_logging, get_logger
 
 _LOGGER = get_logger(__name__)
 

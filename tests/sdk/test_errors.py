@@ -7,7 +7,7 @@ import pytest
 
 def test_map_transport_error_marks_retryable_statuses() -> None:
     """503 transport failures should map to retryable transport errors."""
-    from packages.brain_sdk.errors import BrainTransportError, map_transport_error
+    from lib.sdk.errors import BrainTransportError, map_transport_error
 
     error = map_transport_error(
         operation="vault.get",
@@ -23,7 +23,7 @@ def test_map_transport_error_marks_retryable_statuses() -> None:
 
 def test_raise_for_domain_errors_raises_typed_category_error() -> None:
     """Validation response errors should map to ``BrainValidationError``."""
-    from packages.brain_sdk.errors import BrainValidationError, raise_for_domain_errors
+    from lib.sdk.errors import BrainValidationError, raise_for_domain_errors
 
     with pytest.raises(BrainValidationError) as exc_info:
         raise_for_domain_errors(
@@ -44,7 +44,7 @@ def test_raise_for_domain_errors_raises_typed_category_error() -> None:
 
 def test_sdk_exceptions_allow_traceback_assignment() -> None:
     """SDK exceptions must remain mutable enough for Python traceback wiring."""
-    from packages.brain_sdk.errors import BrainTransportError
+    from lib.sdk.errors import BrainTransportError
 
     error = BrainTransportError(
         message="transport failed",

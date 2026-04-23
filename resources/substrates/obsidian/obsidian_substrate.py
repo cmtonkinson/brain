@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from typing import Any
 from urllib import parse as urllib_parse
 
-from packages.brain_shared.http import HttpClient, HttpRequestError, HttpStatusError
-from packages.brain_shared.ids import generate_ulid_str
-from packages.brain_shared.logging import get_logger, public_api_instrumented
-from packages.brain_shared.vault_paths import (
+from lib.shared.http import HttpClient, HttpRequestError, HttpStatusError
+from lib.shared.ids import generate_ulid_str
+from lib.shared.logging import get_logger, public_api_instrumented
+from lib.shared.vault_paths import (
     normalize_vault_directory_path,
     normalize_vault_file_path,
     normalize_vault_relative_path,

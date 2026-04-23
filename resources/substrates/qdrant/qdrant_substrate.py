@@ -7,12 +7,12 @@ from time import perf_counter
 from typing import Iterable, Mapping, Sequence
 from uuid import UUID, uuid5
 
-from packages.brain_shared.embeddings import (
+from lib.shared.embeddings import (
     DISTANCE_METRIC_COSINE,
     DISTANCE_METRIC_DOT,
     DISTANCE_METRIC_EUCLID,
 )
-from packages.brain_shared.logging import get_logger, public_api_instrumented
+from lib.shared.logging import get_logger, public_api_instrumented
 from qdrant_client.http import models
 
 from resources.substrates.qdrant.client import create_qdrant_client

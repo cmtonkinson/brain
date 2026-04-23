@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from packages.brain_core.boot import BootResult
-from packages.brain_core.startup import run_core_startup
-from packages.brain_shared.config import (
+from lib.core.boot import BootResult
+from lib.core.startup import run_core_startup
+from lib.shared.config import (
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 
-from packages.brain_shared.ids import ulid_primary_key_column
+from lib.shared.ids import ulid_primary_key_column
 from services.control.ingestion.data.runtime import ingestion_postgres_schema
 
 _SCHEMA = ingestion_postgres_schema()

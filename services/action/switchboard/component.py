@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.manifest import (
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.manifest import (
     ComponentId,
     ModuleRoot,
     ServiceManifest,
@@ -30,11 +30,12 @@ def build_component(
     *, settings: CoreRuntimeSettings, components: Mapping[str, object]
 ) -> object:
     """Build concrete runtime instance for this registered service component."""
-    from packages.brain_sdk.client import BrainSdkClient
+    from lib.sdk.client import BrainSdkClient
     from resources.adapters.signal.adapter import SignalAdapter
     from services.action.attention_router.service import AttentionRouterService
     from services.action.switchboard.service import build_switchboard_service
     from services.state.cache_authority.service import CacheAuthorityService
+    from services.state.memory_authority.service import MemoryAuthorityService
 
     cache_service = components.get("service_cache_authority")
     if not isinstance(cache_service, CacheAuthorityService):
@@ -52,10 +53,17 @@ def build_component(
 
     brain_client = BrainSdkClient(source="switchboard", principal="operator")
 
+    memory_authority = components.get("service_memory_authority")
+    if memory_authority is None:
+        raise KeyError("service_memory_authority")
+    if not isinstance(memory_authority, MemoryAuthorityService):
+        raise TypeError("service_memory_authority")
+
     return build_switchboard_service(
         settings=settings,
         cache_service=cache_service,
         signal_adapter=signal_adapter,
         attention_router_service=attention_router,
+        memory_authority_service=memory_authority,
         brain_client=brain_client,
     )

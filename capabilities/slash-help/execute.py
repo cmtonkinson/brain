@@ -3,7 +3,7 @@
 
 def execute() -> str:
     """Return formatted help text for all registered slash commands."""
-    from packages.brain_sdk.client import BrainSdkClient
+    from lib.sdk.client import BrainSdkClient
 
     brain_client = BrainSdkClient(source="slash-help", principal="operator")
     caps = brain_client.describe_capabilities()

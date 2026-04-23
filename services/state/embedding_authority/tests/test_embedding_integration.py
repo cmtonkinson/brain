@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from services.state.embedding_authority.config import EmbeddingServiceSettings
 from services.state.embedding_authority.implementation import (
     DefaultEmbeddingAuthorityService,

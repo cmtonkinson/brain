@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
-from packages.brain_shared.config import (
+from lib.shared.config import (
     ApprovalResponseSettings,
     ActorCoreConnectionSettings,
     CoreRuntimeSettings,
@@ -24,12 +25,12 @@ from packages.brain_shared.config import (
     load_resources_settings,
     resolve_component_settings,
 )
-from packages.brain_shared.config.models import (
+from lib.shared.config.models import (
     AgentActorSettings,
     CliActorSettings,
     WorkerActorSettings,
 )
-from packages.brain_shared.config.models import OperatorProfileSettings
+from lib.shared.config.models import OperatorProfileSettings
 from resources.adapters.llm.config import resolve_llm_adapter_settings
 from resources.adapters.llm.config import LlmAdapterSettings
 from resources.adapters.signal.config import SignalAdapterSettings
@@ -158,6 +159,44 @@ def test_load_core_settings_uses_model_defaults_when_sources_missing(
     assert settings.observability.llm.capture_content is True
     assert settings.profile.operator.signal_contact_e164 == "+12222222222"
     assert settings.profile.operator_name == "Operator"
+    assert settings.profile.preferred_timezone == "UTC"
+
+
+def test_load_core_settings_reads_profile_preferred_timezone(tmp_path: Path) -> None:
+    """core.yaml should support the operator's preferred presentation timezone."""
+    config_file = tmp_path / "core.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "profile:",
+                "  preferred_timezone: America/New_York",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_core_settings(config_path=config_file, environ={})
+
+    assert settings.profile.preferred_timezone == "America/New_York"
+
+
+def test_load_core_settings_rejects_invalid_profile_preferred_timezone(
+    tmp_path: Path,
+) -> None:
+    """Invalid preferred timezone configuration should fail at load time."""
+    config_file = tmp_path / "core.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "profile:",
+                "  preferred_timezone: Mars/Olympus",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="invalid preferred_timezone"):
+        load_core_settings(config_path=config_file, environ={})
 
 
 def test_load_actor_settings_reads_agent_prompt_settings(tmp_path: Path) -> None:
@@ -180,6 +219,29 @@ def test_load_actor_settings_reads_agent_prompt_settings(tmp_path: Path) -> None
     assert settings.agent.personality == "focused"
     assert settings.agent.operator_profile == "Refer to me as 'captain'"
     assert settings.agent.system_prompt_append == "Appendix"
+
+
+def test_load_actor_settings_reads_agent_environment_context(tmp_path: Path) -> None:
+    """actors.yaml should support configured environment-context capabilities."""
+    config_file = tmp_path / "actors.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "agent:",
+                "  environment_context:",
+                "    - capability_id: current-datetime",
+                "      input_payload: {}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_actor_settings(config_path=config_file, environ={})
+
+    assert len(settings.agent.environment_context) == 1
+    entry = settings.agent.environment_context[0]
+    assert entry.capability_id == "current-datetime"
+    assert entry.input_payload == {}
 
 
 def test_load_core_settings_applies_secrets_yaml_over_core_yaml(tmp_path: Path) -> None:
@@ -425,6 +487,7 @@ def test_sample_config_files_match_current_schema_exactly() -> None:
             "operator_name": ProfileSettings().operator_name,
             "brain_name": ProfileSettings().brain_name,
             "brain_verbosity": ProfileSettings().brain_verbosity,
+            "preferred_timezone": ProfileSettings().preferred_timezone,
         },
         "boot": CoreBootSettings().model_dump(mode="json"),
         "http": CoreHttpSettings().model_dump(mode="json"),

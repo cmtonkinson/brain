@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime
-
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.envelope import Envelope, EnvelopeMeta
-from services.action.utility_service.domain import HealthStatus, TextChunk
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.envelope import Envelope, EnvelopeMeta
+from services.action.utility_service.domain import (
+    CurrentDateTime,
+    HealthStatus,
+    TextChunk,
+)
 
 
 class UtilityService(ABC):
     """Public API for lightweight reusable utility operations."""
 
     @abstractmethod
-    def current_datetime(self, *, meta: EnvelopeMeta) -> Envelope[datetime]:
-        """Return the current UTC datetime."""
+    def current_datetime(self, *, meta: EnvelopeMeta) -> Envelope[CurrentDateTime]:
+        """Return current UTC and operator-local datetimes."""
 
     @abstractmethod
     def chunk_text(self, *, meta: EnvelopeMeta, text: str) -> Envelope[list[TextChunk]]:
@@ -33,5 +35,6 @@ def build_utility_service(
     """Build default Utility Service implementation from typed settings."""
     from services.action.utility_service.implementation import DefaultUtilityService
 
-    del settings
-    return DefaultUtilityService()
+    return DefaultUtilityService(
+        preferred_timezone=settings.core.profile.preferred_timezone
+    )

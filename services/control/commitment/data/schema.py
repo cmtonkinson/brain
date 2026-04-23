@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 
-from packages.brain_shared.ids import ulid_primary_key_column
+from lib.shared.ids import ulid_primary_key_column
 from services.control.commitment.data.runtime import commitment_postgres_schema
 
 _SCHEMA = commitment_postgres_schema()

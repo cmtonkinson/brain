@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
-
-from packages.brain_sdk.calls import (
+from lib.sdk.calls import (
     CapabilityDescriptor,
     CapabilityInvokeResult,
     PolicyDecision,
 )
-from packages.brain_shared.envelope import EnvelopeKind, new_meta, success
+from lib.shared.envelope import EnvelopeKind, new_meta, success
 from services.action.attention_router.domain import RouteNotificationResult
+from services.state.memory_authority.domain import (
+    SessionRecord,
+    TurnDirection,
+    TurnRecord,
+)
 from services.action.switchboard.config import (
     SwitchboardIdentitySettings,
     SwitchboardServiceSettings,
@@ -51,6 +57,17 @@ def test_parse_slash_command_empty_string() -> None:
 
 def test_parse_slash_command_leading_whitespace() -> None:
     assert _parse_slash_command("  /status  ") == ("status", "")
+
+
+def test_parse_slash_args_maps_single_string_field_positionally() -> None:
+    """One string input field should accept bare positional slash text."""
+    assert _parse_slash_args(
+        "eventkit",
+        {
+            "type": "object",
+            "properties": {"server_id": {"type": "string"}},
+        },
+    ) == {"server_id": "eventkit"}
 
 
 def test_parse_slash_args_empty() -> None:
@@ -126,6 +143,7 @@ def _make_descriptor(capability_id: str = "test-cap") -> CapabilityDescriptor:
 def _make_service(
     brain_client=None,
     attention_router=None,
+    memory_authority=None,
 ) -> DefaultSwitchboardService:
     cache = MagicMock()
     cache.push_queue.return_value = success(meta=_meta(), payload=1)
@@ -148,8 +166,47 @@ def _make_service(
         adapter=adapter,
         cache_service=cache,
         attention_router_service=ars,
+        memory_authority_service=memory_authority,
         brain_client=brain_client,
     )
+
+
+def _memory_authority() -> MagicMock:
+    memory = MagicMock()
+    memory.get_latest_or_create_session.return_value = success(
+        meta=_meta(),
+        payload=SessionRecord(
+            id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            focus=None,
+            focus_token_count=None,
+            dialogue_summary=None,
+            dialogue_summary_token_count=None,
+            dialogue_start_turn_id=None,
+            current_conversation_episode_id=None,
+            last_episode_inbound_at=None,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        ),
+    )
+    memory.record_inbound_turn.return_value = success(
+        meta=_meta(),
+        payload=TurnRecord(
+            id="01ARZ3NDEKTSV4RRFFQ69G5FAW",
+            session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            direction=TurnDirection.INBOUND,
+            content="/test",
+            role="user",
+            model=None,
+            provider=None,
+            token_count=None,
+            reasoning_level=None,
+            trace_id="trace-1",
+            conversation_episode_id="episode-1",
+            principal="operator",
+            created_at=datetime.now(UTC),
+        ),
+    )
+    return memory
 
 
 def test_handle_slash_command_found_invokes_capability_and_routes() -> None:
@@ -201,6 +258,55 @@ def test_handle_slash_command_found_invokes_capability_and_routes() -> None:
     assert call_kwargs["channel"] == "console"
     assert call_kwargs["message"] == "capability output"
     assert call_kwargs["force"] is True
+
+
+def test_handle_slash_command_records_mas_turn_context() -> None:
+    """Slash command input and routed output should enter MAS turn history."""
+    descriptor = _make_descriptor("test-cap")
+    invoke_result = CapabilityInvokeResult(
+        output="capability output",
+        policy=PolicyDecision(
+            decision_id="d1",
+            allowed=True,
+            reason_codes=(),
+            obligations=(),
+            proposal_id="",
+        ),
+    )
+    brain_client = MagicMock()
+    brain_client.resolve_slash_command.return_value = descriptor
+    brain_client.invoke_capability.return_value = invoke_result
+    ars = MagicMock()
+    ars.route_notification.return_value = success(
+        meta=_meta(),
+        payload=RouteNotificationResult(decision="sent", delivered=True, detail="ok"),
+    )
+    memory = _memory_authority()
+    service = _make_service(
+        brain_client=brain_client,
+        attention_router=ars,
+        memory_authority=memory,
+    )
+
+    result = service._handle_slash_command(
+        meta=_meta(),
+        command_name="test",
+        args_text="--verbose",
+        source="console",
+    )
+
+    assert result.ok is True
+    memory.get_latest_or_create_session.assert_called_once()
+    memory.record_inbound_turn.assert_called_once()
+    inbound_kwargs = memory.record_inbound_turn.call_args.kwargs
+    assert inbound_kwargs["session_id"] == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    assert inbound_kwargs["message"] == "/test --verbose"
+    assert inbound_kwargs["instruction"].message_text == "/test --verbose"
+    route_kwargs = ars.route_notification.call_args.kwargs
+    assert route_kwargs["conversational_memory"].session_id == (
+        "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    )
+    assert route_kwargs["conversational_memory"].model == "switchboard-slash-command"
 
 
 def test_handle_slash_command_not_found_routes_error_no_invoke() -> None:
@@ -334,3 +440,60 @@ def test_enqueue_console_slash_message_not_queued() -> None:
     assert result.payload.value.queued is False
     # CAS push should NOT have been called for the slash message
     service._cache_service.push_queue.assert_not_called()
+
+
+def test_ingest_signal_slash_message_not_queued() -> None:
+    """Signal slash commands should be handled by Switchboard, not queued."""
+    descriptor = _make_descriptor("help-cap")
+    invoke_result = CapabilityInvokeResult(
+        output="Available commands: /help",
+        policy=PolicyDecision(
+            decision_id="d1",
+            allowed=True,
+            reason_codes=(),
+            obligations=(),
+            proposal_id="",
+        ),
+    )
+    brain_client = MagicMock()
+    brain_client.resolve_slash_command.return_value = descriptor
+    brain_client.invoke_capability.return_value = invoke_result
+    ars = MagicMock()
+    ars.route_notification.return_value = success(
+        meta=_meta(),
+        payload=RouteNotificationResult(decision="sent", delivered=True, detail="ok"),
+    )
+    memory = _memory_authority()
+    service = _make_service(
+        brain_client=brain_client,
+        attention_router=ars,
+        memory_authority=memory,
+    )
+    body = json.dumps(
+        {
+            "data": {
+                "account": "+12025550100",
+                "envelope": {
+                    "source": "2025550100",
+                    "timestamp": 1730000000000,
+                    "dataMessage": {"message": "/help"},
+                },
+            }
+        }
+    )
+
+    result = service.ingest_signal_message(meta=_meta(), raw_body_json=body)
+
+    assert result.ok is True
+    assert result.payload is not None
+    assert result.payload.value.accepted is True
+    assert result.payload.value.queued is False
+    assert result.payload.value.reason == "slash command handled"
+    service._cache_service.push_queue.assert_not_called()
+    brain_client.invoke_capability.assert_called_once_with(
+        capability_id="help-cap",
+        input_payload={},
+        actor="operator",
+        channel="signal",
+    )
+    assert memory.record_inbound_turn.call_args.kwargs["message"] == "/help"

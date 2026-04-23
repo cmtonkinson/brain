@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from packages.brain_shared.errors import ErrorDetail
+from lib.shared.errors import ErrorDetail
 from services.action.capability_engine.domain import CapabilityExecutionResponse
 from services.action.capability_engine.registry import (
     CapabilityHandler,

@@ -8,10 +8,10 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from packages.brain_shared.envelope import EnvelopeMeta, new_meta, EnvelopeKind
-from packages.brain_shared.envelope.envelope import Envelope
-from packages.brain_shared.envelope.payload import Payload
-from packages.brain_shared.errors import not_found_error
+from lib.shared.envelope import EnvelopeMeta, new_meta, EnvelopeKind
+from lib.shared.envelope.envelope import Envelope
+from lib.shared.envelope.payload import Payload
+from lib.shared.errors import not_found_error
 from services.action.capability_engine.domain import CapabilityExecutionResponse
 from services.action.capability_engine.op_handler_bridge import (
     OpHandlerBridgeError,

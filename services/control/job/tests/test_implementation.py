@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
-from packages.brain_shared.errors import dependency_error, policy_error
-from packages.brain_shared.ids import generate_ulid_str
+from lib.shared.envelope import EnvelopeKind, failure, new_meta, success
+from lib.shared.errors import dependency_error, policy_error
+from lib.shared.ids import generate_ulid_str
 from services.action.capability_engine.domain import (
     CapabilityDescriptor,
     CapabilityInvokeResult,

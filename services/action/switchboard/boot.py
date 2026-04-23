@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from time import sleep
 
-from packages.brain_core.boot import BootContext
-from packages.brain_shared.envelope import Envelope, EnvelopeKind, new_meta
-from packages.brain_shared.errors import codes, dependency_error, internal_error
+from lib.core.boot import BootContext
+from lib.shared.envelope import Envelope, EnvelopeKind, new_meta
+from lib.shared.errors import codes, dependency_error, internal_error
 from services.action.switchboard.component import SERVICE_COMPONENT_ID
 from services.action.switchboard.config import (
     SwitchboardServiceSettings,

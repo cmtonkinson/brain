@@ -8,7 +8,7 @@ from typing import Protocol
 
 from sqlalchemy import desc, insert, select, update
 
-from packages.brain_shared.ids import (
+from lib.shared.ids import (
     generate_ulid_str,
     generate_ulid_bytes,
     ulid_bytes_to_str,

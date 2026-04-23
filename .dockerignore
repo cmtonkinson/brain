@@ -1,6 +1,34 @@
-.git
-.pytest_cache
-.ruff_cache
-.venv
-__pycache__
-logs
+# Exclude everything by default. The root Dockerfile copies the full build
+# context, so only runtime source and packaging inputs are admitted below.
+**
+
+!Dockerfile
+!pyproject.toml
+!uv.lock
+
+!actors/
+!actors/**
+!bin/
+!bin/**
+!capabilities/
+!capabilities/**
+!config/
+!config/**
+!lib/
+!lib/**
+!resources/
+!resources/**
+!scripts/
+!scripts/**
+!services/
+!services/**
+
+# Development and generated artifacts inside admitted source trees.
+**/.DS_Store
+**/.pytest_cache/
+**/.ruff_cache/
+**/.venv/
+**/__pycache__/
+**/*.py[cod]
+**/tests/
+**/tests/**

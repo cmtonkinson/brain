@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from packages.brain_shared.config import ApprovalResponseSettings
-from packages.brain_shared.approval import normalize_approval_intent
+from lib.shared.config import ApprovalResponseSettings
+from lib.shared.approval import normalize_approval_intent
 
 
 @pytest.mark.parametrize(

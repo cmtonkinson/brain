@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
-from packages.brain_shared.ids import generate_ulid_bytes
+from lib.shared.ids import generate_ulid_bytes
 from resources.substrates.postgres.schema_session import ServiceSchemaSessionProvider
 from services.action.capability_engine.domain import (
     CapabilityDiscoveryStateRow,

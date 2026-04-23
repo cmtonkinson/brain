@@ -6,9 +6,9 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, new_meta
-from packages.brain_shared.errors import ErrorCategory
-from packages.brain_shared.http.server import read_json_body
+from lib.shared.envelope import EnvelopeKind, EnvelopeMeta, new_meta
+from lib.shared.errors import ErrorCategory
+from lib.shared.http.server import read_json_body
 from services.action.attention_router.domain import ConsoleResponseMessage
 from services.action.attention_router.service import AttentionRouterService
 

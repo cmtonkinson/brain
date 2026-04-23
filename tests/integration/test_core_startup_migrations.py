@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from packages.brain_core.migrations import (
+from lib.core.migrations import (
     discover_service_migration_configs,
     run_startup_migrations,
 )

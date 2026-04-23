@@ -7,7 +7,7 @@ import asyncio
 import aiohttp
 import pytest
 
-from packages.brain_shared.http import HttpStatusError
+from lib.shared.http import HttpStatusError
 from resources.adapters.signal.adapter import (
     SignalAdapterDependencyError,
     SignalInboundCallbackResult,

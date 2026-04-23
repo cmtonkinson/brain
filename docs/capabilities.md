@@ -131,6 +131,18 @@ Native Op over `Cache Authority Service set_value()`
 
 ------------------------------------------------------------------------
 ## `Commitment Service`
+### `commitment-extract-candidates`
+Extract zero or more commitment candidate signals from arbitrary text.  
+`native_op` `1.0.0`  
+Native Op over `Commitment Service extract_commitment_candidates()`  
+
+**Inputs:**
+- `text` _(string)_ Arbitrary source text to scan for commitment signals.
+- `context` _(string, optional)_ Optional background context (e.g. conversation metadata, speaker roles) that may help the model interpret the text.
+
+**Outputs:**
+- `candidates` _(array[object])_ Extracted commitment candidates, ordered by descending confidence.
+
 ### `commitment-run-miss-detection`
 Run commitment miss detection for one commitment or all due commitments.  
 `native_op` `1.0.0`  
@@ -283,14 +295,16 @@ Native Op over `Utility Service chunk_text()`
 - `array[object]`: Ordered chunks derived from the input text.
 
 ### `current-datetime`
-Return the current UTC datetime.  
+Return the current UTC and operator-local datetimes.  
 `native_op` `1.0.0`  
 Native Op over `Utility Service current_datetime()`  
 
 **Inputs:** None
 
 **Outputs:**
-- `date-time`: The current UTC datetime in ISO 8601 format.
+- `utc_timestamp` _(date-time)_ The current UTC datetime in ISO 8601 format.
+- `local_timestamp` _(date-time)_ The current datetime in the operator's preferred timezone.
+- `local_timezone` _(string)_ The operator's preferred IANA timezone name.
 
 ------------------------------------------------------------------------
 ## `Vault Authority Service`
@@ -486,6 +500,17 @@ Logic Skill
 
 **Outputs:**
 - `string`: Returns the static string 'Hello, World!'.
+
+### `mcp-status`
+List configured MCP servers or MCP Ops for one server.  
+`logic_skill` `1.0.0`  
+Logic Skill  
+
+**Inputs:**
+- `server_id` _(string, optional)_ MCP server id whose MCP Ops should be listed.
+
+**Outputs:**
+- `string`: Formatted MCP server or tool status.
 
 ### `object-get-base64`
 Read one object and return metadata plus base64-encoded content.  

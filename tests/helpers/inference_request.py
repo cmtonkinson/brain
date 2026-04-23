@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.language_model import (
+from lib.shared.language_model import (
     InferenceCache,
     InferenceControls,
     InferenceCurrentTurn,
+    InferenceEnvironmentContext,
     InferenceMemoryContext,
     InferenceMeta,
     InferenceOperatorMessage,
@@ -30,6 +31,7 @@ def make_inference_request(
     parent_id: str = "",
     system_blocks: tuple[InferenceSystemBlock, ...] | None = None,
     memory_context: InferenceMemoryContext | None = None,
+    environment_context: InferenceEnvironmentContext | None = None,
     operator_message: InferenceOperatorMessage | None = None,
     tools: tuple[InferenceToolDefinition, ...] = (),
     live_events: tuple[object, ...] = (),
@@ -68,6 +70,11 @@ def make_inference_request(
             )
             if memory_context is None
             else memory_context
+        ),
+        environment_context=(
+            InferenceEnvironmentContext()
+            if environment_context is None
+            else environment_context
         ),
         current_turn=InferenceCurrentTurn(
             operator_message=(

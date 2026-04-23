@@ -1,0 +1,3 @@
+<environment_context>
+{{ capability_blocks }}
+</environment_context>

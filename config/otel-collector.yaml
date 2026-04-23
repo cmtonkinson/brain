@@ -3,7 +3,7 @@ receivers:
     protocols:
       http:
         endpoint: 0.0.0.0:4318
-  filelog/brain_core:
+  filelog/core:
     include:
       - /logs/core.log
     start_at: end
@@ -87,7 +87,7 @@ service:
         - prometheus
     logs:
       receivers:
-        - filelog/brain_core
+        - filelog/core
         - filelog/brain_agent
       processors:
         - batch/logs

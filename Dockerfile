@@ -19,14 +19,14 @@ RUN apt-get update && \
   rm -rf /var/lib/apt/lists/* && \
   uv sync --frozen --no-cache
 
-COPY . /app
-
 RUN addgroup --system brain && \
   adduser --system --ingroup brain brain && \
   mkdir -p /run/brain && \
+  chown brain:brain /run/brain && \
   printf '%s\n' '#!/bin/sh' 'set -eu' 'echo "brain-healthcheck script not mounted" >&2' 'exit 1' >/usr/local/bin/brain-healthcheck && \
-  chmod +x /usr/local/bin/brain-healthcheck && \
-  chown -R brain:brain /app /run/brain
+  chmod +x /usr/local/bin/brain-healthcheck
+
+COPY --chown=brain:brain . /app
 
 USER brain
 

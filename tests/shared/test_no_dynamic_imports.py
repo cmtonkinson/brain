@@ -21,7 +21,7 @@ _DYNAMIC_IMPORT_ALLOWLIST = (
     # component_loader.py is the only exception, and it needs dynamic imports
     # because it's responsible for kicking off Component discovery and
     # self-registration.
-    "packages/brain_shared/component_loader.py",
+    "lib/shared/component_loader.py",
 )
 
 
@@ -65,11 +65,9 @@ def test_runtime_code_disallows_dynamic_imports() -> None:
 
 def test_dynamic_import_allowlist_is_narrow_and_intentional() -> None:
     """Allowlist must remain limited to the component bootstrap import path."""
-    assert _DYNAMIC_IMPORT_ALLOWLIST == ("packages/brain_shared/component_loader.py",)
+    assert _DYNAMIC_IMPORT_ALLOWLIST == ("lib/shared/component_loader.py",)
 
-    source = Path("packages/brain_shared/component_loader.py").read_text(
-        encoding="utf-8"
-    )
+    source = Path("lib/shared/component_loader.py").read_text(encoding="utf-8")
     assert "import importlib" in source
     assert "importlib.import_module(" in source
 

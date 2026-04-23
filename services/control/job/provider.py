@@ -11,9 +11,9 @@ import threading
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
-from packages.brain_shared.ids import generate_ulid_str
-from packages.brain_shared.logging import get_logger
+from lib.shared.envelope import EnvelopeKind, new_meta
+from lib.shared.ids import generate_ulid_str
+from lib.shared.logging import get_logger
 from services.control.job.component import SERVICE_COMPONENT_ID
 from services.control.job.domain import ScheduleType, TriggerSource
 from services.control.job.interfaces import ProviderHealthStatus, ProviderJobPayload

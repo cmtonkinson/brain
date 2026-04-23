@@ -15,8 +15,8 @@ import pytest
 import yaml
 from sqlalchemy import create_engine
 
-from packages.brain_core.migrations import run_startup_migrations
-from packages.brain_shared.config import (
+from lib.core.migrations import run_startup_migrations
+from lib.shared.config import (
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,

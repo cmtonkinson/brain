@@ -8,14 +8,14 @@ import logging
 import httpx
 import pytest
 
-from packages.brain_shared.http import (
+from lib.shared.http import (
     AsyncHttpClient,
     HttpClient,
     HttpJsonDecodeError,
     HttpRequestError,
     HttpStatusError,
 )
-from packages.brain_shared.http import client as http_client_module
+from lib.shared.http import client as http_client_module
 
 
 def test_http_client_get_json_returns_decoded_payload() -> None:

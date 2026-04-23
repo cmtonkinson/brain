@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from packages.brain_shared.config import load_core_runtime_settings
+from lib.shared.config import load_core_runtime_settings
 from resources.substrates.obsidian.config import (
     ObsidianSubstrateSettings,
     resolve_obsidian_substrate_settings,

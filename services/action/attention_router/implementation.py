@@ -11,8 +11,8 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.envelope import (
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.envelope import (
     Envelope,
     EnvelopeKind,
     EnvelopeMeta,
@@ -21,14 +21,14 @@ from packages.brain_shared.envelope import (
     success,
     validate_meta,
 )
-from packages.brain_shared.errors import (
+from lib.shared.errors import (
     ErrorDetail,
     codes,
     dependency_error,
     internal_error,
     validation_error,
 )
-from packages.brain_shared.logging import get_logger, public_api_instrumented
+from lib.shared.logging import get_logger, public_api_instrumented
 from resources.adapters.signal import (
     SignalAdapter,
     SignalAdapterDependencyError,

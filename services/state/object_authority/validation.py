@@ -6,7 +6,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from packages.brain_shared.blob_validation import normalize_extension
+from lib.shared.blob_validation import normalize_extension
 
 _KEY_RE = re.compile(
     r"^(?P<version>[a-z0-9]+):(?P<algorithm>[a-z0-9]+):(?P<digest>[0-9a-f]{64})$"

@@ -6,14 +6,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from packages.brain_shared.config import (
+from lib.shared.config import (
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,
 )
-from packages.brain_shared.envelope import EnvelopeMeta
-from packages.brain_shared.envelope.envelope import Envelope
-from packages.brain_shared.envelope.payload import Payload
+from lib.shared.envelope import EnvelopeMeta
+from lib.shared.envelope.envelope import Envelope
+from lib.shared.envelope.payload import Payload
 from services.action.capability_engine.component import after_boot
 from services.action.capability_engine.config import CapabilityEngineSettings
 from services.action.capability_engine.domain import CapabilityExecutionResponse
@@ -64,7 +64,7 @@ class _FakePolicyService(PolicyService):
         )
 
     def health(self, *, meta: Any):
-        from packages.brain_shared.envelope import success
+        from lib.shared.envelope import success
 
         return success(
             meta=meta,

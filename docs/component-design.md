@@ -2,7 +2,7 @@
 A _Component_ is any registered unit of functionality in Brain and must be one
 of: _Resource_ (L0), _Service_ (L1), or _Actor_ (L2). All _Components_ must
 self-register by calling `register_component()` from
-`packages/brain_shared/manifest.py`.
+`lib/shared/manifest.py`.
 
 > Check the [Glossary](glossary.md) for key terms such as _Component_, _Manifest_,
 > _Resource_, _Service_, et cetera.
@@ -92,7 +92,7 @@ Declared via `ServiceManifest`. Required:
 - If a _Resource_ declares `owner_service_id`, it must match the owning
   _Service_ `id`.
 - _Public API_ methods exposed must be decorated with
-  `packages.brain_shared.logging.public_api_instrumented(...)` so invocation
+  `lib.shared.logging.public_api_instrumented(...)` so invocation
   observability concerns (logging, metrics, tracing) remain consistent and
   composable across _Services_.
 - Typed contracts (settings, envelopes, request/response models, structured

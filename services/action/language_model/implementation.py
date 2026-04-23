@@ -10,23 +10,23 @@ from typing import Any, Iterator, Sequence
 
 from pydantic import BaseModel, ValidationError
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.envelope import (
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.envelope import (
     Envelope,
     EnvelopeMeta,
     failure,
     success,
     validate_meta,
 )
-from packages.brain_shared.errors import (
+from lib.shared.errors import (
     ErrorDetail,
     codes,
     dependency_error,
     internal_error,
     validation_error,
 )
-from packages.brain_shared.logging import get_logger, public_api_instrumented
-from packages.brain_shared.observability import (
+from lib.shared.logging import get_logger, public_api_instrumented
+from lib.shared.observability import (
     is_llm_content_capture_enabled,
     is_observability_enabled,
 )
@@ -174,10 +174,11 @@ class DefaultLanguageModelService(LanguageModelService):
                     model=result.model,
                     finish_reason="stop",
                     raw_call=result.raw_call,
-                    observation_input={
-                        "message": request.prompt,
-                        "request_phase": "initial",
-                    },
+                    observation_input=_langfuse_chat_observation_input(
+                        system_prompt=request.system_prompt,
+                        prompt=request.prompt,
+                        request_phase="initial",
+                    ),
                 )
         except AdapterDependencyError as exc:
             self._append_call_audit(
@@ -898,6 +899,7 @@ def _langfuse_observation_input(
     operator = request.current_turn.operator_message
     payload: dict[str, object] = {
         "request_phase": request_phase,
+        "system_prompt": _langfuse_system_prompt(request),
         "message": operator.message_text,
         "channel": operator.channel,
     }
@@ -918,6 +920,24 @@ def _langfuse_observation_input(
     if tool_results:
         payload["tool_results"] = tool_results
     return payload
+
+
+def _langfuse_chat_observation_input(
+    *, system_prompt: str, prompt: str, request_phase: str
+) -> dict[str, object]:
+    """Return compact Langfuse-facing input for one plain chat LMS call."""
+    payload: dict[str, object] = {
+        "request_phase": request_phase,
+        "message": prompt,
+    }
+    if system_prompt != "":
+        payload["system_prompt"] = system_prompt
+    return payload
+
+
+def _langfuse_system_prompt(request: InferenceRequest) -> str:
+    """Return system prompt text for Langfuse display (blocks joined, no metadata)."""
+    return "\n\n".join(block.text for block in request.system.blocks)
 
 
 def _provider_request_json(raw_call: AdapterProviderCallAudit) -> dict[str, object]:

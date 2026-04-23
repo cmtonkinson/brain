@@ -5,8 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import json
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.envelope import Envelope, EnvelopeMeta
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.envelope import Envelope, EnvelopeMeta
 from services.action.language_model.service import LanguageModelService
 from services.action.policy_service.service import PolicyService
 from services.action.capability_engine.domain import (

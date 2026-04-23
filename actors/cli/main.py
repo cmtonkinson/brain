@@ -14,7 +14,7 @@ from typing import Any, Callable, Literal
 from click import get_current_context
 from click.core import ParameterSource
 import typer
-from packages.brain_sdk import (
+from lib.sdk import (
     BrainSdkClient,
     DomainError,
     TransportError,
@@ -23,7 +23,7 @@ from packages.brain_sdk import (
     describe_capabilities,
     invoke_capability,
 )
-from packages.brain_shared.config import load_actor_settings
+from lib.shared.config import load_actor_settings
 
 SUCCESS_EXIT_CODE = 0
 DOMAIN_ERROR_EXIT_CODE = 3

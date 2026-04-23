@@ -14,7 +14,7 @@ from sqlalchemy import (
     func,
 )
 
-from packages.brain_shared.ids import ulid_primary_key_column
+from lib.shared.ids import ulid_primary_key_column
 from services.state.object_authority.data.runtime import object_postgres_schema
 
 metadata = MetaData()

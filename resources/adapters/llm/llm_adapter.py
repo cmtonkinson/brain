@@ -14,15 +14,17 @@ from typing import Any, Mapping, Sequence
 
 import httpx
 
-from packages.brain_shared.language_model import (
+from lib.shared.language_model import (
     CachePointContentPart,
     ChatContentPart,
     ConversationSummaryContentPart,
     DialogueTurnContentPart,
+    EnvironmentContextContentPart,
     FocusContentPart,
     InferenceAssistantTextEvent,
     InferenceCache,
     InferenceCurrentTurn,
+    InferenceEnvironmentContext,
     InferenceLiveEvent,
     InferenceMemoryContext,
     InferenceOperatorMessage,
@@ -41,7 +43,7 @@ from packages.brain_shared.language_model import (
     ReferenceSnippetContentPart,
     TextContentPart,
 )
-from packages.brain_shared.logging import get_logger, public_api_instrumented
+from lib.shared.logging import get_logger, public_api_instrumented
 from resources.adapters.llm.adapter import (
     AdapterChatResult,
     AdapterChatMessage,
@@ -75,6 +77,7 @@ _RESOURCE_DIR = Path(__file__).resolve().parent
 _PROMPTS_DIR = _RESOURCE_DIR / "prompts"
 _FOCUS_TEMPLATE_PATH = _PROMPTS_DIR / "focus-template.txt"
 _CONVERSATION_SUMMARY_TEMPLATE_PATH = _PROMPTS_DIR / "conversation-summary-template.txt"
+_ENVIRONMENT_CONTEXT_TEMPLATE_PATH = _PROMPTS_DIR / "environment-context-template.txt"
 _DIALOGUE_TEMPLATE_PATH = _PROMPTS_DIR / "dialogue-template.txt"
 _REFERENCE_CONTEXT_TEMPLATE_PATH = _PROMPTS_DIR / "reference-context-template.txt"
 _METADATA_FIELD_TEMPLATE_PATH = _PROMPTS_DIR / "metadata-field-template.txt"
@@ -107,6 +110,7 @@ def _render_prompt_template(template: str, /, **values: str) -> str:
 
 _FOCUS_TEMPLATE = _load_prompt_file(_FOCUS_TEMPLATE_PATH)
 _CONVERSATION_SUMMARY_TEMPLATE = _load_prompt_file(_CONVERSATION_SUMMARY_TEMPLATE_PATH)
+_ENVIRONMENT_CONTEXT_TEMPLATE = _load_prompt_file(_ENVIRONMENT_CONTEXT_TEMPLATE_PATH)
 _DIALOGUE_TEMPLATE = _load_prompt_file(_DIALOGUE_TEMPLATE_PATH)
 _REFERENCE_CONTEXT_TEMPLATE = _load_prompt_file(_REFERENCE_CONTEXT_TEMPLATE_PATH)
 _METADATA_FIELD_TEMPLATE = _load_prompt_file(_METADATA_FIELD_TEMPLATE_PATH)
@@ -119,6 +123,12 @@ if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_CONVERSATION_SUMMARY_TEMPLATE)) !=
 }:
     raise ValueError(
         "conversation-summary-template.txt must contain exactly {{ text }}"
+    )
+if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_ENVIRONMENT_CONTEXT_TEMPLATE)) != {
+    "capability_blocks"
+}:
+    raise ValueError(
+        "environment-context-template.txt must contain exactly {{ capability_blocks }}"
     )
 if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_DIALOGUE_TEMPLATE)) != {"turns"}:
     raise ValueError("dialogue-template.txt must contain exactly {{ turns }}")
@@ -1388,6 +1398,7 @@ def _inference_request_to_adapter_messages(
             role="user",
             content_parts=_context_to_content_parts(
                 memory_context=inference_request.memory_context,
+                environment_context=inference_request.environment_context,
                 current_turn=inference_request.current_turn,
                 cache=inference_request.cache,
             ),
@@ -1527,6 +1538,7 @@ def _system_blocks_to_content_parts(
 def _context_to_content_parts(
     *,
     memory_context: InferenceMemoryContext,
+    environment_context: InferenceEnvironmentContext,
     current_turn: InferenceCurrentTurn,
     cache: InferenceCache,
 ) -> tuple[ChatContentPart, ...]:
@@ -1541,6 +1553,8 @@ def _context_to_content_parts(
     ]
     if cache.mode == "explicit":
         parts.append(CachePointContentPart())
+    if len(environment_context.items) > 0:
+        parts.append(EnvironmentContextContentPart(items=environment_context.items))
     parts.extend(
         DialogueTurnContentPart(
             role=item.role,
@@ -1636,6 +1650,7 @@ def _serialize_anthropic_inference_messages(
             "role": "user",
             "content": _serialize_anthropic_context_message(
                 memory_context=inference_request.memory_context,
+                environment_context=inference_request.environment_context,
                 current_turn=inference_request.current_turn,
                 cache=inference_request.cache,
             ),
@@ -1697,6 +1712,7 @@ def _serialize_anthropic_inference_messages(
 def _serialize_anthropic_context_message(
     *,
     memory_context: InferenceMemoryContext,
+    environment_context: InferenceEnvironmentContext,
     current_turn: InferenceCurrentTurn,
     cache: InferenceCache,
 ) -> list[dict[str, Any]]:
@@ -1704,6 +1720,7 @@ def _serialize_anthropic_context_message(
     return _serialize_anthropic_content_parts(
         _context_to_content_parts(
             memory_context=memory_context,
+            environment_context=environment_context,
             current_turn=current_turn,
             cache=cache,
         ),
@@ -2176,6 +2193,24 @@ def _render_content_parts(parts: Sequence[ChatContentPart]) -> str:
         )
         reference_snippets.clear()
 
+    def render_environment_context(part: EnvironmentContextContentPart) -> str:
+        capability_blocks = "\n".join(
+            "\n".join(
+                (
+                    f"<{item.tag_name}>",
+                    json.dumps(item.output, sort_keys=True, separators=(",", ":")),
+                    f"</{item.tag_name}>",
+                )
+            )
+            for item in part.items
+        )
+        if capability_blocks == "":
+            return ""
+        return _render_prompt_template(
+            _ENVIRONMENT_CONTEXT_TEMPLATE,
+            capability_blocks=capability_blocks,
+        )
+
     for part in parts:
         if isinstance(part, CachePointContentPart):
             continue
@@ -2206,6 +2241,8 @@ def _render_content_parts(parts: Sequence[ChatContentPart]) -> str:
                     value=part.value,
                 )
             )
+        elif isinstance(part, EnvironmentContextContentPart):
+            rendered.append(render_environment_context(part))
         elif isinstance(part, OperatorMessageContentPart):
             rendered.append(_render_operator_message(part))
         else:

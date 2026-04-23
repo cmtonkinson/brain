@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from packages.brain_shared.config import ActorSettings, CoreSettings, ResourcesSettings
+from lib.shared.config import ActorSettings, CoreSettings, ResourcesSettings
 
 
 @pytest.fixture(autouse=True)

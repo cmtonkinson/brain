@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 
 from actors.agent import main as agent_main
-from packages.brain_sdk import (
+from lib.sdk import (
     BrainClient,
     BrainSdkConfig,
     CapabilityDescriptor,
@@ -22,8 +22,8 @@ from packages.brain_sdk import (
     SwitchboardOperatorInstruction,
     ToolSystemHint,
 )
-from packages.brain_shared.http.client import HttpClient
-from packages.brain_shared.ids import generate_ulid_str
+from lib.shared.http.client import HttpClient
+from lib.shared.ids import generate_ulid_str
 
 
 @dataclass(frozen=True, slots=True)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy import Boolean, Column, DateTime, Integer, MetaData, String, Table, func
 
-from packages.brain_shared.ids import ulid_primary_key_column
+from lib.shared.ids import ulid_primary_key_column
 from services.action.capability_engine.component import SERVICE_COMPONENT_ID
 
 metadata = MetaData()

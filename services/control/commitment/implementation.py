@@ -10,14 +10,14 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ValidationError
 
-from packages.brain_shared.envelope import (
+from lib.shared.envelope import (
     Envelope,
     EnvelopeMeta,
     failure,
     success,
     validate_meta,
 )
-from packages.brain_shared.errors import (
+from lib.shared.errors import (
     ErrorDetail,
     codes,
     conflict_error,
@@ -25,13 +25,14 @@ from packages.brain_shared.errors import (
     not_found_error,
     validation_error,
 )
-from packages.brain_shared.logging import get_logger, public_api_instrumented
+from lib.shared.logging import get_logger, public_api_instrumented
 from resources.substrates.postgres.errors import normalize_postgres_error
 from services.action.attention_router.service import AttentionRouterService
 from services.control.commitment.component import SERVICE_COMPONENT_ID
 from services.control.commitment.config import CommitmentServiceSettings
 from services.control.commitment.data.runtime import CommitmentPostgresRuntime
 from services.control.commitment.domain import (
+    CommitmentCandidate,
     CommitmentHistoryResult,
     CommitmentJobLink,
     CommitmentListResult,
@@ -42,6 +43,7 @@ from services.control.commitment.domain import (
     CommitmentState,
     CommitmentTransitionRecord,
     CreationProposalDecision,
+    ExtractCandidatesResult,
     HealthStatus,
     LoopClosureIntent,
     LoopClosureResolutionResult,
@@ -103,6 +105,8 @@ def _render_prompt_template(template: str, /, **values: str) -> str:
 
 _DEDUPE_SYSTEM_TEMPLATE = _load_prompt_file(_PROMPTS_DIR / "dedupe-system.txt")
 _DEDUPE_USER_TEMPLATE = _load_prompt_file(_PROMPTS_DIR / "dedupe-user-template.txt")
+_EXTRACT_SYSTEM_PROMPT = _load_prompt_file(_PROMPTS_DIR / "extract-system.txt")
+_EXTRACT_USER_TEMPLATE = _load_prompt_file(_PROMPTS_DIR / "extract-user-template.txt")
 
 _ALLOWED_TRANSITIONS: dict[CommitmentState, frozenset[CommitmentState]] = {
     CommitmentState.OPEN: frozenset(
@@ -1221,6 +1225,117 @@ class DefaultCommitmentService(CommitmentService):
                 detail=router_env.payload.value.detail,
             ),
         )
+
+    @public_api_instrumented(logger=_LOGGER, component_id=str(SERVICE_COMPONENT_ID))
+    def extract_commitment_candidates(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        text: str,
+        context: str = "",
+    ) -> Envelope[ExtractCandidatesResult]:
+        """Extract zero or more commitment candidate signals from arbitrary text."""
+        empty = ExtractCandidatesResult(candidates=())
+        if (
+            self._language_model_service is None
+            or not self._settings.extraction_enabled
+        ):
+            return success(meta=meta, payload=empty)
+        try:
+            prompt = _render_prompt_template(
+                _EXTRACT_USER_TEMPLATE,
+                text=text,
+                context=context,
+            )
+            profile = ReasoningLevel(self._settings.extraction_reasoning_level)
+            chat_env = self._language_model_service.chat(
+                meta=meta,
+                system_prompt=_EXTRACT_SYSTEM_PROMPT,
+                prompt=prompt,
+                profile=profile,
+            )
+            if chat_env.errors or chat_env.payload is None:
+                _LOGGER.warning(
+                    "Extraction LMS call failed; returning empty candidates"
+                )
+                return success(meta=meta, payload=empty)
+            raw = chat_env.payload.value.text.strip()
+            parsed = json.loads(raw)
+            if not isinstance(parsed, list):
+                _LOGGER.warning(
+                    "Extraction LMS response is not a JSON array; returning empty candidates"
+                )
+                return success(meta=meta, payload=empty)
+            candidates: list[CommitmentCandidate] = []
+            for item in parsed:
+                if not isinstance(item, dict):
+                    continue
+                raw_confidence = item.get("confidence")
+                if raw_confidence is None:
+                    continue
+                try:
+                    confidence = float(raw_confidence)
+                except TypeError, ValueError:
+                    continue
+                confidence = max(0.0, min(1.0, confidence))
+                if confidence < self._settings.extraction_min_confidence:
+                    continue
+                description = str(item.get("description") or "").strip()
+                if not description:
+                    continue
+                raw_importance = item.get("importance")
+                importance: int | None = None
+                if raw_importance is not None:
+                    try:
+                        importance = max(1, min(3, int(raw_importance)))
+                    except TypeError, ValueError:
+                        pass
+                raw_effort = item.get("effort_provided")
+                effort_provided: int | None = None
+                if raw_effort is not None:
+                    try:
+                        effort_provided = max(1, min(3, int(raw_effort)))
+                    except TypeError, ValueError:
+                        pass
+                raw_due_by = item.get("due_by")
+                due_by: datetime | None = None
+                if raw_due_by is not None:
+                    try:
+                        due_by = datetime.fromisoformat(str(raw_due_by))
+                        if due_by.tzinfo is None:
+                            due_by = due_by.replace(tzinfo=UTC)
+                    except ValueError:
+                        pass
+                raw_tz = item.get("due_timezone")
+                due_timezone: str | None = (
+                    str(raw_tz).strip() if raw_tz is not None else None
+                ) or None
+                raw_reasoning = item.get("reasoning")
+                reasoning: str | None = (
+                    str(raw_reasoning).strip() if raw_reasoning is not None else None
+                ) or None
+                candidates.append(
+                    CommitmentCandidate(
+                        description=description,
+                        importance=importance,
+                        effort_provided=effort_provided,
+                        due_by=due_by,
+                        due_timezone=due_timezone,
+                        confidence=confidence,
+                        reasoning=reasoning,
+                    )
+                )
+                if len(candidates) >= self._settings.extraction_max_candidates:
+                    break
+            return success(
+                meta=meta,
+                payload=ExtractCandidatesResult(candidates=tuple(candidates)),
+            )
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning(
+                "Extraction failed; returning empty candidates", exc_info=True
+            )
+            return success(meta=meta, payload=empty)
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(SERVICE_COMPONENT_ID))
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:

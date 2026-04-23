@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
-from packages.brain_shared.errors import dependency_error
+from lib.shared.envelope import EnvelopeKind, failure, new_meta, success
+from lib.shared.errors import dependency_error
 from services.action.attention_router.domain import (
     ApprovalCorrelationPayload as RouterApprovalCorrelationPayload,
     ApprovalNotificationPayload as RouterApprovalNotificationPayload,

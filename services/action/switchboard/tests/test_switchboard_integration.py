@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta, success
+from lib.shared.envelope import EnvelopeKind, new_meta, success
 from resources.adapters.signal.adapter import (
     SignalAdapter,
     SignalCallbackRegistrationResult,

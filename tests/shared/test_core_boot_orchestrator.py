@@ -7,15 +7,15 @@ from dataclasses import dataclass
 
 import pytest
 
-from packages.brain_core.boot.contracts import (
+from lib.core.boot.contracts import (
     BootContext,
     BootDependencyError,
     BootHookContract,
     BootHookExecutionError,
     BootReadinessTimeoutError,
 )
-from packages.brain_core.boot.orchestrator import run_boot_hooks
-from packages.brain_shared.config import (
+from lib.core.boot.orchestrator import run_boot_hooks
+from lib.shared.config import (
     CoreBootSettings,
     CoreRuntimeSettings,
     CoreSettings,

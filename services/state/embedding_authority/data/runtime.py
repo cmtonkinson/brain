@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.manifest import component_id_to_schema_name
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.manifest import component_id_to_schema_name
 from resources.substrates.postgres import (
     ServiceSchemaSessionProvider,
     create_postgres_engine,

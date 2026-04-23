@@ -18,7 +18,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects import postgresql
 
-from packages.brain_shared.ids import ULID_DOMAIN_NAME, ulid_primary_key_column
+from lib.shared.ids import ULID_DOMAIN_NAME, ulid_primary_key_column
 from services.state.memory_authority.data.runtime import memory_postgres_schema
 
 metadata = MetaData()

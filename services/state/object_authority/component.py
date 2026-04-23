@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.manifest import (
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.manifest import (
     ComponentId,
     ModuleRoot,
     ServiceManifest,

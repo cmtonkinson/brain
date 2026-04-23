@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from packages.brain_shared.embeddings import (
+from lib.shared.embeddings import (
     SUPPORTED_DISTANCE_METRICS,
     SUPPORTED_DISTANCE_METRICS_TEXT,
 )

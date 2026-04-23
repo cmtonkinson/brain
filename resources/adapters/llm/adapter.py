@@ -6,7 +6,7 @@ from typing import Protocol, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from packages.brain_shared.language_model import ChatContentPart, InferenceRequest
+from lib.shared.language_model import ChatContentPart, InferenceRequest
 
 
 class AdapterError(Exception):

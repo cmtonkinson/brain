@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from packages.brain_shared.manifest import ComponentId, validate_component_id
+from lib.shared.manifest import ComponentId, validate_component_id
 from services.state.cache_authority.domain import JsonValue
 
 

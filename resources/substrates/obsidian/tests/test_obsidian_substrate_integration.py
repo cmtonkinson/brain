@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.http import HttpStatusError
+from lib.shared.http import HttpStatusError
 from resources.substrates.obsidian import (
     ObsidianSubstrateNotFoundError,
     ObsidianSubstrateSettings,

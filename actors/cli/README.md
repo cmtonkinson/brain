@@ -24,7 +24,7 @@ stored in a `CliConfig` dataclass on the Typer context object.
 CLI Actor is a Layer 2 Actor. It owns no _Resource_ or _Service_ components.
 
 Boundary rules:
-- All Brain Core access is through `BrainSdkClient` (`packages/brain_sdk`).
+- All Brain Core access is through `BrainSdkClient` (`lib/sdk`).
 - No direct HTTP calls or database access.
 - The external boundary is stdin/stdout/stderr and process exit codes.
 
@@ -33,9 +33,9 @@ Boundary rules:
 Primary interactions:
 - `BrainSdkClient` is constructed per command with envelope metadata
   (`principal`, `source`, `trace_id`, `parent_id`) forwarded on each SDK call.
-- `packages/brain_sdk` exports `core_health`, `lms_chat`, `vault_get`,
+- `lib/sdk` exports `core_health`, `lms_chat`, `vault_get`,
   `vault_list`, `vault_search`, `DomainError`, `TransportError`.
-- `packages/brain_sdk/config.py` provides `resolve_target` and
+- `lib/sdk/config.py` provides `resolve_target` and
   `resolve_timeout_seconds` for default option resolution.
 
 ------------------------------------------------------------------------
@@ -72,14 +72,14 @@ Global CLI options and their environment variable equivalents:
 | `--trace-id` | — | none |
 | `--parent-id` | — | none |
 
-See `packages/brain_sdk/config.py` for resolution logic and
+See `lib/sdk/config.py` for resolution logic and
 `docs/configuration.md` for global environment override rules.
 
 ------------------------------------------------------------------------
 ## Testing and Validation
 Component tests live in `actors/cli/tests/test_main.py`.
 
-Test approach: a fake `packages.brain_sdk` module is injected via
+Test approach: a fake `lib.sdk` module is injected via
 `monkeypatch` and `importlib.reload` so no live connection is required.
 Pure rendering-helper tests call `_serialize`, `_render_human`, and
 `_render_*` helpers directly without invoking the CLI runner.
@@ -91,7 +91,7 @@ make test
 
 ------------------------------------------------------------------------
 ## Contributor Notes
-- Keep all Brain Core access through `brain_sdk`; do not call Core directly.
+- Keep all Brain Core access through `sdk`; do not call Core directly.
 - Keep rendering logic in `_render_human`, `_looks_like_*`, and `_render_*`
   helpers; do not inline rendering in command callbacks.
 - Use `_run_command` for all SDK call dispatch; do not open `BrainSdkClient`

@@ -15,8 +15,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects import postgresql
 
-from packages.brain_shared.ids import ulid_primary_key_column
-from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
+from lib.shared.ids import ulid_primary_key_column
+from lib.shared.ids.constants import ULID_DOMAIN_NAME
 from services.action.policy_service.component import SERVICE_COMPONENT_ID
 
 metadata = MetaData()

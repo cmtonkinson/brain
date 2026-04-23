@@ -5,8 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.envelope import Envelope, EnvelopeMeta
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.envelope import Envelope, EnvelopeMeta
 from services.action.attention_router.service import AttentionRouterService
 from services.action.language_model.service import LanguageModelService
 from services.control.commitment.domain import (
@@ -16,6 +16,7 @@ from services.control.commitment.domain import (
     CommitmentRecord,
     CommitmentReviewItem,
     CommitmentReviewRun,
+    ExtractCandidatesResult,
     HealthStatus,
     LoopClosureResolutionResult,
     MissDetectionResult,
@@ -143,6 +144,16 @@ class CommitmentService(ABC):
         self, *, meta: EnvelopeMeta, review_run_id: str
     ) -> Envelope[ReviewDeliveryResult]:
         """Deliver one review run through Attention Router."""
+
+    @abstractmethod
+    def extract_commitment_candidates(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        text: str,
+        context: str = "",
+    ) -> Envelope[ExtractCandidatesResult]:
+        """Extract zero or more commitment candidate signals from arbitrary text."""
 
     @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:

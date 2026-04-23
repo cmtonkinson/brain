@@ -8,12 +8,12 @@ from typing import Any
 
 import pytest
 
-from packages.brain_shared.config import (
+from lib.shared.config import (
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,
 )
-from packages.brain_shared.envelope import Envelope
+from lib.shared.envelope import Envelope
 from services.action.capability_engine.implementation import (
     DefaultCapabilityEngineService,
 )

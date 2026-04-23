@@ -9,8 +9,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.envelope import (
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.envelope import (
     Envelope,
     EnvelopeMeta,
     failure,
@@ -19,7 +19,7 @@ from packages.brain_shared.envelope import (
     new_meta,
     EnvelopeKind,
 )
-from packages.brain_shared.errors import (
+from lib.shared.errors import (
     ErrorCategory,
     ErrorDetail,
     codes,
@@ -28,9 +28,9 @@ from packages.brain_shared.errors import (
     validation_error,
 )
 from services.action.capability_engine.op_handler_bridge import OpHandlerBridgeError
-from packages.brain_shared.ids import generate_ulid_str
-from packages.brain_shared.logging import get_logger, public_api_instrumented
-from packages.brain_shared.manifest import get_registry
+from lib.shared.ids import generate_ulid_str
+from lib.shared.logging import get_logger, public_api_instrumented
+from lib.shared.manifest import get_registry
 from services.action.capability_engine.mcp_op_handler_bridge import (
     is_mcp_call_target,
     parse_mcp_call_target,
@@ -392,13 +392,13 @@ class DefaultCapabilityEngineService(CapabilityEngineService):
             for server in list_servers():
                 summary = str(getattr(server, "instruction_summary", "")).strip()
                 server_id = str(getattr(server, "server_id", "")).strip()
-                if summary == "" or server_id == "":
+                if server_id == "":
                     continue
                 hints.append(
                     ToolSystemHint(
                         system_id=server_id,
                         label=server_id,
-                        summary=summary,
+                        summary=summary or "MCP server",
                         kind="mcp",
                         ready=bool(getattr(server, "connected", False)),
                         tool_count=int(getattr(server, "tool_count", 0)),

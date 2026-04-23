@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from packages.brain_shared.language_model import (
+from lib.shared.language_model import (
     ConversationSummaryContentPart,
     DialogueTurnContentPart,
+    EnvironmentContextContentPart,
     FocusContentPart,
     InferenceAssistantTextEvent,
     InferenceCurrentTurn,
+    InferenceEnvironmentContext,
+    InferenceEnvironmentItem,
     InferenceMemoryContext,
     InferenceMeta,
     InferenceOperatorMessage,
@@ -33,7 +37,7 @@ from packages.brain_shared.language_model import (
     OperatorMessageContentPart,
     ReferenceSnippetContentPart,
 )
-from packages.brain_sdk import (
+from lib.sdk import (
     BrainDependencyError,
     BrainInternalError,
     BrainNotFoundError,
@@ -49,7 +53,7 @@ from packages.brain_sdk import (
     SwitchboardOperatorInstruction,
     ToolSystemHint,
 )
-from packages.brain_sdk.errors import SdkErrorDetail
+from lib.sdk.errors import SdkErrorDetail
 
 
 def _actor_settings_stub(**agent_overrides):
@@ -61,6 +65,7 @@ def _actor_settings_stub(**agent_overrides):
         "source": "agent",
         "principal": "operator",
         "capability_discovery_deny_list": (),
+        "environment_context": (),
         "tool_return_compress_threshold": 4000,
         "tool_return_max_chars": 8000,
         "tool_loop_tier2_hop_threshold": 3,
@@ -181,7 +186,7 @@ def test_write_heartbeat_creates_parent_and_updates_file(tmp_path) -> None:
 
 def test_render_system_prompt_returns_rendered_default_personality() -> None:
     """render_system_prompt should render the default personality template."""
-    from packages.brain_sdk.personality import (
+    from lib.sdk.personality import (
         _SYSTEM_PROMPT_TEMPLATE_PATH,
         render_system_prompt,
     )
@@ -206,7 +211,7 @@ def test_render_system_prompt_returns_rendered_default_personality() -> None:
 
 def test_render_system_tool_hints_uses_prompt_artifacts() -> None:
     """Tool-system hints should render through SDK prompt templates."""
-    from packages.brain_sdk.personality import render_system_tool_hints
+    from lib.sdk.personality import render_system_tool_hints
 
     rendered = render_system_tool_hints(
         (
@@ -225,7 +230,7 @@ def test_render_system_tool_hints_uses_prompt_artifacts() -> None:
 
 def test_render_system_prompt_template_rejects_unresolved_placeholders() -> None:
     """System prompt template renderer should reject unresolved double-brace vars."""
-    from packages.brain_sdk.personality import _render_template
+    from lib.sdk.personality import _render_template
 
     try:
         _render_template(
@@ -241,7 +246,7 @@ def test_render_system_prompt_template_supports_spaced_and_unspaced_placeholders
     None
 ):
     """System prompt template renderer should accept both brace-spacing styles."""
-    from packages.brain_sdk.personality import _render_template
+    from lib.sdk.personality import _render_template
 
     rendered = _render_template(
         "A={{personality}} B={{ personality }} C={{system_prompt_append}} D={{ system_prompt_append }}",
@@ -254,7 +259,7 @@ def test_render_system_prompt_template_supports_spaced_and_unspaced_placeholders
 
 def test_render_system_prompt_raises_for_unknown_personality() -> None:
     """render_system_prompt should raise PersonalityNotFoundError for unknown names."""
-    from packages.brain_sdk.personality import (
+    from lib.sdk.personality import (
         PersonalityNotFoundError,
         render_system_prompt,
     )
@@ -330,9 +335,7 @@ def test_configure_logging_uses_shared_dual_path_settings(monkeypatch) -> None:
     from actors.agent import main
 
     configure_logging = MagicMock()
-    monkeypatch.setattr(
-        "packages.brain_shared.logging.configure_logging", configure_logging
-    )
+    monkeypatch.setattr("lib.shared.logging.configure_logging", configure_logging)
 
     settings = _actor_settings_stub()
     settings.logging.level = "DEBUG"
@@ -807,6 +810,101 @@ def test_format_user_prompt_places_cachepoint_before_current_instruction() -> No
         reply_to_proposal_token=None,
         reaction_to_proposal_token=None,
     )
+
+
+def test_format_user_prompt_places_environment_context_after_cachepoint() -> None:
+    """Environment context should never be placed before the first cache point."""
+    from actors.agent import main
+    from pydantic_ai.messages import CachePoint
+
+    environment_context = InferenceEnvironmentContext(
+        items=(
+            InferenceEnvironmentItem(
+                capability_id="current-datetime",
+                tag_name="current-datetime",
+                output={"utc_timestamp": "2026-01-01T12:00:00+00:00"},
+            ),
+        )
+    )
+
+    prompt = main._format_user_prompt(
+        instruction=SwitchboardOperatorInstruction(
+            sender_e164="+12025550100",
+            message_text="hello",
+            timestamp_ms=1,
+            source_device="1",
+            source="signal",
+            group_id=None,
+            quote_target_timestamp_ms=None,
+            reaction_target_timestamp_ms=None,
+            reaction_emoji=None,
+            approval_intent=None,
+        ),
+        context=MemoryContextBlock(
+            current_focus="current focus",
+            recent_conversation_summary="prior summary",
+            recent_turns=(),
+            reference_snippets=(),
+        ),
+        environment_context=environment_context,
+    )
+
+    cache_index = next(
+        index for index, item in enumerate(prompt) if isinstance(item, CachePoint)
+    )
+    assert cache_index == 2
+    assert prompt[3] == EnvironmentContextContentPart(items=environment_context.items)
+    assert isinstance(prompt[4], OperatorMessageContentPart)
+
+
+def test_build_inference_request_extracts_environment_context() -> None:
+    """Environment context content parts should become a top-level inference field."""
+    from actors.agent import main
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    environment_context = InferenceEnvironmentContext(
+        items=(
+            InferenceEnvironmentItem(
+                capability_id="current-datetime",
+                tag_name="current-datetime",
+                output={"utc_timestamp": "2026-01-01T12:00:00+00:00"},
+            ),
+        )
+    )
+    messages = [
+        ModelRequest(
+            parts=[
+                UserPromptPart(
+                    content=[
+                        FocusContentPart(text=""),
+                        ConversationSummaryContentPart(text=""),
+                        EnvironmentContextContentPart(items=environment_context.items),
+                        OperatorMessageContentPart(
+                            channel="signal",
+                            sender_e164="+12025550100",
+                            message_text="hello",
+                        ),
+                    ],
+                )
+            ]
+        )
+    ]
+
+    result = main._build_inference_request(
+        session_id="session-1",
+        conversation_episode_id="episode-1",
+        source="agent",
+        principal="operator",
+        meta=None,
+        system_blocks=(),
+        messages=messages,
+        tool_defs=[],
+        allow_text_output=True,
+        profile="standard",
+        tool_requires_approval={},
+    )
+
+    assert result.environment_context == environment_context
 
 
 def test_normalize_tool_return_passes_through_small_results_and_logs() -> None:
@@ -2980,7 +3078,7 @@ def test_process_instruction_handles_lms_transport_5xx_gracefully(monkeypatch) -
 def test_derive_lms_request_timeout_seconds_uses_largest_chat_provider_budget() -> None:
     """Derived LMS timeout should reflect retry budget plus margin across profiles."""
     from actors.agent import main
-    from packages.brain_shared.config import (
+    from lib.shared.config import (
         CoreRuntimeSettings,
         CoreSettings,
         ResourcesSettings,
@@ -3073,6 +3171,102 @@ def test_create_runtime_reuses_existing_session_and_registers_tools() -> None:
     assert isinstance(runtime.model, main._BrainSdkToolModel)
     assert len(runtime.agent._function_toolset.tools) == 3
     assert "attention-notify" not in runtime.turn_state.active_tool_names
+    assert runtime.agent.instrument is None
+
+
+def test_agent_turn_observation_sets_langfuse_root_io(monkeypatch) -> None:
+    """Agent root turn span should expose clean Langfuse trace input and output."""
+    from actors.agent import main
+
+    class _Span:
+        """In-memory span for root observation assertions."""
+
+        def __init__(self) -> None:
+            self.attributes: dict[str, object] = {}
+            self.ended = False
+
+        def set_attribute(self, key: str, value: object) -> None:
+            self.attributes[key] = value
+
+    class _SpanManager:
+        """Minimal OTel span context manager fake."""
+
+        def __init__(self, span: _Span) -> None:
+            self.span = span
+
+        def __enter__(self) -> _Span:
+            return self.span
+
+        def __exit__(self, exc_type, exc, traceback) -> bool:
+            del exc_type, exc, traceback
+            self.span.ended = True
+            return False
+
+    class _Tracer:
+        """Minimal OTel tracer fake."""
+
+        def __init__(self, span: _Span) -> None:
+            self.span = span
+
+        def start_as_current_span(self, name: str) -> _SpanManager:
+            assert name == "agent.turn"
+            return _SpanManager(self.span)
+
+    span = _Span()
+    fake_trace = SimpleNamespace(get_tracer=lambda _name: _Tracer(span))
+    monkeypatch.setattr(main, "is_observability_enabled", lambda: True)
+    monkeypatch.setitem(sys.modules, "opentelemetry", SimpleNamespace(trace=fake_trace))
+    runtime = SimpleNamespace(
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        turn_state=SimpleNamespace(
+            actor="operator",
+            trace_id="trace-1",
+            root_envelope_id="env-1",
+            conversation_episode_id="episode-1",
+        ),
+    )
+    instruction = SwitchboardOperatorInstruction(
+        sender_e164="+12025550100",
+        message_text="hello",
+        timestamp_ms=1730000000000,
+        source_device="1",
+        source="signal",
+        group_id=None,
+        quote_target_timestamp_ms=None,
+        reaction_target_timestamp_ms=None,
+    )
+
+    with main._agent_turn_observation(
+        runtime=runtime,  # type: ignore[arg-type]
+        instruction=instruction,
+    ) as root_span:
+        assert root_span is span
+        main._update_agent_turn_observation_session(
+            span=root_span,
+            runtime=runtime,  # type: ignore[arg-type]
+        )
+        main._complete_agent_turn_observation(
+            span=root_span,
+            response_text="hi there",
+        )
+
+    assert span.ended is True
+    assert span.attributes["langfuse.observation.type"] == "span"
+    assert span.attributes["langfuse.trace.name"] == "brain.turn"
+    assert span.attributes["langfuse.user.id"] == "operator"
+    assert span.attributes["langfuse.session.id"] == "episode-1"
+    assert '"message": "hello"' in str(span.attributes["langfuse.observation.input"])
+    assert '"response": "hi there"' in str(
+        span.attributes["langfuse.observation.output"]
+    )
+    assert (
+        span.attributes["langfuse.trace.input"]
+        == (span.attributes["langfuse.observation.input"])
+    )
+    assert (
+        span.attributes["langfuse.trace.output"]
+        == (span.attributes["langfuse.observation.output"])
+    )
 
 
 def test_create_runtime_uses_new_session_mode_when_configured() -> None:

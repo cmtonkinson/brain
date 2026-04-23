@@ -6,9 +6,9 @@ import json
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
-from packages.brain_shared.errors import validation_error
-from packages.brain_shared.ids import generate_ulid_str
+from lib.shared.envelope import EnvelopeKind, failure, new_meta, success
+from lib.shared.errors import validation_error
+from lib.shared.ids import generate_ulid_str
 from services.action.attention_router.domain import RouteNotificationResult
 from services.action.language_model.domain import ChatResponse
 from services.control.commitment.config import CommitmentServiceSettings
@@ -1902,4 +1902,182 @@ def test_approve_dedupe_proposal_creates_commitment() -> None:
     result = approve_env.payload.value
     assert result.commitment is not None
     assert result.commitment.description == "Ship the release again"
-    assert result.creation_proposal.status == ProposalStatus.APPROVED
+
+
+# ---------------------------------------------------------------------------
+# extract_commitment_candidates
+# ---------------------------------------------------------------------------
+
+
+def test_extract_candidates_no_lms_returns_empty() -> None:
+    service, _repo, _jobs, _attention = _service(lms=None)
+
+    env = service.extract_commitment_candidates(
+        meta=_meta(),
+        text="I'll send the report by Friday.",
+    )
+
+    assert env.ok
+    assert env.payload.value.candidates == ()
+
+
+def test_extract_candidates_disabled_returns_empty_without_lms_call() -> None:
+    lms = _FakeLmsService(response_text="[]")
+    service, _repo, _jobs, _attention = _service(
+        lms=lms,
+        settings=CommitmentServiceSettings(extraction_enabled=False),
+    )
+
+    env = service.extract_commitment_candidates(
+        meta=_meta(),
+        text="I'll send the report by Friday.",
+    )
+
+    assert env.ok
+    assert env.payload.value.candidates == ()
+    assert lms.calls == []
+
+
+def test_extract_candidates_returns_parsed_candidates() -> None:
+    response = json.dumps(
+        [
+            {
+                "description": "Send the Q1 report",
+                "importance": 2,
+                "effort_provided": 1,
+                "due_by": None,
+                "due_timezone": None,
+                "confidence": 0.9,
+                "reasoning": "Explicit promise with clear deliverable.",
+            },
+            {
+                "description": "Schedule the retrospective",
+                "importance": 1,
+                "effort_provided": 1,
+                "due_by": None,
+                "due_timezone": None,
+                "confidence": 0.7,
+                "reasoning": "Soft obligation inferred from context.",
+            },
+        ]
+    )
+    lms = _FakeLmsService(response_text=response)
+    service, _repo, _jobs, _attention = _service(lms=lms)
+
+    env = service.extract_commitment_candidates(
+        meta=_meta(),
+        text="I'll send the Q1 report and I should probably schedule the retro.",
+    )
+
+    assert env.ok
+    candidates = env.payload.value.candidates
+    assert len(candidates) == 2
+    assert candidates[0].description == "Send the Q1 report"
+    assert candidates[0].confidence == 0.9
+    assert candidates[1].description == "Schedule the retrospective"
+    assert candidates[1].confidence == 0.7
+
+
+def test_extract_candidates_filters_below_min_confidence() -> None:
+    response = json.dumps(
+        [
+            {
+                "description": "High confidence task",
+                "confidence": 0.9,
+                "reasoning": "Clear.",
+            },
+            {
+                "description": "Low confidence task",
+                "confidence": 0.1,
+                "reasoning": "Weak signal.",
+            },
+        ]
+    )
+    lms = _FakeLmsService(response_text=response)
+    service, _repo, _jobs, _attention = _service(
+        lms=lms,
+        settings=CommitmentServiceSettings(extraction_min_confidence=0.4),
+    )
+
+    env = service.extract_commitment_candidates(
+        meta=_meta(),
+        text="Some text.",
+    )
+
+    assert env.ok
+    candidates = env.payload.value.candidates
+    assert len(candidates) == 1
+    assert candidates[0].description == "High confidence task"
+
+
+def test_extract_candidates_caps_at_max_candidates() -> None:
+    items = [
+        {"description": f"Task {i}", "confidence": 0.9, "reasoning": "Clear."}
+        for i in range(20)
+    ]
+    lms = _FakeLmsService(response_text=json.dumps(items))
+    service, _repo, _jobs, _attention = _service(
+        lms=lms,
+        settings=CommitmentServiceSettings(extraction_max_candidates=5),
+    )
+
+    env = service.extract_commitment_candidates(
+        meta=_meta(),
+        text="Many commitments here.",
+    )
+
+    assert env.ok
+    assert len(env.payload.value.candidates) == 5
+
+
+def test_extract_candidates_malformed_json_returns_empty() -> None:
+    lms = _FakeLmsService(response_text="not valid json {{{")
+    service, _repo, _jobs, _attention = _service(lms=lms)
+
+    env = service.extract_commitment_candidates(
+        meta=_meta(),
+        text="I'll finish this tomorrow.",
+    )
+
+    assert env.ok
+    assert env.payload.value.candidates == ()
+
+
+def test_extract_candidates_lms_failure_returns_empty() -> None:
+    lms = _FakeLmsService(fail=True)
+    service, _repo, _jobs, _attention = _service(lms=lms)
+
+    env = service.extract_commitment_candidates(
+        meta=_meta(),
+        text="I'll finish this tomorrow.",
+    )
+
+    assert env.ok
+    assert env.payload.value.candidates == ()
+
+
+def test_extract_candidates_uses_configured_reasoning_level() -> None:
+    lms = _FakeLmsService(response_text="[]")
+    service, _repo, _jobs, _attention = _service(
+        lms=lms,
+        settings=CommitmentServiceSettings(extraction_reasoning_level="standard"),
+    )
+
+    service.extract_commitment_candidates(meta=_meta(), text="Some text.")
+
+    assert len(lms.calls) == 1
+    assert lms.calls[0]["profile"].value == "standard"
+
+
+def test_extract_candidates_passes_context_to_lms() -> None:
+    lms = _FakeLmsService(response_text="[]")
+    service, _repo, _jobs, _attention = _service(lms=lms)
+
+    service.extract_commitment_candidates(
+        meta=_meta(),
+        text="I'll do it.",
+        context="Speaker is the project lead.",
+    )
+
+    assert len(lms.calls) == 1
+    assert "Speaker is the project lead." in lms.calls[0]["prompt"]

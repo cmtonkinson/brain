@@ -32,7 +32,7 @@ exists to make startup behavior explicit, deterministic, and reviewable.
    - Phase B: execute `boot()` in DAG/topological dependency order.
 
 6. **Load capabilities**
-   - Discover and register capability packages.
+   - Discover and register capability lib.
    - Perform capability validation after boot so boot-established runtime state is available.
 
 7. **Run `after_boot(...)` lifecycle hooks**

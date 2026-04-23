@@ -63,7 +63,7 @@ repository paths.
 - unknown failures map to internal/unexpected-exception semantics.
 
 Mappings are implemented in `resources/substrates/postgres/errors.py` and return
-`packages.brain_shared.errors.ErrorDetail` instances.
+`lib.shared.errors.ErrorDetail` instances.
 
 ------------------------------------------------------------------------
 ## Configuration Surface

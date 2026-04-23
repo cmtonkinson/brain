@@ -6,10 +6,10 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, new_meta
-from packages.brain_shared.errors import ErrorCategory
-from packages.brain_shared.http.server import read_json_body
-from packages.brain_shared.language_model import InferenceRequest
+from lib.shared.envelope import EnvelopeKind, EnvelopeMeta, new_meta
+from lib.shared.errors import ErrorCategory
+from lib.shared.http.server import read_json_body
+from lib.shared.language_model import InferenceRequest
 from services.action.language_model.service import LanguageModelService
 from services.action.language_model.validation import ReasoningLevel
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from services.action.policy_service.data.repository import (
     InMemoryPolicyPersistenceRepository,
 )

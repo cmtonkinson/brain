@@ -1,6 +1,6 @@
 """Generate Markdown docs for Core HTTP routes.
 
-The generator parses the route decorators defined in ``packages/brain_core``
+The generator parses the route decorators defined in ``lib/core``
 and ``services/*/*/api.py`` and emits a deterministic Markdown inventory of the
 HTTP surface mounted by Brain Core.
 """
@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 
 ROUTE_FILES = (
-    "packages/brain_core/health_api.py",
+    "lib/core/health_api.py",
     "services/*/*/api.py",
 )
 DEFAULT_METADATA = "docs/meta/http-routes.yaml"
@@ -25,7 +25,7 @@ DOC_NAME = "HTTP API"
 DOC_TITLE = f"# {DOC_NAME}"
 HR = "------------------------------------------------------------------------"
 DOC_GENERATED_NOTE = (
-    "_This document is generated from `packages/brain_core/health_api.py` and "
+    "_This document is generated from `lib/core/health_api.py` and "
     "`services/*/*/api.py`, with route intent from `docs/meta/http-routes.yaml`. "
     "Do not edit by hand._"
 )

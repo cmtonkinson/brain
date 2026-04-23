@@ -6,7 +6,7 @@ import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from services.state.object_authority.config import ObjectAuthoritySettings
 from resources.substrates.seaweedfs import BlobHealthStatus
 from services.state.object_authority.domain import (

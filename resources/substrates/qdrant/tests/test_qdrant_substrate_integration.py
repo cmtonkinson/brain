@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from packages.brain_shared.ids import generate_ulid_str
+from lib.shared.ids import generate_ulid_str
 from resources.substrates.qdrant.config import QdrantConfig
 from resources.substrates.qdrant.qdrant_substrate import QdrantClientSubstrate
 from tests.integration.helpers import real_provider_tests_enabled

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.config import load_core_runtime_settings
+from lib.shared.config import load_core_runtime_settings
 from services.action.switchboard.config import (
     resolve_switchboard_identity_settings,
     resolve_switchboard_service_settings,

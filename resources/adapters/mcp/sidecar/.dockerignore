@@ -1,5 +1,19 @@
-.venv
-__pycache__
-*.pyc
-.pytest_cache
-.ruff_cache
+# Exclude everything by default. Only the sidecar runtime source and packaging
+# inputs are needed for this image.
+**
+
+!Dockerfile
+!pyproject.toml
+!uv.lock
+!adapter.py
+!api.py
+!config.py
+!main.py
+
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+tests/

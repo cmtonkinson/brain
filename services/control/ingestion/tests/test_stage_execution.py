@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Sequence
 
-from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
-from packages.brain_shared.errors import (
+from lib.shared.envelope import EnvelopeKind, failure, new_meta, success
+from lib.shared.errors import (
     dependency_error,
     internal_error,
     not_found_error,
@@ -458,7 +458,7 @@ class _FakeVAS:
         self.fail_append = False
 
     def create_file(self, *, meta, file_path: str, content: str):
-        from packages.brain_shared.errors import conflict_error
+        from lib.shared.errors import conflict_error
 
         if self.fail_create:
             return failure(meta=meta, errors=[internal_error("VAS create failed")])

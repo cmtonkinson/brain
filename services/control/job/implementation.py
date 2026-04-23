@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from packages.brain_shared.envelope import (
+from lib.shared.envelope import (
     Envelope,
     EnvelopeKind,
     EnvelopeMeta,
@@ -17,7 +17,7 @@ from packages.brain_shared.envelope import (
     success,
     validate_meta,
 )
-from packages.brain_shared.errors import (
+from lib.shared.errors import (
     ErrorDetail,
     ErrorCategory,
     codes,
@@ -26,8 +26,8 @@ from packages.brain_shared.errors import (
     not_found_error,
     validation_error,
 )
-from packages.brain_shared.ids import generate_ulid_str
-from packages.brain_shared.logging import get_logger, public_api_instrumented
+from lib.shared.ids import generate_ulid_str
+from lib.shared.logging import get_logger, public_api_instrumented
 from resources.substrates.postgres.errors import normalize_postgres_error
 from services.action.capability_engine.service import (
     CapabilityEngineService,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-from packages.brain_shared.logging.public_api import (
+from lib.shared.logging.public_api import (
     CompletionContext,
     InvocationContext,
     PublicApiMetricsConcern,

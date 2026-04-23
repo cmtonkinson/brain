@@ -9,8 +9,8 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
-from packages.brain_shared.http.server import create_app
-from packages.brain_shared.ids import generate_ulid_str
+from lib.shared.http.server import create_app
+from lib.shared.ids import generate_ulid_str
 from resources.adapters.signal import (
     SignalAdapter,
     SignalAdapterDependencyError,
@@ -209,7 +209,7 @@ def test_attention_notify_api_smoke_rejects_transport_identity_overrides(
 
 def _settings():
     """Return minimum inert settings object for CES after_boot wiring."""
-    from packages.brain_shared.config import (
+    from lib.shared.config import (
         CoreRuntimeSettings,
         CoreSettings,
         ResourcesSettings,

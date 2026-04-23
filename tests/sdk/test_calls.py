@@ -6,14 +6,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from packages.brain_sdk.errors import BrainTransportError, BrainValidationError
-from packages.brain_shared.http.errors import HttpStatusError
-from packages.brain_shared.language_model import InferenceToolDefinition
+from lib.sdk.errors import BrainTransportError, BrainValidationError
+from lib.shared.http.errors import HttpStatusError
+from lib.shared.language_model import InferenceToolDefinition
 from tests.helpers.inference_request import make_inference_request
 
 
 def _meta() -> dict[str, object]:
-    from packages.brain_sdk.meta import build_envelope_meta
+    from lib.sdk.meta import build_envelope_meta
 
     return build_envelope_meta(source="tests", principal="operator")
 
@@ -28,7 +28,7 @@ def _fake_http(response: object) -> MagicMock:
 
 def test_call_core_health_success() -> None:
     """Core health wrapper should return mapped component dictionaries."""
-    from packages.brain_sdk.calls import call_core_health
+    from lib.sdk.calls import call_core_health
 
     http = _fake_http(
         {
@@ -51,7 +51,7 @@ def test_call_core_health_success() -> None:
 
 def test_call_core_health_transport_error() -> None:
     """Core health wrapper should raise BrainTransportError on HTTP failure."""
-    from packages.brain_sdk.calls import call_core_health
+    from lib.sdk.calls import call_core_health
 
     transport_http = MagicMock()
     transport_http.get_json.side_effect = HttpStatusError(
@@ -74,7 +74,7 @@ def test_call_core_health_transport_error() -> None:
 
 def test_call_capabilities_describe_success() -> None:
     """Capability-describe wrapper should return typed descriptors."""
-    from packages.brain_sdk.calls import call_capabilities_describe
+    from lib.sdk.calls import call_capabilities_describe
 
     http = _fake_http(
         {
@@ -109,7 +109,7 @@ def test_call_capabilities_describe_success() -> None:
 
 def test_call_capabilities_list_always_on_success() -> None:
     """Always-on capability wrapper should return typed descriptors."""
-    from packages.brain_sdk.calls import call_capabilities_list_always_on
+    from lib.sdk.calls import call_capabilities_list_always_on
 
     http = _fake_http(
         {
@@ -143,7 +143,7 @@ def test_call_capabilities_list_always_on_success() -> None:
 
 def test_call_capabilities_search_success() -> None:
     """Capability-search wrapper should return compact typed hits."""
-    from packages.brain_sdk.calls import call_capabilities_search
+    from lib.sdk.calls import call_capabilities_search
 
     http = _fake_http(
         {
@@ -177,7 +177,7 @@ def test_call_capabilities_search_success() -> None:
 
 def test_call_capabilities_tool_system_hints_success() -> None:
     """Tool-system hint wrapper should return compact typed hints."""
-    from packages.brain_sdk.calls import call_capabilities_tool_system_hints
+    from lib.sdk.calls import call_capabilities_tool_system_hints
 
     http = _fake_http(
         {
@@ -217,7 +217,7 @@ def test_call_capabilities_tool_system_hints_success() -> None:
 
 def test_call_capability_describe_success() -> None:
     """Capability-describe-one wrapper should return a single typed descriptor."""
-    from packages.brain_sdk.calls import call_capability_describe
+    from lib.sdk.calls import call_capability_describe
 
     http = _fake_http(
         {
@@ -249,7 +249,7 @@ def test_call_capability_describe_success() -> None:
 
 def test_call_capability_invoke_success() -> None:
     """Capability-invoke wrapper should decode output JSON and policy."""
-    from packages.brain_sdk.calls import call_capability_invoke
+    from lib.sdk.calls import call_capability_invoke
 
     http = _fake_http(
         {
@@ -280,7 +280,7 @@ def test_call_capability_invoke_success() -> None:
 
 def test_call_capability_invoke_autogenerates_invocation_id() -> None:
     """Capability invoke should auto-generate invocation_id when omitted."""
-    from packages.brain_sdk.calls import call_capability_invoke
+    from lib.sdk.calls import call_capability_invoke
 
     http = _fake_http(
         {
@@ -314,7 +314,7 @@ def test_call_capability_invoke_autogenerates_invocation_id() -> None:
 
 def test_call_capability_invoke_includes_reply_and_reaction_proposal_tokens() -> None:
     """Capability invoke should pass structured approval correlators through CES."""
-    from packages.brain_sdk.calls import call_capability_invoke
+    from lib.sdk.calls import call_capability_invoke
 
     http = _fake_http(
         {
@@ -349,7 +349,7 @@ def test_call_capability_invoke_includes_reply_and_reaction_proposal_tokens() ->
 
 def test_call_lms_chat_success() -> None:
     """LMS chat wrapper should return the typed chat payload."""
-    from packages.brain_sdk.calls import call_lms_chat
+    from lib.sdk.calls import call_lms_chat
 
     http = _fake_http(
         {
@@ -376,7 +376,7 @@ def test_call_lms_chat_success() -> None:
 
 def test_call_lms_chat_with_tools_success() -> None:
     """Tool-capable LMS chat wrapper should return typed tool call payloads."""
-    from packages.brain_sdk.calls import call_lms_chat_with_tools
+    from lib.sdk.calls import call_lms_chat_with_tools
 
     http = _fake_http(
         {
@@ -418,7 +418,7 @@ def test_call_lms_chat_with_tools_success() -> None:
 
 def test_call_memory_assemble_context_success() -> None:
     """MAS assemble-context wrapper should return the typed turn-context payload."""
-    from packages.brain_sdk.calls import call_memory_assemble_context
+    from lib.sdk.calls import call_memory_assemble_context
 
     http = _fake_http(
         {
@@ -470,8 +470,8 @@ def test_call_memory_assemble_context_success() -> None:
 
 def test_call_memory_record_inbound_turn_success() -> None:
     """MAS inbound-record wrapper should return the typed turn payload."""
-    from packages.brain_sdk.calls import call_memory_record_inbound_turn
-    from packages.brain_sdk.calls import SwitchboardOperatorInstruction
+    from lib.sdk.calls import call_memory_record_inbound_turn
+    from lib.sdk.calls import SwitchboardOperatorInstruction
 
     http = _fake_http(
         {
@@ -528,7 +528,7 @@ def test_call_memory_record_inbound_turn_success() -> None:
 
 def test_call_memory_assemble_snapshot_success() -> None:
     """MAS snapshot wrapper should return the typed historical context payload."""
-    from packages.brain_sdk.calls import call_memory_assemble_snapshot
+    from lib.sdk.calls import call_memory_assemble_snapshot
 
     http = _fake_http(
         {
@@ -559,7 +559,7 @@ def test_call_memory_assemble_snapshot_success() -> None:
 
 def test_call_memory_create_session_success() -> None:
     """MAS create-session wrapper should return the new session identifier."""
-    from packages.brain_sdk.calls import call_memory_create_session
+    from lib.sdk.calls import call_memory_create_session
 
     http = _fake_http(
         {
@@ -579,7 +579,7 @@ def test_call_memory_create_session_success() -> None:
 
 def test_call_memory_get_latest_or_create_session_success() -> None:
     """MAS get-latest-or-create wrapper should return the resolved session id."""
-    from packages.brain_sdk.calls import call_memory_get_latest_or_create_session
+    from lib.sdk.calls import call_memory_get_latest_or_create_session
 
     http = _fake_http(
         {
@@ -599,7 +599,7 @@ def test_call_memory_get_latest_or_create_session_success() -> None:
 
 def test_call_memory_record_response_success() -> None:
     """MAS record-response wrapper should return the response boolean."""
-    from packages.brain_sdk.calls import call_memory_record_response
+    from lib.sdk.calls import call_memory_record_response
 
     http = _fake_http({"payload": True, "errors": []})
 
@@ -620,7 +620,7 @@ def test_call_memory_record_response_success() -> None:
 
 def test_call_memory_record_outbound_candidate_success() -> None:
     """MAS outbound-candidate wrapper should return the typed turn payload."""
-    from packages.brain_sdk.calls import call_memory_record_outbound_candidate
+    from lib.sdk.calls import call_memory_record_outbound_candidate
 
     http = _fake_http(
         {
@@ -662,7 +662,7 @@ def test_call_memory_record_outbound_candidate_success() -> None:
 
 def test_call_memory_record_outbound_delivery_success() -> None:
     """MAS outbound-delivery wrapper should return the delivery boolean."""
-    from packages.brain_sdk.calls import call_memory_record_outbound_delivery
+    from lib.sdk.calls import call_memory_record_outbound_delivery
 
     http = _fake_http({"payload": True, "errors": []})
 
@@ -680,7 +680,7 @@ def test_call_memory_record_outbound_delivery_success() -> None:
 
 def test_route_wrapper_raises_typed_domain_error() -> None:
     """Route wrappers should map response errors to typed SDK domain errors."""
-    from packages.brain_sdk.calls import call_lms_chat
+    from lib.sdk.calls import call_lms_chat
 
     http = _fake_http(
         {
@@ -708,7 +708,7 @@ def test_route_wrapper_raises_typed_domain_error() -> None:
 
 def test_call_switchboard_poll_operator_instruction_success() -> None:
     """Switchboard poll wrapper should return the typed dequeued message."""
-    from packages.brain_sdk.calls import call_switchboard_poll_operator_instruction
+    from lib.sdk.calls import call_switchboard_poll_operator_instruction
 
     http = _fake_http(
         {

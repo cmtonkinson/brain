@@ -35,7 +35,7 @@ Primary system interactions:
   - upsert/delete chunk vectors
   - run filtered semantic search (`source_id` filter when provided)
 - substrate operations are instrumented via
-  `packages.brain_shared.logging.public_api_instrumented`.
+  `lib.shared.logging.public_api_instrumented`.
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)

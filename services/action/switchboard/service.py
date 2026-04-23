@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from packages.brain_sdk.client import BrainClient
-from packages.brain_shared.config import CoreRuntimeSettings
-from packages.brain_shared.envelope import Envelope, EnvelopeMeta
+from lib.sdk.client import BrainClient
+from lib.shared.config import CoreRuntimeSettings
+from lib.shared.envelope import Envelope, EnvelopeMeta
 from resources.adapters.signal.adapter import SignalAdapter
 from services.action.attention_router.service import AttentionRouterService
+from services.state.memory_authority.service import MemoryAuthorityService
 from services.state.cache_authority.service import CacheAuthorityService
 from services.action.switchboard.domain import (
     ConsoleEnqueueResult,
@@ -68,6 +69,7 @@ def build_switchboard_service(
     cache_service: CacheAuthorityService,
     signal_adapter: SignalAdapter | None = None,
     attention_router_service: AttentionRouterService | None = None,
+    memory_authority_service: MemoryAuthorityService | None = None,
     brain_client: BrainClient | None = None,
 ) -> SwitchboardService:
     """Build default Switchboard implementation from typed settings."""
@@ -88,6 +90,7 @@ def build_switchboard_service(
         or SignalRestApiAdapter(settings=resolve_signal_adapter_settings(settings)),
         cache_service=cache_service,
         attention_router_service=attention_router_service,
+        memory_authority_service=memory_authority_service,
         approval_response_settings=settings.core.profile.approval_responses,
         brain_client=brain_client,
     )
@@ -98,10 +101,12 @@ def build_switchboard_service_from_settings(
     settings: CoreRuntimeSettings,
     cache_service: CacheAuthorityService,
     attention_router_service: AttentionRouterService | None = None,
+    memory_authority_service: MemoryAuthorityService | None = None,
 ) -> SwitchboardService:
     """Backward-compatible helper retaining previous from-settings behavior."""
     return build_switchboard_service(
         settings=settings,
         cache_service=cache_service,
         attention_router_service=attention_router_service,
+        memory_authority_service=memory_authority_service,
     )

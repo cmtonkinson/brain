@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from packages.brain_core.boot import BootContext
+    from lib.core.boot import BootContext
 
 dependencies: tuple[str, ...] = ("substrate_postgres",)
 

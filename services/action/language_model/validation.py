@@ -7,7 +7,7 @@ from typing import Sequence
 
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
 
-from packages.brain_shared.language_model import InferenceRequest
+from lib.shared.language_model import InferenceRequest
 from services.action.language_model.domain import ChatToolCall
 
 

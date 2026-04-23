@@ -6,8 +6,8 @@ import json
 from dataclasses import dataclass
 from unittest.mock import patch
 
-from packages.brain_shared.envelope import EnvelopeKind, failure, new_meta, success
-from packages.brain_shared.errors import dependency_error
+from lib.shared.envelope import EnvelopeKind, failure, new_meta, success
+from lib.shared.errors import dependency_error
 from resources.adapters.signal import (
     SignalAdapter,
     SignalAdapterDependencyError,

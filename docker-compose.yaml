@@ -33,7 +33,7 @@ services:
         condition: service_completed_successfully
       brain-mcp:
         condition: service_healthy
-    command: ["python", "-m", "packages.brain_core.main"]
+    command: ["python", "-m", "lib.core.main"]
 
   brain-agent:
     build:

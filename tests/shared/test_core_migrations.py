@@ -10,12 +10,12 @@ import pytest
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
-from packages.brain_core.migrations import (
+from lib.core.migrations import (
     MigrationExecutionError,
     discover_service_migration_configs,
     run_startup_migrations,
 )
-from packages.brain_shared.config import (
+from lib.shared.config import (
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,
@@ -67,10 +67,10 @@ def test_discover_service_migration_configs_orders_by_system(
         )
     )
     monkeypatch.setattr(
-        "packages.brain_core.migrations.import_registered_component_modules",
+        "lib.core.migrations.import_registered_component_modules",
         lambda: tuple(),
     )
-    monkeypatch.setattr("packages.brain_core.migrations.get_registry", lambda: registry)
+    monkeypatch.setattr("lib.core.migrations.get_registry", lambda: registry)
 
     configs = discover_service_migration_configs(repo_root=tmp_path)
 
@@ -89,14 +89,14 @@ def test_run_startup_migrations_executes_bootstrap_then_alembic_upgrades(
     ini_b.write_text("[alembic]\n", encoding="utf-8")
 
     monkeypatch.setattr(
-        "packages.brain_core.migrations.bootstrap_service_schemas",
+        "lib.core.migrations.bootstrap_service_schemas",
         lambda settings: SimpleNamespace(
             imported_components=("services.state.a.component",),
             provisioned_schemas=("service_a",),
         ),
     )
     monkeypatch.setattr(
-        "packages.brain_core.migrations.discover_service_migration_configs",
+        "lib.core.migrations.discover_service_migration_configs",
         lambda repo_root=None: (ini_a, ini_b),
     )
 
@@ -128,14 +128,14 @@ def test_run_startup_migrations_raises_on_upgrade_failure(
     ini.write_text("[alembic]\n", encoding="utf-8")
 
     monkeypatch.setattr(
-        "packages.brain_core.migrations.bootstrap_service_schemas",
+        "lib.core.migrations.bootstrap_service_schemas",
         lambda settings: SimpleNamespace(
             imported_components=tuple(),
             provisioned_schemas=tuple(),
         ),
     )
     monkeypatch.setattr(
-        "packages.brain_core.migrations.discover_service_migration_configs",
+        "lib.core.migrations.discover_service_migration_configs",
         lambda repo_root=None: (ini,),
     )
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from packages.brain_shared.manifest import ComponentId, ModuleRoot, ServiceManifest
+from lib.shared.manifest import ComponentId, ModuleRoot, ServiceManifest
 from tests.shared import test_component_layer_dependencies as layer_sut
 from tests.shared import test_no_dynamic_imports as dynamic_sut
 from tests.shared import test_service_public_api_boundaries as public_api_sut

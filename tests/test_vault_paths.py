@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from packages.brain_shared.vault_paths import normalize_vault_directory_path
+from lib.shared.vault_paths import normalize_vault_directory_path
 
 
 def test_normalize_vault_directory_path_strips_trailing_slash() -> None:

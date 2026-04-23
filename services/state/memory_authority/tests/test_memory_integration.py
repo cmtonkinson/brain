@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from services.state.memory_authority.config import MemoryAuthoritySettings
 from services.state.memory_authority.implementation import DefaultMemoryAuthorityService
 from services.state.memory_authority.tests.test_memory_authority_service import (

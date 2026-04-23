@@ -7,9 +7,9 @@ from hashlib import sha256
 import json
 from typing import Any
 
-from packages.brain_shared.approval import normalize_approval_intent
-from packages.brain_shared.config import ApprovalResponseSettings, CoreRuntimeSettings
-from packages.brain_shared.envelope import (
+from lib.shared.approval import normalize_approval_intent
+from lib.shared.config import ApprovalResponseSettings, CoreRuntimeSettings
+from lib.shared.envelope import (
     Envelope,
     EnvelopeKind,
     EnvelopeMeta,
@@ -17,9 +17,9 @@ from packages.brain_shared.envelope import (
     success,
     validate_meta,
 )
-from packages.brain_shared.errors import codes, policy_error, validation_error
-from packages.brain_shared.ids import generate_ulid_str
-from packages.brain_shared.logging import get_logger, public_api_instrumented
+from lib.shared.errors import codes, policy_error, validation_error
+from lib.shared.ids import generate_ulid_str
+from lib.shared.logging import get_logger, public_api_instrumented
 from services.action.policy_service.component import SERVICE_COMPONENT_ID
 from services.action.policy_service.config import (
     PolicyServiceSettings,

@@ -5,14 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-from packages.brain_shared.config import (
+from lib.shared.config import (
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,
 )
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
-from packages.brain_shared.language_model import (
+from lib.shared.envelope import EnvelopeKind, new_meta
+from lib.shared.language_model import (
+    InferenceAssistantTextEvent,
     InferenceRequest,
+    InferenceSystemBlock,
     InferenceToolCall,
     InferenceToolCallBatchEvent,
     InferenceToolDefinition,
@@ -928,6 +930,54 @@ def test_lms_generation_observation_maps_langfuse_usage_and_content(
     assert '"input": 11' in span.attributes["langfuse.observation.usage_details"]
     assert '"message": "hello"' in span.attributes["langfuse.observation.input"]
     assert "claude-test" in span.attributes["langfuse.observation.output"]
+
+
+def test_langfuse_tool_observation_input_preserves_system_without_assistant_text() -> (
+    None
+):
+    """Compact Langfuse generation input should keep system text only once."""
+    from services.action.language_model import implementation as module
+
+    inference_request = make_inference_request(
+        system_blocks=(
+            InferenceSystemBlock(
+                kind="assistant_persona",
+                text="You are Brain.",
+                cache_after=True,
+            ),
+            InferenceSystemBlock(
+                kind="operator_profile",
+                text="Refer to me as boss.",
+            ),
+        ),
+        live_events=(InferenceAssistantTextEvent(text="model draft"),),
+    )
+
+    payload = module._langfuse_observation_input(
+        inference_request,
+        request_phase="initial",
+    )
+
+    assert payload["message"] == "hello"
+    assert payload["system_prompt"] == "You are Brain.\n\nRefer to me as boss."
+    assert "model draft" not in str(payload)
+
+
+def test_langfuse_plain_chat_observation_input_preserves_system_prompt() -> None:
+    """Plain chat Langfuse input should include non-empty system prompts."""
+    from services.action.language_model import implementation as module
+
+    payload = module._langfuse_chat_observation_input(
+        system_prompt="Compress carefully.",
+        prompt="hello",
+        request_phase="initial",
+    )
+
+    assert payload == {
+        "request_phase": "initial",
+        "message": "hello",
+        "system_prompt": "Compress carefully.",
+    }
 
 
 def test_chat_error_appends_audit_row_with_error_outcome() -> None:

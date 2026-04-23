@@ -7,7 +7,7 @@ from datetime import datetime
 
 def test_build_envelope_meta_sets_defaults() -> None:
     """Metadata builder should generate ids, UTC timestamp, and command kind."""
-    from packages.brain_sdk.meta import build_envelope_meta
+    from lib.sdk.meta import build_envelope_meta
 
     meta = build_envelope_meta(source="cli", principal="operator")
 
@@ -21,7 +21,7 @@ def test_build_envelope_meta_sets_defaults() -> None:
 
 def test_build_envelope_meta_respects_overrides() -> None:
     """Metadata builder should preserve caller-provided trace/parent/timestamp."""
-    from packages.brain_sdk.meta import build_envelope_meta
+    from lib.sdk.meta import build_envelope_meta
 
     timestamp = datetime(2026, 2, 26, 15, 0, 0)
     meta = build_envelope_meta(

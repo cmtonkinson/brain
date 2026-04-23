@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from resources.substrates.valkey import ValkeySubstrate
 from services.state.cache_authority.config import CacheAuthoritySettings
 from services.state.cache_authority.implementation import DefaultCacheAuthorityService

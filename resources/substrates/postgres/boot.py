@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_core.boot import BootContext
+from lib.core.boot import BootContext
 from resources.substrates.postgres.config import resolve_postgres_settings
 from resources.substrates.postgres.engine import create_postgres_engine
 from resources.substrates.postgres.health import ping

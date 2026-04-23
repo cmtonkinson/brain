@@ -44,7 +44,7 @@ def _run(caps: list[_Cap]) -> str:
     execute = _load_execute()
     client = MagicMock()
     client.describe_capabilities.return_value = tuple(caps)
-    with patch("packages.brain_sdk.client.BrainSdkClient", return_value=client):
+    with patch("lib.sdk.client.BrainSdkClient", return_value=client):
         return execute()
 
 
@@ -130,6 +130,6 @@ def test_client_error_propagates() -> None:
     execute = _load_execute()
     client = MagicMock()
     client.describe_capabilities.side_effect = RuntimeError("CES unavailable")
-    with patch("packages.brain_sdk.client.BrainSdkClient", return_value=client):
+    with patch("lib.sdk.client.BrainSdkClient", return_value=client):
         with pytest.raises(RuntimeError, match="CES unavailable"):
             execute()

@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from packages.brain_core.main import _run_after_boot_lifecycle
-from packages.brain_shared.config import (
+from lib.core.main import _run_after_boot_lifecycle
+from lib.shared.config import (
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,
@@ -52,7 +52,7 @@ def test_run_after_boot_lifecycle_calls_hooks_in_component_order(
     )
     components = {"service_a": object(), "service_b": object()}
 
-    monkeypatch.setattr("packages.brain_core.main.get_registry", lambda: registry)
+    monkeypatch.setattr("lib.core.main.get_registry", lambda: registry)
 
     def _resolver(manifest: _Manifest):
         if manifest.id == "service_a":
@@ -61,9 +61,7 @@ def test_run_after_boot_lifecycle_calls_hooks_in_component_order(
             return lambda **_kwargs: calls.append("service_b")
         return None
 
-    monkeypatch.setattr(
-        "packages.brain_core.main._resolve_component_after_boot", _resolver
-    )
+    monkeypatch.setattr("lib.core.main._resolve_component_after_boot", _resolver)
 
     _run_after_boot_lifecycle(
         settings=CoreRuntimeSettings(
@@ -80,7 +78,7 @@ def test_run_after_boot_lifecycle_raises_for_unknown_component(
 ) -> None:
     """Lifecycle runner should fail hard when a built component lacks a manifest."""
     registry = _Registry(services=(_Manifest(id="service_a"),))
-    monkeypatch.setattr("packages.brain_core.main.get_registry", lambda: registry)
+    monkeypatch.setattr("lib.core.main.get_registry", lambda: registry)
 
     with pytest.raises(RuntimeError, match="missing from registry"):
         _run_after_boot_lifecycle(

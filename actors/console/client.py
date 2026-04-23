@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_sdk import (
+from lib.sdk import (
     BrainSdkClient,
     ConsoleEnqueueResult,
     ConsoleResponseMessage,

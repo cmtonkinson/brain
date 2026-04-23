@@ -118,8 +118,8 @@ _Register one in-process Signal callback with the owned adapter._
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
 _Return Utility Service readiness state._
 
-`current_datetime(*, meta: EnvelopeMeta) -> Envelope[datetime]`  
-_Return the current UTC datetime._
+`current_datetime(*, meta: EnvelopeMeta) -> Envelope[CurrentDateTime]`  
+_Return current UTC and operator-local datetimes._
 
 `chunk_text(*, meta: EnvelopeMeta, text: str) -> Envelope[list[TextChunk]]`  
 _Return one or more chunks for the provided text content._
@@ -140,6 +140,9 @@ _Return one commitment plus progress and transition history._
 
 `create_commitment(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
 _Create one commitment or persist a creation proposal._
+
+`extract_commitment_candidates(*, meta: EnvelopeMeta, text: str, context: str = '') -> Envelope[ExtractCandidatesResult]`  
+_Extract zero or more commitment candidate signals from arbitrary text._
 
 `ingest_commitment_candidate(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
 _Accept one typed ingestion-derived commitment candidate._

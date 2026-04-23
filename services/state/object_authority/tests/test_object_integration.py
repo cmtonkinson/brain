@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from services.state.object_authority.config import ObjectAuthoritySettings
 from services.state.object_authority.implementation import DefaultObjectAuthorityService
 from services.state.object_authority.tests.test_object_service import (

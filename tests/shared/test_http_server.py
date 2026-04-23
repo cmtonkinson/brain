@@ -10,8 +10,8 @@ import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
-import packages.brain_shared.http.server as server_module
-from packages.brain_shared.http import (
+import lib.shared.http.server as server_module
+from lib.shared.http import (
     InvalidBodyError,
     InvalidJsonBodyError,
     MissingHeaderError,
@@ -174,7 +174,7 @@ def test_run_app_forwards_arguments_to_uvicorn(monkeypatch: pytest.MonkeyPatch) 
         called["target"] = target
         called["kwargs"] = kwargs
 
-    monkeypatch.setattr("packages.brain_shared.http.server.uvicorn.run", _fake_run)
+    monkeypatch.setattr("lib.shared.http.server.uvicorn.run", _fake_run)
 
     run_app(app, host="0.0.0.0", port=9999, log_level="debug")
 

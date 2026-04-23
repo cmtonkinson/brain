@@ -186,7 +186,7 @@ _Service_ may access PostgreSQL directly, but for its own schema only.
   (`ulid_bin` is a constrained `bytea(16)`). Automated tests will fail if
   violations are found.
 - ULIDs are generated in application code, never in Postgres.
-- Shared helpers are in `packages/brain_shared/ids/` (backed by `python-ulid`).
+- Shared helpers are in `lib/shared/ids/` (backed by `python-ulid`).
 
 ### Migrations
 Each _Service_ maintains an isolated Alembic environment (its own `.ini`,

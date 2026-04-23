@@ -26,9 +26,9 @@ def _normalized_help_text(text: str) -> str:
 
 
 def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
-    """Install a fake `packages.brain_sdk` module for CLI tests."""
+    """Install a fake `lib.sdk` module for CLI tests."""
 
-    module = ModuleType("packages.brain_sdk")
+    module = ModuleType("lib.sdk")
     module.calls = []
 
     class DomainError(Exception):
@@ -221,13 +221,13 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
     module.describe_capability = describe_capability
     module.invoke_capability = invoke_capability
 
-    config_module = ModuleType("packages.brain_sdk.config")
+    config_module = ModuleType("lib.sdk.config")
     config_module.resolve_timeout_seconds = lambda value=None: (
         10.0 if value is None else value
     )
 
-    monkeypatch.setitem(sys.modules, "packages.brain_sdk", module)
-    monkeypatch.setitem(sys.modules, "packages.brain_sdk.config", config_module)
+    monkeypatch.setitem(sys.modules, "lib.sdk", module)
+    monkeypatch.setitem(sys.modules, "lib.sdk.config", config_module)
     return module
 
 

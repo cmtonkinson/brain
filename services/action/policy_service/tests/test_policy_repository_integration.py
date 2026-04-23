@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from packages.brain_shared.ids import generate_ulid_str
+from lib.shared.ids import generate_ulid_str
 from services.action.policy_service.data.repository import (
     PostgresPolicyPersistenceRepository,
 )

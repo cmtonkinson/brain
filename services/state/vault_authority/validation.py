@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from packages.brain_shared.vault_paths import (
+from lib.shared.vault_paths import (
     normalize_vault_directory_path,
     normalize_vault_file_path,
     normalize_vault_relative_path,

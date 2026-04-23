@@ -10,10 +10,10 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from packages.brain_sdk.client import BrainClient
-from packages.brain_shared.approval import normalize_approval_intent
-from packages.brain_shared.config import ApprovalResponseSettings, CoreRuntimeSettings
-from packages.brain_shared.envelope import (
+from lib.sdk.client import BrainClient
+from lib.shared.approval import normalize_approval_intent
+from lib.shared.config import ApprovalResponseSettings, CoreRuntimeSettings
+from lib.shared.envelope import (
     Envelope,
     EnvelopeKind,
     EnvelopeMeta,
@@ -22,7 +22,7 @@ from packages.brain_shared.envelope import (
     success,
     validate_meta,
 )
-from packages.brain_shared.errors import (
+from lib.shared.errors import (
     ErrorCategory,
     ErrorDetail,
     codes,
@@ -30,7 +30,7 @@ from packages.brain_shared.errors import (
     internal_error,
     validation_error,
 )
-from packages.brain_shared.logging import get_logger, public_api_instrumented
+from lib.shared.logging import get_logger, public_api_instrumented
 from resources.adapters.signal import (
     SignalAdapter,
     SignalInboundCallbackResult,
@@ -61,11 +61,19 @@ from services.action.switchboard.validation import (
     PollOperatorInstructionRequest,
 )
 from services.state.cache_authority.service import CacheAuthorityService
+from services.state.memory_authority.service import (
+    ConversationalMemoryContext,
+    InboundInstructionRecord,
+    MemoryAuthorityService,
+)
 
 _LOGGER = get_logger(__name__)
 _POLL_INTERVAL_SECONDS = 0.25
 _SLASH_COMMAND_RE = re.compile(r"^/([a-zA-Z][a-zA-Z0-9-]*)(?:\s+(.*))?$", re.DOTALL)
 _NAMED_ARG_RE = re.compile(r"--([a-zA-Z][a-zA-Z0-9_-]*)(?:[ =](\S+))?")
+_SLASH_OUTPUT_MODEL = "switchboard-slash-command"
+_SLASH_OUTPUT_PROVIDER = "brain-core"
+_SLASH_OUTPUT_REASONING_LEVEL = "system"
 
 
 def _parse_slash_command(message_text: str) -> tuple[str, str] | None:
@@ -86,7 +94,35 @@ def _parse_slash_args(
     for m in _NAMED_ARG_RE.finditer(args_text):
         key = m.group(1).replace("-", "_")
         result[key] = m.group(2) if m.group(2) is not None else True
+    if result:
+        return result
+    positional_field = _single_string_input_field(input_schema)
+    if positional_field is not None:
+        return {positional_field: args_text.strip()}
     return result
+
+
+def _single_string_input_field(input_schema: dict[str, Any] | None) -> str | None:
+    """Return the only string field for positional slash args, when unambiguous."""
+    if not isinstance(input_schema, dict):
+        return None
+    properties = input_schema.get("properties")
+    if not isinstance(properties, dict) or len(properties) != 1:
+        return None
+    field_name, schema = next(iter(properties.items()))
+    if not isinstance(field_name, str) or not isinstance(schema, dict):
+        return None
+    schema_type = schema.get("type")
+    if schema_type == "string":
+        return field_name
+    if isinstance(schema_type, list) and "string" in schema_type:
+        return field_name
+    any_of = schema.get("anyOf")
+    if isinstance(any_of, list) and any(
+        isinstance(item, dict) and item.get("type") == "string" for item in any_of
+    ):
+        return field_name
+    return None
 
 
 def _render_slash_output(output: Any, simple_output_path: str | None) -> str:
@@ -103,6 +139,11 @@ def _render_slash_output(output: Any, simple_output_path: str | None) -> str:
     return json.dumps(output, indent=2)
 
 
+def _estimate_token_count(text: str) -> int:
+    """Return a bounded rough token count for MAS metadata."""
+    return max(1, (len(text) + 3) // 4)
+
+
 class DefaultSwitchboardService(SwitchboardService):
     """Switchboard implementation that normalizes Signal events and queues them."""
 
@@ -114,6 +155,7 @@ class DefaultSwitchboardService(SwitchboardService):
         adapter: SignalAdapter,
         cache_service: CacheAuthorityService,
         attention_router_service: AttentionRouterService | None = None,
+        memory_authority_service: MemoryAuthorityService | None = None,
         approval_response_settings: ApprovalResponseSettings | None = None,
         brain_client: BrainClient | None = None,
     ) -> None:
@@ -122,6 +164,7 @@ class DefaultSwitchboardService(SwitchboardService):
         self._adapter = adapter
         self._cache_service = cache_service
         self._attention_router_service = attention_router_service
+        self._memory_authority_service = memory_authority_service
         self._approval_response_settings = (
             approval_response_settings
             if approval_response_settings is not None
@@ -140,8 +183,19 @@ class DefaultSwitchboardService(SwitchboardService):
         command_name: str,
         args_text: str,
         source: str,
+        instruction: NormalizedOperatorMessage | None = None,
     ) -> Envelope[ConsoleEnqueueResult]:
         """Resolve and invoke one slash command inline; route output via ARS."""
+        command_text = f"/{command_name}"
+        if args_text.strip() != "":
+            command_text = f"{command_text} {args_text.strip()}"
+        if instruction is None:
+            instruction = NormalizedOperatorMessage(
+                source=source,
+                message_text=command_text,
+                timestamp_ms=int(time.time() * 1000),
+            )
+
         if self._brain_client is None:
             output = f"/{command_name}: slash commands not available (brain_client not configured)."
         else:
@@ -163,6 +217,18 @@ class DefaultSwitchboardService(SwitchboardService):
                 except Exception as exc:  # noqa: BLE001
                     output = f"/{command_name} failed: {exc}"
 
+        session_id = self._record_slash_inbound_turn(meta=meta, instruction=instruction)
+        conversational_memory = (
+            None
+            if session_id is None
+            else ConversationalMemoryContext(
+                session_id=session_id,
+                model=_SLASH_OUTPUT_MODEL,
+                provider=_SLASH_OUTPUT_PROVIDER,
+                token_count=_estimate_token_count(output),
+                reasoning_level=_SLASH_OUTPUT_REASONING_LEVEL,
+            )
+        )
         if self._attention_router_service is not None:
             route_meta = new_meta(
                 kind=meta.kind,
@@ -176,6 +242,7 @@ class DefaultSwitchboardService(SwitchboardService):
                 channel=source,
                 message=output,
                 force=True,
+                conversational_memory=conversational_memory,
             )
         else:
             _LOGGER.warning(
@@ -191,6 +258,57 @@ class DefaultSwitchboardService(SwitchboardService):
             meta=meta,
             payload=ConsoleEnqueueResult(queued=False, queue_name=""),
         )
+
+    def _record_slash_inbound_turn(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        instruction: NormalizedOperatorMessage,
+    ) -> str | None:
+        """Persist an intercepted slash command as an inbound MAS turn."""
+        if self._memory_authority_service is None:
+            return None
+
+        session_meta = new_meta(
+            kind=meta.kind,
+            source=str(SERVICE_COMPONENT_ID),
+            principal=meta.principal,
+            trace_id=meta.trace_id,
+            parent_id=meta.envelope_id,
+        )
+        session = self._memory_authority_service.get_latest_or_create_session(
+            meta=session_meta
+        )
+        if not session.ok or session.payload is None:
+            _LOGGER.warning(
+                "slash command inbound cannot be recorded: session lookup failed",
+                extra={"channel": instruction.source},
+            )
+            return None
+
+        session_id = session.payload.value.id
+        record_meta = new_meta(
+            kind=meta.kind,
+            source=str(SERVICE_COMPONENT_ID),
+            principal=meta.principal,
+            trace_id=meta.trace_id,
+            parent_id=session_meta.envelope_id,
+        )
+        record = self._memory_authority_service.record_inbound_turn(
+            meta=record_meta,
+            session_id=session_id,
+            message=instruction.message_text,
+            instruction=InboundInstructionRecord.model_validate(
+                instruction.model_dump(mode="python")
+            ),
+        )
+        if record.ok:
+            return session_id
+        _LOGGER.warning(
+            "slash command inbound cannot be recorded",
+            extra={"channel": instruction.source, "session_id": session_id},
+        )
+        return None
 
     @classmethod
     def from_settings(
@@ -306,6 +424,28 @@ class DefaultSwitchboardService(SwitchboardService):
                 "message_text": message.message_text,
             },
         )
+        parsed = _parse_slash_command(message.message_text)
+        if parsed is not None:
+            command_name, args_text = parsed
+            slash_result = self._handle_slash_command(
+                meta=meta,
+                command_name=command_name,
+                args_text=args_text,
+                source=message.source,
+                instruction=message,
+            )
+            if not slash_result.ok:
+                return failure(meta=meta, errors=slash_result.errors)
+            return success(
+                meta=meta,
+                payload=IngestResult(
+                    accepted=True,
+                    queued=False,
+                    queue_name=self._settings.queue_name,
+                    reason="slash command handled",
+                    message=message,
+                ),
+            )
         queue_payload = {
             "source": message.source,
             "sender_e164": message.sender_e164,

@@ -7,16 +7,16 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict
 
-from packages.brain_core import health as health_module
-from packages.brain_shared.config import (
+from lib.core import health as health_module
+from lib.shared.config import (
     CoreHealthSettings,
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,
 )
-from packages.brain_shared.envelope import EnvelopeMeta, failure, new_meta, success
-from packages.brain_shared.envelope.meta import EnvelopeKind
-from packages.brain_shared.errors import dependency_error
+from lib.shared.envelope import EnvelopeMeta, failure, new_meta, success
+from lib.shared.envelope.meta import EnvelopeKind
+from lib.shared.errors import dependency_error
 
 
 class _HealthPayload(BaseModel):

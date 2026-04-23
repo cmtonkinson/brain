@@ -6,21 +6,21 @@ from datetime import UTC, datetime
 import hashlib
 from typing import Any
 
-from packages.brain_shared.envelope import (
+from lib.shared.envelope import (
     Envelope,
     EnvelopeMeta,
     failure,
     success,
     validate_meta,
 )
-from packages.brain_shared.errors import (
+from lib.shared.errors import (
     ErrorDetail,
     codes,
     dependency_error,
     not_found_error,
     validation_error,
 )
-from packages.brain_shared.logging import get_logger, public_api_instrumented
+from lib.shared.logging import get_logger, public_api_instrumented
 from services.control.ingestion.component import SERVICE_COMPONENT_ID
 from services.control.ingestion.config import IngestionServiceSettings
 from services.control.ingestion.data.runtime import IngestionPostgresRuntime
@@ -593,7 +593,7 @@ class DefaultIngestionService(IngestionService):
                 last_error=error_text,
                 updated_at=_utc_now(),
             )
-            from packages.brain_shared.errors import internal_error
+            from lib.shared.errors import internal_error
 
             return failure(meta=meta, errors=[internal_error(error_text)])
 
@@ -651,7 +651,7 @@ class DefaultIngestionService(IngestionService):
                 last_error=error_text,
                 updated_at=_utc_now(),
             )
-            from packages.brain_shared.errors import internal_error
+            from lib.shared.errors import internal_error
 
             return failure(meta=meta, errors=[internal_error(error_text)])
 
@@ -719,7 +719,7 @@ class DefaultIngestionService(IngestionService):
                 last_error=error_text,
                 updated_at=_utc_now(),
             )
-            from packages.brain_shared.errors import internal_error
+            from lib.shared.errors import internal_error
 
             return failure(meta=meta, errors=[internal_error(error_text)])
 
@@ -787,7 +787,7 @@ class DefaultIngestionService(IngestionService):
                 last_error=error_text,
                 updated_at=_utc_now(),
             )
-            from packages.brain_shared.errors import internal_error
+            from lib.shared.errors import internal_error
 
             return failure(meta=meta, errors=[internal_error(error_text)])
 
@@ -1132,7 +1132,7 @@ class DefaultIngestionService(IngestionService):
             return self.run_normalize_stage(meta=meta, ingestion_id=ingestion_id)
         if stage == "anchor":
             return self.run_anchor_stage(meta=meta, ingestion_id=ingestion_id)
-        from packages.brain_shared.errors import internal_error
+        from lib.shared.errors import internal_error
 
         return failure(meta=meta, errors=[internal_error(f"unknown stage: {stage}")])
 
@@ -1153,7 +1153,7 @@ class DefaultIngestionService(IngestionService):
                 last_error=error_text,
                 updated_at=_utc_now(),
             )
-            from packages.brain_shared.errors import internal_error
+            from lib.shared.errors import internal_error
 
             return failure(meta=meta, errors=[internal_error(error_text)])
 
@@ -1199,7 +1199,7 @@ class DefaultIngestionService(IngestionService):
                 last_error=error_text,
                 updated_at=_utc_now(),
             )
-            from packages.brain_shared.errors import internal_error
+            from lib.shared.errors import internal_error
 
             return failure(
                 meta=meta,
@@ -1236,7 +1236,7 @@ class DefaultIngestionService(IngestionService):
                 last_error=error_text,
                 updated_at=_utc_now(),
             )
-            from packages.brain_shared.errors import internal_error
+            from lib.shared.errors import internal_error
 
             return failure(meta=meta, errors=[internal_error(error_text)])
 
@@ -1297,7 +1297,7 @@ class DefaultIngestionService(IngestionService):
                 last_error=error_text,
                 updated_at=_utc_now(),
             )
-            from packages.brain_shared.errors import internal_error
+            from lib.shared.errors import internal_error
 
             return failure(
                 meta=meta,
@@ -1454,7 +1454,7 @@ class DefaultIngestionService(IngestionService):
 
         Called from ``submit_ingestion`` while the raw payload is in scope.
         """
-        from packages.brain_shared.errors import internal_error
+        from lib.shared.errors import internal_error
 
         self._repository.update_ingestion_status(
             ingestion_id=record.id,
@@ -1509,7 +1509,7 @@ class DefaultIngestionService(IngestionService):
                 last_error=result.error,
                 updated_at=_utc_now(),
             )
-            from packages.brain_shared.errors import internal_error as _ie
+            from lib.shared.errors import internal_error as _ie
 
             return failure(
                 meta=meta, errors=[_ie(result.error or "store stage failed")]
@@ -1539,7 +1539,7 @@ class DefaultIngestionService(IngestionService):
         if self._oas is None:
             raise RuntimeError("Object Authority Service is not available")
 
-        from packages.brain_shared.envelope import new_meta, EnvelopeKind
+        from lib.shared.envelope import new_meta, EnvelopeKind
 
         oas_meta = new_meta(
             kind=EnvelopeKind.COMMAND,
@@ -1637,7 +1637,7 @@ class DefaultIngestionService(IngestionService):
         if self._oas is None:
             raise RuntimeError("Object Authority Service is not available")
 
-        from packages.brain_shared.envelope import new_meta, EnvelopeKind
+        from lib.shared.envelope import new_meta, EnvelopeKind
 
         oas_meta = new_meta(
             kind=EnvelopeKind.COMMAND,
@@ -1779,7 +1779,7 @@ class DefaultIngestionService(IngestionService):
         if self._oas is None:
             raise RuntimeError("Object Authority Service is not available")
 
-        from packages.brain_shared.envelope import new_meta, EnvelopeKind
+        from lib.shared.envelope import new_meta, EnvelopeKind
 
         oas_meta = new_meta(
             kind=EnvelopeKind.COMMAND,
@@ -1953,7 +1953,7 @@ class DefaultIngestionService(IngestionService):
         if self._oas is None:
             raise RuntimeError("Object Authority Service is not available")
 
-        from packages.brain_shared.envelope import new_meta, EnvelopeKind
+        from lib.shared.envelope import new_meta, EnvelopeKind
 
         oas_meta = new_meta(
             kind=EnvelopeKind.COMMAND,
@@ -2137,7 +2137,7 @@ class DefaultIngestionService(IngestionService):
         if self._oas is None:
             raise RuntimeError("Object Authority Service is not available")
 
-        from packages.brain_shared.envelope import new_meta, EnvelopeKind
+        from lib.shared.envelope import new_meta, EnvelopeKind
 
         svc_meta = new_meta(
             kind=EnvelopeKind.COMMAND,
@@ -2524,7 +2524,7 @@ def _filename_for_ingestion(ingestion_id: str, ext: str) -> str:
 
 def _service_meta(*, meta: EnvelopeMeta) -> EnvelopeMeta:
     """Build service-origin metadata for internal public API calls."""
-    from packages.brain_shared.envelope import EnvelopeKind, new_meta
+    from lib.shared.envelope import EnvelopeKind, new_meta
 
     return new_meta(
         kind=EnvelopeKind.COMMAND,

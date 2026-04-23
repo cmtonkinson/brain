@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from services.action.capability_engine.config import CapabilityEngineSettings
 from services.action.capability_engine.data.repository import (
     InMemoryCapabilityInvocationAuditRepository,

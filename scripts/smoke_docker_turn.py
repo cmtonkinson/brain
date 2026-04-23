@@ -582,6 +582,8 @@ def main() -> int:
                 "down",
                 "--volumes",
                 "--remove-orphans",
+                "--rmi",
+                "local",
                 check=False,
             )
 

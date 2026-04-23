@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta, timezone
 import pytest
 from pydantic import ValidationError
 
-from packages.brain_shared.envelope import (
+from lib.shared.envelope import (
     EnvelopeKind,
     EnvelopeMeta,
     new_meta,

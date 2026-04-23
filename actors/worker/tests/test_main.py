@@ -15,8 +15,8 @@ from typing import Any
 
 import pytest
 
-from packages.brain_sdk.calls import JobClaimResult
-from packages.brain_sdk.errors import (
+from lib.sdk.calls import JobClaimResult
+from lib.sdk.errors import (
     BrainDependencyError,
     BrainDomainError,
     BrainTransportError,

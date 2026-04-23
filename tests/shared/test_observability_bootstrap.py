@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.config import ObservabilitySettings
-from packages.brain_shared.observability import bootstrap as bootstrap_module
-from packages.brain_shared.observability import (
+from lib.shared.config import ObservabilitySettings
+from lib.shared.observability import bootstrap as bootstrap_module
+from lib.shared.observability import (
     bootstrap_observability,
     is_llm_content_capture_enabled,
     is_observability_enabled,

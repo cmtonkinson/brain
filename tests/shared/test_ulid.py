@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-from packages.brain_shared.ids import (
+from lib.shared.ids import (
     generate_ulid_bytes,
     generate_ulid_str,
     ulid_bytes_to_str,

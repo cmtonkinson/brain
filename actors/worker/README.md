@@ -81,7 +81,7 @@ Worker Actor is a Layer 2 Actor. It owns no Service or Resource
 components.
 
 Boundary rules:
-- All Brain Core access is through `BrainClient` (`packages/brain_sdk`).
+- All Brain Core access is through `BrainClient` (`lib/sdk`).
 - No direct HTTP calls or database access.
 - The external boundary is the Job Service queue and the heartbeat file.
 

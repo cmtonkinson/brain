@@ -7,8 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from packages.brain_shared.envelope import EnvelopeMeta
-from packages.brain_shared.errors import ErrorDetail
+from lib.shared.envelope import EnvelopeMeta
+from lib.shared.errors import ErrorDetail
 
 APPROVAL_REQUIRED_OBLIGATION = "approval_required"
 UNKNOWN_CALL_TARGET_REASON = "unknown_call_target"

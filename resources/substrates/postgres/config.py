@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 from urllib.parse import quote_plus
 
-from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
+from lib.shared.config import CoreRuntimeSettings, resolve_component_settings
 from pydantic import BaseModel, Field, model_validator
 from resources.substrates.postgres.component import RESOURCE_COMPONENT_ID
 

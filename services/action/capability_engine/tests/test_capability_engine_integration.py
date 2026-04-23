@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from packages.brain_shared.envelope import EnvelopeKind, new_meta
+from lib.shared.envelope import EnvelopeKind, new_meta
 from services.action.capability_engine.config import CapabilityEngineSettings
 from services.action.capability_engine.data.repository import (
     InMemoryCapabilityInvocationAuditRepository,
@@ -53,7 +53,7 @@ class _AllowPolicy:
         return execute(request)
 
     def health(self, *, meta):
-        from packages.brain_shared.envelope import success
+        from lib.shared.envelope import success
         from services.action.policy_service.domain import PolicyHealthStatus
 
         return success(
@@ -79,7 +79,7 @@ def test_from_settings_succeeds_with_mcp_adapter_settings(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """CES from_settings should succeed with MCP adapter settings."""
-    from packages.brain_shared.config import (
+    from lib.shared.config import (
         CoreRuntimeSettings,
         CoreSettings,
         ResourcesSettings,

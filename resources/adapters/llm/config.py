@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
+from lib.shared.config import CoreRuntimeSettings, resolve_component_settings
 from resources.adapters.llm.component import RESOURCE_COMPONENT_ID
 
 

@@ -50,6 +50,9 @@ agent:
   system_prompt_append: ""
   capability_discovery_deny_list:
     - attention-notify
+  environment_context:
+    - capability_id: current-datetime
+      input_payload: {}
   tool_return_compress_threshold: 4000
   tool_return_max_chars: 8000
   tool_loop_tier2_hop_threshold: 3

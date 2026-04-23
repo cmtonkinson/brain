@@ -6,7 +6,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from packages.brain_shared.ids.constants import ULID_DOMAIN_NAME
+from lib.shared.ids.constants import ULID_DOMAIN_NAME
 from services.action.capability_engine.data.runtime import (
     capability_engine_postgres_schema,
 )

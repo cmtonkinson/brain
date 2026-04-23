@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-from packages.brain_shared.errors import codes
+from lib.shared.errors import codes
 from resources.substrates.postgres.errors import normalize_postgres_error
 
 

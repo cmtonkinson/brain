@@ -8,22 +8,22 @@ from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 from pydantic import BaseModel, ValidationError
-from packages.brain_shared.config import CoreRuntimeSettings, resolve_component_settings
-from packages.brain_shared.envelope import (
+from lib.shared.config import CoreRuntimeSettings, resolve_component_settings
+from lib.shared.envelope import (
     EnvelopeMeta,
     Envelope,
     failure,
     success,
     validate_meta,
 )
-from packages.brain_shared.errors import (
+from lib.shared.errors import (
     ErrorDetail,
     codes,
     dependency_error,
     not_found_error,
     validation_error,
 )
-from packages.brain_shared.logging import get_logger, public_api_instrumented
+from lib.shared.logging import get_logger, public_api_instrumented
 from resources.substrates.postgres.errors import normalize_postgres_error
 from resources.substrates.qdrant import QdrantSettings
 from resources.substrates.qdrant.component import (

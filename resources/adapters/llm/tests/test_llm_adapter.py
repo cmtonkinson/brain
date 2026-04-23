@@ -6,7 +6,9 @@ import httpx
 import pytest
 
 import resources.adapters.llm.llm_adapter as adapter_module
-from packages.brain_shared.language_model import (
+from lib.shared.language_model import (
+    InferenceEnvironmentContext,
+    InferenceEnvironmentItem,
     InferenceAssistantTextEvent,
     InferenceCache,
     InferenceMemoryContext,
@@ -228,6 +230,71 @@ def test_chat_with_tools_uses_native_anthropic_tool_blocks(
     assert any(item.get("type") == "tool_use" for item in messages[1]["content"])
     assert messages[2]["role"] == "user"
     assert messages[2]["content"][0]["type"] == "tool_result"
+
+
+def test_chat_with_tools_serializes_environment_context_after_cachepoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Environment context should render after CP0 without adding cache controls."""
+    calls: list[dict[str, object]] = []
+
+    def _fake_post(
+        url: str, *, headers: dict[str, str], json: object, timeout: float
+    ) -> httpx.Response:
+        calls.append({"url": url, "headers": headers, "json": json, "timeout": timeout})
+        return _json_response(
+            {
+                "content": [{"type": "text", "text": "hello"}],
+                "stop_reason": "end_turn",
+            }
+        )
+
+    monkeypatch.setattr(adapter_module.httpx, "post", _fake_post)
+    adapter = HttpLlmAdapter(settings=_anthropic_settings())
+    inference_request = make_inference_request(
+        memory_context=InferenceMemoryContext(
+            current_focus="Current focus",
+            recent_conversation_summary="Conversation summary",
+            recent_turns=(),
+            reference_snippets=(),
+        ),
+        environment_context=InferenceEnvironmentContext(
+            items=(
+                InferenceEnvironmentItem(
+                    capability_id="current-datetime",
+                    tag_name="current-datetime",
+                    output={
+                        "utc_timestamp": "2026-01-01T12:00:00+00:00",
+                        "local_timestamp": "2026-01-01T07:00:00-05:00",
+                        "local_timezone": "America/New_York",
+                    },
+                ),
+            )
+        ),
+        cache=InferenceCache(mode="explicit"),
+    )
+
+    adapter.chat_with_tools(
+        provider="anthropic",
+        model="claude-sonnet-4-5",
+        inference_request=inference_request,
+    )
+
+    body = calls[0]["json"]
+    assert isinstance(body, dict)
+    messages = body["messages"]
+    assert isinstance(messages, list)
+    context_blocks = messages[0]["content"]
+    assert isinstance(context_blocks, list)
+    assert len(context_blocks) == 2
+    assert "cache_control" in context_blocks[0]
+    assert "cache_control" not in context_blocks[1]
+    assert context_blocks[0]["text"].index("<areas_of_focus>") < context_blocks[0][
+        "text"
+    ].index("<recent_conversation_summary>")
+    assert "<environment_context>" in context_blocks[1]["text"]
+    assert "<current-datetime>" in context_blocks[1]["text"]
+    assert '"local_timezone":"America/New_York"' in context_blocks[1]["text"]
 
 
 def test_chat_with_tools_caps_anthropic_cache_control_blocks(

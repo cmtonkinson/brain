@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.errors import (
+from lib.shared.errors import (
     ErrorDetail,
     codes,
     conflict_error,

@@ -17,7 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-from packages.brain_shared.ids import ulid_primary_key_column
+from lib.shared.ids import ulid_primary_key_column
 from services.action.language_model.data.runtime import language_model_postgres_schema
 
 metadata = MetaData()

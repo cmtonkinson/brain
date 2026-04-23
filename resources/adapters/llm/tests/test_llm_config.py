@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from packages.brain_shared.config import (
+from lib.shared.config import (
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,

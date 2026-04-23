@@ -45,6 +45,7 @@
 /jobs/update: update mutable fields on an existing job
 /jobs/health: return Job Service and provider health state
 /commitment/create: create a commitment directly or persist a creation proposal
+/commitment/extract-candidates: extract zero or more commitment candidate signals from arbitrary text
 /commitment/get: read one commitment by id
 /commitment/health: return Commitment Service readiness status
 /commitment/history: return one commitment plus its progress and transition history

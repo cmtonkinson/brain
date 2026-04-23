@@ -305,4 +305,26 @@ class CommitmentCandidateIntakeRequest(BaseModel):
     effort_provided: int = Field(default=2, ge=1, le=3)
     effort_inferred: int | None = Field(default=None, ge=1, le=3)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class CommitmentCandidate(BaseModel):
+    """One commitment signal extracted from source text."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    description: str
+    importance: int | None = None
+    effort_provided: int | None = None
+    due_by: datetime | None = None
+    due_timezone: str | None = None
+    confidence: float
+    reasoning: str | None = None
+
+
+class ExtractCandidatesResult(BaseModel):
+    """Result of extracting commitment candidates from one text input."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    candidates: tuple[CommitmentCandidate, ...]
     requested_by: ProposalActor = ProposalActor.SERVICE

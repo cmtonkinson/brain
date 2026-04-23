@@ -8,8 +8,8 @@ from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from packages.brain_shared.envelope import EnvelopeKind, EnvelopeMeta, new_meta
-from packages.brain_shared.errors import ErrorCategory
+from lib.shared.envelope import EnvelopeKind, EnvelopeMeta, new_meta
+from lib.shared.errors import ErrorCategory
 from services.control.commitment.service import CommitmentService
 
 
@@ -19,6 +19,11 @@ class _MetaFields(BaseModel):
     trace_id: str | None = None
     envelope_id: str | None = None
     parent_id: str = ""
+
+
+class _ExtractCandidatesRequest(_MetaFields):
+    text: str
+    context: str = ""
 
 
 class _CreateCommitmentRequest(_MetaFields):
@@ -208,6 +213,19 @@ def register_routes(*, router: APIRouter, service: CommitmentService) -> None:
                 service.list_review_items,
                 meta=_meta_from(request),
                 review_run_id=request.review_run_id,
+            )
+        )
+
+    @router.post("/commitment/extract-candidates")
+    async def extract_commitment_candidates(
+        request: _ExtractCandidatesRequest,
+    ) -> _Response:
+        return _to_response(
+            await run_in_threadpool(
+                service.extract_commitment_candidates,
+                meta=_meta_from(request),
+                text=request.text,
+                context=request.context,
             )
         )
 
