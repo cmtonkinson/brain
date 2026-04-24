@@ -48,7 +48,6 @@ from lib.sdk import (
     SdkErrorDetail,
     SwitchboardOperatorInstruction,
     ToolSystemHint,
-    render_system_prompt,
     render_system_prompt_blocks,
     render_system_tool_hints,
 )
@@ -195,12 +194,15 @@ def _json_dumps_or_empty(value: object | None) -> str:
 
 
 def _operator_observation_input(
+    *,
+    system_blocks: tuple[InferenceSystemBlock, ...],
     instruction: SwitchboardOperatorInstruction,
 ) -> dict[str, object]:
     """Return the Langfuse-facing root turn input payload."""
     payload: dict[str, object] = {
         "message": _instruction_context_message(instruction),
         "channel": instruction.source,
+        "system_prompt": _system_blocks_for_observation(system_blocks),
     }
     if instruction.sender_e164 != "":
         payload["sender_e164"] = instruction.sender_e164
@@ -209,6 +211,17 @@ def _operator_observation_input(
     if instruction.reaction_emoji is not None:
         payload["reaction_emoji"] = instruction.reaction_emoji
     return payload
+
+
+def _system_blocks_for_observation(
+    blocks: tuple[InferenceSystemBlock, ...],
+) -> str:
+    """Render canonical system blocks into one stable observation string."""
+    return "\n\n".join(
+        f"<{block.kind}>\n{block.text}\n</{block.kind}>"
+        for block in blocks
+        if block.text != ""
+    )
 
 
 def _agent_turn_observation(
@@ -247,7 +260,10 @@ class _AgentTurnObservation:
         span = manager.__enter__()
         self._manager = manager
         self._span = span
-        observation_input = _operator_observation_input(self._instruction)
+        observation_input = _operator_observation_input(
+            system_blocks=self._runtime.system_blocks,
+            instruction=self._instruction,
+        )
         input_json = _json_dumps_or_empty(observation_input)
         _set_span_attributes(
             span,
@@ -589,6 +605,8 @@ class _AgentRuntime:
     model: "_BrainSdkToolModel"
     agent: Agent[None, str]
     lms_request_timeout_seconds: float
+    preferred_timezone: str = "UTC"
+    system_blocks: tuple[InferenceSystemBlock, ...] = ()
     environment_context_entries: tuple[object, ...] = ()
 
 
@@ -1987,7 +2005,6 @@ def _create_runtime(
     lms_request_timeout_seconds: float | None = None,
 ) -> _AgentRuntime:
     """Create one fully wired agent runtime from the published Core surface."""
-    del core_settings
     personality = str(getattr(settings.agent, "personality", "default"))
     operator_profile = str(
         getattr(settings.agent, "operator_profile", "Refer to me as 'boss'")
@@ -2004,12 +2021,6 @@ def _create_runtime(
     capabilities = client.describe_capabilities()
     always_on_capabilities = client.list_always_on_capabilities()
     tool_system_hints = render_system_tool_hints(_list_tool_system_hints(client))
-    system_prompt = render_system_prompt(
-        personality,
-        operator_profile=operator_profile,
-        system_tool_hints=tool_system_hints,
-        system_prompt_append=system_prompt_append,
-    )
     system_blocks = render_system_prompt_blocks(
         personality,
         operator_profile=operator_profile,
@@ -2059,7 +2070,7 @@ def _create_runtime(
     )
     agent = Agent(
         model,
-        system_prompt=system_prompt,
+        system_prompt="",
         retries=3,
         max_concurrency=1,
         tools=[*capability_tools, *runtime_tools],
@@ -2076,6 +2087,12 @@ def _create_runtime(
         lms_request_timeout_seconds=(
             0.0 if lms_request_timeout_seconds is None else lms_request_timeout_seconds
         ),
+        preferred_timezone=str(
+            getattr(
+                getattr(core_settings, "profile", None), "preferred_timezone", "UTC"
+            )
+        ),
+        system_blocks=system_blocks,
         environment_context_entries=tuple(
             getattr(settings.agent, "environment_context", ())
         ),
@@ -2669,6 +2686,7 @@ async def _process_instruction(
             entries=runtime.environment_context_entries,
             actor=runtime.turn_state.actor,
             channel=runtime.turn_state.channel,
+            preferred_timezone=runtime.preferred_timezone,
             meta=runtime.turn_state.nested_call_meta(),
         )
         for diagnostic in environment_diagnostics:

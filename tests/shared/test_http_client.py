@@ -185,3 +185,136 @@ def test_http_client_logs_operation_metadata() -> None:
     assert completed.operation == "switchboard.poll_operator_instruction"
     assert completed.endpoint == "/switchboard/poll_operator_instruction"
     assert completed.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# _status_error helper
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status_code", [500, 502, 503])
+def test_status_error_marks_5xx_retryable(status_code: int) -> None:
+    """5xx status codes should produce retryable=True errors."""
+    request = httpx.Request("GET", "https://example.test/health")
+    response = httpx.Response(status_code, text="fail", request=request)
+    error = http_client_module._status_error(response)
+    assert error.retryable is True
+    assert error.status_code == status_code
+
+
+def test_status_error_marks_429_retryable() -> None:
+    """429 Too Many Requests should produce retryable=True."""
+    request = httpx.Request("GET", "https://example.test/health")
+    response = httpx.Response(429, text="rate limited", request=request)
+    error = http_client_module._status_error(response)
+    assert error.retryable is True
+    assert error.status_code == 429
+
+
+@pytest.mark.parametrize("status_code", [400, 401, 403, 404])
+def test_status_error_marks_4xx_not_retryable(status_code: int) -> None:
+    """4xx client errors (excluding 429) should produce retryable=False."""
+    request = httpx.Request("GET", "https://example.test/health")
+    response = httpx.Response(status_code, text="client error", request=request)
+    error = http_client_module._status_error(response)
+    assert error.retryable is False
+
+
+# ---------------------------------------------------------------------------
+# _request_log_fields helper
+# ---------------------------------------------------------------------------
+
+
+def test_request_log_fields_extracts_endpoint_from_url() -> None:
+    """Log fields should extract the path as the endpoint."""
+    fields = http_client_module._request_log_fields(
+        method="GET",
+        url="https://example.com/foo/bar?q=1",
+        operation="test.op",
+    )
+    assert fields["endpoint"] == "/foo/bar"
+
+
+def test_request_log_fields_extracts_service_from_operation() -> None:
+    """Log fields should extract the service name from the operation prefix."""
+    fields = http_client_module._request_log_fields(
+        method="POST",
+        url="https://example.com/vault/get",
+        operation="vault.get_note",
+    )
+    assert fields["service"] == "vault"
+    assert fields["operation"] == "vault.get_note"
+
+
+def test_request_log_fields_omits_service_when_operation_empty() -> None:
+    """Log fields should not include service key when operation is empty."""
+    fields = http_client_module._request_log_fields(
+        method="GET",
+        url="https://example.com/health",
+        operation="",
+    )
+    assert "service" not in fields
+    assert "operation" not in fields
+
+
+# ---------------------------------------------------------------------------
+# Context manager behavior
+# ---------------------------------------------------------------------------
+
+
+def test_http_client_context_manager_closes_cleanly() -> None:
+    """HttpClient should support with-statement and close on exit."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True}, request=request)
+
+    with HttpClient(
+        base_url="https://example.test",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        result = client.get_json("/health")
+        assert result == {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# raise_for_status=False
+# ---------------------------------------------------------------------------
+
+
+def test_http_client_returns_error_response_when_raise_for_status_false() -> None:
+    """Disabling raise_for_status should return error responses without raising."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="internal", request=request)
+
+    with HttpClient(
+        base_url="https://example.test",
+        transport=httpx.MockTransport(handler),
+    ) as client:
+        response = client.get("/health", raise_for_status=False)
+        assert response.status_code == 500
+        assert response.text == "internal"
+
+
+# ---------------------------------------------------------------------------
+# Client ownership
+# ---------------------------------------------------------------------------
+
+
+def test_http_client_does_not_close_externally_provided_client() -> None:
+    """An externally provided httpx.Client should not be closed by the wrapper."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True}, request=request)
+
+    external = httpx.Client(
+        base_url="https://example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    wrapper = HttpClient(client=external)
+    wrapper.close()
+
+    # External client should still be usable after wrapper closes.
+    response = external.get("/health")
+    assert response.status_code == 200
+    external.close()

@@ -1050,7 +1050,21 @@ def call_switchboard_poll_console_response(
     )
 
 
-def _post_json(
+_SDK_SPAN_MAX_CHARS = 8_000
+
+
+def _set_sdk_span_attribute(
+    span: object, key: str, value: object, *, enabled: bool
+) -> None:
+    """Attach one JSON-serialized attribute to a span when capture is enabled."""
+    set_attribute = getattr(span, "set_attribute", None)
+    if not callable(set_attribute) or not enabled:
+        return
+    serialized = json.dumps(value, sort_keys=True, default=str)
+    set_attribute(key, serialized[:_SDK_SPAN_MAX_CHARS])
+
+
+def _raw_post_json(
     *,
     operation: str,
     http: object,
@@ -1088,6 +1102,60 @@ def _post_json(
             status_code=0,
             retryable=True,
         ) from exc
+
+
+def _post_json(
+    *,
+    operation: str,
+    http: object,
+    url: str,
+    body: dict[str, object],
+    timeout_seconds: float,
+    method: str = "post",
+) -> dict[str, Any]:
+    """Issue one HTTP request, annotating an OTel span with input/output."""
+    try:
+        from opentelemetry import trace as _otel_trace
+        from lib.shared.observability.bootstrap import (
+            is_llm_content_capture_enabled,
+            is_observability_enabled,
+        )
+    except ImportError:
+        return _raw_post_json(
+            operation=operation,
+            http=http,
+            url=url,
+            body=body,
+            timeout_seconds=timeout_seconds,
+            method=method,
+        )
+    if not is_observability_enabled():
+        return _raw_post_json(
+            operation=operation,
+            http=http,
+            url=url,
+            body=body,
+            timeout_seconds=timeout_seconds,
+            method=method,
+        )
+    capture = is_llm_content_capture_enabled()
+    tracer = _otel_trace.get_tracer("brain.sdk")
+    with tracer.start_as_current_span(f"sdk.{operation}") as span:
+        _set_sdk_span_attribute(
+            span, "langfuse.observation.input", body, enabled=capture
+        )
+        response = _raw_post_json(
+            operation=operation,
+            http=http,
+            url=url,
+            body=body,
+            timeout_seconds=timeout_seconds,
+            method=method,
+        )
+        _set_sdk_span_attribute(
+            span, "langfuse.observation.output", response, enabled=capture
+        )
+        return response
 
 
 def _errors_from_data(data: dict[str, Any]) -> list[object]:

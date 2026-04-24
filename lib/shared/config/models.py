@@ -299,6 +299,33 @@ class CliActorSettings(ActorNamespaceSettings):
     source: str = "cli"
 
 
+class LocalDateTimeBoundaryResolverSettings(BaseModel):
+    """Dynamic local datetime resolver for environment-context input values."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    resolve: Literal["local_datetime_boundary"]
+    boundary: Literal["start_of_day", "end_of_day"]
+    day_offset: int = 0
+    format: Literal["iso8601"] = "iso8601"
+
+
+def _validate_environment_context_value(value: Any) -> Any:
+    """Recursively validate one environment-context payload value."""
+    if isinstance(value, dict):
+        if "resolve" in value:
+            return LocalDateTimeBoundaryResolverSettings.model_validate(
+                value
+            ).model_dump(mode="python")
+        return {
+            str(key): _validate_environment_context_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_validate_environment_context_value(item) for item in value]
+    return value
+
+
 class AgentEnvironmentContextEntrySettings(BaseModel):
     """One capability-backed Agent environment-context entry."""
 
@@ -309,6 +336,15 @@ class AgentEnvironmentContextEntrySettings(BaseModel):
         pattern=r"^[a-z0-9]+(?:-{1,2}[a-z0-9]+)*$",
     )
     input_payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("input_payload")
+    @classmethod
+    def _validate_input_payload(cls, value: dict[str, Any]) -> dict[str, Any]:
+        """Validate recursive resolver specs inside one input payload."""
+        return {
+            str(key): _validate_environment_context_value(item)
+            for key, item in value.items()
+        }
 
 
 class AgentActorSettings(ActorNamespaceSettings):

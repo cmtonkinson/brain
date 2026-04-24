@@ -90,7 +90,6 @@ from lib.shared.language_model import (
 )
 from lib.sdk.personality import (
     PersonalityNotFoundError,
-    render_system_prompt,
     render_system_prompt_blocks,
     render_system_tool_hints,
 )
@@ -102,7 +101,6 @@ __all__ = [
     "BrainClient",
     "BrainSdkClient",
     "PersonalityNotFoundError",
-    "render_system_prompt",
     "render_system_prompt_blocks",
     "render_system_tool_hints",
     "BrainConflictError",

@@ -744,3 +744,114 @@ def test_call_switchboard_poll_operator_instruction_success() -> None:
     assert result.approval_intent == "approve"
     assert result.reply_to_proposal_token == "tok-quote"
     assert result.reaction_to_proposal_token == "tok-react"
+
+
+# ---------------------------------------------------------------------------
+# _post_json OTel span annotation
+# ---------------------------------------------------------------------------
+
+
+def test_post_json_annotates_span_when_observability_enabled() -> None:
+    """_post_json should create a sdk.* span with input/output when OTel active."""
+    from unittest.mock import patch, MagicMock
+    from lib.sdk.calls import _post_json
+
+    http = _fake_http({"result": "ok"})
+    mock_span = MagicMock()
+    mock_span.set_attribute = MagicMock()
+
+    mock_tracer = MagicMock()
+    mock_tracer.start_as_current_span.return_value.__enter__ = lambda s: mock_span
+    mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+        return_value=False
+    )
+
+    with (
+        patch(
+            "lib.shared.observability.bootstrap.is_observability_enabled",
+            return_value=True,
+        ),
+        patch(
+            "lib.shared.observability.bootstrap.is_llm_content_capture_enabled",
+            return_value=True,
+        ),
+        patch("opentelemetry.trace.get_tracer", return_value=mock_tracer),
+    ):
+        result = _post_json(
+            operation="test.op",
+            http=http,
+            url="/test",
+            body={"key": "value"},
+            timeout_seconds=1.0,
+        )
+
+    assert result == {"result": "ok"}
+    mock_tracer.start_as_current_span.assert_called_once_with("sdk.test.op")
+    calls = {c.args[0]: c.args[1] for c in mock_span.set_attribute.call_args_list}
+    assert "langfuse.observation.input" in calls
+    assert '"key"' in calls["langfuse.observation.input"]
+    assert "langfuse.observation.output" in calls
+    assert '"result"' in calls["langfuse.observation.output"]
+
+
+def test_post_json_skips_span_when_observability_disabled() -> None:
+    """_post_json should call through without a span when observability is off."""
+    from unittest.mock import patch
+    from lib.sdk.calls import _post_json
+
+    http = _fake_http({"result": "ok"})
+
+    with patch(
+        "lib.shared.observability.bootstrap.is_observability_enabled",
+        return_value=False,
+    ):
+        result = _post_json(
+            operation="test.op",
+            http=http,
+            url="/test",
+            body={"key": "value"},
+            timeout_seconds=1.0,
+        )
+
+    assert result == {"result": "ok"}
+    http.post_json.assert_called_once()
+
+
+def test_post_json_omits_content_when_capture_disabled() -> None:
+    """_post_json span should exist but have no input/output when capture off."""
+    from unittest.mock import patch, MagicMock
+    from lib.sdk.calls import _post_json
+
+    http = _fake_http({"result": "ok"})
+    mock_span = MagicMock()
+    mock_span.set_attribute = MagicMock()
+
+    mock_tracer = MagicMock()
+    mock_tracer.start_as_current_span.return_value.__enter__ = lambda s: mock_span
+    mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+        return_value=False
+    )
+
+    with (
+        patch(
+            "lib.shared.observability.bootstrap.is_observability_enabled",
+            return_value=True,
+        ),
+        patch(
+            "lib.shared.observability.bootstrap.is_llm_content_capture_enabled",
+            return_value=False,
+        ),
+        patch("opentelemetry.trace.get_tracer", return_value=mock_tracer),
+    ):
+        result = _post_json(
+            operation="test.op",
+            http=http,
+            url="/test",
+            body={"key": "value"},
+            timeout_seconds=1.0,
+        )
+
+    assert result == {"result": "ok"}
+    set_keys = [c.args[0] for c in mock_span.set_attribute.call_args_list]
+    assert "langfuse.observation.input" not in set_keys
+    assert "langfuse.observation.output" not in set_keys

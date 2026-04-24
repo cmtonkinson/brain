@@ -932,10 +932,8 @@ def test_lms_generation_observation_maps_langfuse_usage_and_content(
     assert "claude-test" in span.attributes["langfuse.observation.output"]
 
 
-def test_langfuse_tool_observation_input_preserves_system_without_assistant_text() -> (
-    None
-):
-    """Compact Langfuse generation input should keep system text only once."""
+def test_langfuse_tool_observation_input_exposes_canonical_ir() -> None:
+    """Tool-call Langfuse input should expose the canonical inference request."""
     from services.action.language_model import implementation as module
 
     inference_request = make_inference_request(
@@ -958,9 +956,25 @@ def test_langfuse_tool_observation_input_preserves_system_without_assistant_text
         request_phase="initial",
     )
 
-    assert payload["message"] == "hello"
-    assert payload["system_prompt"] == "You are Brain.\n\nRefer to me as boss."
-    assert "model draft" not in str(payload)
+    assert payload["request_phase"] == "initial"
+    assert payload["inference_request"] == inference_request.model_dump(mode="python")
+    assert payload["inference_request"]["system"]["blocks"][0] == {
+        "kind": "assistant_persona",
+        "text": "You are Brain.",
+        "cache_after": True,
+    }
+    assert payload["inference_request"]["current_turn"]["operator_message"] == {
+        "channel": "signal",
+        "sender_e164": "+12025550100",
+        "message_text": "hello",
+        "approval_intent": None,
+        "reaction_emoji": None,
+        "quote_target_timestamp_ms": None,
+        "reaction_target_timestamp_ms": None,
+        "reply_to_proposal_token": None,
+        "reaction_to_proposal_token": None,
+    }
+    assert "system_prompt" not in payload
 
 
 def test_langfuse_plain_chat_observation_input_preserves_system_prompt() -> None:

@@ -7,6 +7,53 @@ logging:
   process_name: agent
   environment: dev
 
+core:
+  host: 127.0.0.1
+  port: 8898
+  timeout_seconds: 30.0
+
+cli:
+  principal: operator
+  source: cli
+
+agent:
+  principal: operator
+  source: agent
+  session_start_mode: existing
+  personality: default
+  operator_profile: "Refer to me as 'boss'"
+  system_prompt_append: ""
+  capability_discovery_deny_list:
+    - attention-notify
+  environment_context:
+    - capability_id: current-datetime
+      input_payload: {}
+  # Example EventKit context entries:
+  # environment_context:
+  #   - capability_id: current-datetime
+  #     input_payload: {}
+  #   - capability_id: eventkit--list-reminders
+  #     input_payload: {}
+  #   - capability_id: eventkit--list-calendar-events
+  #     input_payload:
+  #       start_date:
+  #         resolve: local_datetime_boundary
+  #         boundary: start_of_day
+  #         day_offset: 0
+  #       end_date:
+  #         resolve: local_datetime_boundary
+  #         boundary: end_of_day
+  #         day_offset: 1
+  tool_return_compress_threshold: 4000
+  tool_return_max_chars: 8000
+  tool_loop_tier2_hop_threshold: 3
+
+worker:
+  principal: operator
+  source: worker
+  max_workers: 4
+  poll_interval_seconds: 2.0
+
 observability:
   enabled: false
   otlp:
@@ -31,34 +78,3 @@ observability:
       metric_instrumentation_failures_total: brain_public_api_instrumentation_failures_total
       metric_qdrant_ops_total: brain_qdrant_ops_total
       metric_qdrant_op_duration_ms: brain_qdrant_op_duration_ms
-
-core:
-  host: 127.0.0.1
-  port: 8898
-  timeout_seconds: 30.0
-
-cli:
-  principal: operator
-  source: cli
-
-agent:
-  principal: operator
-  source: agent
-  session_start_mode: existing
-  personality: default
-  operator_profile: "Refer to me as 'boss'"
-  system_prompt_append: ""
-  capability_discovery_deny_list:
-    - attention-notify
-  environment_context:
-    - capability_id: current-datetime
-      input_payload: {}
-  tool_return_compress_threshold: 4000
-  tool_return_max_chars: 8000
-  tool_loop_tier2_hop_threshold: 3
-
-worker:
-  principal: operator
-  source: worker
-  max_workers: 4
-  poll_interval_seconds: 2.0

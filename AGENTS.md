@@ -1,8 +1,8 @@
-Follow ~/.config/agents/agents.md now if it exists.
+@~/.config/agents/agents.md
 
 Additional instructions for working in this specific project:
-- Read `README.md`.
-- Read `docs/*.md`.
+- @README.md
+- @docs/*.md
 - Use `make test` to validate when making any code/config changes
   (tests not required for e.g. planning, documentation, etc).
 - This is a new, unpublished, unsupported project. The author is the only

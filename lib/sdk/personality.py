@@ -9,7 +9,6 @@ from typing import Any, Sequence
 from lib.shared.language_model import InferenceSystemBlock
 
 _PERSONALITIES_DIR = Path(__file__).parent / "personalities"
-_SYSTEM_PROMPT_TEMPLATE_PATH = Path(__file__).parent / "system_prompt_template.txt"
 _SYSTEM_PROMPT_INSTRUCTIONS_PATH = (
     Path(__file__).parent / "system_prompt_instructions.txt"
 )
@@ -42,35 +41,6 @@ def _render_template(template: str, /, **values: str) -> str:
             f"unresolved personality template placeholders: {', '.join(sorted(unresolved))}"
         )
     return rendered
-
-
-def render_system_prompt(
-    personality: str = "default",
-    *,
-    operator_profile: str = "Refer to me as 'boss'",
-    system_tool_hints: str = "",
-    system_prompt_append: str = "",
-) -> str:
-    """Load one personality and render the system prompt template.
-
-    Raises PersonalityNotFoundError when the named personality file is missing.
-    """
-    personality_path = _PERSONALITIES_DIR / f"{personality}.md"
-    if not personality_path.exists():
-        raise PersonalityNotFoundError(
-            f"personality '{personality}' not found at {personality_path}"
-        )
-    template = _SYSTEM_PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8")
-    personality_text = personality_path.read_text(encoding="utf-8")
-    instructions_text = _SYSTEM_PROMPT_INSTRUCTIONS_PATH.read_text(encoding="utf-8")
-    return _render_template(
-        template,
-        personality=personality_text,
-        operator_profile=operator_profile,
-        system_prompt_instructions=instructions_text,
-        system_tool_hints=system_tool_hints,
-        system_prompt_append=system_prompt_append,
-    )
 
 
 def render_system_tool_hints(hints: Sequence[Any]) -> str:

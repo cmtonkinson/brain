@@ -44,6 +44,10 @@ from lib.shared.language_model import (
     TextContentPart,
 )
 from lib.shared.logging import get_logger, public_api_instrumented
+from lib.shared.observability import (
+    is_llm_content_capture_enabled,
+    is_observability_enabled,
+)
 from resources.adapters.llm.adapter import (
     AdapterChatResult,
     AdapterChatMessage,
@@ -106,6 +110,31 @@ def _render_prompt_template(template: str, /, **values: str) -> str:
             f"unresolved prompt template placeholders: {', '.join(sorted(unresolved))}"
         )
     return rendered
+
+
+def _set_span_attributes(span: object, attributes: dict[str, object | None]) -> None:
+    """Attach non-empty OTel-compatible attributes to one active span."""
+    set_attribute = getattr(span, "set_attribute", None)
+    if not callable(set_attribute):
+        return
+    for key, value in attributes.items():
+        if value in (None, "", {}, []):
+            continue
+        set_attribute(key, value)
+
+
+def _set_current_span_attributes(attributes: dict[str, object | None]) -> None:
+    """Attach attributes to the active OTel span when tracing is enabled."""
+    if not is_observability_enabled():
+        return
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        return
+    span = trace.get_current_span()
+    if span is None:
+        return
+    _set_span_attributes(span, attributes)
 
 
 _FOCUS_TEMPLATE = _load_prompt_file(_FOCUS_TEMPLATE_PATH)
@@ -470,6 +499,19 @@ class HttpLlmAdapter(LlmAdapter):
             request_body=_json_safe_value(body),
             response_body=None,
         )
+        if is_llm_content_capture_enabled():
+            _set_current_span_attributes(
+                {
+                    "langfuse.observation.input": _json_dumps_or_str(
+                        {
+                            "api_base": audit.request_api_base,
+                            "headers": audit.request_headers,
+                            "body": audit.request_body,
+                        }
+                    ),
+                    "langfuse.observation.metadata.provider_operation": operation,
+                }
+            )
         while True:
             _LOGGER.debug(
                 "LLM provider request starting",
@@ -534,6 +576,15 @@ class HttpLlmAdapter(LlmAdapter):
 
             response_body = _response_payload_from_httpx(response)
             current_audit = audit.model_copy(update={"response_body": response_body})
+            if is_llm_content_capture_enabled():
+                _set_current_span_attributes(
+                    {
+                        "langfuse.observation.output": _json_dumps_or_str(
+                            {"body": current_audit.response_body}
+                        ),
+                        "langfuse.observation.metadata.provider_operation": operation,
+                    }
+                )
             if (
                 _is_retryable_status_code(response.status_code)
                 and dependency_attempt < resolved.max_retries
@@ -1526,10 +1577,16 @@ def _system_blocks_to_content_parts(
     *,
     cache: InferenceCache,
 ) -> tuple[ChatContentPart, ...]:
-    """Convert canonical system blocks into helper content parts."""
+    """Convert canonical system blocks into helper content parts.
+
+    Each block is wrapped in an SGML tag derived from its ``kind`` field so
+    that the model receives structurally labelled sections
+    (e.g. ``<assistant_persona>``, ``<operator_profile>``, ``<instructions>``).
+    """
     parts: list[ChatContentPart] = []
     for block in blocks:
-        parts.append(TextContentPart(text=block.text))
+        wrapped = f"<{block.kind}>\n{block.text}\n</{block.kind}>"
+        parts.append(TextContentPart(text=wrapped))
         if cache.mode == "explicit" and block.cache_after:
             parts.append(CachePointContentPart())
     return tuple(parts)
@@ -2180,7 +2237,10 @@ def _render_content_parts(parts: Sequence[ChatContentPart]) -> str:
     def flush_dialogue() -> None:
         if len(dialogue_turns) == 0:
             return
-        body = "\n".join(f"- {item.role}: {item.text}" for item in dialogue_turns)
+        body = "\n".join(
+            f"<{_dialogue_turn_tag(item.role)}>\n{item.text}\n</{_dialogue_turn_tag(item.role)}>"
+            for item in dialogue_turns
+        )
         rendered.append(_render_prompt_template(_DIALOGUE_TEMPLATE, turns=body))
         dialogue_turns.clear()
 
@@ -2287,6 +2347,15 @@ def _render_operator_message(part: OperatorMessageContentPart) -> str:
         metadata=metadata,
         message_text=part.message_text,
     )
+
+
+def _dialogue_turn_tag(role: str) -> str:
+    """Map one canonical dialogue role to a stable SGML tag name."""
+    if role == "user":
+        return "operator"
+    if role == "assistant":
+        return "assistant"
+    raise ValueError(f"unsupported dialogue role for rendering: {role!r}")
 
 
 def _optional_text(value: str | None) -> str:

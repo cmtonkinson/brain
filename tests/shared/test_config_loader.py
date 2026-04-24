@@ -244,6 +244,180 @@ def test_load_actor_settings_reads_agent_environment_context(tmp_path: Path) -> 
     assert entry.input_payload == {}
 
 
+def test_load_actor_settings_reads_dynamic_environment_context_inputs(
+    tmp_path: Path,
+) -> None:
+    """actors.yaml should support validated dynamic environment-context inputs."""
+    config_file = tmp_path / "actors.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "agent:",
+                "  environment_context:",
+                "    - capability_id: eventkit--list-calendar-events",
+                "      input_payload:",
+                "        start_date:",
+                "          resolve: local_datetime_boundary",
+                "          boundary: start_of_day",
+                "          day_offset: 0",
+                "        end_date:",
+                "          resolve: local_datetime_boundary",
+                "          boundary: end_of_day",
+                "          day_offset: 1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_actor_settings(config_path=config_file, environ={})
+
+    entry = settings.agent.environment_context[0]
+    assert entry.capability_id == "eventkit--list-calendar-events"
+    assert entry.input_payload == {
+        "start_date": {
+            "resolve": "local_datetime_boundary",
+            "boundary": "start_of_day",
+            "day_offset": 0,
+            "format": "iso8601",
+        },
+        "end_date": {
+            "resolve": "local_datetime_boundary",
+            "boundary": "end_of_day",
+            "day_offset": 1,
+            "format": "iso8601",
+        },
+    }
+
+
+def test_load_actor_settings_rejects_invalid_environment_context_resolver(
+    tmp_path: Path,
+) -> None:
+    """actors.yaml should reject malformed dynamic environment-context inputs."""
+    config_file = tmp_path / "actors.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "agent:",
+                "  environment_context:",
+                "    - capability_id: eventkit--list-calendar-events",
+                "      input_payload:",
+                "        start_date:",
+                "          resolve: local_datetime_boundary",
+                "          boundary: noon",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="start_of_day|end_of_day"):
+        load_actor_settings(config_path=config_file, environ={})
+
+
+def test_load_actor_settings_reads_nested_dynamic_environment_context_inputs(
+    tmp_path: Path,
+) -> None:
+    """actors.yaml should validate resolver specs recursively inside nested values."""
+    config_file = tmp_path / "actors.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "agent:",
+                "  environment_context:",
+                "    - capability_id: eventkit--list-calendar-events",
+                "      input_payload:",
+                "        filters:",
+                "          window:",
+                "            start:",
+                "              resolve: local_datetime_boundary",
+                "              boundary: start_of_day",
+                "        checkpoints:",
+                "          - label: open",
+                "          - at:",
+                "              resolve: local_datetime_boundary",
+                "              boundary: end_of_day",
+                "              day_offset: 1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_actor_settings(config_path=config_file, environ={})
+
+    assert settings.agent.environment_context[0].input_payload == {
+        "filters": {
+            "window": {
+                "start": {
+                    "resolve": "local_datetime_boundary",
+                    "boundary": "start_of_day",
+                    "day_offset": 0,
+                    "format": "iso8601",
+                }
+            }
+        },
+        "checkpoints": [
+            {"label": "open"},
+            {
+                "at": {
+                    "resolve": "local_datetime_boundary",
+                    "boundary": "end_of_day",
+                    "day_offset": 1,
+                    "format": "iso8601",
+                }
+            },
+        ],
+    }
+
+
+def test_load_actor_settings_rejects_invalid_environment_context_resolver_format(
+    tmp_path: Path,
+) -> None:
+    """actors.yaml should reject unsupported dynamic resolver formats."""
+    config_file = tmp_path / "actors.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "agent:",
+                "  environment_context:",
+                "    - capability_id: eventkit--list-calendar-events",
+                "      input_payload:",
+                "        start_date:",
+                "          resolve: local_datetime_boundary",
+                "          boundary: start_of_day",
+                "          format: unix",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="iso8601"):
+        load_actor_settings(config_path=config_file, environ={})
+
+
+def test_load_actor_settings_rejects_non_integer_environment_context_day_offset(
+    tmp_path: Path,
+) -> None:
+    """actors.yaml should reject non-integer dynamic resolver day offsets."""
+    config_file = tmp_path / "actors.yaml"
+    config_file.write_text(
+        "\n".join(
+            [
+                "agent:",
+                "  environment_context:",
+                "    - capability_id: eventkit--list-calendar-events",
+                "      input_payload:",
+                "        start_date:",
+                "          resolve: local_datetime_boundary",
+                "          boundary: start_of_day",
+                "          day_offset: tomorrow",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="valid integer"):
+        load_actor_settings(config_path=config_file, environ={})
+
+
 def test_load_core_settings_applies_secrets_yaml_over_core_yaml(tmp_path: Path) -> None:
     """Optional secrets.yaml should override matching keys from core.yaml only."""
     config_file = tmp_path / "core.yaml"

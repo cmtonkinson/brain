@@ -73,6 +73,7 @@ Agent runtime settings loaded from `actors.yaml`.
 | `operator_profile` | `Refer to me as 'boss'` | Operator-facing profile text injected into the agent system prompt. |
 | `system_prompt_append` | `""` | Optional additional prompt text appended to the agent instruction block at boot. |
 | `capability_discovery_deny_list` | `["attention-notify"]` | Capability ids excluded from dynamic discovery and activation. |
+| `environment_context` | `[{"capability_id":"current-datetime","input_payload":{}}]` | Ordered always-on capability invocations added to agent environment context before each turn. `input_payload` accepts static JSON values plus dynamic resolver objects such as `{"resolve":"local_datetime_boundary","boundary":"start_of_day","day_offset":0}` or `{"resolve":"local_datetime_boundary","boundary":"end_of_day","day_offset":1}`. |
 | `tool_return_compress_threshold` | `4000` | Character threshold above which decide-mode tool returns are eligible for compressor prompt reduction. |
 | `tool_return_max_chars` | `8000` | Hard ceiling for tool return content retained in turn history before truncation fallback. |
 | `tool_loop_tier2_hop_threshold` | `3` | Number of intra-turn model-response hops required before the agent inserts the Tier 2 prompt-cache checkpoint. |

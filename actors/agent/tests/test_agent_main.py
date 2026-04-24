@@ -184,29 +184,48 @@ def test_write_heartbeat_creates_parent_and_updates_file(tmp_path) -> None:
     assert heartbeat_path.exists()
 
 
-def test_render_system_prompt_returns_rendered_default_personality() -> None:
-    """render_system_prompt should render the default personality template."""
-    from lib.sdk.personality import (
-        _SYSTEM_PROMPT_TEMPLATE_PATH,
-        render_system_prompt,
-    )
+def test_render_system_prompt_blocks_wraps_content_in_sgml_tags() -> None:
+    """render_system_prompt_blocks should produce blocks that serialize with SGML wrappers."""
+    from lib.sdk.personality import render_system_prompt_blocks
+    from lib.shared.language_model import InferenceCache
+    from resources.adapters.llm.llm_adapter import _system_blocks_to_content_parts
+    from lib.shared.language_model import TextContentPart
 
-    template = _SYSTEM_PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8")
-    assert "{{ personality }}" in template
-    assert "system_prompt_append" in template
-
-    prompt = render_system_prompt(
+    blocks = render_system_prompt_blocks(
         "default",
         operator_profile="Refer to me as 'boss'",
         system_prompt_append="Appendix",
     )
 
-    assert prompt != ""
-    assert "tool" in prompt.lower()
-    assert "Brain" in prompt
-    assert "Refer to me as 'boss'" in prompt
-    assert "Appendix" in prompt
-    assert "system_prompt_append" not in prompt
+    assert len(blocks) == 3
+    kinds = [b.kind for b in blocks]
+    assert kinds == ["assistant_persona", "operator_profile", "instructions"]
+
+    parts = _system_blocks_to_content_parts(blocks, cache=InferenceCache(mode="none"))
+    texts = [p.text for p in parts if isinstance(p, TextContentPart)]
+
+    assert texts[0].startswith("<assistant_persona>")
+    assert texts[0].endswith("</assistant_persona>")
+    assert texts[1].startswith("<operator_profile>")
+    assert texts[1].endswith("</operator_profile>")
+    assert "Refer to me as 'boss'" in texts[1]
+    assert texts[2].startswith("<instructions>")
+    assert texts[2].endswith("</instructions>")
+    assert "Appendix" in texts[2]
+
+
+def test_render_system_prompt_raises_for_unknown_personality() -> None:
+    """render_system_prompt_blocks should raise PersonalityNotFoundError for unknown names."""
+    from lib.sdk.personality import (
+        PersonalityNotFoundError,
+        render_system_prompt_blocks,
+    )
+
+    try:
+        render_system_prompt_blocks("nonexistent_personality_xyz")
+        assert False, "expected PersonalityNotFoundError"
+    except PersonalityNotFoundError:
+        pass
 
 
 def test_render_system_tool_hints_uses_prompt_artifacts() -> None:
@@ -255,20 +274,6 @@ def test_render_system_prompt_template_supports_spaced_and_unspaced_placeholders
     )
 
     assert rendered == "A=Brain B=Brain C=tail D=tail"
-
-
-def test_render_system_prompt_raises_for_unknown_personality() -> None:
-    """render_system_prompt should raise PersonalityNotFoundError for unknown names."""
-    from lib.sdk.personality import (
-        PersonalityNotFoundError,
-        render_system_prompt,
-    )
-
-    try:
-        render_system_prompt("nonexistent_personality_xyz")
-        assert False, "expected PersonalityNotFoundError"
-    except PersonalityNotFoundError:
-        pass
 
 
 def test_load_prompt_file_reads_compressor_prompt_from_disk() -> None:
@@ -1101,7 +1106,7 @@ def test_compress_tool_return_uses_file_backed_user_template() -> None:
 
 
 def test_create_runtime_uses_personality_system_prompt() -> None:
-    """Runtime creation should render the personality and use it as the system prompt."""
+    """Runtime creation should render the personality into the model system blocks."""
     from actors.agent import main
 
     class _FakeClient:
@@ -1123,13 +1128,13 @@ def test_create_runtime_uses_personality_system_prompt() -> None:
     )
 
     assert any(
-        "Brain" in str(item)
-        for item in runtime.agent._system_prompts  # pyright: ignore[reportPrivateUsage]
+        "Brain" in block.text
+        for block in runtime.model._system_blocks  # pyright: ignore[reportPrivateUsage]
     )
 
 
-def test_create_runtime_includes_system_prompt_append_in_prompt_and_blocks() -> None:
-    """Runtime creation should preserve agent.system_prompt_append in both prompt forms."""
+def test_create_runtime_includes_system_prompt_append_in_blocks() -> None:
+    """Runtime creation should preserve agent.system_prompt_append in the model system blocks."""
     from actors.agent import main
 
     class _FakeClient:
@@ -1152,17 +1157,13 @@ def test_create_runtime_includes_system_prompt_append_in_prompt_and_blocks() -> 
     )
 
     assert any(
-        append_text in str(item)
-        for item in runtime.agent._system_prompts  # pyright: ignore[reportPrivateUsage]
-    )
-    assert any(
         append_text in block.text
         for block in runtime.model._system_blocks  # pyright: ignore[reportPrivateUsage]
     )
 
 
-def test_create_runtime_includes_tool_system_hints_in_prompt_and_blocks() -> None:
-    """Runtime creation should append compact tool-system orientation hints."""
+def test_create_runtime_includes_tool_system_hints_in_blocks() -> None:
+    """Runtime creation should append compact tool-system orientation hints into model system blocks."""
     from actors.agent import main
 
     class _FakeClient:
@@ -1202,8 +1203,8 @@ def test_create_runtime_includes_tool_system_hints_in_prompt_and_blocks() -> Non
     )
 
     assert any(
-        "Vault Authority Service" in str(item)
-        for item in runtime.agent._system_prompts  # pyright: ignore[reportPrivateUsage]
+        "Vault Authority Service" in block.text
+        for block in runtime.model._system_blocks  # pyright: ignore[reportPrivateUsage]
     )
     assert any(
         "filesystem-ro: read access to home" in block.text
@@ -2385,6 +2386,113 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
     ]
 
 
+def test_process_instruction_passes_preferred_timezone_to_environment_assembly(
+    monkeypatch,
+) -> None:
+    """Instruction processing should forward runtime preferred_timezone into assembly."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def memory_record_inbound_turn(
+            self,
+            *,
+            session_id: str,
+            message: str,
+            instruction: SwitchboardOperatorInstruction | None = None,
+        ):
+            del session_id, message, instruction
+            return type("TurnRecord", (), {"id": "turn-inbound"})()
+
+        def memory_assemble_snapshot(self, *, session_id: str) -> MemoryContextBlock:
+            del session_id
+            return MemoryContextBlock(
+                current_focus=None,
+                recent_conversation_summary="",
+                recent_turns=(),
+                reference_snippets=(),
+            )
+
+        def invoke_capability(
+            self,
+            *,
+            capability_id: str,
+            input_payload: dict[str, object],
+            actor: str,
+            channel: str,
+        ):
+            del capability_id, input_payload, actor, channel
+            return type("InvokeResult", (), {"output": {"decision": "sent"}})()
+
+    @dataclass
+    class _FakeRunResult:
+        output: str
+
+    class _FakeAgent:
+        def __init__(self, runtime) -> None:
+            self._runtime = runtime
+
+        async def run(self, _prompt: str) -> _FakeRunResult:
+            self._runtime.model.last_result = LmsToolChatResult(
+                provider="unit",
+                model="test-model",
+                finish_reason="stop",
+                text="assistant reply",
+                tool_calls=(),
+            )
+            return _FakeRunResult(output="assistant reply")
+
+    seen: dict[str, object] = {}
+
+    def _fake_assemble_environment_context(**kwargs):
+        seen.update(kwargs)
+        return InferenceEnvironmentContext(items=()), ()
+
+    monkeypatch.setattr(
+        main,
+        "assemble_environment_context",
+        _fake_assemble_environment_context,
+    )
+
+    client = _FakeClient()
+    runtime = main._AgentRuntime(
+        client=client,  # type: ignore[arg-type]
+        session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        turn_state=main._TurnState(),
+        model=main._BrainSdkToolModel.__new__(main._BrainSdkToolModel),
+        agent=None,  # type: ignore[arg-type]
+        lms_request_timeout_seconds=45.0,
+        preferred_timezone="America/Chicago",
+        environment_context_entries=(
+            {"capability_id": "eventkit--list-calendar-events", "input_payload": {}},
+        ),
+    )
+    runtime.model.last_result = None
+    runtime.agent = _FakeAgent(runtime)  # type: ignore[assignment]
+
+    asyncio.run(
+        main._process_instruction(
+            runtime=runtime,
+            instruction=SwitchboardOperatorInstruction(
+                sender_e164="+12025550100",
+                message_text="hello",
+                timestamp_ms=1,
+                source_device="1",
+                source="signal",
+                group_id=None,
+                quote_target_timestamp_ms=None,
+                reaction_target_timestamp_ms=None,
+                reaction_emoji=None,
+                approval_intent=None,
+            ),
+        )
+    )
+
+    assert seen["entries"] == runtime.environment_context_entries
+    assert seen["actor"] == "operator"
+    assert seen["channel"] == "signal"
+    assert seen["preferred_timezone"] == "America/Chicago"
+
+
 def test_process_instruction_handles_lms_throttle_gracefully(monkeypatch) -> None:
     """Retryable LMS rate limiting should produce a fallback operator response."""
     from actors.agent import main
@@ -3174,6 +3282,61 @@ def test_create_runtime_reuses_existing_session_and_registers_tools() -> None:
     assert runtime.agent.instrument is None
 
 
+def test_create_runtime_copies_preferred_timezone_from_core_settings() -> None:
+    """Runtime creation should retain the operator timezone for environment assembly."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def memory_create_session(self) -> MemorySessionRef:
+            return MemorySessionRef(session_id="new-session")
+
+        def memory_get_latest_or_create_session(self) -> MemorySessionRef:
+            return MemorySessionRef(session_id="existing-session")
+
+        def describe_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
+            return ()
+
+        def list_always_on_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
+            return ()
+
+    core_settings = _core_settings_stub()
+    core_settings.profile.preferred_timezone = "America/Los_Angeles"
+
+    runtime = main._create_runtime(
+        client=_FakeClient(),  # type: ignore[arg-type]
+        settings=_actor_settings_stub(),
+        core_settings=core_settings,  # type: ignore[arg-type]
+    )
+
+    assert runtime.preferred_timezone == "America/Los_Angeles"
+
+
+def test_create_runtime_defaults_preferred_timezone_to_utc_when_missing() -> None:
+    """Runtime creation should fall back to UTC for older core-settings stubs."""
+    from actors.agent import main
+
+    class _FakeClient:
+        def memory_create_session(self) -> MemorySessionRef:
+            return MemorySessionRef(session_id="new-session")
+
+        def memory_get_latest_or_create_session(self) -> MemorySessionRef:
+            return MemorySessionRef(session_id="existing-session")
+
+        def describe_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
+            return ()
+
+        def list_always_on_capabilities(self) -> tuple[CapabilityDescriptor, ...]:
+            return ()
+
+    runtime = main._create_runtime(
+        client=_FakeClient(),  # type: ignore[arg-type]
+        settings=_actor_settings_stub(),
+        core_settings=SimpleNamespace(profile=SimpleNamespace()),  # type: ignore[arg-type]
+    )
+
+    assert runtime.preferred_timezone == "UTC"
+
+
 def test_agent_turn_observation_sets_langfuse_root_io(monkeypatch) -> None:
     """Agent root turn span should expose clean Langfuse trace input and output."""
     from actors.agent import main
@@ -3218,6 +3381,10 @@ def test_agent_turn_observation_sets_langfuse_root_io(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "opentelemetry", SimpleNamespace(trace=fake_trace))
     runtime = SimpleNamespace(
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        system_blocks=(
+            InferenceSystemBlock(kind="assistant_persona", text="You are Brain."),
+            InferenceSystemBlock(kind="instructions", text="Use tools carefully."),
+        ),
         turn_state=SimpleNamespace(
             actor="operator",
             trace_id="trace-1",
@@ -3256,6 +3423,10 @@ def test_agent_turn_observation_sets_langfuse_root_io(monkeypatch) -> None:
     assert span.attributes["langfuse.user.id"] == "operator"
     assert span.attributes["langfuse.session.id"] == "episode-1"
     assert '"message": "hello"' in str(span.attributes["langfuse.observation.input"])
+    assert (
+        '"system_prompt": "<assistant_persona>\\nYou are Brain.\\n</assistant_persona>\\n\\n<instructions>\\nUse tools carefully.\\n</instructions>"'
+        in str(span.attributes["langfuse.observation.input"])
+    )
     assert '"response": "hi there"' in str(
         span.attributes["langfuse.observation.output"]
     )
@@ -3266,6 +3437,25 @@ def test_agent_turn_observation_sets_langfuse_root_io(monkeypatch) -> None:
     assert (
         span.attributes["langfuse.trace.output"]
         == (span.attributes["langfuse.observation.output"])
+    )
+
+
+def test_system_blocks_for_observation_renders_sgml_sections() -> None:
+    """Observation rendering should preserve canonical system block structure."""
+    from actors.agent import main
+
+    rendered = main._system_blocks_for_observation(
+        (
+            InferenceSystemBlock(kind="assistant_persona", text="Persona"),
+            InferenceSystemBlock(kind="operator_profile", text="Call me boss"),
+            InferenceSystemBlock(kind="instructions", text="Do the work"),
+        )
+    )
+
+    assert rendered == (
+        "<assistant_persona>\nPersona\n</assistant_persona>\n\n"
+        "<operator_profile>\nCall me boss\n</operator_profile>\n\n"
+        "<instructions>\nDo the work\n</instructions>"
     )
 
 

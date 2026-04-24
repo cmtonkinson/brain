@@ -895,31 +895,11 @@ def _tool_chat_outcome_kind(*, result: Any) -> str:
 def _langfuse_observation_input(
     request: InferenceRequest, *, request_phase: str
 ) -> dict[str, object]:
-    """Return compact Langfuse-facing input for one tool-capable LMS call."""
-    operator = request.current_turn.operator_message
-    payload: dict[str, object] = {
+    """Return compact IR-shaped Langfuse input for one tool-capable LMS call."""
+    return {
         "request_phase": request_phase,
-        "system_prompt": _langfuse_system_prompt(request),
-        "message": operator.message_text,
-        "channel": operator.channel,
+        "inference_request": request.model_dump(mode="python"),
     }
-    if operator.sender_e164 != "":
-        payload["sender_e164"] = operator.sender_e164
-    tool_results: list[dict[str, object]] = []
-    for event in request.live_events:
-        if event.kind != "tool_result_batch":
-            continue
-        for result in event.results:
-            tool_results.append(
-                {
-                    "tool_name": result.tool_name,
-                    "status": result.status,
-                    "is_error": result.is_error,
-                }
-            )
-    if tool_results:
-        payload["tool_results"] = tool_results
-    return payload
 
 
 def _langfuse_chat_observation_input(
@@ -933,11 +913,6 @@ def _langfuse_chat_observation_input(
     if system_prompt != "":
         payload["system_prompt"] = system_prompt
     return payload
-
-
-def _langfuse_system_prompt(request: InferenceRequest) -> str:
-    """Return system prompt text for Langfuse display (blocks joined, no metadata)."""
-    return "\n\n".join(block.text for block in request.system.blocks)
 
 
 def _provider_request_json(raw_call: AdapterProviderCallAudit) -> dict[str, object]:

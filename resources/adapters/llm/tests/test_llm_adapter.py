@@ -12,6 +12,7 @@ from lib.shared.language_model import (
     InferenceAssistantTextEvent,
     InferenceCache,
     InferenceMemoryContext,
+    InferenceMemoryTurn,
     InferenceSystemBlock,
     InferenceToolCall,
     InferenceToolCallBatchEvent,
@@ -86,7 +87,14 @@ def _tool_inference_request() -> object:
         memory_context=InferenceMemoryContext(
             current_focus="Current focus",
             recent_conversation_summary="Conversation summary",
-            recent_turns=(),
+            recent_turns=(
+                InferenceMemoryTurn(role="user", text="Hi", is_summary=False),
+                InferenceMemoryTurn(
+                    role="assistant",
+                    text="Hey there, how can I help?",
+                    is_summary=False,
+                ),
+            ),
             reference_snippets=(),
         ),
         live_events=(
@@ -255,7 +263,14 @@ def test_chat_with_tools_serializes_environment_context_after_cachepoint(
         memory_context=InferenceMemoryContext(
             current_focus="Current focus",
             recent_conversation_summary="Conversation summary",
-            recent_turns=(),
+            recent_turns=(
+                InferenceMemoryTurn(role="user", text="Hi", is_summary=False),
+                InferenceMemoryTurn(
+                    role="assistant",
+                    text="Hey there, how can I help?",
+                    is_summary=False,
+                ),
+            ),
             reference_snippets=(),
         ),
         environment_context=InferenceEnvironmentContext(
@@ -294,6 +309,10 @@ def test_chat_with_tools_serializes_environment_context_after_cachepoint(
     ].index("<recent_conversation_summary>")
     assert "<environment_context>" in context_blocks[1]["text"]
     assert "<current-datetime>" in context_blocks[1]["text"]
+    assert "<dialogue>" in context_blocks[1]["text"]
+    assert "<operator>" in context_blocks[1]["text"]
+    assert "<assistant>" in context_blocks[1]["text"]
+    assert "- user:" not in context_blocks[1]["text"]
     assert '"local_timezone":"America/New_York"' in context_blocks[1]["text"]
 
 
