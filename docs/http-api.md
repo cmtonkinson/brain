@@ -5,77 +5,67 @@ _This document is generated from `lib/core/health_api.py` and `services/*/*/api.
 ## `lib/core/health_api.py`
 `GET /health` &mdash; full-system diagnostic health check  
 _Handler: `health`_
-_Response: `_HealthResponse`_
+_Response: `CoreHealthResult`_
 
 ------------------------------------------------------------------------
-## `services/action/attention_router/api.py`
-`POST /attention-router/poll_console_response` &mdash; dequeue the next queued Brain response for the console channel  
-_Handler: `poll_console_response`_
-_Response: `_PollConsoleResponseResponse`_
-_Summary: Pop the next queued Brain response for the console channel._
-
-------------------------------------------------------------------------
-## `services/action/capability_engine/api.py`
-`POST /capabilities/always-on` &mdash; return full descriptors for the configured always-on capabilities  
-_Handler: `list_always_on_capabilities`_
+## `services/effect/execution/api.py`
+`POST /ops/always-on` &mdash; return full descriptors for the configured always-on ops  
+_Handler: `list_always_on_ops`_
 _Response: `_DescribeResponse`_
 
 
-`POST /capabilities/describe` &mdash; enumerate all active Capabilities  
-_Handler: `describe_capabilities`_
+`POST /ops/describe` &mdash; enumerate all active ops  
+_Handler: `describe_ops`_
 _Response: `_DescribeResponse`_
 
 
-`POST /capabilities/describe-one` &mdash; return one full Capability descriptor by capability_id  
-_Handler: `describe_capability`_
+`POST /ops/describe-one` &mdash; return one full Op descriptor by op_id  
+_Handler: `describe_op`_
 _Response: `_DescribeOneResponse`_
 
 
-`POST /capabilities/invoke` &mdash; execute tool calls  
-_Handler: `invoke_capability`_
+`POST /ops/dynamic/classifications` &mdash; list observed dynamic ops and persisted classifications  
+_Handler: `list_dynamic_op_classifications`_
+_Response: `_DynamicOpClassificationListResponse`_
+
+
+`POST /ops/dynamic/classify` &mdash; persist one operator-supplied dynamic op classification  
+_Handler: `classify_dynamic_op`_
+_Response: `_DynamicOpClassificationListResponse`_
+
+
+`POST /ops/invoke` &mdash; execute tool calls  
+_Handler: `invoke_op`_
 _Response: `_InvokeResponse`_
 
 
-`POST /capabilities/search` &mdash; semantically search the enabled Capability catalog and return compact matches  
-_Handler: `search_capabilities`_
+`POST /ops/search` &mdash; semantically search the enabled Op catalog and return compact matches  
+_Handler: `search_ops`_
 _Response: `_SearchResponse`_
 
 
-`POST /capabilities/slash-lookup` &mdash; resolve one capability descriptor by slash command name or alias  
+`POST /ops/slash-lookup` &mdash; resolve one op descriptor by slash command name or alias  
 _Handler: `slash_lookup`_
 _Response: `_SlashLookupResponse`_
 
 
-`POST /capabilities/tool-system-hints` &mdash; return compact orientation hints for systems reachable through tools  
+`POST /ops/tool-system-hints` &mdash; return compact orientation hints for systems reachable through tools  
 _Handler: `list_tool_system_hints`_
 _Response: `_ToolSystemHintsResponse`_
 
 ------------------------------------------------------------------------
-## `services/action/language_model/api.py`
-`POST /lms/chat` &mdash; direct access to model inference without CES/PS overhead  
-_Handler: `lms_chat`_
+## `services/effect/language/api.py`
+`POST /lms/chat` &mdash; direct access to model inference without Execution/Policy overhead  
+_Handler: `language_chat`_
 _Response: `_ChatResponse`_
 
 
-`POST /lms/chat-with-tools` &mdash; direct access to tool-capable model inference without CES/PS overhead  
-_Handler: `lms_chat_with_tools`_
+`POST /lms/chat-with-tools` &mdash; direct access to tool-capable model inference without Execution/Policy overhead  
+_Handler: `language_chat_with_tools`_
 _Response: `_ChatWithToolsResponse`_
 
 ------------------------------------------------------------------------
-## `services/action/switchboard/api.py`
-`POST /switchboard/enqueue_console_message` &mdash; accept and enqueue one inbound console operator message  
-_Handler: `enqueue_console_message`_
-_Response: `_EnqueueConsoleMessageResponse`_
-_Summary: Enqueue one inbound console operator message._
-
-
-`POST /switchboard/poll_operator_instruction` &mdash; dequeue the next queued operator instruction for the agent  
-_Handler: `poll_operator_instruction`_
-_Response: `_PollOperatorInstructionResponse`_
-_Summary: Pop the next queued operator instruction, optionally long-polling._
-
-------------------------------------------------------------------------
-## `services/control/commitment/api.py`
+## `services/reason/commitment/api.py`
 `POST /commitment/create` &mdash; create a commitment directly or persist a creation proposal  
 _Handler: `create_commitment`_
 
@@ -120,7 +110,56 @@ _Handler: `transition_commitment`_
 _Handler: `update_commitment`_
 
 ------------------------------------------------------------------------
-## `services/control/ingestion/api.py`
+## `services/reason/delegation/api.py`
+`POST /delegation/cancel` &mdash; request cancellation of one queued or running subagent invocation  
+_Handler: `cancel`_
+_Response: `_CancelResponse`_
+_Summary: Request cancellation of a queued or running invocation._
+
+
+`POST /delegation/claim` &mdash; atomically claim the next queued subagent invocation for the Subagent Actor  
+_Handler: `claim`_
+_Response: `_ClaimResponse`_
+_Summary: Claim the oldest queued invocation for a Subagent Actor._
+
+
+`POST /delegation/finalize` &mdash; apply terminal status to one subagent invocation  
+_Handler: `finalize`_
+_Response: `_ResultResponse`_
+_Summary: Apply terminal status to one invocation row._
+
+
+`POST /delegation/invoke` &mdash; queue one delegated subagent invocation  
+_Handler: `invoke`_
+_Response: `_StartedResponse`_
+_Summary: Queue one delegated invocation and return its identifier._
+
+
+`POST /delegation/invoke-and-wait` &mdash; queue one delegated subagent invocation and block until terminal state  
+_Handler: `invoke_and_wait`_
+_Response: `_ResultResponse`_
+_Summary: Queue one delegated invocation and block until terminal state._
+
+
+`POST /delegation/record-turn` &mdash; increment per-turn counters and return whether to keep running  
+_Handler: `record_turn`_
+_Response: `_TurnDecisionResponse`_
+_Summary: Bump turn count and re-evaluate budget for one invocation._
+
+
+`POST /delegation/status` &mdash; return current status projection for one subagent invocation  
+_Handler: `get_status`_
+_Response: `_StatusResponse`_
+_Summary: Return the current status projection for one invocation._
+
+
+`POST /delegation/wait` &mdash; block until a previously queued subagent invocation reaches terminal state  
+_Handler: `wait`_
+_Response: `_ResultResponse`_
+_Summary: Block until a previously queued invocation reaches terminal state._
+
+------------------------------------------------------------------------
+## `services/reason/ingestion/api.py`
 `POST /ingestion/get` &mdash; read one ingestion record by id  
 _Handler: `get_ingestion`_
 
@@ -153,7 +192,7 @@ _Handler: `get_ingestion_status`_
 _Handler: `submit_ingestion`_
 
 ------------------------------------------------------------------------
-## `services/control/job/api.py`
+## `services/reason/job/api.py`
 `POST /jobs/audits/list` &mdash; list audit entries for one job with cursor pagination  
 _Handler: `list_job_audits`_
 
@@ -218,17 +257,17 @@ _Handler: `run_job_now`_
 _Handler: `update_job`_
 
 ------------------------------------------------------------------------
-## `services/state/memory_authority/api.py`
-`POST /memory/assemble_context` &mdash; assemble MAS context for one inbound turn  
+## `services/reason/recall/api.py`
+`POST /memory/assemble_context` &mdash; assemble Recall context for one inbound turn  
 _Handler: `assemble_context`_
 _Response: `_AssembleContextResponse`_
-_Summary: Append one inbound message and return the assembled MAS context block._
+_Summary: Append one inbound message and return the assembled Recall context block._
 
 
-`POST /memory/assemble_snapshot` &mdash; return the stable historical MAS snapshot without the live inbound turn  
+`POST /memory/assemble_snapshot` &mdash; return the stable historical Recall snapshot without the live inbound turn  
 _Handler: `assemble_snapshot`_
 _Response: `_AssembleSnapshotResponse`_
-_Summary: Return the historical MAS context snapshot without the live turn._
+_Summary: Return the historical Recall context snapshot without the live turn._
 
 
 `POST /memory/compact_dialogue` &mdash; force-summarize all visible turns and advance dialogue frontier  
@@ -237,37 +276,37 @@ _Response: `_SessionResponse`_
 _Summary: Force-summarize all visible turns and advance dialogue frontier._
 
 
-`POST /memory/create_session` &mdash; create one new MAS session for the agent  
+`POST /memory/create_session` &mdash; create one new Recall session for the agent  
 _Handler: `create_session`_
 _Response: `_CreateSessionResponse`_
-_Summary: Create one MAS session and return only the session identifier._
+_Summary: Create one Recall session and return only the session identifier._
 
 
-`POST /memory/get_latest_or_create_session` &mdash; return the latest MAS session id or create one for the agent  
+`POST /memory/get_latest_or_create_session` &mdash; return the latest Recall session id or create one for the agent  
 _Handler: `get_latest_or_create_session`_
 _Response: `_CreateSessionResponse`_
-_Summary: Return the latest MAS session id or create one when none exist._
+_Summary: Return the latest Recall session id or create one when none exist._
 
 
-`POST /memory/record_inbound_turn` &mdash; persist one inbound MAS turn before prompt assembly  
+`POST /memory/record_inbound_turn` &mdash; persist one inbound Recall turn before prompt assembly  
 _Handler: `record_inbound_turn`_
 _Response: `_TurnResponse`_
 _Summary: Persist one inbound turn and return the authoritative turn record._
 
 
-`POST /memory/record_outbound_candidate` &mdash; persist one outbound MAS candidate turn before delivery  
+`POST /memory/record_outbound_candidate` &mdash; persist one outbound Recall candidate turn before delivery  
 _Handler: `record_outbound_candidate`_
 _Response: `_TurnResponse`_
 _Summary: Persist one outbound candidate turn and return the authoritative row._
 
 
-`POST /memory/record_outbound_delivery` &mdash; persist the final delivery state for one outbound MAS turn  
+`POST /memory/record_outbound_delivery` &mdash; persist the final delivery state for one outbound Recall turn  
 _Handler: `record_outbound_delivery`_
 _Response: `_BoolResponse`_
 _Summary: Persist one outbound delivery result._
 
 
-`POST /memory/record_response` &mdash; persist one outbound MAS response turn  
+`POST /memory/record_response` &mdash; persist one outbound Recall response turn  
 _Handler: `record_response`_
 _Response: `_BoolResponse`_
 _Summary: Append one outbound response turn with response metadata._

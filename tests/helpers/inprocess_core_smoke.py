@@ -11,12 +11,12 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
-from actors.agent import main as agent_main
+from actors.assistant import main as agent_main
 from lib.sdk import (
     BrainClient,
     BrainSdkConfig,
-    CapabilityDescriptor,
-    CapabilitySearchHit,
+    OpDescriptor,
+    OpSearchHit,
 )
 from lib.shared.config import ActorSettings
 from lib.shared.envelope import (
@@ -42,53 +42,53 @@ from resources.adapters.signal import (
     SignalInboundCallback,
     SignalSendMessageResult,
 )
-from services.action.attention_router.config import AttentionRouterServiceSettings
-from services.action.attention_router.implementation import (
-    DefaultAttentionRouterService,
+from services.effect.relay._outbound.config import RelayOutboundServiceSettings
+from services.effect.relay._outbound.implementation import (
+    DefaultRelayOutboundService,
 )
-from services.action.capability_engine.api import register_routes as register_ces_routes
-from services.action.capability_engine.component import after_boot as ces_after_boot
-from services.action.capability_engine.config import CapabilityEngineSettings
-from services.action.capability_engine.data.repository import (
-    InMemoryCapabilityInvocationAuditRepository,
+from services.effect.execution.api import register_routes as register_execution_routes
+from services.effect.execution.component import after_boot as execution_after_boot
+from services.effect.execution.config import ExecutionSettings
+from services.effect.execution.data.repository import (
+    InMemoryOpInvocationAuditRepository,
 )
-from services.action.capability_engine.domain import CapabilityInvokeResult
-from services.action.capability_engine.implementation import (
-    DefaultCapabilityEngineService,
+from services.effect.execution.domain import OpInvokeResult
+from services.effect.execution.implementation import (
+    DefaultExecutionService,
 )
-from services.action.capability_engine.registry import CapabilityRegistry
-from services.action.language_model.api import register_routes as register_lms_routes
-from services.action.language_model.config import (
-    LanguageModelEmbeddingProfileSettings,
-    LanguageModelProfileSettings,
-    LanguageModelServiceSettings,
+from services.effect.execution.registry import OpRegistry
+from services.effect.language.api import register_routes as register_language_routes
+from services.effect.language.config import (
+    LanguageEmbeddingProfileSettings,
+    LanguageProfileSettings,
+    LanguageServiceSettings,
 )
-from services.action.language_model.implementation import DefaultLanguageModelService
-from services.action.policy_service.config import PolicyServiceSettings
-from services.action.policy_service.implementation import DefaultPolicyService
-from services.action.switchboard.api import (
-    register_routes as register_switchboard_routes,
+from services.effect.language.implementation import DefaultLanguageService
+from services.reason.policy.config import PolicyServiceSettings
+from services.reason.policy.implementation import DefaultPolicyService
+from services.effect.relay._inbound.api import (
+    register_routes as register_inbound_routes,
 )
-from services.action.switchboard.config import (
-    SwitchboardIdentitySettings,
-    SwitchboardServiceSettings,
+from services.effect.relay._inbound.config import (
+    RelayInboundIdentitySettings,
+    RelayInboundServiceSettings,
 )
-from services.action.switchboard.implementation import DefaultSwitchboardService
-from services.state.cache_authority.domain import HealthStatus, QueueDepth, QueueEntry
-from services.state.cache_authority.service import CacheAuthorityService
-from services.state.memory_authority.api import (
-    register_routes as register_memory_routes,
+from services.effect.relay._inbound.implementation import DefaultRelayInboundService
+from services.state.cache.domain import HealthStatus, QueueDepth, QueueEntry
+from services.state.cache.service import CacheService
+from services.reason.recall.api import (
+    register_routes as register_recall_routes,
 )
-from services.state.memory_authority.config import MemoryAuthoritySettings
-from services.state.memory_authority.implementation import DefaultMemoryAuthorityService
-from services.state.memory_authority.tests.test_memory_authority_service import (
+from services.reason.recall.config import RecallSettings
+from services.reason.recall.implementation import DefaultRecallService
+from services.reason.recall.tests.test_recall_service import (
     _FakeMemoryRepository,
     _FakeRuntime,
 )
 
 
 class _FakeLlmAdapter(LlmAdapter):
-    """Deterministic LMS adapter fake for in-process smoke runs."""
+    """Deterministic Language adapter fake for in-process smoke runs."""
 
     def __init__(self) -> None:
         self.tool_chat_tool_names: list[tuple[str, ...]] = []
@@ -145,7 +145,7 @@ class _FakeLlmAdapter(LlmAdapter):
 
 
 class _ScriptedLlmAdapter(LlmAdapter):
-    """Scripted LMS adapter fake for multi-round in-process smoke runs."""
+    """Scripted Language adapter fake for multi-round in-process smoke runs."""
 
     def __init__(
         self,
@@ -247,8 +247,8 @@ class _FakeSignalAdapter(SignalAdapter):
         )
 
 
-class _SmokeCacheService(CacheAuthorityService):
-    """Queue-capable CAS fake for Switchboard end-to-end smoke runs."""
+class _SmokeCacheService(CacheService):
+    """Queue-capable Cache fake for Relay inbound end-to-end smoke runs."""
 
     def __init__(self) -> None:
         self._queues: dict[tuple[str, str], list[object]] = {}
@@ -356,21 +356,21 @@ def run_agent_e2e_smoke(
     *,
     tmp_path: Path,
     tool_chat_results: tuple[AdapterToolChatResult, ...] = (),
-    capability_search_results: tuple[CapabilitySearchHit, ...] = (),
-    described_capabilities: tuple[CapabilityDescriptor, ...] = (),
-    extra_capability_paths: tuple[Path, ...] = (),
-    capability_invoke_outputs: dict[str, dict[str, object] | None] | None = None,
+    op_search_results: tuple[OpSearchHit, ...] = (),
+    described_ops: tuple[OpDescriptor, ...] = (),
+    extra_op_paths: tuple[Path, ...] = (),
+    op_invoke_outputs: dict[str, dict[str, object] | None] | None = None,
 ) -> AgentE2ESmokeResult:
     """Run one inbound Signal message -> poll -> agent turn -> outbound send cycle."""
-    app, signal, lms = _build_core_app(
+    app, signal, adapter = _build_core_app(
         tmp_path=tmp_path,
         tool_chat_results=tool_chat_results,
-        capability_search_results=capability_search_results,
-        described_capabilities=described_capabilities,
-        extra_capability_paths=extra_capability_paths,
-        capability_invoke_outputs=capability_invoke_outputs or {},
+        op_search_results=op_search_results,
+        described_ops=described_ops,
+        extra_op_paths=extra_op_paths,
+        op_invoke_outputs=op_invoke_outputs or {},
     )
-    switchboard = app.state.switchboard_service
+    inbound = app.state.inbound_service
     test_client = TestClient(app)
 
     body = json.dumps(
@@ -386,20 +386,20 @@ def run_agent_e2e_smoke(
             }
         }
     )
-    inbound_result = switchboard.ingest_signal_message(
+    inbound_result = inbound.ingest_signal_message(
         meta=new_meta(kind=EnvelopeKind.EVENT, source="test", principal="operator"),
         raw_body_json=body,
     )
 
     sdk_client = BrainClient(
-        config=BrainSdkConfig(source="agent", principal="operator"),
+        config=BrainSdkConfig(source="assistant", principal="operator"),
         http=_TestClientHttpAdapter(test_client),
     )
     runtime = agent_main._create_runtime(
         client=sdk_client,
         settings=ActorSettings(),
     )
-    instruction = runtime.client.switchboard_poll_operator_instruction(
+    instruction = runtime.client.relay_poll_operator_instruction(
         wait_timeout_seconds=0.0
     )
     assert instruction is not None
@@ -416,7 +416,7 @@ def run_agent_e2e_smoke(
         inbound_body=_ingest_result_body(inbound_result),
         response_text=response_text,
         outbound_signal_messages=tuple(signal.send_calls),
-        tool_request_tool_names=tuple(lms.tool_chat_tool_names),
+        tool_request_tool_names=tuple(adapter.tool_chat_tool_names),
     )
 
 
@@ -424,25 +424,25 @@ def _build_core_app(
     *,
     tmp_path: Path,
     tool_chat_results: tuple[AdapterToolChatResult, ...] = (),
-    capability_search_results: tuple[CapabilitySearchHit, ...] = (),
-    described_capabilities: tuple[CapabilityDescriptor, ...] = (),
-    extra_capability_paths: tuple[Path, ...] = (),
-    capability_invoke_outputs: dict[str, dict[str, object] | None] | None = None,
+    op_search_results: tuple[OpSearchHit, ...] = (),
+    described_ops: tuple[OpDescriptor, ...] = (),
+    extra_op_paths: tuple[Path, ...] = (),
+    op_invoke_outputs: dict[str, dict[str, object] | None] | None = None,
 ):
-    discovery_root = tmp_path / "capabilities"
+    discovery_root = tmp_path / "ops"
     shutil.copytree(
-        Path("capabilities/attention/attention-notify"),
-        discovery_root / "attention-notify",
+        Path("ops/relay/relay-notify"),
+        discovery_root / "relay-notify",
     )
-    for capability_path in extra_capability_paths:
-        shutil.copytree(capability_path, discovery_root / capability_path.name)
+    for op_path in extra_op_paths:
+        shutil.copytree(op_path, discovery_root / op_path.name)
 
     signal = _FakeSignalAdapter()
     cache = _SmokeCacheService()
-    switchboard_settings = SwitchboardServiceSettings()
-    switchboard = DefaultSwitchboardService(
-        settings=switchboard_settings,
-        identity=SwitchboardIdentitySettings(
+    inbound_settings = RelayInboundServiceSettings()
+    inbound = DefaultRelayInboundService(
+        settings=inbound_settings,
+        identity=RelayInboundIdentitySettings(
             operator_signal_contact_e164="+16104257807",
             default_dial_code="+1",
         ),
@@ -454,28 +454,28 @@ def _build_core_app(
         if len(tool_chat_results) > 0
         else _FakeLlmAdapter()
     )
-    lms = DefaultLanguageModelService(
-        settings=LanguageModelServiceSettings(
-            document_embedding=LanguageModelEmbeddingProfileSettings(
+    language = DefaultLanguageService(
+        settings=LanguageServiceSettings(
+            document_embedding=LanguageEmbeddingProfileSettings(
                 provider="unit", model="embed", dimensions=1024
             ),
-            capability_embedding=LanguageModelEmbeddingProfileSettings(
-                provider="unit", model="embed-capability", dimensions=1024
+            op_embedding=LanguageEmbeddingProfileSettings(
+                provider="unit", model="embed-op", dimensions=1024
             ),
-            quick=LanguageModelProfileSettings(provider="unit", model="quick"),
-            standard=LanguageModelProfileSettings(provider="unit", model="standard"),
-            deep=LanguageModelProfileSettings(provider="unit", model="deep"),
+            quick=LanguageProfileSettings(provider="unit", model="quick"),
+            standard=LanguageProfileSettings(provider="unit", model="standard"),
+            deep=LanguageProfileSettings(provider="unit", model="deep"),
         ),
         adapter=adapter,
     )
-    memory = DefaultMemoryAuthorityService(
-        settings=MemoryAuthoritySettings(),
+    recall = DefaultRecallService(
+        settings=RecallSettings(),
         runtime=_FakeRuntime(),
         repository=_FakeMemoryRepository(),
-        language_model=lms,
+        language_model=language,
     )
-    attention_router = DefaultAttentionRouterService(
-        settings=AttentionRouterServiceSettings(),
+    outbound = DefaultRelayOutboundService(
+        settings=RelayOutboundServiceSettings(),
         signal_adapter=signal,
         operator_signal_contact_e164="+16104257807",
         signal_receive_e164="+17175371552",
@@ -483,43 +483,41 @@ def _build_core_app(
     )
     policy = DefaultPolicyService(
         settings=PolicyServiceSettings(),
-        attention_router_service=attention_router,
+        outbound_service=outbound,
     )
-    capability_engine = DefaultCapabilityEngineService(
-        settings=CapabilityEngineSettings(discovery_root=str(discovery_root)),
+    execution = DefaultExecutionService(
+        settings=ExecutionSettings(discovery_roots=(str(discovery_root),)),
         policy_service=policy,
-        registry=CapabilityRegistry(),
-        audit_repository=InMemoryCapabilityInvocationAuditRepository(),
+        registry=OpRegistry(),
+        audit_repository=InMemoryOpInvocationAuditRepository(),
     )
-    if len(capability_search_results) > 0:
-        capability_engine.search_capabilities = lambda *, meta, query, limit=None: (
-            success(  # type: ignore[method-assign]
-                meta=meta,
-                payload=tuple(capability_search_results),
-            )
-        )
-    if len(described_capabilities) > 0:
-        descriptor_by_id = {item.capability_id: item for item in described_capabilities}
-        capability_engine.describe_capabilities = lambda *, meta: success(  # type: ignore[method-assign]
+    if len(op_search_results) > 0:
+        execution.search_ops = lambda *, meta, query, limit=None: success(  # type: ignore[method-assign]
             meta=meta,
-            payload=tuple(described_capabilities),
+            payload=tuple(op_search_results),
         )
-        capability_engine.describe_capability = lambda *, meta, capability_id: success(  # type: ignore[method-assign]
+    if len(described_ops) > 0:
+        descriptor_by_id = {item.op_id: item for item in described_ops}
+        execution.describe_ops = lambda *, meta: success(  # type: ignore[method-assign]
             meta=meta,
-            payload=descriptor_by_id[capability_id],
+            payload=tuple(described_ops),
         )
-    invoke_outputs = capability_invoke_outputs or {}
+        execution.describe_op = lambda *, meta, op_id: success(  # type: ignore[method-assign]
+            meta=meta,
+            payload=descriptor_by_id[op_id],
+        )
+    invoke_outputs = op_invoke_outputs or {}
     if len(invoke_outputs) > 0:
-        real_invoke_capability = capability_engine.invoke_capability
+        real_invoke_op = execution.invoke_op
 
-        def _invoke_capability(*, meta, capability_id, input_payload, invocation):
-            if capability_id in invoke_outputs:
+        def _invoke_op(*, meta, op_id, input_payload, invocation):
+            if op_id in invoke_outputs:
                 return success(
                     meta=meta,
-                    payload=CapabilityInvokeResult(
-                        capability_id=capability_id,
-                        capability_version="1.0.0",
-                        output=invoke_outputs[capability_id],
+                    payload=OpInvokeResult(
+                        op_id=op_id,
+                        op_version="1.0.0",
+                        output=invoke_outputs[op_id],
                         policy_decision_id="decision-smoke",
                         policy_regime_id="regime-smoke",
                         policy_allowed=True,
@@ -528,35 +526,35 @@ def _build_core_app(
                         proposal_token="",
                     ),
                 )
-            return real_invoke_capability(
+            return real_invoke_op(
                 meta=meta,
-                capability_id=capability_id,
+                op_id=op_id,
                 input_payload=input_payload,
                 invocation=invocation,
             )
 
-        capability_engine.invoke_capability = _invoke_capability  # type: ignore[method-assign]
-    ces_after_boot(
+        execution.invoke_op = _invoke_op  # type: ignore[method-assign]
+    execution_after_boot(
         settings=_settings(),
         components={
-            "service_capability_engine": capability_engine,
-            "service_attention_router": attention_router,
+            "service_execution": execution,
+            "service_relay": outbound,
         },
     )
 
     app = create_app()
-    app.state.switchboard_service = switchboard
+    app.state.inbound_service = inbound
     router = APIRouter()
-    register_switchboard_routes(router=router, service=switchboard)
-    register_memory_routes(router=router, service=memory)
-    register_lms_routes(router=router, service=lms)
-    register_ces_routes(router=router, service=capability_engine)
+    register_inbound_routes(router=router, service=inbound)
+    register_recall_routes(router=router, service=recall)
+    register_language_routes(router=router, service=language)
+    register_execution_routes(router=router, service=execution)
     app.include_router(router)
     return app, signal, adapter
 
 
 def _ingest_result_body(result: Envelope[object]) -> dict[str, object]:
-    """Serialize one direct Switchboard ingest result into the old smoke shape."""
+    """Serialize one direct Relay inbound ingest result into the old smoke shape."""
     payload = result.payload.value if result.payload is not None else None
     errors = result.errors
     return {

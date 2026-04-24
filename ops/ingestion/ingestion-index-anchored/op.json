@@ -1,0 +1,22 @@
+{
+  "op_id": "ingestion-index-anchored",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Index anchored ingestion artifacts through derived embedding services.",
+  "enabled": true,
+  "input_schema": {
+    "ingestion_id": "string | The ingestion identifier whose anchored artifacts should be indexed.",
+    "indexing_run_id": "string | The ingestion-owned indexing run identifier to update."
+  },
+  "output_schema": {
+    "ingestion_id": "string | The ingestion identifier that was indexed.",
+    "indexing_run_id": "string | The ingestion-owned indexing run identifier.",
+    "source_count": "integer | Number of Embedding sources created or updated.",
+    "chunk_count": "integer | Number of chunks created or updated.",
+    "embedding_count": "integer | Number of embedding vectors persisted.",
+    "failed_count": "integer | Number of anchored artifacts that failed indexing."
+  },
+  "call_target": "service_ingestion.index_anchored_ingestion",
+  "effect": "execute",
+  "approval": "never"
+}

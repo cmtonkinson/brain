@@ -17,11 +17,11 @@ RESOURCE_COMPONENT_ID = ComponentId("adapter_llm")
 MANIFEST = register_component(
     ResourceManifest(
         id=RESOURCE_COMPONENT_ID,
-        layer=0,
-        system="action",
+        tier=1,
+        plane="effect",
         kind="adapter",
         module_roots=frozenset({ModuleRoot("resources.adapters.llm")}),
-        owner_service_id=ComponentId("service_language_model"),
+        owner_service_id=ComponentId("service_language"),
     )
 )
 

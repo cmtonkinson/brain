@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 from lib.shared.manifest import ComponentId, ModuleRoot, ServiceManifest
-from tests.shared import test_component_layer_dependencies as layer_sut
+from tests.shared import test_component_tier_dependencies as tier_sut
 from tests.shared import test_no_dynamic_imports as dynamic_sut
 from tests.shared import test_service_public_api_boundaries as public_api_sut
 from tests.shared import test_service_resource_ownership_imports as ownership_sut
@@ -51,9 +51,9 @@ def test_public_api_analyzer_detects_private_import_violation() -> None:
     assert violations
 
 
-def test_layer_analyzer_detects_lower_to_higher_dependency() -> None:
-    """Layer analyzer must flag lower-layer component imports to higher layer."""
-    source = _fixture_text("layer_violation.py")
+def test_tier_analyzer_detects_lower_to_higher_dependency() -> None:
+    """Tier analyzer must flag lower-tier component imports to higher tier."""
+    source = _fixture_text("tier_violation.py")
     known_modules = {
         "services.action.example.api",
         "services.action.example",
@@ -64,19 +64,19 @@ def test_layer_analyzer_detects_lower_to_higher_dependency() -> None:
         known_modules=known_modules,
     )
 
-    caller = layer_sut._ComponentBoundary(
+    caller = tier_sut._ComponentBoundary(
         component_id="substrate_some_resource",
-        layer=0,
+        tier=1,
         module_roots=("resources.substrates.some_resource",),
     )
-    target = layer_sut._ComponentBoundary(
+    target = tier_sut._ComponentBoundary(
         component_id="service_action_example",
-        layer=1,
+        tier=2,
         module_roots=("services.action.example",),
     )
 
     assert any(
-        target.owns_module(ref.module_name) and target.layer > caller.layer
+        target.owns_module(ref.module_name) and target.tier > caller.tier
         for ref in imports
     )
 
@@ -134,11 +134,11 @@ def test_migration_analyzer_detects_pk_and_fk_violations() -> None:
 
         service = ServiceManifest(
             id=ComponentId("service_example"),
-            layer=1,
-            system="state",
+            tier=2,
+            plane="state",
             module_roots=frozenset({ModuleRoot("services.state.example")}),
             public_api_roots=frozenset({ModuleRoot("services.state.example.api")}),
-            owns_resources=frozenset(),
+            owns_resources=frozenset({ComponentId("substrate_example")}),
         )
 
         violations = migration_sut._analyze_migration_file(

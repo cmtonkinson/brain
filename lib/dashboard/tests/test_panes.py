@@ -89,7 +89,7 @@ def test_log_pane_follow_default():
 def test_log_pane_filter_component():
     buf = LogBuffer()
     buf.append(_make_event(component="core", message="core msg"))
-    buf.append(_make_event(component="agent", message="agent msg"))
+    buf.append(_make_event(component="assistant", message="assistant msg"))
     pane = LogPane(buffer=buf)
     pane.filter_component = "core"
     matched = [e for e in buf.get_all() if pane._matches(e)]

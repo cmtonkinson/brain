@@ -34,8 +34,8 @@ def test_run_startup_migrations_executes_all_registered_service_configs(
         str(item) for item in discover_service_migration_configs(repo_root=repo_root)
     )
 
-    previous = os.environ.get("BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL")
-    os.environ["BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL"] = postgres_url
+    previous = os.environ.get("BRAIN_POSTGRES__URL")
+    os.environ["BRAIN_POSTGRES__URL"] = postgres_url
     try:
         result = run_startup_migrations(
             settings=integration_settings,
@@ -43,8 +43,8 @@ def test_run_startup_migrations_executes_all_registered_service_configs(
         )
     finally:
         if previous is None:
-            os.environ.pop("BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL", None)
+            os.environ.pop("BRAIN_POSTGRES__URL", None)
         else:
-            os.environ["BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL"] = previous
+            os.environ["BRAIN_POSTGRES__URL"] = previous
 
     assert result.executed_alembic_configs == expected

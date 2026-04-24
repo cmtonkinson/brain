@@ -62,7 +62,7 @@ def test_tracing_concern_starts_and_completes_span_with_attributes() -> None:
     tracer = _FakeTracer()
     concern = PublicApiTracingConcern(tracer=tracer)
     invocation = InvocationContext(
-        component_id="service_embedding_authority",
+        component_id="service_embedding",
         api_name="upsert_source",
         trace_id="trace-1",
         envelope_id="env-1",
@@ -81,10 +81,10 @@ def test_tracing_concern_starts_and_completes_span_with_attributes() -> None:
         )
     )
 
-    assert tracer.names == ["public_api.service_embedding_authority.upsert_source"]
+    assert tracer.names == ["public_api.service_embedding.upsert_source"]
     manager = tracer.managers[0]
     assert manager.exited is True
-    assert manager._span.attributes["component_id"] == "service_embedding_authority"
+    assert manager._span.attributes["component_id"] == "service_embedding"
     assert manager._span.attributes["api_name"] == "upsert_source"
     assert manager._span.attributes["outcome"] == "success"
     assert manager._span.attributes["errors.count"] == 0

@@ -1,0 +1,69 @@
+{
+  "op_id": "subagent-wait",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Block until a previously queued subagent invocation reaches terminal state.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "invocation_id": {
+        "type": "string",
+        "description": "The ULID identifier of the invocation to wait on."
+      },
+      "timeout_seconds": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "Maximum seconds to block. Returns the latest snapshot at timeout."
+      }
+    },
+    "required": [
+      "invocation_id"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "invocation_id": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "final_response": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "cancel_reason": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "tokens_in": {
+        "type": "integer"
+      },
+      "tokens_out": {
+        "type": "integer"
+      },
+      "turn_count": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "invocation_id",
+      "status",
+      "tokens_in",
+      "tokens_out",
+      "turn_count"
+    ]
+  },
+  "call_target": "service_delegation.wait",
+  "effect": "read",
+  "approval": "never"
+}

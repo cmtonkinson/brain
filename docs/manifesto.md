@@ -85,7 +85,7 @@ It may act only within explicit, reviewable boundaries.
 
 ### Everything Must Compound
 The system should get better over time, not just bigger.
-- skills should be reusable
+- Ops should be reusable
 - knowledge should reduce future effort
 - mistakes should feed learning
 - repetition should create leverage
@@ -97,7 +97,7 @@ Every piece of data in Brain must have a clear answer to: _"Is this
 authoritative, or can it be rebuilt?"_ There is no ambiguous middle ground.
 
 - **One-Way Promotion.** Data may move from operational to canonical via
-  explicit Memory Authority workflows, or from derived to discarded. No
+  explicit Recall workflows, or from derived to discarded. No
   automatic reverse flow.
 - **Canonical Memory.** If it matters long-term, it must exist in Obsidian, be
   readable by a human, and carry provenance. Operational commitments, schedules,
@@ -115,8 +115,8 @@ Anything entering the system follows a deterministic path.
 5. **Reflect** - optional summarization or synthesis
 
 ### Memory Promotion Is a Privileged Operation
-Any component may propose, reference, and query memory, but only the Memory
-Authority Service may promote information into durable memory (meaning commit
+Any component may propose, reference, and query memory, but only the Recall
+Service may promote information into durable memory (meaning commit
 memory into Obsidian). This ensures:
 - consistency
 - deduplication
@@ -153,9 +153,9 @@ The system must support retrospection, pattern recognition, and correction. An
 unclosed loop is a signal, not a failure.
 
 ------------------------------------------------------------------------
-## Capabilities, Not Scripts
-Reusable _Capability_ is expressed as _Ops_ and _Skills_: the units of
-compounding leverage within the system. A _Capability_:
+## Ops, Not Scripts
+Reusable work is expressed as _Ops_: the units of
+compounding leverage within the system. An _Op_:
 - has a clear input/output contract
 - is testable
 - has bounded authority
@@ -168,16 +168,19 @@ Examples:
 - "Digest changes from watched sources"
 
 ------------------------------------------------------------------------
-## The Attention Router
-All outputs flow through an attention routing layer that decides:
+## The Relay (outbound attention routing)
+All outbound operator messages flow through the Relay's outbound path that
+decides:
 - **whether** to notify
 - **when** to notify
 - **how** to notify
 - **how much** to say
 
-Output channels (e.g. Signal) are chosen deliberately.
+Output channels (e.g. Signal) are chosen deliberately. The Relay also owns
+inbound ingestion from the same channels and approval-token correlation,
+giving Brain a single bidirectional comms surface.
 
-_No component may bypass this router._ In fact, there are automated test gates
+_No component may bypass the Relay._ In fact, there are automated test gates
 to ensure callsites do not violate this principle.
 
 ------------------------------------------------------------------------
@@ -188,7 +191,7 @@ Autonomy is contextual and tiered. Levels:
 - L2: reversible actions
 - L3: bounded automatic actions
 
-Levels are assigned per capability, context, and actor. All autonomy must be
+Levels are assigned per op, context, and actor. All autonomy must be
 visible, reviewable, and revocable.
 
 ------------------------------------------------------------------------
@@ -207,7 +210,7 @@ If the system becomes clever but untrustworthy, **It. Has. Failed.**
 These are constitutional constraints. They are non-negotiable and must hold at
 all times, regardless of feature scope or implementation convenience.
 
-- _Skills_ cannot write durable memory directly.
+- _Ops_ cannot write durable memory directly.
 - Policies gate all side effects.
 - Attention routing gates all interruptions.
 - Memory governance is ongoing, not one-time.

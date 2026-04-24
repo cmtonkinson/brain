@@ -9,6 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from lib.shared.config import CoreRuntimeSettings, resolve_component_settings
 from resources.adapters.llm.component import RESOURCE_COMPONENT_ID
 
+_VOYAGE_API_BASE = "https://api.voyageai.com"
+_OLLAMA_API_BASE = "http://host.docker.internal:11434"
+_ANTHROPIC_API_BASE = "https://api.anthropic.com"
+_VOYAGE_DEFAULT_OUTPUT_DIMENSION = 2048
+_ANTHROPIC_DEFAULT_MAX_TOKENS = 1024
+
 
 class LlmProviderSettings(BaseModel):
     """Provider-specific backend settings for in-process native LLM calls."""
@@ -37,23 +43,23 @@ class LlmAdapterSettings(BaseModel):
 
     timeout_seconds: float = Field(default=30.0, gt=0)
     max_retries: int = Field(default=2, ge=0)
-    timeout_retry_attempts: int = Field(default=2, ge=0)
-    timeout_retry_initial_delay_seconds: float = Field(default=0.5, ge=0)
-    timeout_retry_max_delay_seconds: float = Field(default=2.0, gt=0)
-    timeout_retry_backoff_multiplier: float = Field(default=2.0, gt=1.0)
-    timeout_retry_jitter_ratio: float = Field(default=0.2, ge=0, lt=1.0)
+    retry_attempts: int = Field(default=2, ge=0)
+    retry_initial_delay_seconds: float = Field(default=0.5, ge=0)
+    retry_max_delay_seconds: float = Field(default=2.0, gt=0)
+    retry_backoff_multiplier: float = Field(default=2.0, gt=1.0)
+    retry_jitter_ratio: float = Field(default=0.2, ge=0, lt=1.0)
     providers: dict[str, LlmProviderSettings] = Field(
         default_factory=lambda: {
             "voyage": LlmProviderSettings(
-                api_base="https://api.voyageai.com",
-                options={"output_dimension": 2048},
+                api_base=_VOYAGE_API_BASE,
+                options={"output_dimension": _VOYAGE_DEFAULT_OUTPUT_DIMENSION},
             ),
             "ollama": LlmProviderSettings(
-                api_base="http://host.docker.internal:11434",
+                api_base=_OLLAMA_API_BASE,
             ),
             "anthropic": LlmProviderSettings(
-                api_base="https://api.anthropic.com",
-                options={"max_tokens": 1024},
+                api_base=_ANTHROPIC_API_BASE,
+                options={"max_tokens": _ANTHROPIC_DEFAULT_MAX_TOKENS},
             ),
         }
     )
@@ -69,11 +75,11 @@ class LlmAdapterSettings(BaseModel):
                 provider_settings = providers[provider_name]
                 updates: dict[str, object] = {}
                 if provider_settings.api_base.strip() == "":
-                    updates["api_base"] = "https://api.voyageai.com"
+                    updates["api_base"] = _VOYAGE_API_BASE
                 if "output_dimension" not in provider_settings.options:
                     updates["options"] = {
                         **provider_settings.options,
-                        "output_dimension": 2048,
+                        "output_dimension": _VOYAGE_DEFAULT_OUTPUT_DIMENSION,
                     }
                 if updates:
                     providers[provider_name] = provider_settings.model_copy(
@@ -83,30 +89,29 @@ class LlmAdapterSettings(BaseModel):
                 provider_settings = providers[provider_name]
                 if provider_settings.api_base.strip() == "":
                     providers[provider_name] = provider_settings.model_copy(
-                        update={"api_base": "http://host.docker.internal:11434"}
+                        update={"api_base": _OLLAMA_API_BASE}
                     )
             if provider_name == "anthropic":
                 provider_settings = providers[provider_name]
                 updates: dict[str, object] = {}
                 if provider_settings.api_base.strip() == "":
-                    updates["api_base"] = "https://api.anthropic.com"
+                    updates["api_base"] = _ANTHROPIC_API_BASE
                 if "max_tokens" not in provider_settings.options:
                     updates["options"] = {
                         **provider_settings.options,
-                        "max_tokens": 1024,
+                        "max_tokens": _ANTHROPIC_DEFAULT_MAX_TOKENS,
                     }
                 if updates:
                     providers[provider_name] = provider_settings.model_copy(
                         update=updates
                     )
         if (
-            self.timeout_retry_attempts > 0
-            and self.timeout_retry_max_delay_seconds
-            < self.timeout_retry_initial_delay_seconds
+            self.retry_attempts > 0
+            and self.retry_max_delay_seconds < self.retry_initial_delay_seconds
         ):
             raise ValueError(
-                "timeout_retry_max_delay_seconds must be >= "
-                "timeout_retry_initial_delay_seconds when retries are enabled"
+                "retry_max_delay_seconds must be >= "
+                "retry_initial_delay_seconds when retries are enabled"
             )
         if providers != self.providers:
             object.__setattr__(self, "providers", providers)
@@ -136,19 +141,19 @@ def resolve_llm_provider_timeout_seconds(
     return provider_config.timeout_seconds
 
 
-def timeout_retry_backoff_schedule_seconds(
+def retry_backoff_schedule_seconds(
     settings: LlmAdapterSettings,
 ) -> tuple[float, ...]:
     """Return the bounded pre-attempt backoff schedule for timeout retries."""
     delays: list[float] = []
-    delay = settings.timeout_retry_initial_delay_seconds
-    for _ in range(settings.timeout_retry_attempts):
-        delays.append(min(delay, settings.timeout_retry_max_delay_seconds))
-        delay *= settings.timeout_retry_backoff_multiplier
+    delay = settings.retry_initial_delay_seconds
+    for _ in range(settings.retry_attempts):
+        delays.append(min(delay, settings.retry_max_delay_seconds))
+        delay *= settings.retry_backoff_multiplier
     return tuple(delays)
 
 
-def timeout_retry_budget_seconds(
+def retry_budget_seconds(
     *,
     settings: LlmAdapterSettings,
     provider: str,
@@ -159,15 +164,15 @@ def timeout_retry_budget_seconds(
         settings=settings,
         provider=provider,
     )
-    attempts = 1 + settings.timeout_retry_attempts
+    attempts = 1 + settings.retry_attempts
     return (
         timeout_seconds * attempts
-        + sum(timeout_retry_backoff_schedule_seconds(settings))
+        + sum(retry_backoff_schedule_seconds(settings))
         + max(0.0, margin_seconds)
     )
 
 
-def max_timeout_retry_budget_seconds(
+def max_retry_budget_seconds(
     *,
     settings: LlmAdapterSettings,
     providers: tuple[str, ...],
@@ -177,7 +182,7 @@ def max_timeout_retry_budget_seconds(
     if len(providers) == 0:
         return margin_seconds
     return max(
-        timeout_retry_budget_seconds(
+        retry_budget_seconds(
             settings=settings,
             provider=provider,
             margin_seconds=margin_seconds,

@@ -16,12 +16,12 @@ class _FakeDeleteClient:
     """Minimal Qdrant client fake focused on delete-point behavior."""
 
     def __init__(self, *, collection_exists: bool) -> None:
-        self._collection_exists = collection_exists
+        self._collection_exists_value = collection_exists
         self.delete_calls = 0
         self.retrieve_calls = 0
 
     def collection_exists(self, _: str) -> bool:
-        return self._collection_exists
+        return self._collection_exists_value
 
     def delete(self, **_: object) -> None:
         self.delete_calls += 1
@@ -48,8 +48,8 @@ def test_delete_point_is_single_call_and_idempotent(
     fake_client = _FakeDeleteClient(collection_exists=True)
     monkeypatch.setattr(
         substrate_module,
-        "create_qdrant_client",
-        lambda _: fake_client,
+        "QdrantClient",
+        lambda **_: fake_client,
     )
     substrate = QdrantClientSubstrate(_config())
 
@@ -65,8 +65,8 @@ def test_delete_point_noops_when_collection_missing(monkeypatch: object) -> None
     fake_client = _FakeDeleteClient(collection_exists=False)
     monkeypatch.setattr(
         substrate_module,
-        "create_qdrant_client",
-        lambda _: fake_client,
+        "QdrantClient",
+        lambda **_: fake_client,
     )
     substrate = QdrantClientSubstrate(_config())
 

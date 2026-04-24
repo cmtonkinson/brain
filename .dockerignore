@@ -10,8 +10,8 @@
 !actors/**
 !bin/
 !bin/**
-!capabilities/
-!capabilities/**
+!ops/
+!ops/**
 !config/
 !config/**
 !lib/

@@ -8,7 +8,11 @@ from collections import deque
 from dataclasses import dataclass
 from random import random
 from threading import Event, Lock, Thread
+from typing import TYPE_CHECKING
 from urllib.parse import quote, urlparse, urlunparse
+
+if TYPE_CHECKING:
+    import httpx
 
 import aiohttp
 
@@ -20,13 +24,13 @@ from lib.shared.http import (
 from lib.shared.logging import get_logger, public_api_instrumented
 from resources.adapters.signal.adapter import (
     SignalAdapter,
-    SignalAdapterError,
-    SignalCallbackRegistrationResult,
     SignalAdapterDependencyError,
+    SignalAdapterError,
     SignalAdapterHealthResult,
+    SignalAdapterInternalError,
+    SignalCallbackRegistrationResult,
     SignalInboundCallback,
     SignalInboundCallbackResult,
-    SignalAdapterInternalError,
     SignalSendMessageResult,
 )
 from resources.adapters.signal.component import RESOURCE_COMPONENT_ID
@@ -170,7 +174,9 @@ class SignalRestApiAdapter(SignalAdapter):
 
         for attempt in range(self._settings.max_retries + 1):
             try:
-                asyncio.run(self._run_receive_session(registration=registration))
+                asyncio.run(
+                    self._run_receive_session(registration=registration)
+                )  # asyncio.run() is correct here — creates a fresh event loop per session; do not hoist
                 self._backoff_seconds = self._settings.failure_backoff_initial_seconds
                 return 0.0
             except SignalAdapterDependencyError as exc:
@@ -182,14 +188,11 @@ class SignalRestApiAdapter(SignalAdapter):
                 )
                 return self._next_backoff_delay()
             except SignalAdapterInternalError as exc:
-                if attempt < self._settings.max_retries:
-                    continue
                 _LOGGER.error(
                     "signal adapter receive/forward internal failure: %s",
                     str(exc),
                 )
                 return self._next_backoff_delay()
-        return self._next_backoff_delay()
 
     def _ensure_worker_started_locked(self) -> None:
         """Start receive worker once when callback registration is configured."""
@@ -303,7 +306,7 @@ class SignalRestApiAdapter(SignalAdapter):
                 "signal adapter queued callback payload",
                 extra={
                     "raw_body_json": wrapped_body,
-                    **_summarize_signal_payload(wrapped_body),
+                    **summarize_signal_payload(wrapped_body),
                 },
             )
             self._pending_payloads.append(wrapped_body)
@@ -360,7 +363,7 @@ class SignalRestApiAdapter(SignalAdapter):
 
     def _flush_pending(self, *, registration: _CallbackRegistration) -> None:
         """Forward pending receive payloads to the registered callback."""
-        while len(self._pending_payloads) > 0:
+        while self._pending_payloads:
             body = self._pending_payloads[0]
             callback_result = self._invoke_callback(
                 registration=registration,
@@ -396,8 +399,8 @@ class SignalRestApiAdapter(SignalAdapter):
         callback_result: SignalInboundCallbackResult,
         raw_body_json: str,
     ) -> None:
-        """Emit one visible log line for Switchboard accept/reject decisions."""
-        payload_summary = _summarize_signal_payload(raw_body_json)
+        """Emit one visible log line for Relay inbound accept/reject decisions."""
+        payload_summary = summarize_signal_payload(raw_body_json)
         if callback_result.accepted and callback_result.queued:
             _LOGGER.info(
                 "signal adapter callback accepted queued message",
@@ -425,8 +428,8 @@ class SignalRestApiAdapter(SignalAdapter):
         *,
         callback_result: SignalInboundCallbackResult,
     ) -> None:
-        """Send a read receipt after Switchboard confirms the message was queued."""
-        if callback_result.sender_e164 == "" or callback_result.timestamp_ms is None:
+        """Send a read receipt after Relay inbound confirms the message was queued."""
+        if callback_result.sender_e164 is None or callback_result.timestamp_ms is None:
             _LOGGER.warning(
                 "signal adapter skipped read receipt after successful callback",
                 extra={
@@ -492,14 +495,8 @@ class SignalRestApiAdapter(SignalAdapter):
         return delay
 
 
-def _response_timestamp_ms(response: object) -> int | None:
-    """Extract one outbound send timestamp from a Signal API response when present."""
-    _payload, timestamp_ms = _response_payload_and_timestamp_ms(response)
-    return timestamp_ms
-
-
 def _response_payload_and_timestamp_ms(
-    response: object,
+    response: "httpx.Response",
 ) -> tuple[object | None, int | None]:
     """Extract one outbound send response payload plus its timestamp when present."""
     try:
@@ -532,8 +529,13 @@ def _optional_int(value: object) -> int | None:
         return None
 
 
-def _summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
-    """Summarize one raw Signal receive item for diagnostic logging."""
+def summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
+    """Summarize one raw Signal receive item for diagnostic logging.
+
+    Expects the callback-wrapped ``{"data": {...}}`` format. Tolerates the
+    unwrapped envelope form so service-side callers can use this on either
+    shape.
+    """
     try:
         payload = json.loads(raw_body_json)
     except json.JSONDecodeError:
@@ -545,6 +547,8 @@ def _summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
     data = payload.get("data")
     if isinstance(data, dict):
         candidate = data
+    if not isinstance(candidate, dict):
+        return {"payload_json_valid": True, "payload_type": type(candidate).__name__}
 
     envelope = candidate.get("envelope")
     if not isinstance(envelope, dict):
@@ -553,14 +557,12 @@ def _summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
     if not isinstance(exception, dict):
         exception = {}
 
-    data_message = envelope.get("dataMessage")
-    sync_message = envelope.get("syncMessage")
     return {
         "payload_json_valid": True,
         "has_data_wrapper": isinstance(data, dict),
         "has_envelope": len(envelope) > 0,
-        "has_data_message": isinstance(data_message, dict),
-        "has_sync_message": isinstance(sync_message, dict),
+        "has_data_message": isinstance(envelope.get("dataMessage"), dict),
+        "has_sync_message": isinstance(envelope.get("syncMessage"), dict),
         "exception_type": str(exception.get("type") or "").strip(),
         "exception_message": str(exception.get("message") or "").strip(),
         "source": str(
@@ -577,7 +579,10 @@ def _summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
 
 
 def _summarize_signal_receive_payload(raw_payload_json: str) -> dict[str, object]:
-    """Summarize one raw Signal websocket payload before callback wrapping."""
+    """Summarize one raw Signal websocket payload before callback wrapping.
+
+    Expects the raw websocket frame, before ``{"data": ...}`` wrapping.
+    """
     try:
         payload = json.loads(raw_payload_json)
     except json.JSONDecodeError:

@@ -1,4 +1,4 @@
-"""Qdrant substrate modules for Layer 0 resource access."""
+"""Qdrant substrate modules for Tier 1 resource access."""
 
 from resources.substrates.qdrant.component import MANIFEST
 from resources.substrates.qdrant.config import QdrantConfig, QdrantSettings

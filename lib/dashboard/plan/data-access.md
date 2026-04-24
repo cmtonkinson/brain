@@ -24,7 +24,7 @@ services that Brain owns. This document governs:
 
 ------------------------------------------------------------------------
 ## Architectural Position
-The dashboard is an _external_ operator tool. It is not part of Brain's L0/L1/L2
+The dashboard is an _external_ operator tool. It is not part of Brain's T1/T2/T3
 architecture.
 
 It is not an _Actor_. It is not a _Service_. It is not a _Resource_.
@@ -75,7 +75,7 @@ Raw payloads normalize into canonical dashboard records with:
 - stable ids where available
 - normalized timestamps
 - correlation fields such as `turn_id`, `trace_id`, `envelope_id`,
-  `component`, `provider`, `model`, and `capability`
+  `component`, `provider`, `model`, and `op`
 - provenance describing where the record came from
 
 Normalization is where source heterogeneity is hidden.
@@ -135,7 +135,7 @@ Brain Core uses.
 
 Source of connection parameters:
 - `resources.yaml` under `substrate.postgres`
-- environment variables following the `BRAIN_RESOURCES__SUBSTRATE__POSTGRES__*`
+- environment variables following the `BRAIN_POSTGRES__*`
   convention
 
 The dashboard must not maintain its own separate Postgres configuration surface.
@@ -160,7 +160,7 @@ uses.
 
 Source of connection parameters:
 - `resources.yaml` under `substrate.valkey`
-- environment variables following the `BRAIN_RESOURCES__SUBSTRATE__VALKEY__*`
+- environment variables following the `BRAIN_VALKEY__*`
   convention
 
 Connection behavior:
@@ -173,7 +173,7 @@ Connection behavior:
 The dashboard makes HTTP calls to health/alive endpoints only.
 
 These are read-only probes used by the header health checks. The dashboard must
-not call Brain Core SDK endpoints, capability invocation endpoints, or any
+not call Brain Core SDK endpoints, op invocation endpoints, or any
 endpoint with side effects.
 
 ### Filesystem
@@ -285,7 +285,7 @@ Relating records that describe the same unit of work.
 Examples:
 - turn -> trace
 - trace -> envelope
-- policy decision -> capability
+- policy decision -> op
 
 ### Temporal Correlation
 Relating records that occurred at the same time or in the same retained time
@@ -330,15 +330,15 @@ The trace view reads normalized execution history to build the trace tree and
 detail views specified in the trace view plan.
 
 ### Turn View
-- Postgres: reads from the Memory Authority Service schema
-  (`service_memory_authority`)
+- Postgres: reads from the Recall Service schema
+  (`service_recall`)
 - Reads dialogue turn records, session records, and associated metadata
 
 The turn view reads dialogue history to show recent conversation turns and
 context assembly results.
 
 ### Policy View
-- Postgres: reads from the Policy Service schema (`service_policy_service`)
+- Postgres: reads from the Policy Service schema (`service_policy`)
 - Reads policy decisions, approval proposals, and approval state
 
 The policy view reads policy state to show pending approvals and recent decisions
@@ -607,7 +607,6 @@ dashboard:
   data_sources:
     defaults:
       poll_seconds: 2.0
-      query_timeout_seconds: 5.0
       staleness_threshold_seconds: 10.0
     trace:
       poll_seconds: 2.0

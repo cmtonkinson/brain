@@ -13,7 +13,7 @@ class CurrentApprovalView(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     state: str = "pending"
-    capability_id: str
+    op_id: str
     actor: str
     channel: str
     summary: str
@@ -26,7 +26,7 @@ class CurrentDecisionView(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    capability_id: str
+    op_id: str
     actor: str
     channel: str
     state: str  # allowed | denied
@@ -40,4 +40,4 @@ class RecentPolicyItemView(BaseModel):
 
     timestamp: datetime
     state: str  # allowed | denied | pending | approved | rejected | expired
-    capability_id: str
+    op_id: str

@@ -151,10 +151,10 @@ def test_build_trace_tree_uses_parent_linkage():
             {
                 "envelope_id": "root",
                 "parent_id": None,
-                "component": "switchboard",
+                "component": "inbound",
                 "operation": "ingest_signal",
                 "status": "OK",
-                "source": "switchboard",
+                "source": "inbound",
                 "principal": "operator",
                 "elapsed_ms": 10,
                 "timestamp": _dt(0),

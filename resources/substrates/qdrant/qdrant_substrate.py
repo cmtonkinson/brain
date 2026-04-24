@@ -13,9 +13,9 @@ from lib.shared.embeddings import (
     DISTANCE_METRIC_EUCLID,
 )
 from lib.shared.logging import get_logger, public_api_instrumented
+from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
-from resources.substrates.qdrant.client import create_qdrant_client
 from resources.substrates.qdrant.component import RESOURCE_COMPONENT_ID
 from resources.substrates.qdrant.config import QdrantConfig
 from resources.substrates.qdrant.substrate import (
@@ -39,7 +39,7 @@ class QdrantClientSubstrate(QdrantSubstrate):
 
     def __init__(self, config: QdrantConfig) -> None:
         self._config = config
-        self._client = create_qdrant_client(config)
+        self._client = QdrantClient(url=config.url, timeout=config.timeout_seconds)
         self._collection = config.collection_name
         self._lock = Lock()
 
@@ -188,29 +188,17 @@ class QdrantClientSubstrate(QdrantSubstrate):
         ]
 
         query_filter = models.Filter(must=must_conditions)
-        if hasattr(self._client, "search"):
-            results = self._qdrant_call(
-                "search",
-                self._client.search,
-                collection_name=self._collection,
-                query_vector=list(query_vector),
-                query_filter=query_filter,
-                limit=limit,
-                with_payload=True,
-                with_vectors=False,
-            )
-        else:
-            query_response = self._qdrant_call(
-                "query_points",
-                self._client.query_points,
-                collection_name=self._collection,
-                query=list(query_vector),
-                query_filter=query_filter,
-                limit=limit,
-                with_payload=True,
-                with_vectors=False,
-            )
-            results = getattr(query_response, "points", [])
+        query_response = self._qdrant_call(
+            "query_points",
+            self._client.query_points,
+            collection_name=self._collection,
+            query=list(query_vector),
+            query_filter=query_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False,
+        )
+        results = query_response.points
 
         points: list[SearchPoint] = []
         for point in results:

@@ -1,0 +1,26 @@
+{
+  "op_id": "dialogue-compact",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Summarize all recent turns and compress context to summary-only.",
+  "call_target": "service_recall.compact_dialogue",
+  "enabled": true,
+  "input_schema": {
+    "session_id": "string | The session to compact"
+  },
+  "output_schema": {
+    "id": "string | Session ULID",
+    "dialogue_summary": "string | null | Updated rolling summary",
+    "dialogue_summary_token_count": "integer | null | Token count of new summary",
+    "dialogue_start_turn_id": "string | null | Advanced frontier pointer"
+  },
+  "slash_command": {
+    "name": "compact",
+    "description": "summarize all recent turns and compress context",
+    "aliases": [
+      "compress"
+    ]
+  },
+  "effect": "execute",
+  "approval": "never"
+}

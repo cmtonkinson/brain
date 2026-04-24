@@ -36,7 +36,7 @@ The pane should derive its own current and recent views from dialogue state
 only.
 
 The turn view is a snapshot-oriented view with bounded recent history:
-- acquisition continues as MAS records new dialogue turns
+- acquisition continues as Recall records new dialogue turns
 - the viewport may follow the latest turn or freeze on retained recent turns
 - stepping moves by retained turn or paired exchange, not by sample interval
 
@@ -45,11 +45,11 @@ The pane should have two layers:
 - one detailed current section
 - one compact recent history section
 
-### MAS Is the Authority
-The Memory Authority Service owns dialogue state: sessions, turns, and focus.
+### Recall Owns Dialogue State
+The Recall Service owns dialogue state: sessions, turns, and focus.
 
-The turn view consumes MAS-originated data.
-It does not query the Language Model Service, Capability Engine, or trace
+The turn view consumes Recall-originated data.
+It does not query the Language Service, Execution, or trace
 infrastructure directly.
 
 ### Shared Inspection Context Is Optional and Explicit
@@ -450,7 +450,7 @@ Turn view tests should cover:
 - Keep the inspect modal as a transient overlay, not a persistent subview.
 - Do not conflate turns with traces.
 - Do not assume cross-pane linkage unless explicitly designed later.
-- Use MAS as the sole data authority for turn content and metadata.
+- Use Recall as the sole data authority for turn content and metadata.
 
 
 ------------------------------------------------------------------------

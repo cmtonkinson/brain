@@ -1,0 +1,19 @@
+{
+  "op_id": "object-get-text",
+  "kind": "logic",
+  "version": "1.0.0",
+  "summary": "Read one text object and return metadata plus decoded content.",
+  "simple_output_path": ".content",
+  "enabled": true,
+  "input_schema": {
+    "object_key": "string | The canonical object key to read.",
+    "encoding": "string | optional | Text encoding used to decode stored bytes. Defaults to 'utf-8'."
+  },
+  "output_schema": {
+    "object": "object | The authoritative object record.",
+    "content": "string | The decoded text content.",
+    "encoding": "string | The text encoding used for decoding."
+  },
+  "effect": "read",
+  "approval": "never"
+}

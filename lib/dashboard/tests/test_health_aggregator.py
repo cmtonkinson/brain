@@ -66,27 +66,27 @@ def test_probe_core_maps_ready_false_to_no() -> None:
     assert result.detail == "booting"
 
 
-def test_probe_agent_ok_fresh_file(tmp_path: Path) -> None:
-    hb = tmp_path / "agent.heartbeat"
+def test_probe_assistant_ok_fresh_file(tmp_path: Path) -> None:
+    hb = tmp_path / "assistant.heartbeat"
     hb.write_text("alive")
-    agg = _make_agg(agent_heartbeat_path=str(hb), agent_freshness_seconds=30.0)
-    result = agg._probe_agent(_now())
+    agg = _make_agg(assistant_heartbeat_path=str(hb), assistant_freshness_seconds=30.0)
+    result = agg._probe_assistant(_now())
     assert result.state == "ok"
 
 
-def test_probe_agent_no_stale_file(tmp_path: Path) -> None:
-    hb = tmp_path / "agent.heartbeat"
+def test_probe_assistant_no_stale_file(tmp_path: Path) -> None:
+    hb = tmp_path / "assistant.heartbeat"
     hb.write_text("alive")
     old_time = time.time() - 60
     os.utime(str(hb), (old_time, old_time))
-    agg = _make_agg(agent_heartbeat_path=str(hb), agent_freshness_seconds=30.0)
-    result = agg._probe_agent(_now())
+    agg = _make_agg(assistant_heartbeat_path=str(hb), assistant_freshness_seconds=30.0)
+    result = agg._probe_assistant(_now())
     assert result.state == "no"
 
 
-def test_probe_agent_unknown_missing_file(tmp_path: Path) -> None:
-    agg = _make_agg(agent_heartbeat_path=str(tmp_path / "missing.heartbeat"))
-    result = agg._probe_agent(_now())
+def test_probe_assistant_unknown_missing_file(tmp_path: Path) -> None:
+    agg = _make_agg(assistant_heartbeat_path=str(tmp_path / "missing.heartbeat"))
+    result = agg._probe_assistant(_now())
     assert result.state == "unknown"
 
 
@@ -128,9 +128,9 @@ def test_fetch_returns_seven_components() -> None:
     ):
         with patch.object(
             agg,
-            "_probe_agent",
+            "_probe_assistant",
             return_value=ComponentHealth(
-                name="agent", state="unknown", checked_at=_now()
+                name="assistant", state="unknown", checked_at=_now()
             ),
         ):
             with patch.object(
@@ -152,7 +152,7 @@ def test_fetch_returns_seven_components() -> None:
     names = {r.name for r in results}
     assert names == {
         "core",
-        "agent",
+        "assistant",
         "postgres",
         "valkey",
         "signal",
@@ -174,34 +174,35 @@ def test_data_source_poll_config_rejects_zero() -> None:
 
 def test_load_dashboard_config_sources_runtime_health_defaults(tmp_path: Path) -> None:
     core_file = tmp_path / "core.yaml"
-    core_file.write_text("http:\n  host: 0.0.0.0\n  port: 9123\n", encoding="utf-8")
+    core_file.write_text(
+        "core:\n  http:\n    host: 0.0.0.0\n    port: 9123\n",
+        encoding="utf-8",
+    )
     resources_file = tmp_path / "resources.yaml"
     resources_file.write_text(
         "\n".join(
             [
-                "substrate:",
-                "  postgres:",
-                "    url: postgresql+psycopg://db-user:db-pass@db-host:5432/brain",
-                "    pool_size: 7",
-                "    health_timeout_seconds: 3.0",
-                "    connect_timeout_seconds: 9.0",
-                "  valkey:",
-                "    url: valkey://cache-host:6380/2",
-                "    health_timeout_seconds: 4.0",
-                "  qdrant:",
-                "    url: http://qdrant-host:6333",
-                "    request_timeout_seconds: 5.0",
-                "adapter:",
-                "  signal:",
-                "    base_url: http://signal-host:8080",
-                "    health_timeout_seconds: 6.0",
+                "postgres:",
+                "  url: postgresql+psycopg://db-user:db-pass@db-host:5432/brain",
+                "  pool_size: 7",
+                "  health_timeout_seconds: 3.0",
+                "  connect_timeout_seconds: 9.0",
+                "valkey:",
+                "  url: valkey://cache-host:6380/2",
+                "  health_timeout_seconds: 4.0",
+                "qdrant:",
+                "  url: http://qdrant-host:6333",
+                "  request_timeout_seconds: 5.0",
+                "signal:",
+                "  base_url: http://signal-host:8080",
+                "  health_timeout_seconds: 6.0",
             ]
         ),
         encoding="utf-8",
     )
     dashboard_file = tmp_path / "dashboard.yaml"
     dashboard_file.write_text(
-        "dashboard:\n  app_title: Ops\n  health:\n    agent_freshness_seconds: 12.0\n",
+        "dashboard:\n  app_title: Ops\n  health:\n    assistant_freshness_seconds: 12.0\n",
         encoding="utf-8",
     )
     gateway_file = tmp_path / "host-mcp-gateway.json"
@@ -220,7 +221,7 @@ def test_load_dashboard_config_sources_runtime_health_defaults(tmp_path: Path) -
 
     assert config.app_title == "Ops"
     assert config.health.core_health_url == "http://127.0.0.1:9123/health"
-    assert config.health.agent_freshness_seconds == 12.0
+    assert config.health.assistant_freshness_seconds == 12.0
     assert (
         config.health.postgres_url
         == "postgresql+psycopg://db-user:db-pass@db-host:5432/brain"
@@ -230,4 +231,4 @@ def test_load_dashboard_config_sources_runtime_health_defaults(tmp_path: Path) -
     assert config.health.qdrant_health_url == "http://qdrant-host:6333/healthz"
     assert config.health.gateway_health_url == "http://127.0.0.1:7412/health"
     assert config.postgres.pool_size == 7
-    assert config.postgres.query_timeout_seconds == 9.0
+    assert config.postgres.connect_timeout_seconds == 9.0

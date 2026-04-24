@@ -1,0 +1,133 @@
+{
+  "op_id": "subagent-sync",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Spawn one subagent to accomplish a task and block until it returns a result.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "The task instruction the subagent should accomplish."
+      },
+      "context_text": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Optional inline scratch context appended to the subagent system prompt."
+      },
+      "context_object_refs": {
+        "type": "array",
+        "description": "Object Service refs the subagent may resolve for additional context.",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "personality_id": {
+        "type": "string",
+        "description": "Personality template id under lib/sdk/personalities (default 'subagent').",
+        "default": "subagent"
+      },
+      "tool_allowlist": {
+        "anyOf": [
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Optional explicit allowlist of op_ids the subagent may invoke."
+      },
+      "max_turns": {
+        "type": "integer",
+        "description": "Hard ceiling on tool-loop turns.",
+        "default": 8,
+        "minimum": 1,
+        "maximum": 64
+      },
+      "budget_tokens": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "Hard ceiling on total tokens consumed across all turns.",
+        "minimum": 1
+      },
+      "max_wallclock_seconds": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "Hard ceiling on wallclock seconds from claim to terminal.",
+        "minimum": 1
+      },
+      "parent_invocation_id": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Optional parent invocation id; cascade-cancel propagates here."
+      },
+      "timeout_seconds": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "Maximum seconds to block waiting for terminal state."
+      }
+    },
+    "required": [
+      "prompt"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "invocation_id": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "final_response": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "cancel_reason": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "tokens_in": {
+        "type": "integer"
+      },
+      "tokens_out": {
+        "type": "integer"
+      },
+      "turn_count": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "invocation_id",
+      "status",
+      "tokens_in",
+      "tokens_out",
+      "turn_count"
+    ]
+  },
+  "call_target": "service_delegation.invoke_and_wait",
+  "effect": "execute",
+  "approval": "never"
+}

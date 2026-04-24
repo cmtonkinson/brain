@@ -9,17 +9,13 @@ from __future__ import annotations
 
 import ulid
 
-ULID_BYTES_LENGTH = 16
+from lib.shared.ids.constants import ULID_BYTES_LENGTH
 
 
 def ulid_str_to_bytes(value: str) -> bytes:
     """Decode canonical 26-char ULID string into 16-byte big-endian form."""
     candidate = value.strip().upper()
-    try:
-        parsed = ulid.ULID.from_str(candidate)
-    except ValueError as exc:
-        raise ValueError(str(exc)) from exc
-    return parsed.bytes
+    return ulid.ULID.from_str(candidate).bytes
 
 
 def ulid_bytes_to_str(value: bytes) -> str:

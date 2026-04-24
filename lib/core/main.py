@@ -6,6 +6,7 @@ import os
 import signal
 import sys
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from time import sleep
 
@@ -34,36 +35,43 @@ def _handle_shutdown(_signum: int, _frame: object) -> None:
     _RUNNING = False
 
 
-def _resolve_component_builder(manifest: ComponentManifest):
-    """Load one component module and return its build callable."""
+def _resolve_component_callable(
+    manifest: ComponentManifest, attribute: str
+) -> Callable[..., object] | None:
+    """Load {module_root}.component and return the named callable, or None."""
     for module_root in sorted(manifest.module_roots):
         module_name = f"{module_root}.component"
         import_component_modules((module_name,))
         module = sys.modules[module_name]
-        builder = getattr(module, "build_component", None)
-        if callable(builder):
-            return builder
-    raise RuntimeError(
-        f"component '{manifest.id}' does not expose build_component(...) in its component module"
-    )
-
-
-def _resolve_component_after_boot(manifest: ComponentManifest):
-    """Load one optional component-level ``after_boot`` lifecycle callable."""
-    for module_root in sorted(manifest.module_roots):
-        module_name = f"{module_root}.component"
-        import_component_modules((module_name,))
-        module = sys.modules[module_name]
-        lifecycle = getattr(module, "after_boot", None)
-        if callable(lifecycle):
-            return lifecycle
+        fn = getattr(module, attribute, None)
+        if callable(fn):
+            return fn
     return None
 
 
-def _resolve_service_http_registrar(manifest: ComponentManifest):
+def _resolve_component_builder(manifest: ComponentManifest) -> Callable[..., object]:
+    """Load one component module and return its build callable."""
+    builder = _resolve_component_callable(manifest, "build_component")
+    if builder is None:
+        raise RuntimeError(
+            f"component '{manifest.id}' does not expose build_component(...) in its component module"
+        )
+    return builder
+
+
+def _resolve_component_after_boot(
+    manifest: ComponentManifest,
+) -> Callable[..., object] | None:
+    """Load one optional component-level ``after_boot`` lifecycle callable."""
+    return _resolve_component_callable(manifest, "after_boot")
+
+
+def _resolve_service_http_registrar(
+    manifest: ComponentManifest,
+) -> Callable[..., object] | None:
     """Load one optional service-level HTTP registrar from ``api.py``."""
     for module_root in sorted(manifest.module_roots):
-        candidate = Path.cwd() / Path(*str(module_root).split(".")) / "api.py"
+        candidate = Path.cwd().resolve() / Path(*str(module_root).split(".")) / "api.py"
         if not candidate.exists():
             continue
         module_name = f"{module_root}.api"
@@ -78,7 +86,7 @@ def _resolve_service_http_registrar(manifest: ComponentManifest):
 def _instantiate_registered_components(
     settings: CoreRuntimeSettings,
 ) -> dict[str, object]:
-    """Instantiate all registered L0 resources and L1 services by registry walk."""
+    """Instantiate all registered Tier 1 resources and Tier 2 services by registry walk."""
     registry = get_registry()
     pending = [*registry.list_resources(), *registry.list_services()]
     built: dict[str, object] = {}
@@ -96,7 +104,7 @@ def _instantiate_registered_components(
             progressed = True
             _LOGGER.info(
                 "component instantiated",
-                extra={"component_id": str(manifest.id), "layer": manifest.layer},
+                extra={"component_id": str(manifest.id), "tier": manifest.tier},
             )
 
         if not progressed:
@@ -107,6 +115,19 @@ def _instantiate_registered_components(
             )
         pending = next_round
     return built
+
+
+def _assert_health_interface(components: dict[str, object]) -> None:
+    """Raise RuntimeError for any instantiated component missing health()."""
+    missing = sorted(
+        component_id
+        for component_id, component in components.items()
+        if not callable(getattr(component, "health", None))
+    )
+    if missing:
+        raise RuntimeError(
+            "components missing required health() method: " + ", ".join(missing)
+        )
 
 
 def _run_after_boot_lifecycle(
@@ -175,26 +196,23 @@ def _start_http_runtime(
 
 def main() -> None:
     """Discover components, instantiate them, run startup, and hold process."""
-    core_config_path = os.getenv("BRAIN_CORE_CONFIG_FILE", "").strip()
-    resources_config_path = os.getenv("BRAIN_RESOURCES_CONFIG_FILE", "").strip()
+    config_dir = os.getenv("BRAIN_CONFIG_DIR", "").strip()
     settings = load_core_runtime_settings(
-        core_config_path=Path(core_config_path) if core_config_path else None,
-        resources_config_path=Path(resources_config_path)
-        if resources_config_path
-        else None,
+        core_config_path=Path(config_dir) if config_dir else None,
     )
+    process_name = settings.core.logging.process_name or "core"
     configure_logging(
         level=settings.core.logging.level,
         file_capture_enabled=settings.core.logging.file_capture_enabled,
         file_capture_level=settings.core.logging.file_capture_level,
         file_capture_directory=settings.core.logging.file_capture_directory,
         json_output=settings.core.logging.json_output,
-        process_name=settings.core.logging.process_name,
+        process_name=process_name,
         environment=settings.core.logging.environment,
     )
     bootstrap_observability(
         settings=settings.core.observability,
-        service_name=str(settings.core.logging.process_name),
+        service_name=process_name,
         environment=str(settings.core.logging.environment),
     )
 
@@ -215,6 +233,7 @@ def main() -> None:
         migration_result = run_startup_migrations(settings=settings)
 
     components = _instantiate_registered_components(settings)
+    _assert_health_interface(components)
     startup_result = run_core_startup(
         settings=settings,
         resolve_component=lambda component_id: components.get(component_id),

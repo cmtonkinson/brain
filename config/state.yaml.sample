@@ -1,0 +1,67 @@
+cache:
+  key_prefix: brain
+  default_ttl_seconds: 300
+  allow_non_expiring_keys: true
+
+embedding:
+  max_list_limit: 500
+  default_list_limit: 100
+
+object:
+  digest_algorithm: sha256
+  digest_version: b1
+  max_blob_size_bytes: 52428800
+
+vault:
+  max_list_limit: 500
+  max_search_limit: 200
+
+obsidian:
+  base_url: http://host.docker.internal:27123
+  timeout_seconds: 10.0
+  max_retries: 2
+  search_context_length: 120
+
+postgres:
+  url: postgresql+psycopg://brain:brain@postgres:5432/brain
+  pool_size: 5
+  max_overflow: 10
+  pool_timeout_seconds: 30.0
+  pool_pre_ping: true
+  connect_timeout_seconds: 10.0
+  health_timeout_seconds: 1.0
+  sslmode: prefer
+  host: postgres
+  port: 5432
+  database: brain
+  user: brain
+  password: brain
+
+qdrant:
+  url: http://qdrant:6333
+  request_timeout_seconds: 10.0
+  distance_metric: cosine
+
+seaweedfs:
+  endpoint_url: http://seaweedfs:8333
+  bucket: brain-oas
+  region: us-east-1
+  access_key_id: replace-me
+  secret_access_key: replace-me
+  key_prefix: objects
+  request_timeout_seconds: 10.0
+  default_extension: blob
+
+valkey:
+  url: valkey://valkey:6379/0
+  host: valkey
+  port: 6379
+  db: 0
+  username: null
+  password: null
+  password_env: ""
+  ssl: false
+  connect_timeout_seconds: 5.0
+  socket_timeout_seconds: 5.0
+  health_timeout_seconds: 1.0
+  max_connections: 20

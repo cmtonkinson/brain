@@ -2,63 +2,43 @@
 _This document is generated from `services/*/*/service.py`. Do not edit by hand._
 
 ------------------------------------------------------------------------
-## `AttentionRouterService`
-- Module: `services/action/attention_router/service.py`
-- Summary: Public API for policy-aware outbound notification routing.
+## `ExecutionService`
+- Module: `services/effect/execution/service.py`
+- Summary: Public API for op invocation under policy governance.
 
-`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
-_Return Attention Router and adapter health state._
+`health(*, meta: EnvelopeMeta) -> Envelope[ExecutionHealthStatus]`  
+_Return Execution readiness, registry counts, and invocation-audit counters._
 
-`correlate_approval_response(*, meta: EnvelopeMeta, actor: str, channel: str, message_text: str = '', approval_token: str = '', reply_to_proposal_token: str = '', reaction_to_proposal_token: str = '') -> Envelope[ApprovalCorrelationPayload]`  
-_Normalize inbound approval-correlation fields for Policy Service._
+`list_always_on_ops(*, meta: EnvelopeMeta) -> Envelope[tuple[OpDescriptor, ...]]`  
+_Return full descriptors for only the configured always-on ops._
 
-`resolve_approval_notification_proposal_token(*, meta: EnvelopeMeta, channel: str, target_timestamp_ms: int) -> Envelope[str | None]`  
-_Resolve one outbound approval notification timestamp to a proposal token._
+`list_dynamic_op_classifications(*, meta: EnvelopeMeta) -> Envelope[tuple[DynamicOpClassificationRow, ...]]`  
+_Return observed dynamic op definitions and persisted classifications._
 
-`route_approval_notification(*, meta: EnvelopeMeta, approval: ApprovalNotificationPayload) -> Envelope[RouteNotificationResult]`  
-_Route one token-only Policy->Attention approval notification._
+`classify_dynamic_op(*, meta: EnvelopeMeta, op_id: str, effect: str | None = None, approval: str | None = None) -> Envelope[DynamicOpClassificationRow]`  
+_Persist one operator-supplied classification for a dynamic op._
 
-`flush_batch(*, meta: EnvelopeMeta, batch_key: str, actor: str = 'operator', channel: str = '', recipient_e164: str = '', sender_e164: str = '', title: str = '') -> Envelope[RouteNotificationResult]`  
-_Flush one pending batch by key and deliver consolidated summary._
+`describe_op(*, meta: EnvelopeMeta, op_id: str) -> Envelope[OpDescriptor]`  
+_Return the full descriptor for one registered op._
 
-`poll_console_response(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[ConsoleResponseMessage | None]`  
-_Pop the next queued console response, optionally long-polling._
+`invoke_op(*, meta: EnvelopeMeta, op_id: str, input_payload: dict[str, object], invocation: OpInvocationMetadata) -> Envelope[OpInvokeResult]`  
+_Invoke by package ``op_id`` (no version arg) and return normalized policy fields._
 
-`route_notification(*, meta: EnvelopeMeta, actor: str = 'operator', channel: str = '', title: str = '', message: str, dedupe_key: str = '', batch_key: str = '', force: bool = False, conversational_memory: ConversationalMemoryContext | None = None) -> Envelope[RouteNotificationResult]`  
-_Route one outbound notification and decide suppress/send/batch._
+`search_ops(*, meta: EnvelopeMeta, query: str, limit: int | None = None) -> Envelope[tuple[OpSearchHit, ...]]`  
+_Return compact top-k semantic matches from the op catalog._
 
-------------------------------------------------------------------------
-## `CapabilityEngineService`
-- Module: `services/action/capability_engine/service.py`
-- Summary: Public API for capability invocation under policy governance.
+`describe_ops(*, meta: EnvelopeMeta) -> Envelope[tuple[OpDescriptor, ...]]`  
+_Return descriptors for all registered ops._
 
-`health(*, meta: EnvelopeMeta) -> Envelope[CapabilityEngineHealthStatus]`  
-_Return CES readiness, registry counts, and invocation-audit counters._
-
-`list_always_on_capabilities(*, meta: EnvelopeMeta) -> Envelope[tuple[CapabilityDescriptor, ...]]`  
-_Return full descriptors for only the configured always-on capabilities._
-
-`search_capabilities(*, meta: EnvelopeMeta, query: str, limit: int | None = None) -> Envelope[tuple[CapabilitySearchHit, ...]]`  
-_Return compact top-k semantic matches from the capability catalog._
-
-`describe_capabilities(*, meta: EnvelopeMeta) -> Envelope[tuple[CapabilityDescriptor, ...]]`  
-_Return descriptors for all registered capabilities._
-
-`describe_capability(*, meta: EnvelopeMeta, capability_id: str) -> Envelope[CapabilityDescriptor]`  
-_Return the full descriptor for one registered capability._
-
-`invoke_capability(*, meta: EnvelopeMeta, capability_id: str, input_payload: dict[str, object], invocation: CapabilityInvocationMetadata) -> Envelope[CapabilityInvokeResult]`  
-_Invoke by package ``capability_id`` (no version arg) and return normalized policy fields._
-
-`resolve_slash_command(*, meta: EnvelopeMeta, name: str) -> Envelope[CapabilityDescriptor | None]`  
+`resolve_slash_command(*, meta: EnvelopeMeta, name: str) -> Envelope[OpDescriptor | None]`  
 _Return the descriptor for a slash command by name or alias._
 
 `list_tool_system_hints(*, meta: EnvelopeMeta) -> Envelope[tuple[ToolSystemHint, ...]]`  
 _Return compact orientation hints for systems reachable through tools._
 
 ------------------------------------------------------------------------
-## `LanguageModelService`
-- Module: `services/action/language_model/service.py`
+## `LanguageService`
+- Module: `services/effect/language/service.py`
 - Summary: Public API for chat and embedding operations.
 
 `chat(*, meta: EnvelopeMeta, system_prompt: str = '', prompt: str, profile: ReasoningLevel = ReasoningLevel.STANDARD) -> Envelope[ChatResponse]`  
@@ -68,7 +48,7 @@ _Generate one chat completion._
 _Generate one embedding vector._
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
-_Return LMS and adapter health state._
+_Return Language and adapter health state._
 
 `chat_batch(*, meta: EnvelopeMeta, prompts: Sequence[str], profile: ReasoningLevel = ReasoningLevel.STANDARD) -> Envelope[list[ChatResponse]]`  
 _Generate a batch of chat completions._
@@ -76,30 +56,40 @@ _Generate a batch of chat completions._
 `embed_batch(*, meta: EnvelopeMeta, texts: Sequence[str], profile: EmbeddingProfile = EmbeddingProfile.DOCUMENT_EMBEDDING) -> Envelope[list[EmbeddingVector]]`  
 _Generate a batch of embedding vectors._
 
+`get_token_usage_by_trace(*, meta: EnvelopeMeta, trace_id: str) -> Envelope[TokenUsageTotals]`  
+_Return aggregate token totals across all successful audited calls_
+
 `chat_with_tools(*, meta: EnvelopeMeta, inference_request: InferenceRequest) -> Envelope[ChatWithToolsResponse]`  
 _Generate one tool-capable chat completion._
 
 ------------------------------------------------------------------------
-## `PolicyService`
-- Module: `services/action/policy_service/service.py`
-- Summary: Public API for policy evaluation and callback-gated authorization.
+## `RelayService`
+- Module: `services/effect/relay/service.py`
+- Summary: Public API for bidirectional operator comms (inbound + outbound + approval).
 
-`health(*, meta: EnvelopeMeta) -> Envelope[PolicyHealthStatus]`  
-_Return Policy Service readiness and persistence-backed audit counters._
+`health(*, meta: EnvelopeMeta) -> Envelope[RelayHealthStatus]`  
+_Return overall Relay readiness across inbound/outbound/adapter._
 
-`authorize_and_execute(*, request: CapabilityInvocationRequest, execute: PolicyExecuteCallback) -> PolicyExecutionResult`  
-_Return PolicyExecutionResult with allow/deny output, PolicyDecision, and ApprovalProposal._
+`correlate_approval_response(*, meta: EnvelopeMeta, actor: str, channel: str, message_text: str = '', approval_token: str = '', reply_to_proposal_token: str = '', reaction_to_proposal_token: str = '') -> Envelope[ApprovalCorrelationPayload]`  
+_Normalize inbound approval-correlation fields for Policy Service._
 
-------------------------------------------------------------------------
-## `SwitchboardService`
-- Module: `services/action/switchboard/service.py`
-- Summary: Public API for inbound operator message ingestion and polling.
+`resolve_approval_notification_proposal_token(*, meta: EnvelopeMeta, channel: str, target_timestamp_ms: int) -> Envelope[str | None]`  
+_Resolve one outbound approval notification timestamp to a proposal token._
 
-`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
-_Return Switchboard and dependency health state._
+`route_approval_notification(*, meta: EnvelopeMeta, approval: ApprovalNotificationPayload) -> Envelope[RouteNotificationResult]`  
+_Route one token-only Policy->Relay approval notification._
+
+`flush_batch(*, meta: EnvelopeMeta, batch_key: str, actor: str = 'operator', channel: str = '', recipient_e164: str = '', sender_e164: str = '', title: str = '') -> Envelope[RouteNotificationResult]`  
+_Flush one pending batch by key and deliver consolidated summary._
 
 `enqueue_console_message(*, meta: EnvelopeMeta, message_text: str) -> Envelope[ConsoleEnqueueResult]`  
 _Normalize and enqueue one inbound console message._
+
+`poll_console_response(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[ConsoleResponseMessage | None]`  
+_Pop the next queued console response, optionally long-polling._
+
+`route_notification(*, meta: EnvelopeMeta, actor: str = 'operator', channel: str = '', title: str = '', message: str, dedupe_key: str = '', batch_key: str = '', force: bool = False, conversational_memory: ConversationalMemoryContext | None = None) -> Envelope[RouteNotificationResult]`  
+_Route one outbound notification and decide suppress/send/batch._
 
 `poll_operator_instruction(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[NormalizedOperatorMessage | None]`  
 _Pop the next queued operator instruction, optionally long-polling._
@@ -111,22 +101,8 @@ _Normalize and enqueue one raw inbound Signal payload._
 _Register one in-process Signal callback with the owned adapter._
 
 ------------------------------------------------------------------------
-## `UtilityService`
-- Module: `services/action/utility_service/service.py`
-- Summary: Public API for lightweight reusable utility operations.
-
-`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
-_Return Utility Service readiness state._
-
-`current_datetime(*, meta: EnvelopeMeta) -> Envelope[CurrentDateTime]`  
-_Return current UTC and operator-local datetimes._
-
-`chunk_text(*, meta: EnvelopeMeta, text: str) -> Envelope[list[TextChunk]]`  
-_Return one or more chunks for the provided text content._
-
-------------------------------------------------------------------------
 ## `CommitmentService`
-- Module: `services/control/commitment/service.py`
+- Module: `services/reason/commitment/service.py`
 - Summary: Public API for commitment lifecycle, review, and loop closure.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
@@ -187,14 +163,46 @@ _List review runs._
 _Build and persist one review run and its items._
 
 `deliver_review(*, meta: EnvelopeMeta, review_run_id: str) -> Envelope[ReviewDeliveryResult]`  
-_Deliver one review run through Attention Router._
+_Deliver one review run through Relay outbound._
 
 `apply_transition_proposal_decision(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
 _Approve or reject one pending transition proposal._
 
 ------------------------------------------------------------------------
+## `DelegationService`
+- Module: `services/reason/delegation/service.py`
+- Summary: Public API for the Delegation Service.
+
+`cancel(*, meta: EnvelopeMeta, invocation_id: str, reason: CancelReason = CancelReason.manual) -> Envelope[CancelOutcome]`  
+_Request cancellation of one running or queued invocation._
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return Delegation Service and Postgres substrate readiness._
+
+`invoke(*, meta: EnvelopeMeta, prompt: str, context_text: str | None = None, context_object_refs: tuple[str, ...] = (), personality_id: str = 'subagent', tool_allowlist: tuple[str, ...] | None = None, max_turns: int = 8, budget_tokens: int | None = None, max_wallclock_seconds: int | None = None, parent_invocation_id: str | None = None) -> Envelope[InvocationStarted]`  
+_Queue one delegated invocation for asynchronous execution._
+
+`wait(*, meta: EnvelopeMeta, invocation_id: str, timeout_seconds: float | None = None) -> Envelope[InvocationResult]`  
+_Block until the named invocation reaches terminal state._
+
+`invoke_and_wait(*, meta: EnvelopeMeta, prompt: str, context_text: str | None = None, context_object_refs: tuple[str, ...] = (), personality_id: str = 'subagent', tool_allowlist: tuple[str, ...] | None = None, max_turns: int = 8, budget_tokens: int | None = None, max_wallclock_seconds: int | None = None, parent_invocation_id: str | None = None, timeout_seconds: float | None = None) -> Envelope[InvocationResult]`  
+_Queue one delegated invocation and block until terminal state._
+
+`finalize_invocation(*, meta: EnvelopeMeta, invocation_id: str, status: InvocationStatus, final_response: str | None = None, transcript_ref: str | None = None, cancel_reason: CancelReason | None = None) -> Envelope[InvocationResult]`  
+_Apply terminal status to an invocation and unblock waiters._
+
+`claim_next_invocation(*, meta: EnvelopeMeta, claimed_by: str) -> Envelope[ClaimedInvocation | None]`  
+_Atomic-claim the next queued invocation for a Subagent Actor._
+
+`get_status(*, meta: EnvelopeMeta, invocation_id: str) -> Envelope[InvocationStatusView]`  
+_Return the current status projection for one invocation._
+
+`record_turn(*, meta: EnvelopeMeta, invocation_id: str) -> Envelope[TurnDecision]`  
+_Bump turn count, refresh token totals from the audit trail, and_
+
+------------------------------------------------------------------------
 ## `IngestionService`
-- Module: `services/control/ingestion/service.py`
+- Module: `services/reason/ingestion/service.py`
 - Summary: Public API for content ingestion, stage orchestration, and artifact lineage.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
@@ -204,7 +212,7 @@ _Return Ingestion Service readiness status._
 _Execute the anchor stage for the named ingestion._
 
 `index_anchored_ingestion(*, meta: EnvelopeMeta, ingestion_id: str, indexing_run_id: str) -> Envelope[IndexAnchoredIngestionResult]`  
-_Index anchored normalized artifacts through Utility, LMS, and EAS._
+_Index anchored normalized artifacts through Utility, Language, and Embedding._
 
 `run_extract_stage(*, meta: EnvelopeMeta, ingestion_id: str) -> Envelope[FanOutStageResult]`  
 _Execute the extraction stage for the named ingestion._
@@ -241,7 +249,7 @@ _Execute the store stage for the named ingestion._
 
 ------------------------------------------------------------------------
 ## `JobService`
-- Module: `services/control/job/service.py`
+- Module: `services/reason/job/service.py`
 - Summary: Public API for job scheduling, execution tracking, and audit.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
@@ -305,12 +313,81 @@ _Handle an idempotent provider callback for one job execution._
 _Re-queue retry-scheduled executions past their retry_after time._
 
 ------------------------------------------------------------------------
-## `CacheAuthorityService`
-- Module: `services/state/cache_authority/service.py`
+## `PolicyService`
+- Module: `services/reason/policy/service.py`
+- Summary: Public API for policy evaluation and callback-gated authorization.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[PolicyHealthStatus]`  
+_Return Policy Service readiness and persistence-backed audit counters._
+
+`authorize_and_execute(*, request: OpInvocationRequest, execute: PolicyExecuteCallback) -> PolicyExecutionResult`  
+_Return PolicyExecutionResult with allow/deny output, PolicyDecision, and ApprovalProposal._
+
+------------------------------------------------------------------------
+## `RecallService`
+- Module: `services/reason/recall/service.py`
+- Summary: Public API for Recall Service context and session operations.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return Recall and Postgres substrate readiness._
+
+`assemble_context(*, meta: EnvelopeMeta, session_id: str, message: str, instruction: InboundInstructionRecord | None = None) -> Envelope[TurnContext]`  
+_Resolve the active session, record inbound turn, and assemble context._
+
+`compact_dialogue(*, meta: EnvelopeMeta, session_id: str) -> Envelope[SessionRecord]`  
+_Force-summarize all visible turns and advance dialogue frontier to latest._
+
+`update_focus(*, meta: EnvelopeMeta, session_id: str, content: str) -> Envelope[FocusRecord]`  
+_Persist explicit focus content with budget-aware compaction semantics._
+
+`record_inbound_turn(*, meta: EnvelopeMeta, session_id: str, message: str, instruction: InboundInstructionRecord | None = None) -> Envelope[TurnRecord]`  
+_Persist one inbound turn and return the recorded turn row._
+
+`get_latest_or_create_session(*, meta: EnvelopeMeta) -> Envelope[SessionRecord]`  
+_Return latest Recall session or create one when none exist._
+
+`record_outbound_candidate(*, meta: EnvelopeMeta, session_id: str, content: str, model: str, provider: str, token_count: int, reasoning_level: str) -> Envelope[TurnRecord]`  
+_Persist one outbound candidate turn and return the recorded row._
+
+`record_outbound_delivery(*, meta: EnvelopeMeta, session_id: str, turn_id: str, delivered: bool) -> Envelope[bool]`  
+_Record delivery status for one outbound turn._
+
+`record_response(*, meta: EnvelopeMeta, session_id: str, content: str, model: str, provider: str, token_count: int, reasoning_level: str) -> Envelope[bool]`  
+_Backward-compatible wrapper for outbound candidate recording._
+
+`get_session(*, meta: EnvelopeMeta, session_id: str) -> Envelope[SessionRecord]`  
+_Read one Recall session by id._
+
+`clear_session(*, meta: EnvelopeMeta, session_id: str) -> Envelope[bool]`  
+_Advance dialogue pointer and clear focus without deleting historical data._
+
+`create_session(*, meta: EnvelopeMeta) -> Envelope[SessionRecord]`  
+_Create and return one new Recall session._
+
+`assemble_snapshot(*, meta: EnvelopeMeta, session_id: str, exclude_latest: bool = True) -> Envelope[ContextBlock]`  
+_Return the historical Recall context snapshot for one session._
+
+------------------------------------------------------------------------
+## `UtilityService`
+- Module: `services/reason/utility/service.py`
+- Summary: Public API for lightweight reusable utility operations.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+_Return Utility Service readiness state._
+
+`current_datetime(*, meta: EnvelopeMeta) -> Envelope[CurrentDateTime]`  
+_Return current UTC and operator-local datetimes._
+
+`chunk_text(*, meta: EnvelopeMeta, text: str) -> Envelope[list[TextChunk]]`  
+_Return one or more chunks for the provided text content._
+
+------------------------------------------------------------------------
+## `CacheService`
+- Module: `services/state/cache/service.py`
 - Summary: Public API for component-scoped cache and queue operations.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
-_Return CAS and Valkey substrate readiness._
+_Return Cache and Valkey substrate readiness._
 
 `peek_queue(*, meta: EnvelopeMeta, component_id: str, queue: str) -> Envelope[QueueEntry | None]`  
 _Peek next component-scoped queue value without removal._
@@ -331,12 +408,12 @@ _Delete one component-scoped cache value._
 _Set one component-scoped cache value._
 
 ------------------------------------------------------------------------
-## `EmbeddingAuthorityService`
-- Module: `services/state/embedding_authority/service.py`
-- Summary: Public API for the Embedding Authority Service.
+## `EmbeddingService`
+- Module: `services/state/embedding/service.py`
+- Summary: Public API for the Embedding Service.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
-_Return EAS and owned dependency readiness status._
+_Return Embedding and owned dependency readiness status._
 
 `upsert_chunk(*, meta: EnvelopeMeta, source_id: str, chunk_ordinal: int, reference_range: str, content_hash: str, text: str, metadata: Mapping[str, str]) -> Envelope[ChunkRecord]`  
 _Create or update one chunk._
@@ -399,56 +476,12 @@ _Persist and return the active spec used for defaulted spec operations._
 _List known specs._
 
 ------------------------------------------------------------------------
-## `MemoryAuthorityService`
-- Module: `services/state/memory_authority/service.py`
-- Summary: Public API for Memory Authority Service context and session operations.
-
-`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
-_Return MAS and Postgres substrate readiness._
-
-`assemble_context(*, meta: EnvelopeMeta, session_id: str, message: str, instruction: InboundInstructionRecord | None = None) -> Envelope[TurnContext]`  
-_Resolve the active session, record inbound turn, and assemble context._
-
-`compact_dialogue(*, meta: EnvelopeMeta, session_id: str) -> Envelope[SessionRecord]`  
-_Force-summarize all visible turns and advance dialogue frontier to latest._
-
-`update_focus(*, meta: EnvelopeMeta, session_id: str, content: str) -> Envelope[FocusRecord]`  
-_Persist explicit focus content with budget-aware compaction semantics._
-
-`record_inbound_turn(*, meta: EnvelopeMeta, session_id: str, message: str, instruction: InboundInstructionRecord | None = None) -> Envelope[TurnRecord]`  
-_Persist one inbound turn and return the recorded turn row._
-
-`get_latest_or_create_session(*, meta: EnvelopeMeta) -> Envelope[SessionRecord]`  
-_Return latest MAS session or create one when none exist._
-
-`record_outbound_candidate(*, meta: EnvelopeMeta, session_id: str, content: str, model: str, provider: str, token_count: int, reasoning_level: str) -> Envelope[TurnRecord]`  
-_Persist one outbound candidate turn and return the recorded row._
-
-`record_outbound_delivery(*, meta: EnvelopeMeta, session_id: str, turn_id: str, delivered: bool) -> Envelope[bool]`  
-_Record delivery status for one outbound turn._
-
-`record_response(*, meta: EnvelopeMeta, session_id: str, content: str, model: str, provider: str, token_count: int, reasoning_level: str) -> Envelope[bool]`  
-_Backward-compatible wrapper for outbound candidate recording._
-
-`get_session(*, meta: EnvelopeMeta, session_id: str) -> Envelope[SessionRecord]`  
-_Read one MAS session by id._
-
-`clear_session(*, meta: EnvelopeMeta, session_id: str) -> Envelope[bool]`  
-_Advance dialogue pointer and clear focus without deleting historical data._
-
-`create_session(*, meta: EnvelopeMeta) -> Envelope[SessionRecord]`  
-_Create and return one new MAS session._
-
-`assemble_snapshot(*, meta: EnvelopeMeta, session_id: str, exclude_latest: bool = True) -> Envelope[ContextBlock]`  
-_Return the historical MAS context snapshot for one session._
-
-------------------------------------------------------------------------
-## `ObjectAuthorityService`
-- Module: `services/state/object_authority/service.py`
+## `ObjectService`
+- Module: `services/state/object/service.py`
 - Summary: Public API for durable blob object operations.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
-_Return OAS and owned dependency readiness status._
+_Return Object and owned dependency readiness status._
 
 `put_object(*, meta: EnvelopeMeta, content: bytes, extension: str, content_type: str, original_filename: str, source_uri: str) -> Envelope[ObjectPutResult]`  
 _Persist one blob and return object metadata plus dedupe disposition._
@@ -463,12 +496,12 @@ _Delete one blob by canonical object key with idempotent semantics._
 _Read metadata for one blob by canonical object key._
 
 ------------------------------------------------------------------------
-## `VaultAuthorityService`
-- Module: `services/state/vault_authority/service.py`
+## `VaultService`
+- Module: `services/state/vault/service.py`
 - Summary: Public API for markdown vault file and directory operations.
 
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
-_Return VAS and owned dependency readiness status._
+_Return Vault and owned dependency readiness status._
 
 `list_directory(*, meta: EnvelopeMeta, directory_path: str) -> Envelope[list[VaultEntry]]`  
 _List file and directory entries under one vault-relative path._

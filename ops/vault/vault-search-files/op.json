@@ -1,0 +1,51 @@
+{
+  "op_id": "vault-search-files",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Search markdown files lexically through Obsidian Local REST API.",
+  "simple_output_path": ".each.path",
+  "enabled": true,
+  "input_schema": {
+    "query": "string | The search query.",
+    "directory_scope": "string | optional | A directory path to limit the search to.",
+    "limit": "integer | optional | The maximum number of results to return. Defaults to a system-wide setting."
+  },
+  "output_schema": {
+    "type": "array",
+    "description": "A list of files matching the search query.",
+    "items": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "snippets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "updated_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "score"
+      ]
+    }
+  },
+  "call_target": "service_vault.search_files",
+  "effect": "read",
+  "approval": "never"
+}

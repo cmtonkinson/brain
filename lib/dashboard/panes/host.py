@@ -10,6 +10,8 @@ from textual.widgets import Static
 from lib.dashboard.models.host import HostSnapshotView
 from lib.dashboard.panes.base import BaseView
 
+_REFRESH_INTERVAL = 2.0
+
 
 class HostDataSource(Protocol):
     """Minimal host-data contract consumed by the Host pane."""
@@ -23,7 +25,7 @@ def _format_percent(value: float | None) -> str:
 
     if value is None:
         return "??"
-    return f"{round(value):.0f}%"
+    return f"{value:.0f}%"
 
 
 def _format_load(value: float | None) -> str:
@@ -96,7 +98,7 @@ class HostPane(BaseView):
         yield Static(self._render_body(), id="host-body")
 
     def on_mount(self) -> None:
-        self.set_interval(2.0, self._refresh_from_source)
+        self.set_interval(_REFRESH_INTERVAL, self._refresh_from_source)
 
     def _refresh_from_source(self) -> None:
         if self._host_source is None:

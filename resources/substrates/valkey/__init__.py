@@ -1,4 +1,4 @@
-"""Valkey substrate modules for Layer 0 resource access."""
+"""Valkey substrate modules for Tier 1 resource access."""
 
 from resources.substrates.valkey.component import MANIFEST, RESOURCE_COMPONENT_ID
 from resources.substrates.valkey.config import ValkeySettings, resolve_valkey_settings

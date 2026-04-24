@@ -17,7 +17,7 @@ from lib.dashboard.data_sources.postgres import normalize_postgres_dsn
 from lib.dashboard.models.data_source import RetentionPolicy
 from lib.dashboard.models.health import ComponentHealth
 
-COMPONENTS = ("core", "agent", "postgres", "valkey", "signal", "qdrant", "gateway")
+COMPONENTS = ("core", "assistant", "postgres", "valkey", "signal", "qdrant", "gateway")
 
 
 class HealthConfig(BaseModel):
@@ -27,8 +27,8 @@ class HealthConfig(BaseModel):
 
     core_health_url: str = "http://localhost:8898/health"
     core_timeout_seconds: float = Field(default=1.0, gt=0)
-    agent_heartbeat_path: str = "./var/agent.heartbeat"
-    agent_freshness_seconds: float = Field(default=30.0, gt=0)
+    assistant_heartbeat_path: str = "./var/assistant.heartbeat"
+    assistant_freshness_seconds: float = Field(default=30.0, gt=0)
     postgres_url: str = "postgresql+psycopg://brain:brain@localhost:8760/brain"
     postgres_timeout_seconds: float = Field(default=1.0, gt=0)
     valkey_url: str = "valkey://localhost:8761/0"
@@ -61,7 +61,7 @@ class HealthAggregator(BasePollingDataSource[list[ComponentHealth]]):
                 timeout_seconds=self._config.core_timeout_seconds,
                 now=now,
             ),
-            self._probe_agent(now),
+            self._probe_assistant(now),
             self._probe_postgres(now),
             self._probe_valkey(now),
             self._probe_http_component(
@@ -121,23 +121,25 @@ class HealthAggregator(BasePollingDataSource[list[ComponentHealth]]):
         state, detail = self._state_from_http_payload(payload)
         return self._component(name=name, state=state, detail=detail, now=now)
 
-    def _probe_agent(self, now: datetime) -> ComponentHealth:
-        """Probe agent liveness from heartbeat freshness only."""
-        path = self._config.agent_heartbeat_path
+    def _probe_assistant(self, now: datetime) -> ComponentHealth:
+        """Probe assistant liveness from heartbeat freshness only."""
+        path = self._config.assistant_heartbeat_path
         try:
             mtime = os.path.getmtime(path)
             age = time.time() - mtime
-            if age < self._config.agent_freshness_seconds:
-                return self._component(name="agent", state="ok", detail=None, now=now)
+            if age < self._config.assistant_freshness_seconds:
+                return self._component(
+                    name="assistant", state="ok", detail=None, now=now
+                )
             return self._component(
-                name="agent",
+                name="assistant",
                 state="no",
                 detail=f"heartbeat stale ({age:.0f}s)",
                 now=now,
             )
         except OSError as exc:
             return self._component(
-                name="agent",
+                name="assistant",
                 state="unknown",
                 detail=str(exc) or type(exc).__name__,
                 now=now,

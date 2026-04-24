@@ -159,12 +159,12 @@ def test_render_system_tool_hints_renders_label_and_summary() -> None:
     """Rendered output should contain the label and summary from each hint."""
     hints = [
         SimpleNamespace(
-            system_id="service_vault_authority",
-            label="Vault Authority",
+            system_id="service_vault",
+            label="Vault",
             summary="Personal knowledge base.",
         ),
     ]
     result = render_system_tool_hints(hints)
-    assert "Vault Authority" in result
+    assert "Vault" in result
     assert "Personal knowledge base." in result
     assert "<tool_hints>" in result

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from contextlib import AsyncExitStack, asynccontextmanager
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from typing import Any
 
 from mcp import ClientSession
@@ -175,7 +176,11 @@ class McpClientManager:
         if session is None:
             raise McpServerConnectionError(f"server not connected: {server_id}")
 
-        result = await session.call_tool(tool_name, arguments=arguments)
+        result = await session.call_tool(
+            tool_name,
+            arguments=arguments,
+            read_timeout_seconds=timedelta(seconds=self._config.timeout_seconds),
+        )
         content = [_serialize_content_item(item) for item in result.content]
         return ToolCallResult(content=content, is_error=bool(result.isError))
 
@@ -250,6 +255,7 @@ class McpClientManager:
             streamablehttp_client(
                 url=server_config.url,
                 headers=dict(server_config.headers) if server_config.headers else None,
+                timeout=timedelta(seconds=self._config.timeout_seconds),
             )
         )
         session = await stack.enter_async_context(ClientSession(read_stream, write_stream))

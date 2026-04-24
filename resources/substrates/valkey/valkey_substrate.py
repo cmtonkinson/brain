@@ -22,47 +22,47 @@ class ValkeyClientSubstrate(ValkeySubstrate):
         )
 
     def set_value(self, *, key: str, value: str, ttl_seconds: int | None) -> None:
-        """Set one value with optional TTL in seconds."""
+        """Set one serialized value with optional TTL in seconds."""
         if ttl_seconds is None:
             self._client.set(name=key, value=value)
             return
         self._client.set(name=key, value=value, ex=ttl_seconds)
 
     def get_value(self, *, key: str) -> str | None:
-        """Read one value by key."""
+        """Get one serialized value by key or ``None`` when missing."""
         value = self._client.get(name=key)
         if value is None:
             return None
         return str(value)
 
     def delete_value(self, *, key: str) -> bool:
-        """Delete one key and return whether a value existed."""
+        """Delete one key and return whether a value was removed."""
         return bool(self._client.delete(key))
 
     def push_queue(self, *, queue: str, value: str) -> int:
-        """Push one value at queue head and return resulting queue size."""
+        """Push one serialized value onto a queue and return resulting size."""
         return int(self._client.lpush(queue, value))
 
     def pop_queue(self, *, queue: str) -> str | None:
-        """Pop one value from queue tail for FIFO semantics."""
+        """Pop one serialized value from queue tail (FIFO) or ``None`` when empty."""
         value = self._client.rpop(queue)
         if value is None:
             return None
         return str(value)
 
     def peek_queue(self, *, queue: str) -> str | None:
-        """Peek next value from queue tail without removing it."""
+        """Peek next queue value to be popped or ``None`` when queue is empty."""
         value = self._client.lindex(queue, -1)
         if value is None:
             return None
         return str(value)
 
     def ping(self) -> bool:
-        """Return Valkey ping status."""
+        """Return substrate liveness from Valkey ``PING``."""
         return bool(self._health_client.ping())
 
     def health(self) -> ValkeyHealthStatus:
-        """Return Valkey substrate readiness and concise detail."""
+        """Probe Valkey substrate readiness and detail."""
         try:
             ready = self.ping()
         except Exception as exc:  # noqa: BLE001

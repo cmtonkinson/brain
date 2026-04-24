@@ -23,8 +23,11 @@ def create_valkey_client_with_timeouts(
     socket_timeout_seconds: float,
 ) -> Valkey:
     """Construct a Valkey client instance with explicit timeout values."""
+    assert settings.url, (
+        "ValkeySettings.url must be resolved before client construction"
+    )
     return Valkey.from_url(
-        url=settings.url or "",
+        url=settings.url,
         socket_connect_timeout=connect_timeout_seconds,
         socket_timeout=socket_timeout_seconds,
         max_connections=settings.max_connections,

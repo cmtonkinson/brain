@@ -16,7 +16,10 @@ from resources.adapters.signal.config import (
     SignalAdapterSettings,
     resolve_signal_adapter_settings,
 )
-from resources.adapters.signal.signal_adapter import SignalRestApiAdapter
+from resources.adapters.signal.signal_adapter import (
+    SignalRestApiAdapter,
+    summarize_signal_payload,
+)
 
 __all__ = [
     "MANIFEST",
@@ -33,4 +36,5 @@ __all__ = [
     "SignalSendMessageResult",
     "SignalRestApiAdapter",
     "resolve_signal_adapter_settings",
+    "summarize_signal_payload",
 ]

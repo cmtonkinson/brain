@@ -25,14 +25,14 @@ def main() -> int:
 
     invoke_call = result.calls[-1]
     invocation_id = str(invoke_call.body.get("invocation_id", "")).strip()
-    if invoke_call.path != "/capabilities/invoke":
-        print("expected final call to /capabilities/invoke", file=sys.stderr)
+    if invoke_call.path != "/ops/invoke":
+        print("expected final call to /ops/invoke", file=sys.stderr)
         return 1
     if invocation_id == "":
         print("expected non-empty invocation_id", file=sys.stderr)
         return 1
-    if invoke_call.body.get("capability_id") != "attention-notify":
-        print("expected attention-notify invoke", file=sys.stderr)
+    if invoke_call.body.get("op_id") != "relay-notify":
+        print("expected relay-notify invoke", file=sys.stderr)
         return 1
     return 0
 

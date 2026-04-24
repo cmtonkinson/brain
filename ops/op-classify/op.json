@@ -1,0 +1,19 @@
+{
+  "op_id": "op-classify",
+  "kind": "logic",
+  "version": "1.0.0",
+  "summary": "Classify one dynamic op by setting its effect and/or approval.",
+  "enabled": true,
+  "input_schema": {
+    "op_id": "string | required | dynamic op id to classify (e.g. eventkit--list-events).",
+    "words": "array<string> | required | one or more words drawn from the effect set (read|write|execute|external) and/or the approval set (always|never)."
+  },
+  "output_schema": "string | Confirmation message describing the persisted classification.",
+  "simple_output_path": "result",
+  "slash_command": {
+    "name": "op-classify",
+    "description": "classify a dynamic op (effect and/or approval)"
+  },
+  "effect": "write",
+  "approval": "always"
+}

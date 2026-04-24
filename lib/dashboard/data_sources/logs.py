@@ -26,24 +26,23 @@ def normalize_log_line(line: str, component: str, source: str) -> DashboardLogEv
     try:
         data = json.loads(line)
         raw_payload = data
-        # extract timestamp
         for ts_key in ("timestamp", "time", "ts", "@timestamp"):
             if ts_key in data:
                 val = data[ts_key]
                 if isinstance(val, (int, float)):
                     timestamp = datetime.fromtimestamp(val, tz=timezone.utc)
-                elif isinstance(val, str):
+                elif isinstance(val, str) and val.strip():
                     try:
-                        timestamp = datetime.fromisoformat(val.replace("Z", "+00:00"))
+                        timestamp = datetime.fromisoformat(val.strip()).astimezone(
+                            timezone.utc
+                        )
                     except ValueError:
                         pass
                 break
-        # extract level
         for lvl_key in ("level", "severity", "lvl"):
             if lvl_key in data:
                 level = str(data[lvl_key]).upper()
                 break
-        # extract message
         for msg_key in ("message", "msg", "text"):
             if msg_key in data:
                 message = str(data[msg_key])
@@ -104,7 +103,7 @@ class FileLogSource:
         self._thread: threading.Thread | None = None
 
     def _backfill(self) -> None:
-        """Read last N lines from file into buffer. Public for testing."""
+        """Read the last N lines from file into the buffer."""
         try:
             with open(self._path, "r", encoding="utf-8", errors="replace") as fh:
                 lines = fh.readlines()
@@ -121,7 +120,7 @@ class FileLogSource:
         fh = None
         try:
             fh = open(self._path, "r", encoding="utf-8", errors="replace")
-            fh.seek(0, 2)  # seek to end
+            fh.seek(0, 2)
             while not self._stop_event.is_set():
                 line = fh.readline()
                 if line:
@@ -188,14 +187,12 @@ class DockerLogSource:
 
             client = docker.from_env()
             container = client.containers.get(self._container_name)
-            # backfill
             logs = container.logs(tail=self._backfill_lines, stream=False)
             for line in logs.decode("utf-8", errors="replace").splitlines():
                 if line.strip():
                     self._buffer.append(
                         normalize_log_line(line, self._component, "docker")
                     )
-            # follow
             for chunk in container.logs(stream=True, follow=True):
                 if self._stop_event.is_set():
                     break

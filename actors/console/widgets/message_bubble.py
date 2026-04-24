@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from textual.app import ComposeResult
 from textual.widget import Widget
 from textual.widgets import Static
+
+BubbleDirection = Literal["brain", "operator"]
 
 
 class MessageBubble(Widget):
@@ -38,7 +41,7 @@ class MessageBubble(Widget):
     def __init__(
         self,
         *,
-        direction: str,
+        direction: BubbleDirection,
         text: str,
         timestamp: datetime | None = None,
     ) -> None:

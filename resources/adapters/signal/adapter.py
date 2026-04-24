@@ -27,7 +27,7 @@ class SignalInboundCallbackResult(BaseModel):
     accepted: bool
     queued: bool
     reason: str
-    sender_e164: str = ""
+    sender_e164: str | None = None
     timestamp_ms: int | None = None
 
 

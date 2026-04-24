@@ -1,0 +1,103 @@
+{
+  "op_id": "object-put-text",
+  "kind": "logic",
+  "version": "1.0.0",
+  "summary": "Persist one text blob and return object metadata plus dedupe disposition.",
+  "enabled": true,
+  "input_schema": {
+    "content": "string | The text content to persist.",
+    "extension": "string | optional | File extension recorded for the object. Defaults to 'txt'.",
+    "content_type": "string | optional | MIME type recorded for the object. Defaults to 'text/plain; charset=utf-8'.",
+    "original_filename": "string | optional | Optional original filename metadata.",
+    "source_uri": "string | optional | Optional source URI metadata.",
+    "encoding": "string | optional | Text encoding used before persistence. Defaults to 'utf-8'."
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "object": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "object",
+            "properties": {
+              "object_key": {
+                "type": "string",
+                "description": "The canonical object key."
+              }
+            },
+            "required": [
+              "object_key"
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "digest_algorithm": {
+                "type": "string"
+              },
+              "digest_version": {
+                "type": "string"
+              },
+              "digest_hex": {
+                "type": "string"
+              },
+              "extension": {
+                "type": "string"
+              },
+              "content_type": {
+                "type": "string"
+              },
+              "size_bytes": {
+                "type": "integer"
+              },
+              "original_filename": {
+                "type": "string"
+              },
+              "source_uri": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "digest_algorithm",
+              "digest_version",
+              "digest_hex",
+              "extension",
+              "content_type",
+              "size_bytes",
+              "original_filename",
+              "source_uri",
+              "created_at",
+              "updated_at"
+            ]
+          }
+        },
+        "required": [
+          "ref",
+          "metadata"
+        ]
+      },
+      "write_disposition": {
+        "type": "string",
+        "enum": [
+          "created",
+          "existing"
+        ]
+      }
+    },
+    "required": [
+      "object",
+      "write_disposition"
+    ]
+  },
+  "effect": "write",
+  "approval": "never"
+}

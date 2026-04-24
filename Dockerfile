@@ -7,9 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
   PYTHONUNBUFFERED=1 \
   PYTHONPATH=/app \
   PATH="/app/.venv/bin:$PATH" \
-  BRAIN_CORE_CONFIG_FILE=/app/config/core.yaml \
-  BRAIN_RESOURCES_CONFIG_FILE=/app/config/resources.yaml \
-  BRAIN_ACTORS_CONFIG_FILE=/app/config/actors.yaml
+  BRAIN_CONFIG_DIR=/app/config
 
 WORKDIR /app
 COPY pyproject.toml uv.lock /app/

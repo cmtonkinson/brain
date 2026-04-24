@@ -9,21 +9,20 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.fields import PydanticUndefined
-from pydantic_settings import (
-    BaseSettings,
-    PydanticBaseSettingsSource,
-    SettingsConfigDict,
-    YamlConfigSettingsSource,
-)
 
-DEFAULT_CORE_CONFIG_PATH = Path.home() / ".config" / "brain" / "core.yaml"
-DEFAULT_RESOURCES_CONFIG_PATH = Path.home() / ".config" / "brain" / "resources.yaml"
-DEFAULT_ACTORS_CONFIG_PATH = Path.home() / ".config" / "brain" / "actors.yaml"
+DEFAULT_CONFIG_DIR = Path.home() / ".config" / "brain"
+DEFAULT_DASHBOARD_CONFIG_PATH = DEFAULT_CONFIG_DIR / "dashboard.yaml"
+SECRETS_CONFIG_PREFIX = "secrets"
 SECRETS_CONFIG_FILENAME = "secrets.yaml"
 
 
 class LoggingSettings(BaseModel):
-    """Structured logging configuration shared by Brain components."""
+    """Structured logging configuration shared by Brain components.
+
+    ``process_name`` defaults to ``None`` so each binary supplies its own
+    identifier (e.g. ``"core"``, ``"assistant"``, ``"worker"``). Operators can
+    still override it by setting ``logging.process_name`` in YAML.
+    """
 
     level: Literal["VERBOSE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     file_capture_enabled: bool = False
@@ -32,7 +31,7 @@ class LoggingSettings(BaseModel):
     ] = "VERBOSE"
     file_capture_directory: str = "logs"
     json_output: bool = True
-    process_name: str = "core"
+    process_name: str | None = None
     environment: str = "dev"
 
 
@@ -47,8 +46,6 @@ class PublicApiOtelSettings(BaseModel):
     metric_instrumentation_failures_total: str = (
         "brain_public_api_instrumentation_failures_total"
     )
-    metric_qdrant_ops_total: str = "brain_qdrant_ops_total"
-    metric_qdrant_op_duration_ms: str = "brain_qdrant_op_duration_ms"
 
 
 class PublicApiObservabilitySettings(BaseModel):
@@ -111,10 +108,10 @@ class OperatorProfileSettings(BaseModel):
 class ApprovalResponseSettings(BaseModel):
     """Operator approval-response vocabulary shared across action services."""
 
-    approve_reaction_emojis: tuple[str, ...] = tuple("👍,✅".split(","))
-    reject_reaction_emojis: tuple[str, ...] = tuple("👎,❌".split(","))
-    approve_text_responses: tuple[str, ...] = tuple("approve,approved,yes".split(","))
-    reject_text_responses: tuple[str, ...] = tuple("deny,denied,no".split(","))
+    approve_reaction_emojis: tuple[str, ...] = ("👍", "✅")
+    reject_reaction_emojis: tuple[str, ...] = ("👎", "❌")
+    approve_text_responses: tuple[str, ...] = ("approve", "approved", "yes")
+    reject_text_responses: tuple[str, ...] = ("deny", "denied", "no")
 
 
 class ProfileSettings(BaseModel):
@@ -145,7 +142,7 @@ class ProfileSettings(BaseModel):
 
 
 class CoreBootSettings(BaseModel):
-    """Core boot framework settings under ``boot``."""
+    """Core boot framework settings under ``core.boot``."""
 
     run_migrations_on_startup: bool = True
     readiness_poll_interval_seconds: float = Field(default=0.25, gt=0)
@@ -156,132 +153,36 @@ class CoreBootSettings(BaseModel):
 
 
 class CoreHttpSettings(BaseModel):
-    """Core HTTP runtime settings under ``http``."""
+    """Core HTTP runtime settings under ``core.http``."""
 
     host: str = "0.0.0.0"
     port: int = Field(default=8898, ge=1, le=65535)
 
 
 class CoreHealthSettings(BaseModel):
-    """Core aggregate health policy under ``health``."""
+    """Core aggregate health policy under ``core.health``."""
 
     max_timeout_seconds: float = Field(default=1.0, gt=0)
 
 
-class ComponentNamespaceSettings(BaseModel):
-    """Namespace map for grouped component settings."""
-
-    model_config = ConfigDict(extra="allow")
-
-
-def _yaml_source_if_exists(
-    settings_cls: type[BaseSettings], path: Path
-) -> YamlConfigSettingsSource | None:
-    """Return a YAML source for path only if the file exists."""
-    if not path.exists():
-        return None
-    return YamlConfigSettingsSource(
-        settings_cls, yaml_file=path, yaml_file_encoding="utf-8"
-    )
-
-
-def _merged_yaml_source(
-    settings_cls: type[BaseSettings],
-    *,
-    config_path: Path,
-) -> YamlConfigSettingsSource:
-    """Return one deep-merged YAML source over config + optional secrets."""
-    return YamlConfigSettingsSource(
-        settings_cls,
-        yaml_file=[config_path, config_path.parent / SECRETS_CONFIG_FILENAME],
-        yaml_file_encoding="utf-8",
-        deep_merge=True,
-    )
-
-
-class CoreSettings(BaseSettings):
-    """Core service runtime settings — loaded from core.yaml."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="BRAIN_CORE_",
-        env_nested_delimiter="__",
-        extra="ignore",
-        nested_model_default_partial_update=True,
-    )
-
-    logging: LoggingSettings = Field(default_factory=LoggingSettings)
-    observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
-    profile: ProfileSettings = Field(default_factory=ProfileSettings)
-    boot: CoreBootSettings = Field(default_factory=CoreBootSettings)
-    http: CoreHttpSettings = Field(default_factory=CoreHttpSettings)
-    health: CoreHealthSettings = Field(default_factory=CoreHealthSettings)
-    service: ComponentNamespaceSettings = Field(
-        default_factory=ComponentNamespaceSettings
-    )
-
-    _config_path: ClassVar[Path] = DEFAULT_CORE_CONFIG_PATH
-
-    @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Apply Core precedence: init > env > secrets.yaml > core.yaml > defaults."""
-        config_path = cls._config_path
-        return (
-            init_settings,
-            env_settings,
-            _merged_yaml_source(settings_cls, config_path=config_path),
-        )
-
-
-class ResourcesSettings(BaseSettings):
-    """Infrastructure resource settings — loaded from resources.yaml."""
-
-    model_config = SettingsConfigDict(
-        env_prefix="BRAIN_RESOURCES_",
-        env_nested_delimiter="__",
-        extra="ignore",
-        nested_model_default_partial_update=True,
-    )
-
-    substrate: ComponentNamespaceSettings = Field(
-        default_factory=ComponentNamespaceSettings
-    )
-    adapter: ComponentNamespaceSettings = Field(
-        default_factory=ComponentNamespaceSettings
-    )
-
-    _config_path: ClassVar[Path] = DEFAULT_RESOURCES_CONFIG_PATH
-
-    @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Apply Resources precedence: init > env > secrets.yaml > resources.yaml > defaults."""
-        config_path = cls._config_path
-        return (
-            init_settings,
-            env_settings,
-            _merged_yaml_source(settings_cls, config_path=config_path),
-        )
-
-
-class ActorCoreConnectionSettings(BaseModel):
-    """How actors connect to Core over TCP."""
+class CoreComponentSettings(BaseModel):
+    """Shared ``core`` namespace used by both Core and Actor runtime settings."""
 
     host: str = "127.0.0.1"
     port: int = Field(default=8898, ge=1, le=65535)
-    timeout_seconds: float = 30.0
+    timeout_seconds: float = Field(default=30.0, gt=0)
+    boot: CoreBootSettings = Field(default_factory=CoreBootSettings)
+    http: CoreHttpSettings = Field(default_factory=CoreHttpSettings)
+    health: CoreHealthSettings = Field(default_factory=CoreHealthSettings)
+
+
+ActorCoreConnectionSettings = CoreComponentSettings
+
+
+class ComponentNamespaceSettings(BaseModel):
+    """Opaque namespace map for component-local settings."""
+
+    model_config = ConfigDict(extra="allow")
 
 
 class ActorNamespaceSettings(BaseModel):
@@ -327,11 +228,11 @@ def _validate_environment_context_value(value: Any) -> Any:
 
 
 class AgentEnvironmentContextEntrySettings(BaseModel):
-    """One capability-backed Agent environment-context entry."""
+    """One op-backed assistant environment-context entry."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    capability_id: str = Field(
+    op_id: str = Field(
         min_length=1,
         pattern=r"^[a-z0-9]+(?:-{1,2}[a-z0-9]+)*$",
     )
@@ -347,17 +248,17 @@ class AgentEnvironmentContextEntrySettings(BaseModel):
         }
 
 
-class AgentActorSettings(ActorNamespaceSettings):
-    """Agent-specific settings for prompt rendering, tools, and runtime identity."""
+class AssistantActorSettings(ActorNamespaceSettings):
+    """Assistant-specific settings for prompt rendering and runtime identity."""
 
-    source: str = "agent"
+    source: str = "assistant"
     session_start_mode: Literal["new", "existing"] = "existing"
     personality: str = "default"
     operator_profile: str = "Refer to me as 'boss'"
     system_prompt_append: str = ""
-    capability_discovery_deny_list: tuple[str, ...] = ("attention-notify",)
+    op_discovery_deny_list: tuple[str, ...] = ("relay-notify",)
     environment_context: tuple[AgentEnvironmentContextEntrySettings, ...] = (
-        AgentEnvironmentContextEntrySettings(capability_id="current-datetime"),
+        AgentEnvironmentContextEntrySettings(op_id="current-datetime"),
     )
     tool_return_max_chars: int = 8000
     tool_return_compress_threshold: int = 4000
@@ -368,64 +269,104 @@ class WorkerActorSettings(ActorNamespaceSettings):
     """Worker Actor runtime settings."""
 
     source: str = "worker"
+    channel: str = "worker"
     max_workers: int = Field(default=4, ge=1, le=32)
     poll_interval_seconds: float = Field(default=2.0, gt=0)
 
 
-class ActorSettings(BaseSettings):
-    """Actor runtime settings — loaded from actors.yaml."""
+class SubagentActorSettings(ActorNamespaceSettings):
+    """Subagent Actor runtime settings."""
 
-    model_config = SettingsConfigDict(
-        env_prefix="BRAIN_ACTORS_",
-        env_nested_delimiter="__",
-        extra="ignore",
-        nested_model_default_partial_update=True,
-    )
+    source: str = "subagent"
+    principal: str = "subagent"
+    max_workers: int = Field(default=1, ge=1, le=16)
+    poll_interval_seconds: float = Field(default=2.0, gt=0)
+    default_personality: str = "subagent"
+    default_max_turns: int = Field(default=8, ge=1, le=64)
+    default_budget_tokens: int = Field(default=200_000, ge=1_000)
+
+
+class ConsoleActorSettings(ActorNamespaceSettings):
+    """Console TUI actor runtime settings."""
+
+    source: str = "console"
+    poll_timeout_seconds: float = Field(default=30.0, gt=0)
+    poll_error_backoff_seconds: float = Field(default=1.0, gt=0)
+    input_max_lines: int = Field(default=10, gt=0)
+    editor: str = "vim"
+
+
+class CoreSettings(BaseModel):
+    """Core-service runtime settings derived from the merged config tree."""
+
+    model_config = ConfigDict(extra="ignore")
 
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
-    core: ActorCoreConnectionSettings = Field(
-        default_factory=ActorCoreConnectionSettings
-    )
+    profile: ProfileSettings = Field(default_factory=ProfileSettings)
+    core: CoreComponentSettings = Field(default_factory=CoreComponentSettings)
+    _config_path: ClassVar[Path] = DEFAULT_CONFIG_DIR
+
+    @property
+    def boot(self) -> CoreBootSettings:
+        """Expose `core.boot` at the historical call site used by Core startup."""
+        return self.core.boot
+
+    @property
+    def http(self) -> CoreHttpSettings:
+        """Expose `core.http` at the historical call site used by Core runtime."""
+        return self.core.http
+
+    @property
+    def health(self) -> CoreHealthSettings:
+        """Expose `core.health` at the historical call site used by Core health."""
+        return self.core.health
+
+
+class ResourcesSettings(BaseModel):
+    """Resource-component settings derived from the merged config tree."""
+
+    model_config = ConfigDict(extra="ignore")
+    _config_path: ClassVar[Path] = DEFAULT_CONFIG_DIR
+
+
+class ActorSettings(BaseModel):
+    """Actor runtime settings derived from the merged config tree."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    logging: LoggingSettings = Field(default_factory=LoggingSettings)
+    observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    core: CoreComponentSettings = Field(default_factory=CoreComponentSettings)
     cli: CliActorSettings = Field(default_factory=CliActorSettings)
-    agent: AgentActorSettings = Field(default_factory=AgentActorSettings)
+    assistant: AssistantActorSettings = Field(default_factory=AssistantActorSettings)
+    console: ConsoleActorSettings = Field(default_factory=ConsoleActorSettings)
     worker: WorkerActorSettings = Field(default_factory=WorkerActorSettings)
+    subagent: SubagentActorSettings = Field(default_factory=SubagentActorSettings)
+    _config_path: ClassVar[Path] = DEFAULT_CONFIG_DIR
 
-    _config_path: ClassVar[Path] = DEFAULT_ACTORS_CONFIG_PATH
-
-    @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Apply Actors precedence: init > env > secrets.yaml > actors.yaml > defaults."""
-        config_path = cls._config_path
-        return (
-            init_settings,
-            env_settings,
-            _merged_yaml_source(settings_cls, config_path=config_path),
-        )
-
-    def model_post_init(self, __context: Any) -> None:
-        """Default actor log process name to the agent process identity."""
-        del __context
-        if self.logging.process_name == "core":
-            self.logging.process_name = "agent"
+    @property
+    def agent(self) -> AssistantActorSettings:
+        """Compatibility-free internal accessor during the assistant actor rename."""
+        return self.assistant
 
 
 @dataclass(frozen=True, slots=True)
 class CoreRuntimeSettings:
-    """Combined Core + Resources settings passed to components and boot hooks."""
+    """Combined runtime settings passed to components and boot hooks."""
 
     core: CoreSettings
     resources: ResourcesSettings
+    component_settings: dict[str, dict[str, Any]] | None = None
+
+    def __post_init__(self) -> None:
+        """Default component-settings map for direct constructor call sites."""
+        if self.component_settings is None:
+            object.__setattr__(self, "component_settings", {})
 
 
 TComponentSettings = TypeVar("TComponentSettings", bound=BaseModel)
+AgentActorSettings = AssistantActorSettings
 
 
 def _deep_merge_mappings(
@@ -462,38 +403,32 @@ def _field_default_value(
         return PydanticUndefined
 
 
+def component_settings_for(
+    settings: CoreRuntimeSettings,
+    *,
+    component_name: str,
+) -> dict[str, Any]:
+    """Return one direct component-root mapping from the merged runtime config."""
+    resolved = settings.component_settings.get(component_name, {})
+    if not isinstance(resolved, dict):
+        raise TypeError(f"{component_name} must resolve to an object mapping")
+    return resolved
+
+
 def resolve_component_settings(
     *,
     settings: CoreRuntimeSettings,
     component_id: str,
     model: type[TComponentSettings],
 ) -> TComponentSettings:
-    """Resolve one component settings object from the appropriate namespace.
-
-    - ``service_*``   → settings.core.service
-    - ``substrate_*`` → settings.resources.substrate
-    - ``adapter_*``   → settings.resources.adapter
-    """
-    kind, separator, name = component_id.partition("_")
-    if not separator or kind not in {"service", "substrate", "adapter"}:
+    """Resolve one component settings object from the merged component-root tree."""
+    _kind, separator, name = component_id.partition("_")
+    if not separator:
         raise ValueError(
-            f"component_id '{component_id}' must be prefixed with "
-            "service_, substrate_, or adapter_"
+            f"component_id '{component_id}' must contain an underscore-delimited name"
         )
 
-    if kind == "service":
-        namespace = settings.core.service.model_dump(mode="python")
-        namespace_path = "service"
-    elif kind == "substrate":
-        namespace = settings.resources.substrate.model_dump(mode="python")
-        namespace_path = "substrate"
-    else:
-        namespace = settings.resources.adapter.model_dump(mode="python")
-        namespace_path = "adapter"
-
-    resolved = namespace.get(name, {})
-    if not isinstance(resolved, dict):
-        raise TypeError(f"{namespace_path}.{name} must resolve to an object mapping")
+    resolved = component_settings_for(settings, component_name=name)
     merged = dict(resolved)
     for key, override_value in resolved.items():
         if not isinstance(override_value, dict):

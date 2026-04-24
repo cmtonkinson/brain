@@ -17,11 +17,11 @@ RESOURCE_COMPONENT_ID = ComponentId("substrate_seaweedfs")
 MANIFEST = register_component(
     ResourceManifest(
         id=RESOURCE_COMPONENT_ID,
-        layer=0,
-        system="state",
+        tier=1,
+        plane="state",
         kind="substrate",
         module_roots=frozenset({ModuleRoot("resources.substrates.seaweedfs")}),
-        owner_service_id=ComponentId("service_object_authority"),
+        owner_service_id=ComponentId("service_object"),
     )
 )
 

@@ -1,53 +1,60 @@
 title: "Glossary of Terms"
 terms:
+  - term: Effect Plane
+    definition: "The Plane responsible for external consequences: comprises Services and Adapter Resources responsible for external I/O."
   - term: Actor
     definition: "A client of the Brain Core SDK, such as the Agent, CLI, or Worker."
   - term: Adapter
     definition: "A Resource which governs interaction with the outside world such as an MCP Server, messaging platform, web API, etc."
+  - term: Brain Core SDK
+    definition: "The interface on top of the Public API for direct consumption (via HTTP) by Tier 3 Actors. This is the only system interface available to Actors."
   - term: Component
     definition: "An isolated unit of responsibility or work. Each Actor, Service, and Resource is a Component."
-  - term: Resource
-    definition: "Trustees of side effects. All real-world consequences are gated by a Resource Component. Types are `Substrate` and `Adapter`."
-  - term: Service
-    definition: "The primary carriers of business logic, responsible for coordinating system state and behavior."
-  - term: Substrate
-    definition: "A Resource which governs state, such as a database, document store, or cache."
-  - term: Layer
-    definition: "An abstract 'horizontal' segment of Brain architecture defined by its purpose and access control rules. There are three Layers: 0, 1, and 2."
-  - term: System
-    definition: "An abstract 'vertical' segment of Brain architecture defined by its ontological purpose. There are three Systems: State, Action and Control."
-  - term: Public API
-    definition: "The internal, native, Python surface exported by a given Service. The Public API is the canonical interface for any Service."
-  - term: Brain Core SDK
-    definition: "The interface on top of the Public API for direct consumption (via HTTP) by Layer 2. This is the only system interface available to Actors."
-  - term: Capability
-    definition: "A governed, testable unit of action with a clear input/output contract, bounded authority, and inspectable results. Types are `Op` and `Skill`."
+  - term: Reason Plane
+    definition: "The Plane housing higher-order executive functions by composing functionality from the State Plane and Effect Plane."
   - term: Conversation Episode
-    definition: "A MAS-owned grouping of related dialogue turns within a Session. Conversation Episodes rotate on explicit boundaries or configured idle gaps and are used for observability session grouping such as Langfuse sessions."
+    definition: "A Recall-owned grouping of related dialogue turns within a Session. Conversation Episodes rotate on explicit boundaries or configured idle gaps and are used for observability session grouping such as Langfuse sessions."
+  - term: Delegation
+    definition: "The Reason-plane Service that owns the lifecycle of subagent invocations: queue, claim, status, transcripts, budget ledger, and cancel."
+  - term: Subagent
+    definition: "A focused, headless agentic loop spawned by Delegation to accomplish one task. Distinct from the conversational Agent: runs under its own Principal and Channel, with a narrowed tool allowlist and per-invocation budgets."
   - term: Envelope
-    definition: "The structured message wrapper used for all cross-Layer and cross-Service communication, consisting of metadata, payload, and errors."
+    definition: "The structured message wrapper used for all cross-Tier and cross-Service communication, consisting of metadata, payload, and errors."
+  - term: Tier
+    definition: "An abstract 'horizontal' segment of Brain architecture defined by its purpose and access control rules. Brain components fall into three Tiers: 1, 2, and 3."
+  - term: Logic Op
+    definition: "An Op implementing arbitrary/custom Python code."
+  - term: MCP Op
+    definition: "An Op which wraps a single MCP tool call, scoped by the name of the MCP server as configured."
+    note: "The MCP spec does not enforce useful schema definitions over tool output format, which can be limiting for automation. Brain provides a mechanism to manually define these, however (see XXX)."
+  - term: Manifest
+    definition: "The self-registration declaration that each Component exports to join the global registry at import time."
+  - term: Native Op
+    definition: "An Op which wraps a Resource API call. Native Ops are the foundational units of work exposed to Actors."
   - term: Op
-    definition: "A Capability which wraps a Resource API call. Ops are the foundational units of work exposed to Actors."
+    definition: "A governed, testable unit of action with a clear input/output contract, bounded authority, and inspectable results. Kinds are `Native`, `MCP`, `Pipeline`, and `Logic`."
   - term: Operator
     definition: "The human user of the system. All personal-assistant work rolls up to the Operator as the accountable Principal."
+  - term: Pipeline Op
+    definition: "A compound Op defined by an ordered set of other Op references; assuming the output format schema of each Op is compatible with the input format schema of the next, they form an execution chain: you provide inputs to the first Op and receive a return value from the final Op."
   - term: Principal
     definition: "The accountable identity for a request, propagated unchanged across calls in Envelope metadata. Examples: `operator`, `core`, or a Service name."
   - term: Provider
     definition: "The concrete backing surface behind a Resource, such as a containerized system, a host process/file, or some third-party API. Resources are Brain-facing interfaces over Providers."
+  - term: Public API
+    definition: "The internal, native, Python surface exported by a given Service. The Public API is the canonical interface for any Service."
+  - term: Resource
+    definition: "Trustees of side effects. All real-world consequences are gated by a Resource Component. Types are `Substrate` and `Adapter`."
+  - term: Service
+    definition: "The primary carriers of business logic, responsible for coordinating system state and behavior."
   - term: Session
-    definition: "A MAS-owned durable memory continuity scope for dialogue, focus, and rolling summaries. A Session may contain multiple Conversation Episodes over time."
-  - term: Skill
-    definition: "A compound Capability implementing either a sequence of Ops or custom Python code."
-  - term: Action System
-    definition: "The System responsible for external consequences: comprises Services and Adapter Resources responsible for external I/O."
-  - term: Capability SDK
-    definition: "The SDK for definition, registration, and management of Capabilities (Ops and Skills) including logic and metadata such as Policy declarations."
-  - term: Control System
-    definition: "The System housing higher-order executive functions by composing functionality from the State System and Action System."
-  - term: Manifest
-    definition: "The self-registration declaration that each Component exports to join the global registry at import time."
-  - term: State System
-    definition: "The System responsible for durable data, comprised of Authority Services and Substrate Resources."
+    definition: "A Recall-owned durable memory continuity scope for dialogue, focus, and rolling summaries. A Session may contain multiple Conversation Episodes over time."
+  - term: State Plane
+    definition: "The Plane responsible for durable data, comprising substrate-owning Services and their Substrate Resources."
+  - term: Substrate
+    definition: "A Resource which governs state, such as a database, document store, or cache."
+  - term: Plane
+    definition: "An abstract 'vertical' segment of Brain architecture defined by its ontological purpose. There are three Planes: State, Effect, and Reason."
   - term: Trace
     definition: "A `trace_id`-scoped execution episode linking causally related Envelopes. Cross-trace causality is preserved via `parent_id` references."
   - term: Turn

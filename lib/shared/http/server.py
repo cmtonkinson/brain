@@ -9,6 +9,7 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, Request, Response
+from starlette.middleware.base import RequestResponseEndpoint
 
 from .errors import InvalidBodyError, InvalidJsonBodyError, MissingHeaderError
 from lib.shared.logging import get_logger
@@ -63,10 +64,10 @@ def create_server(
 
 
 def _install_request_logging(app: FastAPI) -> None:
-    """Attach one lightweight middleware for per-request summary logs."""
-
     @app.middleware("http")
-    async def _log_request(request: Request, call_next) -> Response:
+    async def _log_request(
+        request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         started = perf_counter()
         response = await call_next(request)
         duration_ms = round((perf_counter() - started) * 1000, 2)
@@ -122,7 +123,6 @@ def get_header(
 
 
 async def read_raw_body(request: Request) -> bytes:
-    """Read raw request body bytes without interpretation."""
     return await request.body()
 
 

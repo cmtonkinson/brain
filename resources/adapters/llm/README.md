@@ -1,9 +1,9 @@
 # native LLM Adapter
-Action _Adapter_ _Resource_ that executes chat and embedding calls against a native LLM gateway for the Language Model Service.
+Action _Adapter_ _Resource_ that executes chat and embedding calls against a native LLM gateway for the Language Service.
 
 ------------------------------------------------------------------------
 ## What This Component Is
-`resources/adapters/llm/` provides the concrete Layer 0 native LLM
+`resources/adapters/llm/` provides the concrete Tier 1 native LLM
 integration:
 - `component.py`: `ResourceManifest` registration (`adapter_llm`)
 - `adapter.py`: adapter protocol, DTOs, and adapter exception taxonomy
@@ -12,7 +12,7 @@ integration:
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
-This _Resource_ is owned by `service_language_model` via `owner_service_id` in
+This _Resource_ is owned by `service_language` via `owner_service_id` in
 `resources/adapters/llm/component.py`.
 
 Boundary rules:
@@ -23,22 +23,23 @@ Boundary rules:
 ------------------------------------------------------------------------
 ## Interactions
 Primary interactions:
-- Language Model Service composes `HttpLlmAdapter` in
-  `DefaultLanguageModelService.from_settings(...)`.
-- LMS calls adapter methods:
+- Language Service composes `HttpLlmAdapter` in
+  `DefaultLanguageService.from_settings(...)`.
+- Language calls adapter methods:
   - `chat` / `chat_batch`
+  - `chat_with_tools`
   - `embed` / `embed_batch`
   - `health`
-- Adapter returns typed results or raises adapter-level exceptions that LMS
+- Adapter returns typed results or raises adapter-level exceptions that Language
   maps to service error semantics.
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
-1. LMS resolves provider/model profile and passes it to adapter methods.
+1. Language resolves provider/model profile and passes it to adapter methods.
 2. Adapter constructs native LLM request payloads and sends HTTP requests.
 3. Adapter validates response JSON shape and maps to typed DTOs.
 4. Adapter raises dependency/internal exceptions for failure paths.
-5. LMS maps adapter output/failures to envelope-level service responses.
+5. Language maps adapter output/failures to envelope-level service responses.
 
 ------------------------------------------------------------------------
 ## Failure Modes and Error Semantics
@@ -50,7 +51,7 @@ Primary interactions:
 ------------------------------------------------------------------------
 ## Configuration Surface
 Adapter settings are sourced from `components.adapter.llm`:
-- `base_url`
+- `api_base`
 - `api_key`
 - `timeout_seconds`
 - `max_retries`
@@ -72,7 +73,7 @@ make test
 ## Contributor Notes
 - Keep this resource transport-focused and side-effect-boundary oriented.
 - Keep adapter DTOs strict (`extra="forbid"`, immutable).
-- Keep adapter exceptions small and explicit to preserve stable LMS error
+- Keep adapter exceptions small and explicit to preserve stable Language error
   mapping.
 - If endpoint shapes change, update adapter mappings and component docs
   together.

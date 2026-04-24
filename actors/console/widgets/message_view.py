@@ -6,7 +6,7 @@ from datetime import datetime
 
 from textual.containers import VerticalScroll
 
-from actors.console.widgets.message_bubble import MessageBubble
+from actors.console.widgets.message_bubble import BubbleDirection, MessageBubble
 
 
 class MessageView(VerticalScroll):
@@ -22,7 +22,7 @@ class MessageView(VerticalScroll):
     def append_message(
         self,
         *,
-        direction: str,
+        direction: BubbleDirection,
         text: str,
         timestamp: datetime | None = None,
     ) -> None:

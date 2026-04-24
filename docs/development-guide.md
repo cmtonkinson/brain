@@ -1,7 +1,7 @@
 # Development Guide
 This document covers how to set up, build, test, and contribute to Brain.
 
-> Check the [Glossary](glossary.md) for key terms such as _Layer_, _System_, _Resource_,
+> Check the [Glossary](glossary.md) for key terms such as _Tier_, _System_, _Resource_,
 > _Service_, et cetera.
 
 ------------------------------------------------------------------------
@@ -37,13 +37,16 @@ This document covers how to set up, build, test, and contribute to Brain.
 4. Copy and edit the configuration sample:
    ```
    mkdir -p ~/.config/brain
-   cp config/core.yaml.sample ~/.config/brain/core.yaml
-   cp config/resources.yaml.sample ~/.config/brain/resources.yaml
+   cp config/shared.yaml.sample ~/.config/brain/shared.yaml
+   cp config/state.yaml.sample ~/.config/brain/state.yaml
+   cp config/effect.yaml.sample ~/.config/brain/effect.yaml
+   cp config/reason.yaml.sample ~/.config/brain/reason.yaml
    cp config/actors.yaml.sample ~/.config/brain/actors.yaml
+   cp config/secrets.yaml.sample ~/.config/brain/secrets.yaml
    ```
-   The samples include defaults for Core HTTP socket settings, resource
-   endpoints, and actor connection settings; override them as needed for your
-   environment. See the
+   The samples are recommended groupings only. Brain scans the config directory
+   non-recursively and deep-merges top-level `*.yaml` files in lexical order,
+   so you may combine or split files however you prefer. See the
    [Configuration Reference](configuration.md) for all available keys.
 
 5. Start Brain Core. It bootstraps schemas and runs migrations automatically
@@ -78,7 +81,7 @@ Collector, runs self-hosted Langfuse, adds Langfuse's required ClickHouse, and
 uses the base SeaweedFS service as its S3-compatible blob store. It reuses the
 base Postgres and Valkey services; Langfuse data is stored in a dedicated
 Postgres database and in dedicated SeaweedFS bucket/prefixes, not in Brain
-service schemas or OAS.
+service schemas or Object.
 
 Before using the overlay, replace the `replace-me` values in `.env`, especially
 Langfuse secrets, SeaweedFS S3 credentials, and `LANGFUSE_OTEL_AUTH_HEADER`.
@@ -127,7 +130,7 @@ smoke sidecars because that masks the image's installed dependencies.
    `adapters/`).
 2. Add a `component.py` exporting a `ResourceManifest` via
    `register_component()`.
-3. Set `owner_service_id` to the L1 _Service_ that owns this _Resource_.
+3. Set `owner_service_id` to the T2 _Service_ that owns this _Resource_.
 4. See [Component Design](component-design.md) for full registration details.
 
 ------------------------------------------------------------------------

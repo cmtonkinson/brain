@@ -1,0 +1,43 @@
+dashboard:
+  app_title: Dashboard
+  log_follow_enabled: true
+  refresh_interval_seconds: 1.0
+
+  data_sources:
+    poll_seconds: 2.0
+    staleness_threshold_seconds: 10.0
+
+  retention:
+    events_recent_seconds: 300
+    events_max_items: 5000
+    samples_recent_seconds: 600
+    samples_max_items: 1200
+    snapshots_recent_count: 50
+
+  logs:
+    backfill_lines: 200
+    buffer_size: 5000
+    refresh_seconds: 0.5
+    core_log_path: logs/core.log
+    assistant_log_path: logs/assistant.log
+
+  health:
+    core_health_url: http://localhost:8898/health
+    core_timeout_seconds: 1.0
+    assistant_heartbeat_path: ./var/assistant.heartbeat
+    assistant_freshness_seconds: 30.0
+    postgres_url: postgresql+psycopg://brain:brain@localhost:8760/brain
+    postgres_timeout_seconds: 1.0
+    valkey_url: valkey://localhost:8761/0
+    valkey_connect_timeout_seconds: 1.0
+    valkey_socket_timeout_seconds: 1.0
+    signal_health_url: http://localhost:8080/v1/health
+    signal_timeout_seconds: 0.5
+    qdrant_health_url: http://localhost:8762/healthz
+    qdrant_timeout_seconds: 2.0
+    gateway_timeout_seconds: 2.0
+
+  postgres:
+    url: postgresql://brain:brain@localhost:8760/brain
+    pool_size: 3
+    connect_timeout_seconds: 5.0

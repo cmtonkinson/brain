@@ -1,0 +1,28 @@
+{
+  "op_id": "relay-notify",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Route one outbound notification and decide suppress/send/batch.",
+  "enabled": true,
+  "input_schema": {
+    "actor": "string | optional | Actor identity for routing context. Defaults to 'operator'.",
+    "channel": "string | optional | Channel identifier. Defaults to service routing default.",
+    "title": "string | optional | Optional title rendered above message content.",
+    "message": "string | The notification body to route.",
+    "dedupe_key": "string | optional | Suppress duplicate sends within configured dedupe window.",
+    "batch_key": "string | optional | Queue into batch instead of immediate send.",
+    "force": "boolean | optional | Bypass dedupe, batch, and rate-limit suppression checks. Defaults to false.",
+    "conversational_memory": "object | null | optional | Recall-owned conversational outbound metadata with session_id, model, provider, token_count, and reasoning_level. Persisted only when a conversational channel actually sends."
+  },
+  "output_schema": {
+    "decision": "string | Router decision outcome: sent, suppressed, or batched.",
+    "delivered": "boolean | Whether a message was delivered to channel.",
+    "detail": "string | Human-readable routing detail.",
+    "suppressed_reason": "string | optional | Suppression reason when decision is suppressed.",
+    "batched_count": "integer | optional | Pending item count when decision is batched.",
+    "notification": "object | optional | Normalized routed notification payload."
+  },
+  "call_target": "service_relay.route_notification",
+  "effect": "external",
+  "approval": "never"
+}

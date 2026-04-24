@@ -267,7 +267,7 @@ The footer must be a reactive view of app state, not a static string.
 The footer should derive its content from:
 - workspace state
 - focused pane identity and view loaded therein
-- focused view-local capability state
+- focused view-local op state
 - focused view temporal state
 - focused view context-follow state
 - width constraints

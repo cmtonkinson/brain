@@ -58,7 +58,7 @@ Emphasize:
 Emphasize:
 - entrypoints and runtime triggers
 - Brain SDK usage and external integration boundaries
-- policy and control flow handoff to L1 services
+- policy and control flow handoff to T2 services
 
 ------------------------------------------------------------------------
 ## Minimal Authoring Template

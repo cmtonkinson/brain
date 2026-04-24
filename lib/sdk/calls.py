@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from lib.sdk.meta import MetaOverrides
 
 from lib.sdk.errors import (
     BrainDomainError,
@@ -40,19 +43,18 @@ class CoreHealthResult:
 
 
 @dataclass(frozen=True, slots=True)
-class CapabilityDescriptor:
-    """SDK-friendly description of one registered Capability."""
+class OpDescriptor:
+    """SDK-friendly description of one registered Op."""
 
-    capability_id: str
+    op_id: str
     kind: str
     version: str
     summary: str
     input_schema: dict[str, Any] | None
     output_schema: dict[str, Any] | None
-    autonomy: int
-    requires_approval: bool
-    side_effects: tuple[str, ...]
-    required_capabilities: tuple[str, ...]
+    effect: str
+    approval: str
+    required_ops: tuple[str, ...]
     simple_output_path: str | None = None
     slash_command_name: str | None = None
     slash_command_aliases: tuple[str, ...] = ()
@@ -60,12 +62,24 @@ class CapabilityDescriptor:
 
 
 @dataclass(frozen=True, slots=True)
-class CapabilitySearchHit:
-    """Compact semantic capability-search result returned by CES."""
+class OpSearchHit:
+    """Compact semantic op-search result returned by Execution."""
 
-    capability_id: str
+    op_id: str
     required_params: tuple[str, ...]
     summary: str
+
+
+@dataclass(frozen=True, slots=True)
+class DynamicOpClassification:
+    """SDK-friendly view of one observed dynamic op classification row."""
+
+    op_id: str
+    source_kind: str
+    source_ref: str
+    summary: str
+    effect: str | None
+    approval: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,11 +92,12 @@ class ToolSystemHint:
     kind: str
     ready: bool | None = None
     tool_count: int | None = None
+    pending_tool_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class PolicyDecision:
-    """Policy decision metadata returned from capability invocation."""
+    """Policy decision metadata returned from op invocation."""
 
     decision_id: str
     allowed: bool
@@ -92,8 +107,8 @@ class PolicyDecision:
 
 
 @dataclass(frozen=True, slots=True)
-class CapabilityInvokeResult:
-    """SDK-friendly result for one capability invocation."""
+class OpInvokeResult:
+    """SDK-friendly result for one op invocation."""
 
     output: Any
     policy: PolicyDecision
@@ -101,7 +116,7 @@ class CapabilityInvokeResult:
 
 @dataclass(frozen=True, slots=True)
 class LmsChatResult:
-    """One direct LMS chat result payload."""
+    """One direct Language chat result payload."""
 
     text: str
     provider: str
@@ -110,7 +125,7 @@ class LmsChatResult:
 
 @dataclass(frozen=True, slots=True)
 class LmsChatToolCall:
-    """One normalized tool call returned from the tool-capable LMS SDK surface."""
+    """One normalized tool call returned from the tool-capable Language SDK surface."""
 
     tool_name: str
     args_json: str
@@ -119,7 +134,7 @@ class LmsChatToolCall:
 
 @dataclass(frozen=True, slots=True)
 class LmsToolChatResult:
-    """One tool-capable LMS response payload."""
+    """One tool-capable Language response payload."""
 
     provider: str
     model: str
@@ -130,16 +145,17 @@ class LmsToolChatResult:
 
 @dataclass(frozen=True, slots=True)
 class MemoryDialogueTurn:
-    """One MAS dialogue turn in the assembled context payload."""
+    """One Recall dialogue turn in the assembled context payload."""
 
     role: str
     content: str
     is_summary: bool
+    timestamp_ms: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class MemoryContextBlock:
-    """Full MAS assembled context payload."""
+    """Full Recall assembled context payload."""
 
     current_focus: str | None
     recent_conversation_summary: str
@@ -149,7 +165,7 @@ class MemoryContextBlock:
 
 @dataclass(frozen=True, slots=True)
 class MemoryTurnContext:
-    """MAS-resolved turn-start context payload."""
+    """Recall-resolved turn-start context payload."""
 
     session_id: str
     inbound_turn: "MemoryTurnRecord"
@@ -158,7 +174,7 @@ class MemoryTurnContext:
 
 @dataclass(frozen=True, slots=True)
 class MemoryTurnRecord:
-    """One MAS turn record payload."""
+    """One Recall turn record payload."""
 
     id: str
     session_id: str
@@ -177,14 +193,14 @@ class MemoryTurnRecord:
 
 @dataclass(frozen=True, slots=True)
 class MemorySessionRef:
-    """Minimal MAS session reference returned to SDK callers."""
+    """Minimal Recall session reference returned to SDK callers."""
 
     session_id: str
 
 
 @dataclass(frozen=True, slots=True)
-class SwitchboardOperatorInstruction:
-    """One queued operator instruction delivered from Switchboard."""
+class RelayOperatorInstruction:
+    """One queued operator instruction delivered from Relay inbound."""
 
     sender_e164: str
     message_text: str
@@ -198,6 +214,103 @@ class SwitchboardOperatorInstruction:
     approval_intent: str | None = None
     reply_to_proposal_token: str | None = None
     reaction_to_proposal_token: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class JobClaimResult:
+    """Claimed execution details needed by a Worker Actor to execute a job."""
+
+    execution_id: str
+    job_id: str
+    op_id: str
+    input_payload: dict[str, Any]
+    actor: str
+    trace_id: str
+    parent_envelope_id: str
+    attempt_number: int
+    max_attempts: int
+
+
+@dataclass(frozen=True, slots=True)
+class ConsoleEnqueueResult:
+    """Result of enqueuing one console operator message."""
+
+    queued: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ConsoleResponseMessage:
+    """One outbound Brain response delivered via the console channel."""
+
+    message: str
+    timestamp_ms: int
+
+
+@dataclass(frozen=True, slots=True)
+class DelegationStarted:
+    """Result of one queued delegation invocation request."""
+
+    invocation_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class DelegationStatusView:
+    """Read-only state projection for one delegation invocation."""
+
+    invocation_id: str
+    status: str
+    cancel_reason: str | None
+    tokens_in: int
+    tokens_out: int
+    turn_count: int
+    started_at: str | None
+    completed_at: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class DelegationResult:
+    """Terminal-or-current result projection for one delegation invocation."""
+
+    invocation_id: str
+    status: str
+    final_response: str | None
+    cancel_reason: str | None
+    tokens_in: int
+    tokens_out: int
+    turn_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class DelegationClaim:
+    """Claimed invocation details handed to the Subagent Actor."""
+
+    invocation_id: str
+    parent_invocation_id: str | None
+    principal: str
+    channel: str
+    personality_id: str
+    prompt: str
+    context_text: str | None
+    context_object_refs: tuple[str, ...]
+    tool_allowlist: tuple[str, ...] | None
+    max_turns: int
+    budget_tokens: int | None
+    max_wallclock_seconds: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class DelegationTurnDecision:
+    """Per-turn budget evaluation decision returned by Delegation."""
+
+    should_stop: bool
+    reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class DelegationCancelOutcome:
+    """Outcome of one cancel request against Delegation."""
+
+    accepted: bool
 
 
 def call_core_health(
@@ -234,118 +347,192 @@ def call_core_health(
     )
 
 
-def call_capabilities_describe(
+def call_ops_describe(
     *,
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
-) -> tuple[CapabilityDescriptor, ...]:
-    """Describe all registered Capabilities through the CES HTTP surface."""
+) -> tuple[OpDescriptor, ...]:
+    """Describe all registered Ops through the Execution HTTP surface."""
     data = _post_json(
-        operation="capabilities.describe",
+        operation="ops.describe",
         http=http,
-        url="/capabilities/describe",
+        url="/ops/describe",
         body=metadata,
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
-        operation="capabilities.describe",
+        operation="ops.describe",
         errors=_errors_from_data(data),
     )
-    return tuple(_capability_descriptor(item) for item in data.get("capabilities", ()))
+    return tuple(_op_descriptor(item) for item in data.get("ops", ()))
 
 
-def call_capabilities_list_always_on(
+def call_ops_list_always_on(
     *,
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
-) -> tuple[CapabilityDescriptor, ...]:
-    """Return full descriptors for configured always-on capabilities."""
+) -> tuple[OpDescriptor, ...]:
+    """Return full descriptors for configured always-on ops."""
     data = _post_json(
-        operation="capabilities.list_always_on",
+        operation="ops.list_always_on",
         http=http,
-        url="/capabilities/always-on",
+        url="/ops/always-on",
         body=metadata,
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
-        operation="capabilities.list_always_on",
+        operation="ops.list_always_on",
         errors=_errors_from_data(data),
     )
-    return tuple(_capability_descriptor(item) for item in data.get("capabilities", ()))
+    return tuple(_op_descriptor(item) for item in data.get("ops", ()))
 
 
-def call_capabilities_search(
+def call_ops_search(
     *,
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
     query: str,
     limit: int | None = None,
-) -> tuple[CapabilitySearchHit, ...]:
-    """Search the CES capability catalog."""
+) -> tuple[OpSearchHit, ...]:
+    """Search the Execution op catalog."""
     data = _post_json(
-        operation="capabilities.search",
+        operation="ops.search",
         http=http,
-        url="/capabilities/search",
+        url="/ops/search",
         body={**metadata, "query": query, "limit": limit},
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
-        operation="capabilities.search",
+        operation="ops.search",
         errors=_errors_from_data(data),
     )
-    return tuple(_capability_search_hit(item) for item in data.get("results", ()))
+    return tuple(_op_search_hit(item) for item in data.get("results", ()))
 
 
-def call_capabilities_tool_system_hints(
+def call_ops_list_dynamic_classifications(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+) -> tuple[DynamicOpClassification, ...]:
+    """Return all observed dynamic op classification rows."""
+    data = _post_json(
+        operation="ops.list_dynamic_classifications",
+        http=http,
+        url="/ops/dynamic/classifications",
+        body=metadata,
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="ops.list_dynamic_classifications",
+        errors=_errors_from_data(data),
+    )
+    return tuple(_dynamic_op_classification(item) for item in data.get("items", ()))
+
+
+def call_ops_classify_dynamic(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    op_id: str,
+    effect: str | None = None,
+    approval: str | None = None,
+) -> DynamicOpClassification:
+    """Persist operator classification (effect and/or approval) for a dynamic op."""
+    body: dict[str, object] = {**metadata, "op_id": op_id}
+    if effect is not None:
+        body["effect"] = effect
+    if approval is not None:
+        body["approval"] = approval
+    data = _post_json(
+        operation="ops.classify_dynamic",
+        http=http,
+        url="/ops/dynamic/classify",
+        body=body,
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="ops.classify_dynamic",
+        errors=_errors_from_data(data),
+    )
+    items = data.get("items") or ()
+    if not items:
+        raise BrainDomainError(
+            "ops.classify_dynamic returned no row",
+            operation="ops.classify_dynamic",
+            details=(),
+        )
+    return _dynamic_op_classification(items[0])
+
+
+def _dynamic_op_classification(value: object) -> DynamicOpClassification:
+    """Map one raw dynamic-op-classification payload into the SDK dataclass."""
+    item = value if isinstance(value, dict) else {}
+    effect = item.get("effect")
+    approval = item.get("approval")
+    return DynamicOpClassification(
+        op_id=str(item.get("op_id", "")),
+        source_kind=str(item.get("source_kind", "")),
+        source_ref=str(item.get("source_ref", "")),
+        summary=str(item.get("summary", "")),
+        effect=str(effect) if isinstance(effect, str) and effect != "" else None,
+        approval=str(approval)
+        if isinstance(approval, str) and approval != ""
+        else None,
+    )
+
+
+def call_ops_tool_system_hints(
     *,
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
 ) -> tuple[ToolSystemHint, ...]:
-    """Return compact system-orientation hints for capability discovery."""
+    """Return compact system-orientation hints for op discovery."""
     data = _post_json(
-        operation="capabilities.tool_system_hints",
+        operation="ops.tool_system_hints",
         http=http,
-        url="/capabilities/tool-system-hints",
+        url="/ops/tool-system-hints",
         body=metadata,
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
-        operation="capabilities.tool_system_hints",
+        operation="ops.tool_system_hints",
         errors=_errors_from_data(data),
     )
     return tuple(_tool_system_hint(item) for item in data.get("systems", ()))
 
 
-def call_capability_describe(
+def call_op_describe(
     *,
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
-    capability_id: str,
-) -> CapabilityDescriptor:
-    """Describe one capability through the CES HTTP surface."""
+    op_id: str,
+) -> OpDescriptor:
+    """Describe one op through the Execution HTTP surface."""
     data = _post_json(
-        operation="capabilities.describe_one",
+        operation="ops.describe_one",
         http=http,
-        url="/capabilities/describe-one",
-        body={**metadata, "capability_id": capability_id},
+        url="/ops/describe-one",
+        body={**metadata, "op_id": op_id},
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
-        operation="capabilities.describe_one",
+        operation="ops.describe_one",
         errors=_errors_from_data(data),
     )
-    capability = data.get("capability")
-    if not isinstance(capability, dict):
+    op_data = data.get("op")
+    if not isinstance(op_data, dict):
         raise BrainDomainError(
-            message="capabilities.describe_one domain failure: missing capability",
-            operation="capabilities.describe_one",
+            message="ops.describe_one domain failure: missing op",
+            operation="ops.describe_one",
         )
-    return _capability_descriptor(capability)
+    return _op_descriptor(op_data)
 
 
 def call_slash_lookup(
@@ -354,33 +541,33 @@ def call_slash_lookup(
     metadata: dict[str, object],
     timeout_seconds: float,
     name: str,
-) -> CapabilityDescriptor | None:
-    """Look up one capability descriptor by slash command name or alias."""
+) -> OpDescriptor | None:
+    """Look up one op descriptor by slash command name or alias."""
     data = _post_json(
-        operation="capabilities.slash_lookup",
+        operation="ops.slash_lookup",
         http=http,
-        url="/capabilities/slash-lookup",
+        url="/ops/slash-lookup",
         body={**metadata, "name": name},
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
-        operation="capabilities.slash_lookup",
+        operation="ops.slash_lookup",
         errors=_errors_from_data(data),
     )
-    capability = data.get("capability")
-    if capability is None:
+    op_data = data.get("op")
+    if op_data is None:
         return None
-    if not isinstance(capability, dict):
+    if not isinstance(op_data, dict):
         return None
-    return _capability_descriptor(capability)
+    return _op_descriptor(op_data)
 
 
-def call_capability_invoke(
+def call_op_invoke(
     *,
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
-    capability_id: str,
+    op_id: str,
     input_payload: dict[str, Any] | None = None,
     actor: str = "",
     channel: str = "",
@@ -390,16 +577,16 @@ def call_capability_invoke(
     approval_token: str = "",
     reply_to_proposal_token: str = "",
     reaction_to_proposal_token: str = "",
-) -> CapabilityInvokeResult:
-    """Invoke one Capability through the CES HTTP surface."""
+) -> OpInvokeResult:
+    """Invoke one Op through the Execution HTTP surface."""
     resolved_invocation_id = invocation_id.strip() or generate_ulid_str()
     data = _post_json(
-        operation="capabilities.invoke",
+        operation="ops.invoke",
         http=http,
-        url="/capabilities/invoke",
+        url="/ops/invoke",
         body={
             **metadata,
-            "capability_id": capability_id,
+            "op_id": op_id,
             "input_payload": {} if input_payload is None else input_payload,
             "actor": actor,
             "channel": channel,
@@ -413,16 +600,16 @@ def call_capability_invoke(
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
-        operation="capabilities.invoke",
+        operation="ops.invoke",
         errors=_errors_from_data(data),
     )
-    return CapabilityInvokeResult(
+    return OpInvokeResult(
         output=_decode_output_json(data.get("output_json", "")),
         policy=_policy_decision(data.get("policy", {})),
     )
 
 
-def call_lms_chat(
+def call_language_chat(
     *,
     http: object,
     metadata: dict[str, object],
@@ -431,7 +618,7 @@ def call_lms_chat(
     prompt: str,
     profile: str = "standard",
 ) -> LmsChatResult:
-    """Execute one direct LMS chat call through Core HTTP."""
+    """Execute one direct Language chat call through Core HTTP."""
     data = _post_json(
         operation="lms.chat",
         http=http,
@@ -461,14 +648,14 @@ def call_lms_chat(
     )
 
 
-def call_lms_chat_with_tools(
+def call_language_chat_with_tools(
     *,
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
     inference_request: InferenceRequest,
 ) -> LmsToolChatResult:
-    """Execute one tool-capable LMS chat call through Core HTTP."""
+    """Execute one tool-capable Language chat call through Core HTTP."""
     data = _post_json(
         operation="lms.chat_with_tools",
         http=http,
@@ -500,7 +687,7 @@ def call_lms_chat_with_tools(
         model=str(payload.get("model", "")),
         finish_reason=str(payload.get("finish_reason", "")),
         text=None if payload.get("text") is None else str(payload.get("text", "")),
-        tool_calls=tuple(_lms_chat_tool_call(item) for item in tool_calls),
+        tool_calls=tuple(_language_chat_tool_call(item) for item in tool_calls),
     )
 
 
@@ -511,9 +698,9 @@ def call_memory_assemble_context(
     timeout_seconds: float,
     session_id: str,
     message: str,
-    instruction: SwitchboardOperatorInstruction | None = None,
+    instruction: RelayOperatorInstruction | None = None,
 ) -> MemoryTurnContext:
-    """Resolve active MAS session, record inbound turn, and return context."""
+    """Resolve active Recall session, record inbound turn, and return context."""
     instruction_body: dict[str, object] | None = None
     if instruction is not None:
         instruction_body = _instruction_body(instruction)
@@ -549,7 +736,7 @@ def call_memory_record_inbound_turn(
     timeout_seconds: float,
     session_id: str,
     message: str,
-    instruction: SwitchboardOperatorInstruction | None = None,
+    instruction: RelayOperatorInstruction | None = None,
 ) -> MemoryTurnRecord:
     """Persist one inbound turn and return the recorded turn payload."""
     instruction_body: dict[str, object] | None = None
@@ -580,8 +767,8 @@ def call_memory_record_inbound_turn(
     return _memory_turn_record(payload)
 
 
-def _instruction_body(instruction: SwitchboardOperatorInstruction) -> dict[str, object]:
-    """Serialize one Switchboard instruction into MAS HTTP payload shape."""
+def _instruction_body(instruction: RelayOperatorInstruction) -> dict[str, object]:
+    """Serialize one Relay inbound instruction into Recall HTTP payload shape."""
     return {
         "sender_e164": instruction.sender_e164,
         "message_text": instruction.message_text,
@@ -606,7 +793,7 @@ def call_memory_assemble_snapshot(
     session_id: str,
     exclude_latest: bool = True,
 ) -> MemoryContextBlock:
-    """Return the historical MAS context snapshot for one session."""
+    """Return the historical Recall context snapshot for one session."""
     data = _post_json(
         operation="memory.assemble_snapshot",
         http=http,
@@ -707,7 +894,7 @@ def call_memory_create_session(
     metadata: dict[str, object],
     timeout_seconds: float,
 ) -> MemorySessionRef:
-    """Create one MAS session and return the new session identifier."""
+    """Create one Recall session and return the new session identifier."""
     data = _post_json(
         operation="memory.create_session",
         http=http,
@@ -734,7 +921,7 @@ def call_memory_get_latest_or_create_session(
     metadata: dict[str, object],
     timeout_seconds: float,
 ) -> MemorySessionRef:
-    """Return the latest MAS session id or create one when none exist."""
+    """Return the latest Recall session id or create one when none exist."""
     data = _post_json(
         operation="memory.get_latest_or_create_session",
         http=http,
@@ -801,7 +988,7 @@ def call_memory_record_response(
     token_count: int,
     reasoning_level: str,
 ) -> bool:
-    """Append one outbound MAS response turn."""
+    """Append one outbound Recall response turn."""
     data = _post_json(
         operation="memory.record_response",
         http=http,
@@ -822,21 +1009,6 @@ def call_memory_record_response(
         errors=_errors_from_data(data),
     )
     return bool(data.get("payload"))
-
-
-@dataclass(frozen=True, slots=True)
-class JobClaimResult:
-    """Claimed execution details needed by a Worker Actor to execute a job."""
-
-    execution_id: str
-    job_id: str
-    capability_id: str
-    input_payload: dict[str, Any]
-    actor: str
-    trace_id: str
-    parent_envelope_id: str
-    attempt_number: int
-    max_attempts: int
 
 
 def call_job_claim_execution(
@@ -874,7 +1046,7 @@ def call_job_claim_execution(
     return JobClaimResult(
         execution_id=str(execution.get("id", "")),
         job_id=str(execution.get("job_id", "")),
-        capability_id=str(action.get("capability_id", "")),
+        op_id=str(action.get("op_id", "")),
         input_payload=dict(action.get("input_payload") or {}),
         actor=str(intent.get("created_by_actor", "")),
         trace_id=str(execution.get("trace_id", "")),
@@ -935,18 +1107,18 @@ def call_job_fail_execution(
     )
 
 
-def call_switchboard_poll_operator_instruction(
+def call_relay_poll_operator_instruction(
     *,
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
     wait_timeout_seconds: float = 0.0,
-) -> SwitchboardOperatorInstruction | None:
-    """Poll Switchboard for the next queued operator instruction."""
+) -> RelayOperatorInstruction | None:
+    """Poll Relay inbound for the next queued operator instruction."""
     data = _post_json(
-        operation="switchboard.poll_operator_instruction",
+        operation="relay.poll_operator_instruction",
         http=http,
-        url="/switchboard/poll_operator_instruction",
+        url="/relay/poll_operator_instruction",
         body={
             **metadata,
             "wait_timeout_seconds": wait_timeout_seconds,
@@ -954,7 +1126,7 @@ def call_switchboard_poll_operator_instruction(
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
-        operation="switchboard.poll_operator_instruction",
+        operation="relay.poll_operator_instruction",
         errors=_errors_from_data(data),
     )
     payload = data.get("payload")
@@ -962,39 +1134,24 @@ def call_switchboard_poll_operator_instruction(
         return None
     if not isinstance(payload, dict):
         raise BrainDomainError(
-            message="switchboard.poll_operator_instruction domain failure: invalid payload",
-            operation="switchboard.poll_operator_instruction",
+            message="relay.poll_operator_instruction domain failure: invalid payload",
+            operation="relay.poll_operator_instruction",
         )
-    return _switchboard_operator_instruction(payload)
+    return _relay_operator_instruction(payload)
 
 
-@dataclass(frozen=True, slots=True)
-class ConsoleEnqueueResult:
-    """Result of enqueuing one console operator message."""
-
-    queued: bool
-
-
-@dataclass(frozen=True, slots=True)
-class ConsoleResponseMessage:
-    """One outbound Brain response delivered via the console channel."""
-
-    message: str
-    timestamp_ms: int
-
-
-def call_switchboard_enqueue_console(
+def call_relay_enqueue_console(
     *,
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
     message_text: str,
 ) -> ConsoleEnqueueResult:
-    """Submit one console operator message to Switchboard for processing."""
+    """Submit one console operator message to Relay inbound for processing."""
     data = _post_json(
-        operation="switchboard.enqueue_console",
+        operation="inbound.enqueue_console",
         http=http,
-        url="/switchboard/enqueue_console_message",
+        url="/relay/enqueue_console_message",
         body={
             **metadata,
             "message_text": message_text,
@@ -1002,30 +1159,30 @@ def call_switchboard_enqueue_console(
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
-        operation="switchboard.enqueue_console",
+        operation="inbound.enqueue_console",
         errors=_errors_from_data(data),
     )
     payload = data.get("payload")
     if payload is None or not isinstance(payload, dict):
         raise BrainDomainError(
-            message="switchboard.enqueue_console domain failure: invalid payload",
-            operation="switchboard.enqueue_console",
+            message="inbound.enqueue_console domain failure: invalid payload",
+            operation="inbound.enqueue_console",
         )
     return ConsoleEnqueueResult(queued=bool(payload.get("queued", False)))
 
 
-def call_switchboard_poll_console_response(
+def call_relay_poll_console_response(
     *,
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
     wait_timeout_seconds: float = 0.0,
 ) -> ConsoleResponseMessage | None:
-    """Poll Attention Router for the next queued console response."""
+    """Poll Relay inbound for the next queued console response."""
     data = _post_json(
-        operation="switchboard.poll_console_response",
+        operation="inbound.poll_console_response",
         http=http,
-        url="/attention-router/poll_console_response",
+        url="/relay/poll_console_response",
         body={
             **metadata,
             "wait_timeout_seconds": wait_timeout_seconds,
@@ -1033,7 +1190,7 @@ def call_switchboard_poll_console_response(
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
-        operation="switchboard.poll_console_response",
+        operation="inbound.poll_console_response",
         errors=_errors_from_data(data),
     )
     payload = data.get("payload")
@@ -1041,8 +1198,8 @@ def call_switchboard_poll_console_response(
         return None
     if not isinstance(payload, dict):
         raise BrainDomainError(
-            message="switchboard.poll_console_response domain failure: invalid payload",
-            operation="switchboard.poll_console_response",
+            message="inbound.poll_console_response domain failure: invalid payload",
+            operation="inbound.poll_console_response",
         )
     return ConsoleResponseMessage(
         message=str(payload.get("message", "")),
@@ -1064,7 +1221,7 @@ def _set_sdk_span_attribute(
     set_attribute(key, serialized[:_SDK_SPAN_MAX_CHARS])
 
 
-def _raw_post_json(
+def _execute_http_call(
     *,
     operation: str,
     http: object,
@@ -1116,12 +1273,12 @@ def _post_json(
     """Issue one HTTP request, annotating an OTel span with input/output."""
     try:
         from opentelemetry import trace as _otel_trace
-        from lib.shared.observability.bootstrap import (
+        from lib.shared.observability import (
             is_llm_content_capture_enabled,
             is_observability_enabled,
         )
     except ImportError:
-        return _raw_post_json(
+        return _execute_http_call(
             operation=operation,
             http=http,
             url=url,
@@ -1130,7 +1287,7 @@ def _post_json(
             method=method,
         )
     if not is_observability_enabled():
-        return _raw_post_json(
+        return _execute_http_call(
             operation=operation,
             http=http,
             url=url,
@@ -1144,7 +1301,7 @@ def _post_json(
         _set_sdk_span_attribute(
             span, "langfuse.observation.input", body, enabled=capture
         )
-        response = _raw_post_json(
+        response = _execute_http_call(
             operation=operation,
             http=http,
             url=url,
@@ -1166,11 +1323,11 @@ def _errors_from_data(data: dict[str, Any]) -> list[object]:
     return []
 
 
-def _capability_descriptor(value: object) -> CapabilityDescriptor:
-    """Map one raw capability descriptor payload into the SDK dataclass."""
+def _op_descriptor(value: object) -> OpDescriptor:
+    """Map one raw op descriptor payload into the SDK dataclass."""
     item = value if isinstance(value, dict) else {}
-    return CapabilityDescriptor(
-        capability_id=str(item.get("capability_id", "")),
+    return OpDescriptor(
+        op_id=str(item.get("op_id", "")),
         kind=str(item.get("kind", "")),
         version=str(item.get("version", "")),
         summary=str(item.get("summary", "")),
@@ -1181,12 +1338,9 @@ def _capability_descriptor(value: object) -> CapabilityDescriptor:
             if item.get("simple_output_path") is None
             else str(item.get("simple_output_path"))
         ),
-        autonomy=int(item.get("autonomy", 0)),
-        requires_approval=bool(item.get("requires_approval", False)),
-        side_effects=tuple(str(entry) for entry in item.get("side_effects", ())),
-        required_capabilities=tuple(
-            str(entry) for entry in item.get("required_capabilities", ())
-        ),
+        effect=str(item.get("effect", "")),
+        approval=str(item.get("approval", "")),
+        required_ops=tuple(str(entry) for entry in item.get("required_ops", ())),
         slash_command_name=(
             None
             if item.get("slash_command_name") is None
@@ -1203,13 +1357,13 @@ def _capability_descriptor(value: object) -> CapabilityDescriptor:
     )
 
 
-def _capability_search_hit(value: object) -> CapabilitySearchHit:
-    """Map one raw capability search hit payload into the SDK dataclass."""
+def _op_search_hit(value: object) -> OpSearchHit:
+    """Map one raw op search hit payload into the SDK dataclass."""
     item = value if isinstance(value, dict) else {}
     required_params = item.get("required_params", ())
     required_items = required_params if isinstance(required_params, list) else ()
-    return CapabilitySearchHit(
-        capability_id=str(item.get("capability_id", "")),
+    return OpSearchHit(
+        op_id=str(item.get("op_id", "")),
         required_params=tuple(str(entry) for entry in required_items),
         summary=str(item.get("summary", "")),
     )
@@ -1220,6 +1374,7 @@ def _tool_system_hint(value: object) -> ToolSystemHint:
     item = value if isinstance(value, dict) else {}
     ready = item.get("ready")
     tool_count = item.get("tool_count")
+    pending = item.get("pending_tool_count")
     return ToolSystemHint(
         system_id=str(item.get("system_id", "")),
         label=str(item.get("label", "")),
@@ -1227,6 +1382,7 @@ def _tool_system_hint(value: object) -> ToolSystemHint:
         kind=str(item.get("kind", "")),
         ready=ready if isinstance(ready, bool) else None,
         tool_count=tool_count if isinstance(tool_count, int) else None,
+        pending_tool_count=pending if isinstance(pending, int) else None,
     )
 
 
@@ -1250,7 +1406,7 @@ def _policy_decision(value: object) -> PolicyDecision:
 
 
 def _decode_output_json(value: object) -> Any:
-    """Decode the CES stringified output payload into a Python value."""
+    """Decode the Execution stringified output payload into a Python value."""
     text = str(value).strip()
     if text == "":
         return None
@@ -1258,14 +1414,14 @@ def _decode_output_json(value: object) -> Any:
         return json.loads(text)
     except ValueError as exc:
         raise BrainTransportError(
-            message="capabilities.invoke transport failure: invalid output_json payload",
-            operation="capabilities.invoke",
+            message="ops.invoke transport failure: invalid output_json payload",
+            operation="ops.invoke",
             status_code=200,
             retryable=False,
         ) from exc
 
 
-def _lms_chat_tool_call(data: object) -> LmsChatToolCall:
+def _language_chat_tool_call(data: object) -> LmsChatToolCall:
     """Map one tool call wire payload into an SDK dataclass."""
     if not isinstance(data, dict):
         raise BrainValidationError(
@@ -1279,17 +1435,8 @@ def _lms_chat_tool_call(data: object) -> LmsChatToolCall:
     )
 
 
-def _lms_chat_tool_call_payload(value: LmsChatToolCall) -> dict[str, object]:
-    """Serialize one tool call dataclass for transport."""
-    return {
-        "tool_name": value.tool_name,
-        "args_json": value.args_json,
-        "tool_call_id": value.tool_call_id,
-    }
-
-
 def _memory_turn_record(value: dict[str, Any]) -> MemoryTurnRecord:
-    """Map one raw MAS turn payload into the SDK dataclass."""
+    """Map one raw Recall turn payload into the SDK dataclass."""
     return MemoryTurnRecord(
         id=str(value.get("id", "")),
         session_id=str(value.get("session_id", "")),
@@ -1314,7 +1461,7 @@ def _memory_turn_record(value: dict[str, Any]) -> MemoryTurnRecord:
 
 
 def _memory_turn_context(value: dict[str, Any]) -> MemoryTurnContext:
-    """Map one raw MAS turn-context payload into the SDK dataclass."""
+    """Map one raw Recall turn-context payload into the SDK dataclass."""
     inbound = value.get("inbound_turn")
     context = value.get("context")
     if not isinstance(inbound, dict) or not isinstance(context, dict):
@@ -1330,7 +1477,7 @@ def _memory_turn_context(value: dict[str, Any]) -> MemoryTurnContext:
 
 
 def _memory_context_block(value: dict[str, Any]) -> MemoryContextBlock:
-    """Map one raw MAS assembled-context payload into the SDK dataclass."""
+    """Map one raw Recall assembled-context payload into the SDK dataclass."""
     recent_turns = value.get("recent_turns", [])
     recent_turn_items = recent_turns if isinstance(recent_turns, list) else []
     snippets = value.get("reference_snippets", [])
@@ -1348,20 +1495,22 @@ def _memory_context_block(value: dict[str, Any]) -> MemoryContextBlock:
 
 
 def _memory_dialogue_turn(value: object) -> MemoryDialogueTurn:
-    """Map one raw MAS dialogue item into the SDK dataclass."""
+    """Map one raw Recall dialogue item into the SDK dataclass."""
     item = value if isinstance(value, dict) else {}
+    raw_ts = item.get("timestamp_ms")
     return MemoryDialogueTurn(
         role=str(item.get("role", "")),
         content=str(item.get("content", "")),
         is_summary=bool(item.get("is_summary", False)),
+        timestamp_ms=None if raw_ts is None else int(raw_ts),
     )
 
 
-def _switchboard_operator_instruction(
+def _relay_operator_instruction(
     value: dict[str, Any],
-) -> SwitchboardOperatorInstruction:
-    """Map one raw Switchboard queue payload into the SDK dataclass."""
-    return SwitchboardOperatorInstruction(
+) -> RelayOperatorInstruction:
+    """Map one raw Relay inbound queue payload into the SDK dataclass."""
+    return RelayOperatorInstruction(
         sender_e164=str(value.get("sender_e164", "")),
         message_text=str(value.get("message_text", "")),
         timestamp_ms=int(value.get("timestamp_ms", 0)),
@@ -1424,16 +1573,16 @@ def core_health(
     )
 
 
-def describe_capabilities(
+def describe_ops(
     *,
     client: object,
     principal: str = "",
     source: str = "",
     trace_id: str | None = None,
     parent_id: str | None = None,
-) -> tuple[CapabilityDescriptor, ...]:
-    """High-level SDK wrapper for CES capability discovery."""
-    return client.describe_capabilities(  # type: ignore[union-attr]
+) -> tuple[OpDescriptor, ...]:
+    """High-level SDK wrapper for Execution op discovery."""
+    return client.describe_ops(  # type: ignore[union-attr]
         meta=_meta_overrides(
             principal=principal,
             source=source,
@@ -1443,16 +1592,16 @@ def describe_capabilities(
     )
 
 
-def list_always_on_capabilities(
+def list_always_on_ops(
     *,
     client: object,
     principal: str = "",
     source: str = "",
     trace_id: str | None = None,
     parent_id: str | None = None,
-) -> tuple[CapabilityDescriptor, ...]:
-    """High-level SDK wrapper for always-on CES capability descriptors."""
-    return client.list_always_on_capabilities(  # type: ignore[union-attr]
+) -> tuple[OpDescriptor, ...]:
+    """High-level SDK wrapper for always-on Execution op descriptors."""
+    return client.list_always_on_ops(  # type: ignore[union-attr]
         meta=_meta_overrides(
             principal=principal,
             source=source,
@@ -1462,7 +1611,7 @@ def list_always_on_capabilities(
     )
 
 
-def search_capabilities(
+def search_ops(
     *,
     client: object,
     query: str,
@@ -1471,9 +1620,9 @@ def search_capabilities(
     source: str = "",
     trace_id: str | None = None,
     parent_id: str | None = None,
-) -> tuple[CapabilitySearchHit, ...]:
-    """High-level SDK wrapper for CES semantic capability search."""
-    return client.search_capabilities(  # type: ignore[union-attr]
+) -> tuple[OpSearchHit, ...]:
+    """High-level SDK wrapper for Execution semantic op search."""
+    return client.search_ops(  # type: ignore[union-attr]
         query=query,
         limit=limit,
         meta=_meta_overrides(
@@ -1493,7 +1642,7 @@ def list_tool_system_hints(
     trace_id: str | None = None,
     parent_id: str | None = None,
 ) -> tuple[ToolSystemHint, ...]:
-    """High-level SDK wrapper for capability tool-system orientation hints."""
+    """High-level SDK wrapper for op tool-system orientation hints."""
     return client.list_tool_system_hints(  # type: ignore[union-attr]
         meta=_meta_overrides(
             principal=principal,
@@ -1504,18 +1653,22 @@ def list_tool_system_hints(
     )
 
 
-def describe_capability(
+def classify_dynamic_op(
     *,
     client: object,
-    capability_id: str,
+    op_id: str,
+    effect: str | None = None,
+    approval: str | None = None,
     principal: str = "",
     source: str = "",
     trace_id: str | None = None,
     parent_id: str | None = None,
-) -> CapabilityDescriptor:
-    """High-level SDK wrapper for one CES capability descriptor lookup."""
-    return client.describe_capability(  # type: ignore[union-attr]
-        capability_id=capability_id,
+) -> DynamicOpClassification:
+    """High-level SDK wrapper to classify one dynamic op (effect/approval)."""
+    return client.classify_dynamic_op(  # type: ignore[union-attr]
+        op_id=op_id,
+        effect=effect,
+        approval=approval,
         meta=_meta_overrides(
             principal=principal,
             source=source,
@@ -1525,10 +1678,31 @@ def describe_capability(
     )
 
 
-def invoke_capability(
+def describe_op(
     *,
     client: object,
-    capability_id: str,
+    op_id: str,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> OpDescriptor:
+    """High-level SDK wrapper for one Execution op descriptor lookup."""
+    return client.describe_op(  # type: ignore[union-attr]
+        op_id=op_id,
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        ),
+    )
+
+
+def invoke_op(
+    *,
+    client: object,
+    op_id: str,
     input_payload: dict[str, Any] | None = None,
     actor: str = "",
     channel: str = "",
@@ -1542,10 +1716,10 @@ def invoke_capability(
     source: str = "",
     trace_id: str | None = None,
     parent_id: str | None = None,
-) -> CapabilityInvokeResult:
-    """High-level SDK wrapper for CES capability invocation."""
-    return client.invoke_capability(  # type: ignore[union-attr]
-        capability_id=capability_id,
+) -> OpInvokeResult:
+    """High-level SDK wrapper for Execution op invocation."""
+    return client.invoke_op(  # type: ignore[union-attr]
+        op_id=op_id,
         input_payload={} if input_payload is None else input_payload,
         actor=actor,
         channel=channel,
@@ -1564,7 +1738,7 @@ def invoke_capability(
     )
 
 
-def lms_chat(
+def language_chat(
     *,
     client: object,
     system_prompt: str = "",
@@ -1575,8 +1749,8 @@ def lms_chat(
     trace_id: str | None = None,
     parent_id: str | None = None,
 ) -> LmsChatResult:
-    """High-level SDK wrapper for direct LMS chat."""
-    return client.lms_chat(  # type: ignore[union-attr]
+    """High-level SDK wrapper for direct Language chat."""
+    return client.language_chat(  # type: ignore[union-attr]
         system_prompt=system_prompt,
         prompt=prompt,
         profile=profile,
@@ -1589,7 +1763,7 @@ def lms_chat(
     )
 
 
-def lms_chat_with_tools(
+def language_chat_with_tools(
     *,
     client: object,
     inference_request: InferenceRequest,
@@ -1598,8 +1772,8 @@ def lms_chat_with_tools(
     trace_id: str | None = None,
     parent_id: str | None = None,
 ) -> LmsToolChatResult:
-    """High-level SDK wrapper for tool-capable LMS chat."""
-    return client.lms_chat_with_tools(  # type: ignore[union-attr]
+    """High-level SDK wrapper for tool-capable Language chat."""
+    return client.language_chat_with_tools(  # type: ignore[union-attr]
         inference_request=inference_request,
         meta=_meta_overrides(
             principal=principal,
@@ -1620,7 +1794,7 @@ def memory_assemble_context(
     trace_id: str | None = None,
     parent_id: str | None = None,
 ) -> MemoryTurnContext:
-    """High-level SDK wrapper for MAS turn-context assembly."""
+    """High-level SDK wrapper for Recall turn-context assembly."""
     return client.memory_assemble_context(  # type: ignore[union-attr]
         session_id=session_id,
         message=message,
@@ -1638,13 +1812,13 @@ def memory_record_inbound_turn(
     client: object,
     session_id: str,
     message: str,
-    instruction: SwitchboardOperatorInstruction | None = None,
+    instruction: RelayOperatorInstruction | None = None,
     principal: str = "",
     source: str = "",
     trace_id: str | None = None,
     parent_id: str | None = None,
 ) -> MemoryTurnRecord:
-    """High-level SDK wrapper for MAS inbound-turn recording."""
+    """High-level SDK wrapper for Recall inbound-turn recording."""
     return client.memory_record_inbound_turn(  # type: ignore[union-attr]
         session_id=session_id,
         message=message,
@@ -1667,7 +1841,7 @@ def memory_assemble_snapshot(
     trace_id: str | None = None,
     parent_id: str | None = None,
 ) -> MemoryContextBlock:
-    """High-level SDK wrapper for MAS snapshot assembly."""
+    """High-level SDK wrapper for Recall snapshot assembly."""
     return client.memory_assemble_snapshot(  # type: ignore[union-attr]
         session_id=session_id,
         meta=_meta_overrides(
@@ -1687,7 +1861,7 @@ def memory_create_session(
     trace_id: str | None = None,
     parent_id: str | None = None,
 ) -> MemorySessionRef:
-    """High-level SDK wrapper for MAS create-session."""
+    """High-level SDK wrapper for Recall create-session."""
     return client.memory_create_session(  # type: ignore[union-attr]
         meta=_meta_overrides(
             principal=principal,
@@ -1706,7 +1880,7 @@ def memory_get_latest_or_create_session(
     trace_id: str | None = None,
     parent_id: str | None = None,
 ) -> MemorySessionRef:
-    """High-level SDK wrapper for MAS get-latest-or-create-session."""
+    """High-level SDK wrapper for Recall get-latest-or-create-session."""
     return client.memory_get_latest_or_create_session(  # type: ignore[union-attr]
         meta=_meta_overrides(
             principal=principal,
@@ -1731,7 +1905,7 @@ def memory_record_outbound_candidate(
     trace_id: str | None = None,
     parent_id: str | None = None,
 ) -> MemoryTurnRecord:
-    """High-level SDK wrapper for MAS outbound-candidate recording."""
+    """High-level SDK wrapper for Recall outbound-candidate recording."""
     return client.memory_record_outbound_candidate(  # type: ignore[union-attr]
         session_id=session_id,
         content=content,
@@ -1759,7 +1933,7 @@ def memory_record_outbound_delivery(
     trace_id: str | None = None,
     parent_id: str | None = None,
 ) -> bool:
-    """High-level SDK wrapper for MAS outbound-delivery recording."""
+    """High-level SDK wrapper for Recall outbound-delivery recording."""
     return client.memory_record_outbound_delivery(  # type: ignore[union-attr]
         session_id=session_id,
         turn_id=turn_id,
@@ -1787,7 +1961,7 @@ def memory_record_response(
     trace_id: str | None = None,
     parent_id: str | None = None,
 ) -> bool:
-    """High-level SDK wrapper for MAS record-response."""
+    """High-level SDK wrapper for Recall record-response."""
     return client.memory_record_response(  # type: ignore[union-attr]
         session_id=session_id,
         content=content,
@@ -1804,7 +1978,7 @@ def memory_record_response(
     )
 
 
-def switchboard_poll_operator_instruction(
+def relay_poll_operator_instruction(
     *,
     client: object,
     wait_timeout_seconds: float = 0.0,
@@ -1812,9 +1986,9 @@ def switchboard_poll_operator_instruction(
     source: str = "",
     trace_id: str | None = None,
     parent_id: str | None = None,
-) -> SwitchboardOperatorInstruction | None:
+) -> RelayOperatorInstruction | None:
     """High-level SDK wrapper for dequeuing one queued operator instruction."""
-    return client.switchboard_poll_operator_instruction(  # type: ignore[union-attr]
+    return client.relay_poll_operator_instruction(  # type: ignore[union-attr]
         wait_timeout_seconds=wait_timeout_seconds,
         meta=_meta_overrides(
             principal=principal,
@@ -1825,14 +1999,424 @@ def switchboard_poll_operator_instruction(
     )
 
 
+def relay_enqueue_console(
+    *,
+    client: object,
+    message_text: str,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> ConsoleEnqueueResult:
+    """High-level SDK wrapper for submitting one console operator message."""
+    return client.relay_enqueue_console(  # type: ignore[union-attr]
+        message_text=message_text,
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        ),
+    )
+
+
+def relay_poll_console_response(
+    *,
+    client: object,
+    wait_timeout_seconds: float = 0.0,
+    principal: str = "",
+    source: str = "",
+    trace_id: str | None = None,
+    parent_id: str | None = None,
+) -> ConsoleResponseMessage | None:
+    """High-level SDK wrapper for polling the next queued console response."""
+    return client.relay_poll_console_response(  # type: ignore[union-attr]
+        wait_timeout_seconds=wait_timeout_seconds,
+        meta=_meta_overrides(
+            principal=principal,
+            source=source,
+            trace_id=trace_id,
+            parent_id=parent_id,
+        ),
+    )
+
+
+def _delegation_invoke_body(
+    *,
+    metadata: dict[str, object],
+    prompt: str,
+    context_text: str | None,
+    context_object_refs: tuple[str, ...],
+    personality_id: str,
+    tool_allowlist: tuple[str, ...] | None,
+    max_turns: int,
+    budget_tokens: int | None,
+    max_wallclock_seconds: int | None,
+    parent_invocation_id: str | None,
+    timeout_seconds: float | None = None,
+) -> dict[str, object]:
+    """Project delegation invoke parameters into a stable HTTP body."""
+    body: dict[str, object] = {
+        **metadata,
+        "prompt": prompt,
+        "context_text": context_text,
+        "context_object_refs": list(context_object_refs),
+        "personality_id": personality_id,
+        "tool_allowlist": (None if tool_allowlist is None else list(tool_allowlist)),
+        "max_turns": max_turns,
+        "budget_tokens": budget_tokens,
+        "max_wallclock_seconds": max_wallclock_seconds,
+        "parent_invocation_id": parent_invocation_id,
+    }
+    if timeout_seconds is not None:
+        body["timeout_seconds"] = timeout_seconds
+    return body
+
+
+def call_delegation_invoke(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    prompt: str,
+    context_text: str | None = None,
+    context_object_refs: tuple[str, ...] = (),
+    personality_id: str = "subagent",
+    tool_allowlist: tuple[str, ...] | None = None,
+    max_turns: int = 8,
+    budget_tokens: int | None = None,
+    max_wallclock_seconds: int | None = None,
+    parent_invocation_id: str | None = None,
+) -> DelegationStarted:
+    """Queue one delegated invocation and return the new invocation id."""
+    data = _post_json(
+        operation="delegation.invoke",
+        http=http,
+        url="/delegation/invoke",
+        body=_delegation_invoke_body(
+            metadata=metadata,
+            prompt=prompt,
+            context_text=context_text,
+            context_object_refs=context_object_refs,
+            personality_id=personality_id,
+            tool_allowlist=tool_allowlist,
+            max_turns=max_turns,
+            budget_tokens=budget_tokens,
+            max_wallclock_seconds=max_wallclock_seconds,
+            parent_invocation_id=parent_invocation_id,
+        ),
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="delegation.invoke",
+        errors=_errors_from_data(data),
+    )
+    return DelegationStarted(
+        invocation_id=str(_payload_dict(data).get("invocation_id", "")),
+    )
+
+
+def call_delegation_invoke_and_wait(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    prompt: str,
+    context_text: str | None = None,
+    context_object_refs: tuple[str, ...] = (),
+    personality_id: str = "subagent",
+    tool_allowlist: tuple[str, ...] | None = None,
+    max_turns: int = 8,
+    budget_tokens: int | None = None,
+    max_wallclock_seconds: int | None = None,
+    parent_invocation_id: str | None = None,
+    wait_timeout_seconds: float | None = None,
+) -> DelegationResult:
+    """Queue one delegated invocation and block until terminal state."""
+    data = _post_json(
+        operation="delegation.invoke_and_wait",
+        http=http,
+        url="/delegation/invoke-and-wait",
+        body=_delegation_invoke_body(
+            metadata=metadata,
+            prompt=prompt,
+            context_text=context_text,
+            context_object_refs=context_object_refs,
+            personality_id=personality_id,
+            tool_allowlist=tool_allowlist,
+            max_turns=max_turns,
+            budget_tokens=budget_tokens,
+            max_wallclock_seconds=max_wallclock_seconds,
+            parent_invocation_id=parent_invocation_id,
+            timeout_seconds=wait_timeout_seconds,
+        ),
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="delegation.invoke_and_wait",
+        errors=_errors_from_data(data),
+    )
+    return _to_delegation_result(_payload_dict(data))
+
+
+def call_delegation_wait(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    invocation_id: str,
+    wait_timeout_seconds: float | None = None,
+) -> DelegationResult:
+    """Block until the named invocation reaches terminal state."""
+    body: dict[str, object] = {**metadata, "invocation_id": invocation_id}
+    if wait_timeout_seconds is not None:
+        body["timeout_seconds"] = wait_timeout_seconds
+    data = _post_json(
+        operation="delegation.wait",
+        http=http,
+        url="/delegation/wait",
+        body=body,
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="delegation.wait",
+        errors=_errors_from_data(data),
+    )
+    return _to_delegation_result(_payload_dict(data))
+
+
+def call_delegation_status(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    invocation_id: str,
+) -> DelegationStatusView:
+    """Return the current status projection for one invocation."""
+    data = _post_json(
+        operation="delegation.status",
+        http=http,
+        url="/delegation/status",
+        body={**metadata, "invocation_id": invocation_id},
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="delegation.status",
+        errors=_errors_from_data(data),
+    )
+    return _to_delegation_status(_payload_dict(data))
+
+
+def call_delegation_cancel(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    invocation_id: str,
+    reason: str = "manual",
+) -> DelegationCancelOutcome:
+    """Request cancellation of one queued or running invocation."""
+    data = _post_json(
+        operation="delegation.cancel",
+        http=http,
+        url="/delegation/cancel",
+        body={**metadata, "invocation_id": invocation_id, "reason": reason},
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="delegation.cancel",
+        errors=_errors_from_data(data),
+    )
+    payload = _payload_dict(data)
+    return DelegationCancelOutcome(accepted=bool(payload.get("accepted", False)))
+
+
+def call_delegation_claim_invocation(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    claimed_by: str = "subagent",
+) -> DelegationClaim | None:
+    """Claim the oldest queued invocation for a Subagent Actor."""
+    data = _post_json(
+        operation="delegation.claim",
+        http=http,
+        url="/delegation/claim",
+        body={**metadata, "claimed_by": claimed_by},
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="delegation.claim",
+        errors=_errors_from_data(data),
+    )
+    payload = data.get("payload")
+    if payload is None:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return _to_delegation_claim(payload)
+
+
+def call_delegation_record_turn(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    invocation_id: str,
+) -> DelegationTurnDecision:
+    """Bump turn count and re-evaluate budget against the audit trail."""
+    data = _post_json(
+        operation="delegation.record_turn",
+        http=http,
+        url="/delegation/record-turn",
+        body={
+            **metadata,
+            "invocation_id": invocation_id,
+        },
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="delegation.record_turn",
+        errors=_errors_from_data(data),
+    )
+    payload = _payload_dict(data)
+    reason = payload.get("reason")
+    return DelegationTurnDecision(
+        should_stop=bool(payload.get("should_stop", False)),
+        reason=None if reason is None else str(reason),
+    )
+
+
+def call_delegation_finalize_invocation(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    invocation_id: str,
+    status: str,
+    final_response: str | None = None,
+    transcript_ref: str | None = None,
+    cancel_reason: str | None = None,
+) -> DelegationResult:
+    """Apply a terminal status transition to one invocation."""
+    data = _post_json(
+        operation="delegation.finalize",
+        http=http,
+        url="/delegation/finalize",
+        body={
+            **metadata,
+            "invocation_id": invocation_id,
+            "status": status,
+            "final_response": final_response,
+            "transcript_ref": transcript_ref,
+            "cancel_reason": cancel_reason,
+        },
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="delegation.finalize",
+        errors=_errors_from_data(data),
+    )
+    return _to_delegation_result(_payload_dict(data))
+
+
+def _payload_dict(data: dict[str, Any]) -> dict[str, Any]:
+    """Coerce one envelope-shaped HTTP response payload into a dict."""
+    payload = data.get("payload")
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def _to_delegation_result(payload: dict[str, Any]) -> DelegationResult:
+    """Project one delegation result payload dict into the SDK dataclass."""
+    return DelegationResult(
+        invocation_id=str(payload.get("invocation_id", "")),
+        status=str(payload.get("status", "")),
+        final_response=(
+            None
+            if payload.get("final_response") is None
+            else str(payload.get("final_response", ""))
+        ),
+        cancel_reason=(
+            None
+            if payload.get("cancel_reason") is None
+            else str(payload.get("cancel_reason", ""))
+        ),
+        tokens_in=int(payload.get("tokens_in", 0)),
+        tokens_out=int(payload.get("tokens_out", 0)),
+        turn_count=int(payload.get("turn_count", 0)),
+    )
+
+
+def _to_delegation_status(payload: dict[str, Any]) -> DelegationStatusView:
+    """Project one delegation status payload dict into the SDK dataclass."""
+    started_at = payload.get("started_at")
+    completed_at = payload.get("completed_at")
+    return DelegationStatusView(
+        invocation_id=str(payload.get("invocation_id", "")),
+        status=str(payload.get("status", "")),
+        cancel_reason=(
+            None
+            if payload.get("cancel_reason") is None
+            else str(payload.get("cancel_reason", ""))
+        ),
+        tokens_in=int(payload.get("tokens_in", 0)),
+        tokens_out=int(payload.get("tokens_out", 0)),
+        turn_count=int(payload.get("turn_count", 0)),
+        started_at=None if started_at is None else str(started_at),
+        completed_at=None if completed_at is None else str(completed_at),
+    )
+
+
+def _to_delegation_claim(payload: dict[str, Any]) -> DelegationClaim:
+    """Project one delegation claim payload dict into the SDK dataclass."""
+    parent = payload.get("parent_invocation_id")
+    refs = payload.get("context_object_refs") or ()
+    if not isinstance(refs, list | tuple):
+        refs = ()
+    allowlist = payload.get("tool_allowlist")
+    if allowlist is not None and not isinstance(allowlist, list | tuple):
+        allowlist = None
+    return DelegationClaim(
+        invocation_id=str(payload.get("invocation_id", "")),
+        parent_invocation_id=None if parent is None else str(parent),
+        principal=str(payload.get("principal", "")),
+        channel=str(payload.get("channel", "")),
+        personality_id=str(payload.get("personality_id", "")),
+        prompt=str(payload.get("prompt", "")),
+        context_text=(
+            None
+            if payload.get("context_text") is None
+            else str(payload.get("context_text", ""))
+        ),
+        context_object_refs=tuple(str(item) for item in refs),
+        tool_allowlist=(
+            None if allowlist is None else tuple(str(item) for item in allowlist)
+        ),
+        max_turns=int(payload.get("max_turns", 0)),
+        budget_tokens=(
+            None
+            if payload.get("budget_tokens") is None
+            else int(payload.get("budget_tokens", 0))
+        ),
+        max_wallclock_seconds=(
+            None
+            if payload.get("max_wallclock_seconds") is None
+            else int(payload.get("max_wallclock_seconds", 0))
+        ),
+    )
+
+
 def _meta_overrides(
     *,
     principal: str = "",
     source: str = "",
     trace_id: str | None = None,
     parent_id: str | None = None,
-) -> object:
-    """Build metadata overrides only when call-site values are provided."""
+) -> MetaOverrides | None:
+    """Return MetaOverrides only when at least one non-default value is supplied."""
     from lib.sdk.meta import MetaOverrides
 
     has_values = any(

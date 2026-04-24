@@ -14,7 +14,7 @@ from lib.shared.observability import (
 
 def test_bootstrap_observability_disabled_is_noop() -> None:
     """Disabled observability should not install runtime instrumentation."""
-    bootstrap_module._reset_for_tests()
+    bootstrap_module.reset_for_tests()
 
     result = bootstrap_observability(
         settings=ObservabilitySettings(enabled=False),
@@ -32,7 +32,7 @@ def test_bootstrap_observability_disabled_is_noop() -> None:
 
 def test_pydantic_ai_instrumentation_settings_respects_llm_capture_config() -> None:
     """PydanticAI instrumentation should follow the LLM content-capture switch."""
-    bootstrap_module._reset_for_tests()
+    bootstrap_module.reset_for_tests()
 
     disabled = pydantic_ai_instrumentation_settings(
         ObservabilitySettings.model_validate(

@@ -1,4 +1,4 @@
-"""Shared package exports for cross-layer Brain contracts."""
+"""Shared package exports for cross-tier Brain contracts."""
 
 from lib.shared.language_model import (
     CachePointContentPart,

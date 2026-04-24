@@ -7,7 +7,8 @@ from textual.widgets import Static
 from lib.dashboard.data_sources.health import COMPONENTS, HealthAggregator
 from lib.dashboard.models.health import ComponentHealth
 
-_COMPONENT_ORDER = COMPONENTS
+_REFRESH_INTERVAL = 2.0
+
 _STATE_TOKENS = {
     "ok": "[green]OK[/green]",
     "no": "[red]NO[/red]",
@@ -19,7 +20,7 @@ def _render_health(components: list[ComponentHealth]) -> str:
     """Build compact health line from a list of ComponentHealth."""
     by_name = {c.name: c for c in components}
     parts = []
-    for name in _COMPONENT_ORDER:
+    for name in COMPONENTS:
         health = by_name.get(name)
         state = health.state if health is not None else "unknown"
         token = _STATE_TOKENS.get(state, "[dim]??[/dim]")
@@ -41,7 +42,7 @@ class HealthHeader(Static):
 
     def on_mount(self) -> None:
         self._refresh_health()
-        self.set_interval(2.0, self._refresh_health)
+        self.set_interval(_REFRESH_INTERVAL, self._refresh_health)
 
     def _refresh_health(self) -> None:
         if self._fixture is not None:

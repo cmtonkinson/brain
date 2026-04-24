@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 import inspect
-from typing import TypeVar
 
 from lib.shared.config import CoreRuntimeSettings
 
@@ -42,18 +41,6 @@ class BootHookContract:
 
 
 @dataclass(frozen=True, slots=True)
-class BootAttempt:
-    """One execution attempt for one component boot hook."""
-
-    component_id: str
-    attempt: int
-    max_attempts: int
-
-
-TResolved = TypeVar("TResolved")
-
-
-@dataclass(frozen=True, slots=True)
 class BootContext:
     """Runtime context shared with all component boot hooks."""
 
@@ -71,7 +58,12 @@ class BootContext:
 
 
 def coerce_dependencies(value: object, *, module_name: str) -> tuple[str, ...]:
-    """Validate and normalize one ``dependencies`` attribute into component ids."""
+    """Validate and normalize one ``dependencies`` attribute into component ids.
+
+    A missing (None) attribute is treated as an empty dependency list.
+    """
+    if value is None:
+        return tuple()
     if isinstance(value, str):
         raise BootContractError(
             f"{module_name}.dependencies must be an iterable of component ids, not str"
@@ -101,8 +93,7 @@ def require_context_callable(
     if not callable(value):
         raise BootContractError(f"{module_name}.{attribute_name} must be callable")
     signature = inspect.signature(value)
-    parameters = tuple(signature.parameters.values())
-    if len(parameters) != 1:
+    if len(signature.parameters) != 1:
         raise BootContractError(
             f"{module_name}.{attribute_name} must accept exactly one 'ctx' argument"
         )

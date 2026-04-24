@@ -15,22 +15,21 @@ from click import get_current_context
 from click.core import ParameterSource
 import typer
 from lib.sdk import (
+    BrainDomainError,
     BrainSdkClient,
-    DomainError,
-    TransportError,
+    BrainTransportError,
     core_health,
-    describe_capability,
-    describe_capabilities,
-    invoke_capability,
+    describe_op,
+    describe_ops,
+    invoke_op,
 )
 from lib.shared.config import load_actor_settings
 
 SUCCESS_EXIT_CODE = 0
 DOMAIN_ERROR_EXIT_CODE = 3
 TRANSPORT_ERROR_EXIT_CODE = 4
-CLI_CACHE_PATH = Path.home() / ".cache" / "brain" / "cli-capabilities.json"
+CLI_CACHE_PATH = Path.home() / ".cache" / "brain" / "cli-ops.json"
 _DEFAULT_CATALOG_TIMEOUT_SECONDS = 1.5
-_COMPLEX_CAPABILITY_COMMAND = "capability unsupported-cli"
 _DEFAULT_OUTPUT_MODE = "text"
 _BOOLEAN_DEFAULT_RE = re.compile(
     r"Defaults to ['`\"]?(true|false)['`\"]?\.",
@@ -51,28 +50,27 @@ class CliConfig:
     principal: str
     source: str
     timeout: float
-    as_json: bool
     trace_id: str | None
     parent_id: str | None
-    capabilities: tuple[Any, ...]
+    ops: tuple[Any, ...]
     output_mode: Literal["json", "json_pretty", "text", "simple"] = _DEFAULT_OUTPUT_MODE
-    capability_source: Literal["live", "cached", "none"] = "none"
-    capability_status: str = ""
+    op_source: Literal["live", "cached", "none"] = "none"
+    op_status: str = ""
 
 
 @dataclass(frozen=True)
-class CapabilityCatalog:
-    """Resolved capability catalog used to build CLI commands and help text."""
+class OpCatalog:
+    """Resolved op catalog used to build CLI commands and help text."""
 
-    capabilities: tuple[dict[str, Any], ...]
+    ops: tuple[dict[str, Any], ...]
     source: Literal["live", "cached", "none"]
     status_message: str
     cache_path: Path
 
 
 @dataclass(frozen=True)
-class CapabilityParamSpec:
-    """Derived CLI parameter definition for one capability input field."""
+class OpParamSpec:
+    """Derived CLI parameter definition for one op input field."""
 
     field_name: str
     annotation: Any
@@ -82,10 +80,10 @@ class CapabilityParamSpec:
 
 
 @dataclass(frozen=True)
-class UnsupportedCapabilitySpec:
-    """One capability omitted from CLI command generation."""
+class UnsupportedOpSpec:
+    """One op omitted from CLI command generation."""
 
-    capability_id: str
+    op_id: str
     command: str
     summary: str
     reason: str
@@ -113,15 +111,6 @@ def _serialize(value: Any) -> Any:
             {k: v for k, v in vars(value).items() if not k.startswith("_")}
         )
     return str(value)
-
-
-def _effective_output_mode(
-    cfg: CliConfig,
-) -> Literal["json", "json_pretty", "text", "simple"]:
-    """Return the resolved output mode for one CLI invocation."""
-    if cfg.output_mode != _DEFAULT_OUTPUT_MODE:
-        return cfg.output_mode
-    return "json" if cfg.as_json else "text"
 
 
 def _emit_output(result: Any, output_mode: str) -> None:
@@ -158,9 +147,8 @@ def _emit_error(exc: Exception, output_mode: str) -> None:
 
 def _render_human(data: Any) -> str | None:
     """Return human-oriented rendering for recognized response shapes."""
-    if isinstance(data, dict):
-        if _looks_like_core_health(data):
-            return _render_core_health(data)
+    if isinstance(data, dict) and _looks_like_core_health(data):
+        return _render_core_health(data)
     if isinstance(data, (dict, list)):
         return json.dumps(data, indent=2, sort_keys=True)
     return None
@@ -179,14 +167,14 @@ def _render_core_health(data: dict[str, Any]) -> str:
     """Render core health data for human scanning."""
     ready = bool(data.get("ready", False))
     lines = [f"Core: {_status_icon(ready)} {_status_label(ready)}"]
+    services_ready = _all_ready(data.get("services", {}))
     lines.append(
-        f"Services: {_status_icon(_all_ready(data.get('services', {})))} "
-        f"{_status_label(_all_ready(data.get('services', {})))}"
+        f"Services: {_status_icon(services_ready)} {_status_label(services_ready)}"
     )
     lines.extend(_render_component_group(data.get("services", {}), indent=2))
+    resources_ready = _all_ready(data.get("resources", {}))
     lines.append(
-        f"Resources: {_status_icon(_all_ready(data.get('resources', {})))} "
-        f"{_status_label(_all_ready(data.get('resources', {})))}"
+        f"Resources: {_status_icon(resources_ready)} {_status_label(resources_ready)}"
     )
     lines.extend(_render_component_group(data.get("resources", {}), indent=2))
     return "\n".join(lines)
@@ -261,38 +249,18 @@ def _run_command(
     try:
         with _with_client(cfg) as client:
             result = invoke(client)
-    except DomainError as exc:
-        _emit_error(exc, _effective_output_mode(cfg))
+    except BrainDomainError as exc:
+        _emit_error(exc, cfg.output_mode)
         raise typer.Exit(code=DOMAIN_ERROR_EXIT_CODE) from exc
-    except TransportError as exc:
-        _emit_error(exc, _effective_output_mode(cfg))
+    except BrainTransportError as exc:
+        _emit_error(exc, cfg.output_mode)
         raise typer.Exit(code=TRANSPORT_ERROR_EXIT_CODE) from exc
 
     if renderer is not None:
         renderer(result)
         raise typer.Exit(code=SUCCESS_EXIT_CODE)
-    _emit_output(result, _effective_output_mode(cfg))
+    _emit_output(result, cfg.output_mode)
     raise typer.Exit(code=SUCCESS_EXIT_CODE)
-
-
-def _load_capabilities(cfg: CliConfig) -> tuple[Any, ...]:
-    """Load the published CES capability list from live Core."""
-    try:
-        with _with_client(cfg) as client:
-            capabilities = describe_capabilities(
-                client=client,
-                source=cfg.source,
-                principal=cfg.principal,
-                trace_id=cfg.trace_id,
-                parent_id=cfg.parent_id,
-            )
-    except DomainError as exc:
-        _emit_error(exc, _effective_output_mode(cfg))
-        raise typer.Exit(code=DOMAIN_ERROR_EXIT_CODE) from exc
-    except TransportError as exc:
-        _emit_error(exc, _effective_output_mode(cfg))
-        raise typer.Exit(code=TRANSPORT_ERROR_EXIT_CODE) from exc
-    return tuple(capabilities)
 
 
 def _require_config(ctx: typer.Context) -> CliConfig:
@@ -304,43 +272,43 @@ def _require_config(ctx: typer.Context) -> CliConfig:
     return config
 
 
-def _capability_field(descriptor: Any, field_name: str, default: Any = None) -> Any:
-    """Read one capability descriptor field from dicts or typed objects."""
+def _op_field(descriptor: Any, field_name: str, default: Any = None) -> Any:
+    """Read one op descriptor field from dicts or typed objects."""
     if isinstance(descriptor, dict):
         return descriptor.get(field_name, default)
     return getattr(descriptor, field_name, default)
 
 
-def _capability_id(descriptor: Any) -> str:
-    """Return the canonical capability identifier for one descriptor."""
-    return str(_capability_field(descriptor, "capability_id", "")).strip()
+def _op_id_from(descriptor: Any) -> str:
+    """Return the canonical op identifier for one descriptor."""
+    return str(_op_field(descriptor, "op_id", "")).strip()
 
 
-def _capability_summary(descriptor: Any) -> str:
+def _op_summary(descriptor: Any) -> str:
     """Return the summary text for one descriptor."""
-    return str(_capability_field(descriptor, "summary", "")).strip()
+    return str(_op_field(descriptor, "summary", "")).strip()
 
 
-def _capability_input_schema(descriptor: Any) -> dict[str, Any] | None:
+def _op_input_schema(descriptor: Any) -> dict[str, Any] | None:
     """Return the canonical input schema object for one descriptor when available."""
-    value = _capability_field(descriptor, "input_schema")
+    value = _op_field(descriptor, "input_schema")
     return dict(value) if isinstance(value, dict) else None
 
 
-def _capability_simple_output_path(descriptor: Any) -> str | None:
+def _op_simple_output_path(descriptor: Any) -> str | None:
     """Return the configured simple-output projection path for one descriptor."""
-    value = _capability_field(descriptor, "simple_output_path")
+    value = _op_field(descriptor, "simple_output_path")
     if value is None:
         return None
     text = str(value).strip()
     return text or None
 
 
-def _capability_command_path(capability_id: str) -> tuple[str, ...]:
-    """Map one capability id to a CLI command path."""
-    prefix, separator, remainder = capability_id.partition("-")
+def _op_command_path(op_id: str) -> tuple[str, ...]:
+    """Map one op id to a CLI command path."""
+    prefix, separator, remainder = op_id.partition("-")
     if separator == "":
-        return (capability_id,)
+        return (op_id,)
     return prefix, remainder
 
 
@@ -355,7 +323,7 @@ def _json_object(text: str) -> dict[str, Any]:
     return payload
 
 
-def _coerce_capability_value(name: str, schema: dict[str, Any], value: str) -> Any:
+def _coerce_op_value(name: str, schema: dict[str, Any], value: str) -> Any:
     """Coerce one CLI token into the JSON-schema-declared scalar type."""
     schema_type = schema.get("type")
     if schema_type == "string":
@@ -382,9 +350,7 @@ def _coerce_capability_value(name: str, schema: dict[str, Any], value: str) -> A
     )
 
 
-def _coerce_capability_option(
-    name: str, schema: dict[str, Any], values: list[str]
-) -> Any:
+def _coerce_op_option(name: str, schema: dict[str, Any], values: list[str]) -> Any:
     """Coerce one parsed option according to one property schema."""
     schema_type = schema.get("type")
     if schema_type == "array":
@@ -393,28 +359,28 @@ def _coerce_capability_option(
             raise typer.BadParameter(
                 f"`{name}` uses an unsupported array schema; pass it via `--input-json`"
             )
-        return [_coerce_capability_value(name, items, item) for item in values]
+        return [_coerce_op_value(name, items, item) for item in values]
     if len(values) != 1:
         raise typer.BadParameter(f"`{name}` does not accept multiple values")
-    return _coerce_capability_value(name, schema, values[0])
+    return _coerce_op_value(name, schema, values[0])
 
 
-def _parse_capability_cli_args(
+def _parse_op_cli_args(
     *, descriptor: Any, args: list[str], input_json: str | None
 ) -> dict[str, Any]:
-    """Parse extra CLI args into one CES capability input payload."""
+    """Parse extra CLI args into one Execution op input payload."""
     payload = {} if input_json is None else _json_object(input_json)
-    schema = _capability_input_schema(descriptor)
+    schema = _op_input_schema(descriptor)
     if schema is None:
         if len(args) != 0:
             raise typer.BadParameter(
-                "this capability does not expose CLI flags; use `--input-json`"
+                "this op does not expose CLI flags; use `--input-json`"
             )
         return payload
     if schema.get("type") != "object":
         if len(args) != 0:
             raise typer.BadParameter(
-                "this capability requires `--input-json` because its input is not a flat object"
+                "this op requires `--input-json` because its input is not a flat object"
             )
         return payload
 
@@ -477,7 +443,7 @@ def _parse_capability_cli_args(
         option_schema = property_map.get(name)
         if not isinstance(option_schema, dict):
             continue
-        payload[name] = _coerce_capability_option(name, option_schema, values)
+        payload[name] = _coerce_op_option(name, option_schema, values)
 
     missing = sorted(name for name in required if name not in payload)
     if len(missing) != 0:
@@ -487,22 +453,22 @@ def _parse_capability_cli_args(
     return payload
 
 
-def _capability_lookup(cfg: CliConfig) -> dict[str, Any]:
-    """Index loaded capability descriptors by canonical identifier."""
-    return {_capability_id(item): item for item in cfg.capabilities}
+def _op_lookup(cfg: CliConfig) -> dict[str, Any]:
+    """Index loaded op descriptors by canonical identifier."""
+    return {_op_id_from(item): item for item in cfg.ops}
 
 
-def _require_capability(cfg: CliConfig, capability_id: str) -> Any:
-    """Return one loaded capability descriptor or raise a usage error."""
-    descriptor = _capability_lookup(cfg).get(capability_id)
+def _require_op(cfg: CliConfig, op_id: str) -> Any:
+    """Return one loaded op descriptor or raise a usage error."""
+    descriptor = _op_lookup(cfg).get(op_id)
     if descriptor is None:
-        raise typer.BadParameter(f"unknown capability: {capability_id}")
+        raise typer.BadParameter(f"unknown op: {op_id}")
     return descriptor
 
 
-def _command_label_for_capability(capability_id: str) -> str:
-    """Return the user-facing CLI command form for one capability id."""
-    return " ".join(_capability_command_path(capability_id))
+def _command_label_for_op(op_id: str) -> str:
+    """Return the user-facing CLI command form for one op id."""
+    return " ".join(_op_command_path(op_id))
 
 
 def _resolve_output_mode(
@@ -554,9 +520,10 @@ def _simple_output_tokens(path: str) -> list[str]:
 
 
 def _extract_simple_output(*, data: Any, path: str) -> Any:
-    """Extract one simple projection from a capability output payload."""
+    """Extract one simple projection from an op output payload."""
+    tokens = _simple_output_tokens(path)
     values = [data]
-    for token in _simple_output_tokens(path):
+    for token in tokens:
         next_values: list[Any] = []
         if token == "each":
             for value in values:
@@ -574,7 +541,7 @@ def _extract_simple_output(*, data: Any, path: str) -> Any:
                 )
             next_values.append(value[token])
         values = next_values
-    if "each" in _simple_output_tokens(path):
+    if "each" in tokens:
         return values
     if len(values) != 1:
         raise ValueError(f"simple_output_path `{path}` did not resolve one value")
@@ -591,12 +558,12 @@ def _simple_output_line(value: Any) -> str:
 
 
 def _emit_simple_output(*, descriptor: Any, result: Any) -> None:
-    """Render one capability result using its configured simple projection."""
-    path = _capability_simple_output_path(descriptor)
-    capability_id = _capability_id(descriptor)
+    """Render one op result using its configured simple projection."""
+    path = _op_simple_output_path(descriptor)
+    op_id = _op_id_from(descriptor)
     if path is None:
         raise typer.BadParameter(
-            f"`{_command_label_for_capability(capability_id)}` does not define "
+            f"`{_command_label_for_op(op_id)}` does not define "
             "`simple_output_path`; use `--text`, `--json`, or `--json-pretty`"
         )
     extracted = _extract_simple_output(data=_serialize(result), path=path)
@@ -606,17 +573,17 @@ def _emit_simple_output(*, descriptor: Any, result: Any) -> None:
     typer.echo(_simple_output_line(extracted))
 
 
-def _invoke_capability_result(
+def _invoke_op_result(
     *,
     client: BrainSdkClient,
     cfg: CliConfig,
-    capability_id: str,
+    op_id: str,
     input_payload: dict[str, Any],
 ) -> Any:
-    """Invoke one CES capability and return its output payload."""
-    result = invoke_capability(
+    """Invoke one Execution op and return its output payload."""
+    result = invoke_op(
         client=client,
-        capability_id=capability_id,
+        op_id=op_id,
         input_payload=input_payload,
         actor=cfg.principal,
         channel=cfg.source,
@@ -628,63 +595,63 @@ def _invoke_capability_result(
     return result.output
 
 
-def _catalog_status_markup(catalog: CapabilityCatalog) -> str:
-    """Return rich-formatted help text describing capability metadata source."""
+def _catalog_status_markup(catalog: OpCatalog) -> str:
+    """Return rich-formatted help text describing op metadata source."""
     if catalog.source == "live":
         return (
-            "[green]Capability Metadata: live Core connection[/green]\n"
+            "[green]Op Metadata: live Core connection[/green]\n"
             "Help and generated subcommands reflect the current published catalog."
         )
     if catalog.source == "cached":
         return (
-            "[yellow]Capability Metadata: cached catalog[/yellow]\n"
+            "[yellow]Op Metadata: cached catalog[/yellow]\n"
             "Live Core was unavailable; help reflects the last cached published catalog."
         )
     return (
-        "[yellow]Capability Metadata: unavailable[/yellow]\n"
+        "[yellow]Op Metadata: unavailable[/yellow]\n"
         "Live Core was unavailable and no cached catalog exists; only static commands are shown."
     )
 
 
-def _cache_payload(capabilities: tuple[dict[str, Any], ...]) -> dict[str, Any]:
-    """Return serialized cache document for one capability catalog."""
+def _cache_payload(ops: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+    """Return serialized cache document for one op catalog."""
     return {
         "generated_at": datetime.now(UTC).isoformat(),
-        "capabilities": list(capabilities),
+        "ops": list(ops),
     }
 
 
-def _write_capability_cache(
+def _write_op_cache(
     cache_path: Path,
     *,
-    capabilities: tuple[dict[str, Any], ...],
+    ops: tuple[dict[str, Any], ...],
 ) -> None:
-    """Persist one canonicalized capability catalog to disk."""
+    """Persist one canonicalized op catalog to disk."""
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(
-        json.dumps(_cache_payload(capabilities), sort_keys=True, separators=(",", ":")),
+        json.dumps(_cache_payload(ops), sort_keys=True, separators=(",", ":")),
         encoding="utf-8",
     )
 
 
-def _read_capability_cache(cache_path: Path) -> tuple[dict[str, Any], ...]:
-    """Load one cached capability catalog from disk."""
+def _read_op_cache(cache_path: Path) -> tuple[dict[str, Any], ...]:
+    """Load one cached op catalog from disk."""
     if not cache_path.exists():
         return ()
     payload = json.loads(cache_path.read_text(encoding="utf-8"))
-    items = payload.get("capabilities")
+    items = payload.get("ops")
     if not isinstance(items, list):
         return ()
-    capabilities: list[dict[str, Any]] = []
+    ops: list[dict[str, Any]] = []
     for item in items:
         if not isinstance(item, dict):
             continue
-        capabilities.append(item)
-    return tuple(capabilities)
+        ops.append(item)
+    return tuple(ops)
 
 
 def _catalog_config_from_settings() -> CliConfig:
-    """Build one lightweight config object for capability-catalog loading."""
+    """Build one lightweight config object for op-catalog loading."""
     actor_settings = load_actor_settings()
     return CliConfig(
         host=actor_settings.core.host,
@@ -695,20 +662,19 @@ def _catalog_config_from_settings() -> CliConfig:
             float(actor_settings.core.timeout_seconds),
             _DEFAULT_CATALOG_TIMEOUT_SECONDS,
         ),
-        as_json=False,
         trace_id=None,
         parent_id=None,
-        capabilities=(),
-        capability_source="none",
-        capability_status="",
+        ops=(),
+        op_source="none",
+        op_status="",
     )
 
 
-def _load_live_capability_catalog() -> tuple[dict[str, Any], ...]:
-    """Load one canonicalized capability catalog from live Core."""
+def _load_live_op_catalog() -> tuple[dict[str, Any], ...]:
+    """Load one canonicalized op catalog from live Core."""
     cfg = _catalog_config_from_settings()
     with _with_client(cfg) as client:
-        capabilities = describe_capabilities(
+        ops = describe_ops(
             client=client,
             source=cfg.source,
             principal=cfg.principal,
@@ -716,38 +682,42 @@ def _load_live_capability_catalog() -> tuple[dict[str, Any], ...]:
             parent_id=None,
         )
     return tuple(
-        serialized
-        for item in capabilities
-        if isinstance((serialized := _serialize(item)), dict)
+        serialized for item in ops if isinstance((serialized := _serialize(item)), dict)
     )
 
 
-def _load_capability_catalog(cache_path: Path = CLI_CACHE_PATH) -> CapabilityCatalog:
-    """Resolve capability catalog from live Core or cached fallback."""
+def _load_op_catalog(cache_path: Path = CLI_CACHE_PATH) -> OpCatalog:
+    """Resolve op catalog from live Core or cached fallback."""
     try:
-        live = _load_live_capability_catalog()
-    except DomainError, TransportError, OSError, ValueError, json.JSONDecodeError:
+        live = _load_live_op_catalog()
+    except (
+        BrainDomainError,
+        BrainTransportError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
         live = ()
     if live:
-        _write_capability_cache(cache_path, capabilities=live)
-        return CapabilityCatalog(
-            capabilities=live,
+        _write_op_cache(cache_path, ops=live)
+        return OpCatalog(
+            ops=live,
             source="live",
             status_message="live Core connection",
             cache_path=cache_path,
         )
 
-    cached = _read_capability_cache(cache_path)
+    cached = _read_op_cache(cache_path)
     if cached:
-        return CapabilityCatalog(
-            capabilities=cached,
+        return OpCatalog(
+            ops=cached,
             source="cached",
             status_message="cached catalog",
             cache_path=cache_path,
         )
 
-    return CapabilityCatalog(
-        capabilities=(),
+    return OpCatalog(
+        ops=(),
         source="none",
         status_message="unavailable",
         cache_path=cache_path,
@@ -818,9 +788,9 @@ def _schema_is_cli_eligible(schema: dict[str, Any] | None) -> tuple[bool, str]:
     return True, ""
 
 
-def _build_param_specs(descriptor: dict[str, Any]) -> tuple[CapabilityParamSpec, ...]:
-    """Build Typer option specs for one CLI-eligible capability descriptor."""
-    schema = _capability_input_schema(descriptor)
+def _build_param_specs(descriptor: dict[str, Any]) -> tuple[OpParamSpec, ...]:
+    """Build Typer option specs for one CLI-eligible op descriptor."""
+    schema = _op_input_schema(descriptor)
     if schema is None:
         return ()
     properties = schema.get("properties")
@@ -829,7 +799,7 @@ def _build_param_specs(descriptor: dict[str, Any]) -> tuple[CapabilityParamSpec,
     required = {
         str(item) for item in schema.get("required", ()) if isinstance(item, str)
     }
-    specs: list[CapabilityParamSpec] = []
+    specs: list[OpParamSpec] = []
     for field_name in sorted(properties.keys()):
         property_schema = properties[field_name]
         if not isinstance(property_schema, dict):
@@ -841,12 +811,10 @@ def _build_param_specs(descriptor: dict[str, Any]) -> tuple[CapabilityParamSpec,
         is_multiple = getattr(annotation, "__origin__", None) is list
         if annotation is bool:
             default_value: Any = ... if is_required else _boolean_default(description)
-        elif is_multiple:
-            default_value = ... if is_required else None
         else:
             default_value = ... if is_required else None
         specs.append(
-            CapabilityParamSpec(
+            OpParamSpec(
                 field_name=field_name,
                 annotation=annotation,
                 option=typer.Option(default_value, option_name, help=description),
@@ -869,10 +837,10 @@ def _parameter_source(
 def _payload_from_option_values(
     *,
     ctx: typer.Context,
-    param_specs: tuple[CapabilityParamSpec, ...],
+    param_specs: tuple[OpParamSpec, ...],
     values: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build one CES input payload from parsed option values."""
+    """Build one Execution input payload from parsed option values."""
     payload: dict[str, Any] = {}
     for spec in param_specs:
         value = values.get(spec.field_name)
@@ -892,10 +860,10 @@ def _payload_from_option_values(
 
 def _dynamic_command_callback(
     *,
-    capability_id: str,
-    param_specs: tuple[CapabilityParamSpec, ...],
+    op_id: str,
+    param_specs: tuple[OpParamSpec, ...],
 ) -> Callable[..., None]:
-    """Build one dynamic Typer callback for a CLI-generated capability command."""
+    """Build one dynamic Typer callback for a CLI-generated op command."""
 
     def _handler(**kwargs: Any) -> None:
         ctx = get_current_context(silent=True)
@@ -907,28 +875,28 @@ def _dynamic_command_callback(
             param_specs=param_specs,
             values=kwargs,
         )
-        mode = _effective_output_mode(cfg)
+        mode = cfg.output_mode
         if mode == "simple":
             _run_command(
                 cfg,
-                lambda client: _invoke_capability_result(
+                lambda client: _invoke_op_result(
                     client=client,
                     cfg=cfg,
-                    capability_id=capability_id,
+                    op_id=op_id,
                     input_payload=input_payload,
                 ),
                 renderer=lambda result: _emit_simple_output(
-                    descriptor=_require_capability(cfg, capability_id),
+                    descriptor=_require_op(cfg, op_id),
                     result=result,
                 ),
             )
             return
         _run_command(
             cfg,
-            lambda client: _invoke_capability_result(
+            lambda client: _invoke_op_result(
                 client=client,
                 cfg=cfg,
-                capability_id=capability_id,
+                op_id=op_id,
                 input_payload=input_payload,
             ),
         )
@@ -955,63 +923,61 @@ def _dynamic_command_callback(
     namespace: dict[str, Any] = {}
     exec(source, locals_map, namespace)
     callback = namespace["dynamic_command"]
-    callback.__name__ = capability_id.replace("-", "_")
+    callback.__name__ = op_id.replace("-", "_")
     return callback
 
 
-def _unsupported_capabilities(
-    capabilities: tuple[dict[str, Any], ...],
-) -> tuple[UnsupportedCapabilitySpec, ...]:
-    """Return published capabilities that cannot be exposed as CLI commands."""
-    unsupported: list[UnsupportedCapabilitySpec] = []
-    for descriptor in capabilities:
-        capability_id = _capability_id(descriptor)
-        supported, reason = _schema_is_cli_eligible(
-            _capability_input_schema(descriptor)
-        )
+def _unsupported_ops(
+    ops: tuple[dict[str, Any], ...],
+) -> tuple[UnsupportedOpSpec, ...]:
+    """Return published ops that cannot be exposed as CLI commands."""
+    unsupported: list[UnsupportedOpSpec] = []
+    for descriptor in ops:
+        op_id = _op_id_from(descriptor)
+        supported, reason = _schema_is_cli_eligible(_op_input_schema(descriptor))
         if supported:
             continue
         unsupported.append(
-            UnsupportedCapabilitySpec(
-                capability_id=capability_id,
-                command=_command_label_for_capability(capability_id),
-                summary=_capability_summary(descriptor),
+            UnsupportedOpSpec(
+                op_id=op_id,
+                command=_command_label_for_op(op_id),
+                summary=_op_summary(descriptor),
                 reason=reason,
             )
         )
-    return tuple(sorted(unsupported, key=lambda item: item.capability_id))
+    return tuple(sorted(unsupported, key=lambda item: item.op_id))
 
 
-def _supported_capabilities(
-    capabilities: tuple[dict[str, Any], ...],
+def _supported_ops(
+    ops: tuple[dict[str, Any], ...],
 ) -> tuple[dict[str, Any], ...]:
-    """Return published capabilities that can be exposed as CLI commands."""
+    """Return published ops that can be exposed as CLI commands."""
     return tuple(
         descriptor
-        for descriptor in capabilities
-        if _schema_is_cli_eligible(_capability_input_schema(descriptor))[0]
+        for descriptor in ops
+        if _schema_is_cli_eligible(_op_input_schema(descriptor))[0]
     )
 
 
 def _catalog_help_text(
     *,
     title: str,
-    catalog: CapabilityCatalog,
+    catalog: OpCatalog,
 ) -> str:
-    """Build one common help string including capability-metadata status."""
+    """Build one common help string including op-metadata status."""
     return f"{title}\n\n{_catalog_status_markup(catalog)}"
 
 
-def _build_root_app(catalog: CapabilityCatalog) -> typer.Typer:
-    """Build the full Typer application from one resolved capability catalog."""
+def _build_root_app(catalog: OpCatalog) -> typer.Typer:
+    """Build the full Typer application from one resolved op catalog."""
     app = typer.Typer(
         no_args_is_help=True,
         help=_catalog_help_text(title="Brain command-line interface", catalog=catalog),
     )
     health_app = typer.Typer(help="Core domain commands")
-    capability_app = typer.Typer(
+    op_app = typer.Typer(
         help=_catalog_help_text(
-            title="Capability discovery and invocation commands",
+            title="Op discovery and invocation commands",
             catalog=catalog,
         )
     )
@@ -1021,12 +987,12 @@ def _build_root_app(catalog: CapabilityCatalog) -> typer.Typer:
         ctx: typer.Context,
         host: str | None = typer.Option(
             None,
-            envvar="BRAIN_ACTORS_CORE__HOST",
+            envvar="BRAIN_CORE__HOST",
             help="Brain Core host",
         ),
         port: int | None = typer.Option(
             None,
-            envvar="BRAIN_ACTORS_CORE__PORT",
+            envvar="BRAIN_CORE__PORT",
             min=1,
             max=65535,
             help="Brain Core TCP port",
@@ -1052,7 +1018,7 @@ def _build_root_app(catalog: CapabilityCatalog) -> typer.Typer:
         simple_output: bool = typer.Option(
             False,
             "--simple",
-            help="Emit the configured simple projection for capability results",
+            help="Emit the configured simple projection for op results",
         ),
         trace_id: str | None = typer.Option(None, help="Optional trace id"),
         parent_id: str | None = typer.Option(None, help="Optional parent envelope id"),
@@ -1069,7 +1035,6 @@ def _build_root_app(catalog: CapabilityCatalog) -> typer.Typer:
             timeout=timeout
             if timeout is not None
             else actor_settings.core.timeout_seconds,
-            as_json=as_json,
             output_mode=_resolve_output_mode(
                 json_output=as_json,
                 json_pretty=json_pretty,
@@ -1078,9 +1043,9 @@ def _build_root_app(catalog: CapabilityCatalog) -> typer.Typer:
             ),
             trace_id=trace_id,
             parent_id=parent_id,
-            capabilities=catalog.capabilities,
-            capability_source=catalog.source,
-            capability_status=catalog.status_message,
+            ops=catalog.ops,
+            op_source=catalog.source,
+            op_status=catalog.status_message,
         )
 
     @health_app.command("core")
@@ -1098,38 +1063,38 @@ def _build_root_app(catalog: CapabilityCatalog) -> typer.Typer:
             ),
         )
 
-    @capability_app.command("list")
-    def capability_list(ctx: typer.Context) -> None:
-        """List discovered capabilities and their CLI command forms."""
+    @op_app.command("list")
+    def op_list(ctx: typer.Context) -> None:
+        """List discovered ops and their CLI command forms."""
         cfg = _require_config(ctx)
         _emit_output(
             [
                 {
-                    "capability_id": _capability_id(item),
-                    "command": _command_label_for_capability(_capability_id(item)),
-                    "summary": _capability_summary(item),
+                    "op_id": _op_id_from(item),
+                    "command": _command_label_for_op(_op_id_from(item)),
+                    "summary": _op_summary(item),
                 }
-                for item in cfg.capabilities
+                for item in cfg.ops
             ],
-            _effective_output_mode(cfg),
+            cfg.output_mode,
         )
         raise typer.Exit(code=SUCCESS_EXIT_CODE)
 
-    @capability_app.command("describe")
-    def capability_describe(ctx: typer.Context, capability_id: str) -> None:
-        """Describe one discovered capability."""
+    @op_app.command("describe")
+    def op_describe(ctx: typer.Context, op_id: str) -> None:
+        """Describe one discovered op."""
         cfg = _require_config(ctx)
-        if cfg.capability_source != "live":
+        if cfg.op_source != "live":
             _emit_output(
-                _require_capability(cfg, capability_id),
-                _effective_output_mode(cfg),
+                _require_op(cfg, op_id),
+                cfg.output_mode,
             )
             raise typer.Exit(code=SUCCESS_EXIT_CODE)
         _run_command(
             cfg,
-            lambda client: describe_capability(
+            lambda client: describe_op(
                 client=client,
-                capability_id=capability_id,
+                op_id=op_id,
                 principal=cfg.principal,
                 source=cfg.source,
                 trace_id=cfg.trace_id,
@@ -1137,35 +1102,35 @@ def _build_root_app(catalog: CapabilityCatalog) -> typer.Typer:
             ),
         )
 
-    @capability_app.command(
+    @op_app.command(
         "invoke",
         context_settings=_DYNAMIC_COMMAND_CONTEXT_SETTINGS,
     )
-    def capability_invoke(
+    def op_invoke(
         ctx: typer.Context,
-        capability_id: str = typer.Argument(..., help="Capability identifier"),
+        op_id: str = typer.Argument(..., help="Op identifier"),
         input_json: str | None = typer.Option(
             None,
             "--input-json",
-            help="Raw JSON object payload for complex capability inputs",
+            help="Raw JSON object payload for complex op inputs",
         ),
     ) -> None:
-        """Invoke one discovered capability by id."""
+        """Invoke one discovered op by id."""
         cfg = _require_config(ctx)
-        descriptor = _require_capability(cfg, capability_id)
-        input_payload = _parse_capability_cli_args(
+        descriptor = _require_op(cfg, op_id)
+        input_payload = _parse_op_cli_args(
             descriptor=descriptor,
             args=list(ctx.args),
             input_json=input_json,
         )
-        mode = _effective_output_mode(cfg)
+        mode = cfg.output_mode
         if mode == "simple":
             _run_command(
                 cfg,
-                lambda client: _invoke_capability_result(
+                lambda client: _invoke_op_result(
                     client=client,
                     cfg=cfg,
-                    capability_id=capability_id,
+                    op_id=op_id,
                     input_payload=input_payload,
                 ),
                 renderer=lambda result: _emit_simple_output(
@@ -1176,41 +1141,39 @@ def _build_root_app(catalog: CapabilityCatalog) -> typer.Typer:
             return
         _run_command(
             cfg,
-            lambda client: _invoke_capability_result(
+            lambda client: _invoke_op_result(
                 client=client,
                 cfg=cfg,
-                capability_id=capability_id,
+                op_id=op_id,
                 input_payload=input_payload,
             ),
         )
 
-    @capability_app.command("unsupported-cli")
-    def capability_unsupported_cli(ctx: typer.Context) -> None:
-        """List published capabilities omitted from generated CLI commands."""
+    @op_app.command("unsupported-cli")
+    def op_unsupported_cli(ctx: typer.Context) -> None:
+        """List published ops omitted from generated CLI commands."""
         cfg = _require_config(ctx)
         _emit_output(
             [
                 {
-                    "capability_id": item.capability_id,
+                    "op_id": item.op_id,
                     "command": item.command,
                     "summary": item.summary,
                     "reason": item.reason,
                 }
-                for item in _unsupported_capabilities(
-                    tuple(_serialize(cap) for cap in cfg.capabilities)
-                )
+                for item in _unsupported_ops(tuple(_serialize(cap) for cap in cfg.ops))
             ],
-            _effective_output_mode(cfg),
+            cfg.output_mode,
         )
         raise typer.Exit(code=SUCCESS_EXIT_CODE)
 
     app.add_typer(health_app, name="health")
-    app.add_typer(capability_app, name="capability")
+    app.add_typer(op_app, name="op")
 
-    supported = _supported_capabilities(catalog.capabilities)
+    supported = _supported_ops(catalog.ops)
     grouped: dict[str, list[dict[str, Any]]] = {}
     for descriptor in supported:
-        path = _capability_command_path(_capability_id(descriptor))
+        path = _op_command_path(_op_id_from(descriptor))
         if len(path) != 2:
             continue
         grouped.setdefault(path[0], []).append(descriptor)
@@ -1218,20 +1181,18 @@ def _build_root_app(catalog: CapabilityCatalog) -> typer.Typer:
     for prefix in sorted(grouped.keys()):
         service_app = typer.Typer(
             help=_catalog_help_text(
-                title=f"Invoke `{prefix}-*` capabilities.",
+                title=f"Invoke `{prefix}-*` ops.",
                 catalog=catalog,
             )
         )
-        for descriptor in sorted(
-            grouped[prefix], key=lambda item: _capability_id(item)
-        ):
-            capability_id = _capability_id(descriptor)
-            _, command_name = _capability_command_path(capability_id)
+        for descriptor in sorted(grouped[prefix], key=lambda item: _op_id_from(item)):
+            op_id = _op_id_from(descriptor)
+            _, command_name = _op_command_path(op_id)
             callback = _dynamic_command_callback(
-                capability_id=capability_id,
+                op_id=op_id,
                 param_specs=_build_param_specs(descriptor),
             )
-            callback.__doc__ = _capability_summary(descriptor)
+            callback.__doc__ = _op_summary(descriptor)
             service_app.command(command_name)(callback)
         app.add_typer(service_app, name=prefix)
 
@@ -1239,8 +1200,8 @@ def _build_root_app(catalog: CapabilityCatalog) -> typer.Typer:
 
 
 def build_app(cache_path: Path = CLI_CACHE_PATH) -> typer.Typer:
-    """Build one CLI application using live capability metadata or cached fallback."""
-    return _build_root_app(_load_capability_catalog(cache_path))
+    """Build one CLI application using live op metadata or cached fallback."""
+    return _build_root_app(_load_op_catalog(cache_path))
 
 
 app = build_app()

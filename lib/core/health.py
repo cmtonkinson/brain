@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -40,39 +39,14 @@ def evaluate_core_health(
 ) -> CoreHealthResult:
     """Evaluate aggregate core health from instantiated components."""
     registry = get_registry()
-    service_results: dict[str, ComponentHealthResult] = {}
-    resource_results: dict[str, ComponentHealthResult] = {}
     max_timeout_seconds = settings.core.health.max_timeout_seconds
 
-    for manifest in registry.list_services():
-        component_id = str(manifest.id)
-        service = components.get(component_id)
-        if service is None:
-            service_results[component_id] = ComponentHealthResult(
-                ready=False,
-                detail="component not instantiated",
-            )
-            continue
-        service_results[component_id] = _evaluate_component_health(
-            component_id=component_id,
-            component=service,
-            max_timeout_seconds=max_timeout_seconds,
-        )
-
-    for manifest in registry.list_resources():
-        component_id = str(manifest.id)
-        resource = components.get(component_id)
-        if resource is None:
-            resource_results[component_id] = ComponentHealthResult(
-                ready=False,
-                detail="component not instantiated",
-            )
-            continue
-        resource_results[component_id] = _evaluate_component_health(
-            component_id=component_id,
-            component=resource,
-            max_timeout_seconds=max_timeout_seconds,
-        )
+    service_results = _evaluate_manifests(
+        registry.list_services(), components, max_timeout_seconds
+    )
+    resource_results = _evaluate_manifests(
+        registry.list_resources(), components, max_timeout_seconds
+    )
 
     overall_ready = all(item.ready for item in service_results.values()) and all(
         item.ready for item in resource_results.values()
@@ -82,6 +56,30 @@ def evaluate_core_health(
         services=service_results,
         resources=resource_results,
     )
+
+
+def _evaluate_manifests(
+    manifests: Iterable[object],
+    components: Mapping[str, object],
+    max_timeout_seconds: float,
+) -> dict[str, ComponentHealthResult]:
+    """Evaluate health for a sequence of component manifests."""
+    results: dict[str, ComponentHealthResult] = {}
+    for manifest in manifests:
+        component_id = str(manifest.id)
+        component = components.get(component_id)
+        if component is None:
+            results[component_id] = ComponentHealthResult(
+                ready=False,
+                detail="component not instantiated",
+            )
+            continue
+        results[component_id] = _evaluate_component_health(
+            component_id=component_id,
+            component=component,
+            max_timeout_seconds=max_timeout_seconds,
+        )
+    return results
 
 
 def _evaluate_component_health(
@@ -176,7 +174,7 @@ def _coerce_health_result(result: object) -> tuple[bool, str]:
         for key, value in values.items()
         if key.endswith("_ready") and isinstance(value, bool)
     ]
-    if len(ready_fields) > 0:
+    if ready_fields:
         detail_value = values.get("detail")
         return all(ready_fields), detail_value if isinstance(detail_value, str) else ""
 

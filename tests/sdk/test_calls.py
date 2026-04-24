@@ -72,84 +72,82 @@ def test_call_core_health_transport_error() -> None:
         )
 
 
-def test_call_capabilities_describe_success() -> None:
-    """Capability-describe wrapper should return typed descriptors."""
-    from lib.sdk.calls import call_capabilities_describe
+def test_call_ops_describe_success() -> None:
+    """Op-describe wrapper should return typed descriptors."""
+    from lib.sdk.calls import call_ops_describe
 
     http = _fake_http(
         {
-            "capabilities": [
+            "ops": [
                 {
-                    "capability_id": "demo-echo",
-                    "kind": "logic_skill",
+                    "op_id": "demo-echo",
+                    "kind": "logic",
                     "version": "1.0.0",
                     "summary": "Echo one value.",
                     "input_schema": {"value": "string"},
                     "output_schema": {"value": "string"},
-                    "autonomy": 0,
-                    "requires_approval": False,
-                    "side_effects": [],
-                    "required_capabilities": [],
+                    "effect": "execute",
+                    "approval": "never",
+                    "required_ops": [],
                 }
             ],
             "errors": [],
         }
     )
 
-    result = call_capabilities_describe(
+    result = call_ops_describe(
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
     )
 
     assert len(result) == 1
-    assert result[0].capability_id == "demo-echo"
-    assert result[0].kind == "logic_skill"
+    assert result[0].op_id == "demo-echo"
+    assert result[0].kind == "logic"
 
 
-def test_call_capabilities_list_always_on_success() -> None:
-    """Always-on capability wrapper should return typed descriptors."""
-    from lib.sdk.calls import call_capabilities_list_always_on
+def test_call_ops_list_always_on_success() -> None:
+    """Always-on op wrapper should return typed descriptors."""
+    from lib.sdk.calls import call_ops_list_always_on
 
     http = _fake_http(
         {
-            "capabilities": [
+            "ops": [
                 {
-                    "capability_id": "vault-search-files",
-                    "kind": "native_op",
+                    "op_id": "vault-search-files",
+                    "kind": "native",
                     "version": "1.0.0",
                     "summary": "Search files.",
                     "input_schema": {"query": "string"},
                     "output_schema": {"results": "array[string]"},
-                    "autonomy": 0,
-                    "requires_approval": False,
-                    "side_effects": [],
-                    "required_capabilities": [],
+                    "effect": "read",
+                    "approval": "never",
+                    "required_ops": [],
                 }
             ],
             "errors": [],
         }
     )
 
-    result = call_capabilities_list_always_on(
+    result = call_ops_list_always_on(
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
     )
 
     assert len(result) == 1
-    assert result[0].capability_id == "vault-search-files"
+    assert result[0].op_id == "vault-search-files"
 
 
-def test_call_capabilities_search_success() -> None:
-    """Capability-search wrapper should return compact typed hits."""
-    from lib.sdk.calls import call_capabilities_search
+def test_call_ops_search_success() -> None:
+    """Op-search wrapper should return compact typed hits."""
+    from lib.sdk.calls import call_ops_search
 
     http = _fake_http(
         {
             "results": [
                 {
-                    "capability_id": "vault-get-file",
+                    "op_id": "vault-get-file",
                     "required_params": ["file_path"],
                     "summary": "Read a file.",
                 }
@@ -158,7 +156,7 @@ def test_call_capabilities_search_success() -> None:
         }
     )
 
-    result = call_capabilities_search(
+    result = call_ops_search(
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
@@ -168,23 +166,23 @@ def test_call_capabilities_search_success() -> None:
 
     assert result == (
         type(result[0])(
-            capability_id="vault-get-file",
+            op_id="vault-get-file",
             required_params=("file_path",),
             summary="Read a file.",
         ),
     )
 
 
-def test_call_capabilities_tool_system_hints_success() -> None:
+def test_call_ops_tool_system_hints_success() -> None:
     """Tool-system hint wrapper should return compact typed hints."""
-    from lib.sdk.calls import call_capabilities_tool_system_hints
+    from lib.sdk.calls import call_ops_tool_system_hints
 
     http = _fake_http(
         {
             "systems": [
                 {
-                    "system_id": "service_vault_authority",
-                    "label": "Vault Authority Service",
+                    "system_id": "service_vault",
+                    "label": "Vault Service",
                     "summary": "Personal Knowledge Base access.",
                     "kind": "core",
                     "ready": None,
@@ -203,53 +201,52 @@ def test_call_capabilities_tool_system_hints_success() -> None:
         }
     )
 
-    result = call_capabilities_tool_system_hints(
+    result = call_ops_tool_system_hints(
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
     )
 
     assert len(result) == 2
-    assert result[0].system_id == "service_vault_authority"
+    assert result[0].system_id == "service_vault"
     assert result[1].kind == "mcp"
     assert result[1].tool_count == 4
 
 
-def test_call_capability_describe_success() -> None:
-    """Capability-describe-one wrapper should return a single typed descriptor."""
-    from lib.sdk.calls import call_capability_describe
+def test_call_op_describe_success() -> None:
+    """Op-describe-one wrapper should return a single typed descriptor."""
+    from lib.sdk.calls import call_op_describe
 
     http = _fake_http(
         {
-            "capability": {
-                "capability_id": "vault-get-file",
-                "kind": "native_op",
+            "op": {
+                "op_id": "vault-get-file",
+                "kind": "native",
                 "version": "1.0.0",
                 "summary": "Read a file.",
                 "input_schema": {"file_path": "string"},
                 "output_schema": {"content": "string"},
-                "autonomy": 0,
-                "requires_approval": False,
-                "side_effects": [],
-                "required_capabilities": [],
+                "effect": "read",
+                "approval": "never",
+                "required_ops": [],
             },
             "errors": [],
         }
     )
 
-    result = call_capability_describe(
+    result = call_op_describe(
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
-        capability_id="vault-get-file",
+        op_id="vault-get-file",
     )
 
-    assert result.capability_id == "vault-get-file"
+    assert result.op_id == "vault-get-file"
 
 
-def test_call_capability_invoke_success() -> None:
-    """Capability-invoke wrapper should decode output JSON and policy."""
-    from lib.sdk.calls import call_capability_invoke
+def test_call_op_invoke_success() -> None:
+    """Op-invoke wrapper should decode output JSON and policy."""
+    from lib.sdk.calls import call_op_invoke
 
     http = _fake_http(
         {
@@ -265,11 +262,11 @@ def test_call_capability_invoke_success() -> None:
         }
     )
 
-    result = call_capability_invoke(
+    result = call_op_invoke(
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
-        capability_id="demo-echo",
+        op_id="demo-echo",
         input_payload={"value": "x"},
     )
 
@@ -278,9 +275,9 @@ def test_call_capability_invoke_success() -> None:
     assert result.policy.decision_id == "dec-1"
 
 
-def test_call_capability_invoke_autogenerates_invocation_id() -> None:
-    """Capability invoke should auto-generate invocation_id when omitted."""
-    from lib.sdk.calls import call_capability_invoke
+def test_call_op_invoke_autogenerates_invocation_id() -> None:
+    """Op invoke should auto-generate invocation_id when omitted."""
+    from lib.sdk.calls import call_op_invoke
 
     http = _fake_http(
         {
@@ -296,11 +293,11 @@ def test_call_capability_invoke_autogenerates_invocation_id() -> None:
         }
     )
 
-    call_capability_invoke(
+    call_op_invoke(
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
-        capability_id="attention-notify",
+        op_id="relay-notify",
         input_payload={"message": "hello", "actor": "operator", "channel": "signal"},
         actor="operator",
         channel="signal",
@@ -312,9 +309,9 @@ def test_call_capability_invoke_autogenerates_invocation_id() -> None:
     assert len(body["invocation_id"]) == 26
 
 
-def test_call_capability_invoke_includes_reply_and_reaction_proposal_tokens() -> None:
-    """Capability invoke should pass structured approval correlators through CES."""
-    from lib.sdk.calls import call_capability_invoke
+def test_call_op_invoke_includes_reply_and_reaction_proposal_tokens() -> None:
+    """Op invoke should pass structured approval correlators through Execution."""
+    from lib.sdk.calls import call_op_invoke
 
     http = _fake_http(
         {
@@ -330,11 +327,11 @@ def test_call_capability_invoke_includes_reply_and_reaction_proposal_tokens() ->
         }
     )
 
-    call_capability_invoke(
+    call_op_invoke(
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
-        capability_id="vault-move-path",
+        op_id="vault-move-path",
         input_payload={"source_path": "a", "target_path": "b"},
         actor="operator",
         channel="signal",
@@ -347,9 +344,9 @@ def test_call_capability_invoke_includes_reply_and_reaction_proposal_tokens() ->
     assert body["reaction_to_proposal_token"] == "tok-react"
 
 
-def test_call_lms_chat_success() -> None:
-    """LMS chat wrapper should return the typed chat payload."""
-    from lib.sdk.calls import call_lms_chat
+def test_call_language_chat_success() -> None:
+    """Language chat wrapper should return the typed chat payload."""
+    from lib.sdk.calls import call_language_chat
 
     http = _fake_http(
         {
@@ -362,7 +359,7 @@ def test_call_lms_chat_success() -> None:
         }
     )
 
-    result = call_lms_chat(
+    result = call_language_chat(
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
@@ -374,9 +371,9 @@ def test_call_lms_chat_success() -> None:
     assert result.model == "gpt-test"
 
 
-def test_call_lms_chat_with_tools_success() -> None:
-    """Tool-capable LMS chat wrapper should return typed tool call payloads."""
-    from lib.sdk.calls import call_lms_chat_with_tools
+def test_call_language_chat_with_tools_success() -> None:
+    """Tool-capable Language chat wrapper should return typed tool call payloads."""
+    from lib.sdk.calls import call_language_chat_with_tools
 
     http = _fake_http(
         {
@@ -397,7 +394,7 @@ def test_call_lms_chat_with_tools_success() -> None:
         }
     )
 
-    result = call_lms_chat_with_tools(
+    result = call_language_chat_with_tools(
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
@@ -417,7 +414,7 @@ def test_call_lms_chat_with_tools_success() -> None:
 
 
 def test_call_memory_assemble_context_success() -> None:
-    """MAS assemble-context wrapper should return the typed turn-context payload."""
+    """Recall assemble-context wrapper should return the typed turn-context payload."""
     from lib.sdk.calls import call_memory_assemble_context
 
     http = _fake_http(
@@ -469,9 +466,9 @@ def test_call_memory_assemble_context_success() -> None:
 
 
 def test_call_memory_record_inbound_turn_success() -> None:
-    """MAS inbound-record wrapper should return the typed turn payload."""
+    """Recall inbound-record wrapper should return the typed turn payload."""
     from lib.sdk.calls import call_memory_record_inbound_turn
-    from lib.sdk.calls import SwitchboardOperatorInstruction
+    from lib.sdk.calls import RelayOperatorInstruction
 
     http = _fake_http(
         {
@@ -500,7 +497,7 @@ def test_call_memory_record_inbound_turn_success() -> None:
         timeout_seconds=1.0,
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
         message="hello",
-        instruction=SwitchboardOperatorInstruction(
+        instruction=RelayOperatorInstruction(
             sender_e164="+12025550100",
             message_text="hello",
             timestamp_ms=1,
@@ -527,7 +524,7 @@ def test_call_memory_record_inbound_turn_success() -> None:
 
 
 def test_call_memory_assemble_snapshot_success() -> None:
-    """MAS snapshot wrapper should return the typed historical context payload."""
+    """Recall snapshot wrapper should return the typed historical context payload."""
     from lib.sdk.calls import call_memory_assemble_snapshot
 
     http = _fake_http(
@@ -558,7 +555,7 @@ def test_call_memory_assemble_snapshot_success() -> None:
 
 
 def test_call_memory_create_session_success() -> None:
-    """MAS create-session wrapper should return the new session identifier."""
+    """Recall create-session wrapper should return the new session identifier."""
     from lib.sdk.calls import call_memory_create_session
 
     http = _fake_http(
@@ -578,7 +575,7 @@ def test_call_memory_create_session_success() -> None:
 
 
 def test_call_memory_get_latest_or_create_session_success() -> None:
-    """MAS get-latest-or-create wrapper should return the resolved session id."""
+    """Recall get-latest-or-create wrapper should return the resolved session id."""
     from lib.sdk.calls import call_memory_get_latest_or_create_session
 
     http = _fake_http(
@@ -598,7 +595,7 @@ def test_call_memory_get_latest_or_create_session_success() -> None:
 
 
 def test_call_memory_record_response_success() -> None:
-    """MAS record-response wrapper should return the response boolean."""
+    """Recall record-response wrapper should return the response boolean."""
     from lib.sdk.calls import call_memory_record_response
 
     http = _fake_http({"payload": True, "errors": []})
@@ -619,7 +616,7 @@ def test_call_memory_record_response_success() -> None:
 
 
 def test_call_memory_record_outbound_candidate_success() -> None:
-    """MAS outbound-candidate wrapper should return the typed turn payload."""
+    """Recall outbound-candidate wrapper should return the typed turn payload."""
     from lib.sdk.calls import call_memory_record_outbound_candidate
 
     http = _fake_http(
@@ -661,7 +658,7 @@ def test_call_memory_record_outbound_candidate_success() -> None:
 
 
 def test_call_memory_record_outbound_delivery_success() -> None:
-    """MAS outbound-delivery wrapper should return the delivery boolean."""
+    """Recall outbound-delivery wrapper should return the delivery boolean."""
     from lib.sdk.calls import call_memory_record_outbound_delivery
 
     http = _fake_http({"payload": True, "errors": []})
@@ -680,7 +677,7 @@ def test_call_memory_record_outbound_delivery_success() -> None:
 
 def test_route_wrapper_raises_typed_domain_error() -> None:
     """Route wrappers should map response errors to typed SDK domain errors."""
-    from lib.sdk.calls import call_lms_chat
+    from lib.sdk.calls import call_language_chat
 
     http = _fake_http(
         {
@@ -698,7 +695,7 @@ def test_route_wrapper_raises_typed_domain_error() -> None:
     )
 
     with pytest.raises(BrainValidationError):
-        call_lms_chat(
+        call_language_chat(
             http=http,
             metadata=_meta(),
             timeout_seconds=1.0,
@@ -706,9 +703,9 @@ def test_route_wrapper_raises_typed_domain_error() -> None:
         )
 
 
-def test_call_switchboard_poll_operator_instruction_success() -> None:
-    """Switchboard poll wrapper should return the typed dequeued message."""
-    from lib.sdk.calls import call_switchboard_poll_operator_instruction
+def test_call_relay_poll_operator_instruction_success() -> None:
+    """Relay inbound poll wrapper should return the typed dequeued message."""
+    from lib.sdk.calls import call_relay_poll_operator_instruction
 
     http = _fake_http(
         {
@@ -730,7 +727,7 @@ def test_call_switchboard_poll_operator_instruction_success() -> None:
         }
     )
 
-    result = call_switchboard_poll_operator_instruction(
+    result = call_relay_poll_operator_instruction(
         http=http,
         metadata=_meta(),
         timeout_seconds=1.0,
@@ -768,11 +765,11 @@ def test_post_json_annotates_span_when_observability_enabled() -> None:
 
     with (
         patch(
-            "lib.shared.observability.bootstrap.is_observability_enabled",
+            "lib.shared.observability.is_observability_enabled",
             return_value=True,
         ),
         patch(
-            "lib.shared.observability.bootstrap.is_llm_content_capture_enabled",
+            "lib.shared.observability.is_llm_content_capture_enabled",
             return_value=True,
         ),
         patch("opentelemetry.trace.get_tracer", return_value=mock_tracer),
@@ -802,7 +799,7 @@ def test_post_json_skips_span_when_observability_disabled() -> None:
     http = _fake_http({"result": "ok"})
 
     with patch(
-        "lib.shared.observability.bootstrap.is_observability_enabled",
+        "lib.shared.observability.is_observability_enabled",
         return_value=False,
     ):
         result = _post_json(
@@ -834,11 +831,11 @@ def test_post_json_omits_content_when_capture_disabled() -> None:
 
     with (
         patch(
-            "lib.shared.observability.bootstrap.is_observability_enabled",
+            "lib.shared.observability.is_observability_enabled",
             return_value=True,
         ),
         patch(
-            "lib.shared.observability.bootstrap.is_llm_content_capture_enabled",
+            "lib.shared.observability.is_llm_content_capture_enabled",
             return_value=False,
         ),
         patch("opentelemetry.trace.get_tracer", return_value=mock_tracer),

@@ -17,6 +17,7 @@ class ObsidianSubstrateSettings(BaseModel):
     api_key: str = ""
     timeout_seconds: float = Field(default=10.0, gt=0)
     max_retries: int = Field(default=2, ge=0)
+    search_context_length: int = Field(default=120, ge=0)
 
 
 def resolve_obsidian_substrate_settings(

@@ -30,6 +30,7 @@ _IMAGE_DEFAULTS: dict[str, str] = {
     "postgres": "postgres:16",
     "valkey": "valkey/valkey:8-alpine",
     "qdrant": "qdrant/qdrant:v1.17",
+    "seaweedfs": "chrislusf/seaweedfs:3.97",
 }
 
 
@@ -154,6 +155,44 @@ def _wait_for_qdrant_ready(
     raise TimeoutError(f"timed out waiting for Qdrant readiness at {host}:{port}")
 
 
+def _wait_for_seaweedfs_ready(
+    host: str, port: int, *, timeout_seconds: float = 60.0
+) -> None:
+    """Wait until SeaweedFS S3 API accepts requests."""
+    import httpx
+
+    url = f"http://{host}:{port}/"
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            resp = httpx.get(url, timeout=2)
+            if resp.status_code in (200, 403):
+                return
+        except Exception:  # noqa: BLE001
+            time.sleep(0.5)
+    raise TimeoutError(f"timed out waiting for SeaweedFS readiness at {host}:{port}")
+
+
+_SEAWEEDFS_TEST_BUCKET = "brain-int-test"
+
+
+def _ensure_seaweedfs_test_bucket(host: str, port: int) -> None:
+    """Create the integration test bucket via S3 CreateBucket API."""
+    import httpx
+
+    url = f"http://{host}:{port}/{_SEAWEEDFS_TEST_BUCKET}"
+    body = (
+        '<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+        "<LocationConstraint>us-east-1</LocationConstraint>"
+        "</CreateBucketConfiguration>"
+    ).encode()
+    resp = httpx.put(url, content=body, timeout=5)
+    if resp.status_code not in (200, 409):
+        raise RuntimeError(
+            f"failed to create SeaweedFS bucket: {resp.status_code} {resp.text}"
+        )
+
+
 def _wait_for_postgres_ready(
     *,
     container_id: str,
@@ -210,11 +249,13 @@ def _start_container(
     image: str,
     container_port: int,
     env: dict[str, str] | None = None,
+    command: list[str] | None = None,
 ) -> RunningContainer:
     """Start one detached ``docker run`` container and return mapped endpoint."""
     env_args: list[str] = []
     for key, value in (env or {}).items():
         env_args.extend(["--env", f"{key}={value}"])
+    cmd_args: list[str] = command if command is not None else []
     run_result = _run_command(
         "docker",
         "run",
@@ -224,6 +265,7 @@ def _start_container(
         f"127.0.0.1::{container_port}",
         *env_args,
         image,
+        *cmd_args,
     )
     container_id = run_result.stdout.strip()
     port_result = _run_command("docker", "port", container_id, f"{container_port}/tcp")
@@ -277,9 +319,8 @@ def integration_settings(postgres_dsn: str) -> CoreRuntimeSettings:
     """Yield settings object bound to temporary Postgres for repository tests."""
     return CoreRuntimeSettings(
         core=CoreSettings(),
-        resources=ResourcesSettings(
-            substrate={"postgres": {"url": postgres_dsn}}  # type: ignore[arg-type]
-        ),
+        resources=ResourcesSettings(),
+        component_settings={"postgres": {"url": postgres_dsn}},
     )
 
 
@@ -292,15 +333,15 @@ def migrated_integration_settings(
     if postgres_url == "":
         raise RuntimeError("temporary integration Postgres URL is required")
 
-    previous = os.environ.get("BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL")
-    os.environ["BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL"] = postgres_url
+    previous = os.environ.get("BRAIN_POSTGRES__URL")
+    os.environ["BRAIN_POSTGRES__URL"] = postgres_url
     try:
         run_startup_migrations(settings=integration_settings)
     finally:
         if previous is None:
-            os.environ.pop("BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL", None)
+            os.environ.pop("BRAIN_POSTGRES__URL", None)
         else:
-            os.environ["BRAIN_RESOURCES_SUBSTRATE__POSTGRES__URL"] = previous
+            os.environ["BRAIN_POSTGRES__URL"] = previous
     return integration_settings
 
 
@@ -334,6 +375,33 @@ def qdrant_url() -> Iterator[str]:
         container_port=6333,
     )
     _wait_for_qdrant_ready(container.host, container.port)
+    try:
+        yield f"http://{container.host}:{container.port}"
+    finally:
+        _stop_container(container.container_id)
+
+
+@pytest.fixture(scope="session")
+def seaweedfs_endpoint() -> Iterator[str]:
+    """Yield one temporary SeaweedFS S3 endpoint for integration tests."""
+    if not real_provider_tests_enabled():
+        pytest.skip("real-provider integration tests disabled")
+    if not _docker_available():
+        pytest.skip("docker unavailable for integration tests")
+    container = _start_container(
+        image=_service_image("seaweedfs"),
+        container_port=8333,
+        command=[
+            "server",
+            "-dir=/data",
+            "-s3",
+            "-s3.port=8333",
+            "-s3.allowEmptyFolder=true",
+            "-master.volumeSizeLimitMB=32",
+        ],
+    )
+    _wait_for_seaweedfs_ready(container.host, container.port)
+    _ensure_seaweedfs_test_bucket(container.host, container.port)
     try:
         yield f"http://{container.host}:{container.port}"
     finally:

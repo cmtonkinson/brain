@@ -1,6 +1,6 @@
 """Shared embedding-domain constants used by services and substrates.
 
-Centralizing these values avoids drift between the Embedding Authority Service
+Centralizing these values avoids drift between the Embedding Service
 and the Qdrant substrate when validating or mapping embedding distance metrics.
 """
 

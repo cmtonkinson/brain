@@ -1,7 +1,7 @@
 """Canonical shared error types for Brain services.
 
 This module defines a transport-agnostic error taxonomy and shape used by all
-L1 services for east-west calls and adapter boundaries.
+Tier 2 services for east-west calls and adapter boundaries.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Mapping
 class ErrorCategory(str, Enum):
     """High-level error categories shared across service boundaries."""
 
-    UNSPECIFIED = "unspecified"
+    UNSPECIFIED = "unspecified"  # zero-value sentinel; never produced by a factory
     VALIDATION = "validation"
     CONFLICT = "conflict"
     NOT_FOUND = "not_found"

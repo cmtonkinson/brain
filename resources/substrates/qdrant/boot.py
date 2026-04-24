@@ -1,8 +1,14 @@
-"""Default no-op boot hook for component startup orchestration."""
+"""Boot hook for the Qdrant substrate; registers Qdrant-specific instrumentation."""
 
 from __future__ import annotations
 
 from lib.core.boot import BootContext
+from lib.shared.logging import register_public_api_concern
+from resources.substrates.qdrant.instrumentation import (
+    qdrant_public_api_metrics_concern_factory,
+)
+
+register_public_api_concern(qdrant_public_api_metrics_concern_factory)
 
 dependencies: tuple[str, ...] = tuple()
 

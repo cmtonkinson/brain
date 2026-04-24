@@ -1,0 +1,16 @@
+{
+  "op_id": "slash-help",
+  "kind": "logic",
+  "version": "1.0.0",
+  "summary": "List all slash commands available via operator channels.",
+  "enabled": true,
+  "input_schema": null,
+  "output_schema": "string | Formatted list of registered slash commands with descriptions.",
+  "simple_output_path": "result",
+  "slash_command": {
+    "name": "help",
+    "description": "list available slash commands"
+  },
+  "effect": "read",
+  "approval": "never"
+}

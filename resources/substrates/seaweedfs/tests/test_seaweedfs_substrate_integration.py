@@ -24,6 +24,8 @@ def test_provider_request_cycle_uses_configured_endpoint_and_bucket() -> None:
         settings=SeaweedFSSubstrateSettings(
             endpoint_url="http://seaweedfs:8333",
             bucket="brain-oas",
+            access_key_id="test-key",
+            secret_access_key="test-secret",
         ),
         client=httpx.Client(transport=httpx.MockTransport(_handler)),
     )

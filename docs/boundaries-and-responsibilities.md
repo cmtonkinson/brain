@@ -2,49 +2,49 @@
 This document defines the coarse boundaries of responsibility and ownership
 within Brain.
 
-> Check the [Glossary](glossary.md) for key terms such as _Layer_, _System_,
+> Check the [Glossary](glossary.md) for key terms such as _Tier_, _Plane_,
 > _Service_, _Resource_, _Provider_, et cetera.
 
 ------------------------------------------------------------------------
-## Layer Model
+## Tier Model
 One way to think about boundaries within Brain is to think in terms of
-_Layers_, where humans and LLMs are at the top (_Layer_ 2) while data &
-integrations are at the bottom (_Layer_ 0).
+_Tiers_, where humans and LLMs are at the top (_Tier_ 3) while data &
+integrations are at the bottom (_Tier_ 1).
 
-Invariant: No _Component_ within a given _Layer_ may depend on something from a
+Invariant: No _Component_ within a given _Tier_ may depend on something from a
 higher level.
 
-### Layer 2: Actors
-_Actors_ are external clients of _Layer_ 1 _Services_. The Agent process
+### Tier 3: Actors
+_Actors_ are external clients of _Tier_ 2 _Services_. The Agent process
 itself, along with Workers, and any CLI tooling, are by definition
-_Layer_ 2.
+_Tier_ 3.
 
-The only means for L2/_Actors_ to interact with the system are with the _Brain
-Core SDK_, which exposes a published subset of _Layer_ 1 _Service_ APIs through
+The only means for T3/_Actors_ to interact with the system are with the _Brain
+Core SDK_, which exposes a published subset of _Tier_ 2 _Service_ APIs through
 the Core HTTP surface. That published surface is not required to be one-to-one
 with each _Service's_ _Public API_; some _Public API_ methods may remain
 internal-only.
 
-L2 has no direct access to L0 _Resources_.
+T3 has no direct access to T1 _Resources_.
 
-### Layer 1: Services
-The system's business logic (and associated public contracts) live in _Layer_ 1.
+### Tier 2: Services
+The system's business logic (and associated public contracts) live in _Tier_ 2.
 
 Properties:
-- All _Services_ within L1 are assumed process-local (single container/process)
+- All _Services_ within T2 are assumed process-local (single container/process)
 - _Services_ may call each other directly (but only via _Public APIs_)
 - No _Service_ may import another _Service's_ internal implementation
 - _Services_ are responsible for their own audit logs, per domain
 - _Services_ must enforce relevant policies at _Service_->_Adapter_ boundaries
   where external side effects occur
 
-"East-West" traffic is permitted within L1, but each _Service_ is only permitted
+"East-West" traffic is permitted within T2, but each _Service_ is only permitted
 to interact with the formal _Public APIs_ of others. See below for an
-explanation of the _System_ Model of _Component_ boundaries.
+explanation of the _Plane_ Model of _Component_ boundaries.
 
-### Layer 0: Resources
-L0 contains persisted data and external integrations. Operations or changes at
-_Layer_ 0 either are by definition, or may cause, permanent real world side
+### Tier 1: Resources
+T1 contains persisted data and external integrations. Operations or changes at
+_Tier_ 1 either are by definition, or may cause, permanent real world side
 effects (sending a message, deleting a file, etc).
 
 _Resources_ are Brain-facing interfaces over lower-level _Providers_. A
@@ -62,19 +62,20 @@ with real-world external systems. Examples include:
 - Signal CLI
 
 For clarity:
-- L0 _Resources_ are ONLY accessible by the appropriate L1 _Services_
+- T1 _Resources_ are ONLY accessible by the appropriate T2 _Services_
   - this is defined on a per-_Resource_ basis
-  - example: **only** the Vault Authority _Service_ can access Obsidian
-  - example: **only** the Capability Engine can access MCP Servers
-- L2 has no direct access to L0 whatsoever.
+  - example: **only** the Vault _Service_ can access Obsidian
+  - example: **only** the Execution _Service_ can access MCP Servers
+  - example: **only** the Relay _Service_ can access the Signal Adapter
+- T3 has no direct access to T1 whatsoever.
 
 ------------------------------------------------------------------------
-## System Model
+## Plane Model
 Another way to think about boundaries within Brain are the three vertically-
-integrated domains of functionality, or _Systems_. These _Systems_ are composed
+integrated domains of functionality, or _Planes_. These _Planes_ are composed
 of _Services_ which are the main coarse units of Brain logic and functionality.
 
-Within a given _System_, every _Service_ is responsible for:
+Within a given _Plane_, every _Service_ is responsible for:
 - Gating all _Resource_ access
 - Exposing a crisply defined _Public API_ which is, where possible,
   implementation-agnostic with respect to the underlying _Resource_ and
@@ -88,55 +89,73 @@ Policy boundary clarification:
 - Policy checks are required at _Service_->_Adapter_ boundaries for external
   side effects.
 
-### State System
-The _State System_ is responsible for durable data within Brain. _Services_
-within the _State System_ are generally referred to as "Authorities," and each
-Authority has access to exactly one _Substrate_, and is the only _Component_
-with direct access to that _Substrate_. It's a strict ownership boundary.
+### Placement Rule (Resource-Ownership Invariant)
+Every T2 _Service_ is placed by the shape of its _Resource_ ownership:
 
-Current Authorities:
-- **Cache Authority Service** (CAS) owns caching and queueing
-- **Embedding Authority Service** (EAS) owns vector search by source/chunk
-- **Memory Authority Service** (MAS) owns Agent recall & context management
-- **Object Authority Service** (OAS) owns blobs
-- **Vault Authority Service** (VAS) owns the Personal Knowledge Base
+| Service owns... | belongs in Plane |
+|---|---|
+| a Substrate | **State** |
+| an Adapter | **Effect** |
+| no Resource | **Reason** |
 
-### Action System
-The _Action System_ is responsible for "doing" things with external (real-world)
-consequences: consuming and producing signals/triggers/messages, reading and
-writing state, and the invocation of such logic.
+This is enforced at manifest-registration time. A _Service_ may not own both
+a Substrate and an Adapter.
 
-#### Language Model
-- Gates access to Large Language Models
-- Exposes both Embedding and Inference capabilities
+### State Plane
+The _State Plane_ is responsible for durable data within Brain. Each
+_Service_ in this _Plane_ owns exactly one _Substrate_ and is the only
+_Component_ with direct access to it. Strict custody boundary.
+
+Current State _Services_:
+- **Cache** owns caching and queueing
+- **Embedding** owns vector search by source/chunk
+- **Object** owns blobs
+- **Vault** owns the Personal Knowledge Base
+
+### Effect Plane
+The _Effect Plane_ is responsible for actions with external (real-world)
+consequences: consuming and producing signals/triggers/messages, gating
+real-world side effects, and the invocation of such logic. Each _Service_
+in this _Plane_ owns exactly one _Adapter_.
+
+#### Language
+- Gates access to Large Languages
+- Exposes both Embedding and Inference ops
 - Allows config-parameterization of providers, models, version, flags, etc.
 
-#### Capability Engine
-- Owns _Capability_ registry (_Ops_ and _Skills_)
-- Executes _Capabilities_ pursuant to the Policy Service
-- Recursively enforces Policy checks for nested _Capability_ calls
+#### Execution
+- Owns _Op_ registry
+- Executes _Ops_ pursuant to the Policy
+- Recursively enforces Policy checks for nested _Op_ calls
 
-#### Policy Service
+#### Relay
+- Owns the bidirectional operator-comms channel (currently the Signal
+  adapter; future channels slot in here)
+- Inbound: ingests external events (messages, wake words, console input),
+  persists buffered queues via Cache
+- Outbound: ensures disruptions are timely, intentional, and
+  non-overloading by deciding to suppress, send, or batch outbounds
+- Approval round-trip: correlates outbound approval prompts with inbound
+  replies inside one service
+
+### Reason Plane
+The _Reason Plane_ is where intentional, custom business logic resides;
+it's the "executive function" of the Brain. _Reason_ _Services_ own no
+external _Resource_; they leverage the combination of _State_ and _Effect_
+_Services_ to achieve higher-order functionality.
+
+#### Policy
 - Owns Policy rules
-- Evaluates every _Capability_ invocation
+- Evaluates every _Op_ invocation
 - Cannot be bypassed (by design - enforced with API limitations and automated
   call site tests)
 
-#### Switchboard
-- Responsible for ingress of external events (messages, wake words, etc.)
-- Persists inbound events via CAS
-- Buffering is durable (delivery semantics are intentionally minimal for now)
+#### Recall
+- Owns Agent recall & context management over Embedding/Vault/Object results
+- No dedicated Substrate; composes State Plane data into context windows
 
-#### Attention Router
-- Owns outbound access to communication channels with the _Operator_
-- Responsible for ensuring disruptions are timely, intentional, and
-  non-overloading by deciding to suppress, send, or batch outbounds
-
-### Control System
-The _Control System_ is where intentional, custom business logic resides; it's
-the "executive function" of the Brain. _Control_ _Services_ exist to leverage
-the combination of _State_ and _Action_ _Services_ to achieve higher-order
-functionality within the system.
+#### Utility
+- Lightweight reusable helper operations
 
 #### Ingestion Pipeline
 "Universal Content Ingestion Pipeline": Given an asset (file, link, or other
@@ -145,8 +164,8 @@ extracts, and summarizes the data for immediate and/or later use.
 
 The Pipeline has a hooking system so that other _Services_ can register handlers
 to be made aware of new content as it is ingested. Raw (as well as some
-processed data) is persisted by the OAS, and final outline/summary is stored by
-the VAS for human consumption/manipulation.
+processed data) is persisted by the Object Service, and final outline/summary
+is stored by the Vault Service for human consumption/manipulation.
 
 #### Scheduler/Jobs
 Brain must be able to process workloads:
@@ -162,11 +181,19 @@ functions of Brain. It exists to find and catalogue the _Operator's_ various
 commitments, monitor progress/completion against them over time, and escalate
 reminders as appropriate to ensure things aren't missed.
 
+#### Delegation
+- Owns subagent invocation lifecycle: queue, claim, status, transcripts,
+  budget ledger, cancel
+- No dedicated Substrate; composes Language inference and Execution op calls
+  into a higher-order "spawn a focused subagent" capability
+- Backed by a dedicated T3 actor (`actors/subagent`) that drains the claim
+  queue and runs the headless tool loop in `lib/agent`
+
 ------------------------------------------------------------------------
 ## Shared Infrastructure
 The database is a notable exception to the _Services_/_Resources_ Model.
-PostgreSQL is a _Layer_ 0 _Substrate_ providing durable, authoritative state,
-but is defined (by design decision) as _Shared Infrastructure_. Each L1
+PostgreSQL is a _Tier_ 1 _Substrate_ providing durable, authoritative state,
+but is defined (by design decision) as _Shared Infrastructure_. Each T2
 _Service_ may access PostgreSQL directly, but for its own schema only.
 
 ### Ownership Model
@@ -200,10 +227,10 @@ registered _Service_:
 1. Import self-registering _Component_ modules (`*/component.py`).
 2. Validate _Manifest_ registry ownership/invariants.
 3. For each registered _Service_ schema:
-   - create schema if missing (name derived from `component_id`, e.g. the EAS
-     `component_id` is `service_embedding_authority`)
+   - create schema if missing (name derived from `component_id`, e.g. the Embedding
+     `component_id` is `service_embedding`)
    - create `<schema>.ulid_bin` domain if missing
-4. Run Alembic migrations in _System_-order (`state` -> `action` -> `control`).
+4. Run Alembic migrations in _Plane_-order (`state` -> `effect` -> `reason`).
 
 ### Contributor Checklist (New Service)
 1. Add `services/<system>/<service>/component.py` with `ServiceManifest`.

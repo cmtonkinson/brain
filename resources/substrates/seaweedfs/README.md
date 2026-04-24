@@ -1,10 +1,10 @@
 # SeaweedFS Substrate
 State _Substrate_ _Resource_ that persists digest-addressed object blobs in
-SeaweedFS for the Object Authority Service.
+SeaweedFS for the Object Service.
 
 ------------------------------------------------------------------------
 ## What This Component Is
-`resources/substrates/seaweedfs/` provides Layer 0 blob persistence primitives:
+`resources/substrates/seaweedfs/` provides Tier 1 blob persistence primitives:
 - `component.py`: `ResourceManifest` registration (`substrate_seaweedfs`)
 - `config.py`: strict substrate settings and config resolver
 - `substrate.py`: transport-agnostic blob substrate protocol
@@ -12,7 +12,7 @@ SeaweedFS for the Object Authority Service.
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
-This _Resource_ is owned by `service_object_authority` via `owner_service_id` in
+This _Resource_ is owned by `service_object` via `owner_service_id` in
 `resources/substrates/seaweedfs/component.py`.
 
 This substrate owns provider key derivation and byte IO against the SeaweedFS
@@ -22,9 +22,9 @@ validation policy, or envelope errors.
 ------------------------------------------------------------------------
 ## Interactions
 Primary interactions:
-- OAS resolves substrate config via `resolve_seaweedfs_substrate_settings(...)`.
-- OAS composes `SeaweedFSBlobSubstrate(...)` in its service implementation.
-- OAS calls `write_blob`, `read_blob`, `stat_blob`, and `delete_blob` for blob
+- Object resolves substrate config via `resolve_seaweedfs_substrate_settings(...)`.
+- Object composes `SeaweedFSBlobSubstrate(...)` in its service implementation.
+- Object calls `write_blob`, `read_blob`, `stat_blob`, and `delete_blob` for blob
   lifecycle operations.
 
 ------------------------------------------------------------------------

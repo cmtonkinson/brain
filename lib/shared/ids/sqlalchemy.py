@@ -7,7 +7,21 @@ from sqlalchemy.dialects import postgresql
 
 from lib.shared.ids.constants import ULID_DOMAIN_NAME
 
-ULID_BYTES_LENGTH = 16
+
+def ulid_domain_type(schema_name: str) -> postgresql.DOMAIN:
+    """Return a schema-local ``ulid_bin`` PostgreSQL domain reference.
+
+    The domain itself is created by Postgres bootstrap; callers reference it
+    here in schema/migration definitions with ``create_type=False``.
+    """
+    if not schema_name:
+        raise ValueError("schema_name is required for ulid_domain_type")
+    return postgresql.DOMAIN(
+        name=ULID_DOMAIN_NAME,
+        data_type=postgresql.BYTEA(),
+        schema=schema_name,
+        create_type=False,
+    )
 
 
 def ulid_primary_key_column(
@@ -21,10 +35,9 @@ def ulid_primary_key_column(
     """
     if not schema_name:
         raise ValueError("schema_name is required for ulid_primary_key_column")
-    domain_type = postgresql.DOMAIN(
-        name=ULID_DOMAIN_NAME,
-        data_type=postgresql.BYTEA(),
-        schema=schema_name,
-        create_type=False,
+    return Column(
+        name,
+        ulid_domain_type(schema_name),
+        primary_key=True,
+        nullable=False,
     )
-    return Column(name, domain_type, primary_key=True, nullable=False)

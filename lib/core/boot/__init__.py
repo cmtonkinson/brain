@@ -1,7 +1,5 @@
 """Public API for Brain core boot loading and orchestration."""
 
-from lib.shared.config import CoreBootSettings
-
 from .contracts import (
     BootContext,
     BootContractError,
@@ -15,17 +13,16 @@ from .loader import BootModuleSpec, discover_boot_modules, load_boot_hooks
 from .orchestrator import BootResult, run_boot_hooks
 
 __all__ = [
-    "BootContractError",
     "BootContext",
+    "BootContractError",
     "BootDependencyError",
     "BootError",
     "BootHookContract",
     "BootHookExecutionError",
-    "BootReadinessTimeoutError",
     "BootModuleSpec",
+    "BootReadinessTimeoutError",
+    "BootResult",
     "discover_boot_modules",
     "load_boot_hooks",
-    "BootResult",
-    "CoreBootSettings",
     "run_boot_hooks",
 ]

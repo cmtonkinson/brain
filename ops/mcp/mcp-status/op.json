@@ -1,0 +1,18 @@
+{
+  "op_id": "mcp-status",
+  "kind": "logic",
+  "version": "1.0.0",
+  "summary": "List configured MCP servers or MCP Ops for one server.",
+  "enabled": true,
+  "input_schema": {
+    "server_id": "string | optional | MCP server id whose MCP Ops should be listed."
+  },
+  "output_schema": "string | Formatted MCP server or tool status.",
+  "simple_output_path": "result",
+  "slash_command": {
+    "name": "mcp",
+    "description": "list MCP servers, or MCP Ops for one server"
+  },
+  "effect": "read",
+  "approval": "never"
+}

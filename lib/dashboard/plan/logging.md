@@ -302,7 +302,7 @@ dashboard:
         file: logs/brain-core.log
         docker_fallback: true
       agent:
-        file: logs/brain-agent.log
+        file: logs/brain-assistant.log
         docker_fallback: true
       gateway:
         file: logs/host-mcp-gateway.log

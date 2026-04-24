@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from urllib.parse import quote_plus
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from lib.shared.config import CoreRuntimeSettings, resolve_component_settings
 from resources.substrates.valkey.component import RESOURCE_COMPONENT_ID
@@ -20,8 +20,8 @@ class ValkeySettings(BaseModel):
     host: str = "valkey"
     port: int = Field(default=6379, gt=0)
     db: int = Field(default=0, ge=0)
-    username: str = ""
-    password: str = ""
+    username: str | None = None
+    password: str | None = None
     password_env: str = ""
     ssl: bool = False
     connect_timeout_seconds: float = Field(default=5.0, gt=0)
@@ -29,10 +29,19 @@ class ValkeySettings(BaseModel):
     health_timeout_seconds: float = Field(default=1.0, gt=0)
     max_connections: int = Field(default=20, gt=0)
 
+    @field_validator("url", mode="before")
+    @classmethod
+    def _reject_empty_url(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip() == "":
+            raise ValueError(
+                "substrate.valkey.url must not be empty; use None for split-field mode"
+            )
+        return value
+
     @model_validator(mode="after")
     def _resolve_fields(self) -> "ValkeySettings":
         """Resolve URL/password from split fields."""
-        if self.url is not None and self.url.strip() != "":
+        if self.url is not None:
             object.__setattr__(self, "url", self.url.strip())
             return self
 
@@ -44,18 +53,17 @@ class ValkeySettings(BaseModel):
         return self
 
 
-def _resolve_password(*, password: str, password_env: str) -> str:
+def _resolve_password(*, password: str | None, password_env: str) -> str | None:
     """Resolve password from inline value or environment variable reference."""
-    inline = password.strip()
     env_name = password_env.strip()
-    if inline != "" and env_name != "":
+    if password is not None and env_name != "":
         raise ValueError(
             "substrate.valkey.password and password_env are mutually exclusive"
         )
-    if inline != "":
-        return inline
+    if password is not None:
+        return password
     if env_name == "":
-        return ""
+        return None
 
     resolved = os.environ.get(env_name, "").strip()
     if resolved == "":
@@ -72,14 +80,14 @@ def _build_valkey_url_from_parts(valkey: ValkeySettings) -> str:
         raise ValueError("substrate.valkey.host is required when url is unset")
 
     auth = ""
-    username = valkey.username.strip()
-    password = valkey.password.strip()
-    if username != "":
+    username = valkey.username
+    password = valkey.password
+    if username is not None:
         auth = quote_plus(username)
-        if password != "":
+        if password is not None:
             auth += f":{quote_plus(password)}"
         auth += "@"
-    elif password != "":
+    elif password is not None:
         auth = f":{quote_plus(password)}@"
 
     scheme = "valkeys" if valkey.ssl else "valkey"

@@ -145,7 +145,9 @@ def test_receive_websocket_url_and_health_contract() -> None:
 
 def test_callback_failure_maps_to_dependency_error() -> None:
     """Callback dependency failures should surface from pending flush."""
-    adapter = SignalRestApiAdapter(settings=SignalAdapterSettings(max_retries=0))
+    adapter = SignalRestApiAdapter(
+        settings=SignalAdapterSettings(receive_e164="+13333333333", max_retries=0)
+    )
     fake = _CaptureClient()
     adapter._signal_client = fake  # type: ignore[attr-defined]
     adapter._ensure_worker_started_locked = lambda: None  # type: ignore[method-assign]
@@ -165,7 +167,9 @@ def test_callback_failure_maps_to_dependency_error() -> None:
 
 def test_receive_websocket_handshake_failure_maps_to_dependency_error() -> None:
     """Adapter should surface websocket handshake failures as dependency errors."""
-    adapter = SignalRestApiAdapter(settings=SignalAdapterSettings())
+    adapter = SignalRestApiAdapter(
+        settings=SignalAdapterSettings(receive_e164="+13333333333")
+    )
     adapter._ensure_worker_started_locked = lambda: None  # type: ignore[method-assign]
     original_client_session = aiohttp.ClientSession
 
@@ -207,7 +211,9 @@ def test_receive_websocket_handshake_failure_maps_to_dependency_error() -> None:
 
 def test_send_message_maps_transport_status_errors_to_dependency() -> None:
     """Outbound send should map HTTP status failures into dependency errors."""
-    adapter = SignalRestApiAdapter(settings=SignalAdapterSettings())
+    adapter = SignalRestApiAdapter(
+        settings=SignalAdapterSettings(receive_e164="+13333333333")
+    )
     fake = _CaptureClient()
 
     def _raise_post(*_args, **_kwargs):

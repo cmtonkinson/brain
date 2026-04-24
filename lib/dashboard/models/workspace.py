@@ -53,7 +53,7 @@ class InspectionContext(BaseModel):
     component: str | None = None
     provider: str | None = None
     model: str | None = None
-    capability: str | None = None
+    op_ref: str | None = None
     focal_timestamp: datetime | None = None
     time_range_start: datetime | None = None
     time_range_end: datetime | None = None

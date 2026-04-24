@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,9 +29,9 @@ class BaseValkeyDataSource(BasePollingDataSource[T], Generic[T]):
     ) -> None:
         super().__init__(poll_interval, retention)
         self._config = config
-        self._client = None
+        self._client: Any = None
 
-    def _get_client(self):
+    def _get_client(self) -> Any:
         import valkey  # noqa: PLC0415
 
         if self._client is None:

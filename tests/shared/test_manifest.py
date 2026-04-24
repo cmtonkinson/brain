@@ -26,15 +26,15 @@ from lib.shared.manifest import (
 
 def _resource(
     id: str = "substrate_test_res",
-    system: str = "state",
+    plane: str = "state",
     kind: str = "substrate",
     owner: str | None = None,
 ) -> ResourceManifest:
     """Build a minimal resource manifest for testing."""
     return ResourceManifest(
         id=ComponentId(id),
-        layer=0,
-        system=system,
+        tier=1,
+        plane=plane,
         module_roots=frozenset({ModuleRoot("resources.test_res")}),
         kind=kind,
         owner_service_id=ComponentId(owner) if owner else None,
@@ -43,7 +43,7 @@ def _resource(
 
 def _service(
     id: str = "service_test_svc",
-    system: str = "state",
+    plane: str = "reason",
     owns: tuple[str, ...] | None = None,
     exposes: bool = False,
     summary: str = "",
@@ -51,26 +51,26 @@ def _service(
     """Build a minimal service manifest for testing."""
     return ServiceManifest(
         id=ComponentId(id),
-        layer=1,
-        system=system,
+        tier=2,
+        plane=plane,
         module_roots=frozenset({ModuleRoot("services.test_svc")}),
         public_api_roots=frozenset({ModuleRoot("services.test_svc.api")}),
         owns_resources=(frozenset(ComponentId(r) for r in owns) if owns else None),
-        exposes_capabilities=exposes,
+        exposes_ops=exposes,
         tool_system_summary=summary,
     )
 
 
 def _actor(
     id: str = "actor_test",
-    system: str = "control",
+    plane: str = "reason",
     principal: str = "operator",
 ) -> ActorManifest:
     """Build a minimal actor manifest for testing."""
     return ActorManifest(
         id=ComponentId(id),
-        layer=2,
-        system=system,
+        tier=3,
+        plane=plane,
         module_roots=frozenset({ModuleRoot("actors.test_actor")}),
         principal=principal,
     )
@@ -81,9 +81,7 @@ def _actor(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "id_value", ["ab", "my_service", "a1_2_3", "service_vault_authority"]
-)
+@pytest.mark.parametrize("id_value", ["ab", "my_service", "a1_2_3", "service_vault"])
 def test_validate_component_id_accepts_valid_ids(id_value: str) -> None:
     """Valid component ids should not raise."""
     validate_component_id(ComponentId(id_value))
@@ -152,8 +150,8 @@ def test_component_manifest_rejects_empty_module_roots() -> None:
     with pytest.raises(ManifestError, match="module_roots must not be empty"):
         ComponentManifest(
             id=ComponentId("test_component"),
-            layer=0,
-            system="state",
+            tier=1,
+            plane="state",
             module_roots=frozenset(),
         )
 
@@ -163,8 +161,8 @@ def test_component_manifest_rejects_invalid_id() -> None:
     with pytest.raises(ManifestError):
         ComponentManifest(
             id=ComponentId("1_invalid"),
-            layer=0,
-            system="state",
+            tier=1,
+            plane="state",
             module_roots=frozenset({ModuleRoot("test")}),
         )
 
@@ -179,8 +177,8 @@ def test_resource_manifest_validates_owner_service_id() -> None:
     with pytest.raises(ManifestError):
         ResourceManifest(
             id=ComponentId("substrate_test_res"),
-            layer=0,
-            system="state",
+            tier=1,
+            plane="state",
             module_roots=frozenset({ModuleRoot("resources.test")}),
             kind="substrate",
             owner_service_id=ComponentId("1_bad_id"),
@@ -197,31 +195,59 @@ def test_service_manifest_rejects_empty_public_api_roots() -> None:
     with pytest.raises(ManifestError, match="public_api_roots must not be empty"):
         ServiceManifest(
             id=ComponentId("service_test"),
-            layer=1,
-            system="state",
+            tier=2,
+            plane="reason",
             module_roots=frozenset({ModuleRoot("services.test")}),
             public_api_roots=frozenset(),
         )
 
 
-def test_service_manifest_requires_summary_when_exposes_capabilities() -> None:
-    """ServiceManifest must provide tool_system_summary when exposes_capabilities=True."""
+def test_service_manifest_requires_summary_when_exposes_ops() -> None:
+    """ServiceManifest must provide tool_system_summary when exposes_ops=True."""
     with pytest.raises(ManifestError, match="tool_system_summary"):
         ServiceManifest(
             id=ComponentId("service_test"),
-            layer=1,
-            system="state",
+            tier=2,
+            plane="reason",
             module_roots=frozenset({ModuleRoot("services.test")}),
             public_api_roots=frozenset({ModuleRoot("services.test.api")}),
-            exposes_capabilities=True,
+            exposes_ops=True,
             tool_system_summary="",
         )
 
 
 def test_service_manifest_schema_name_derives_from_id() -> None:
     """ServiceManifest.schema_name should return the component id string."""
-    svc = _service(id="service_vault_authority")
-    assert svc.schema_name == "service_vault_authority"
+    svc = _service(id="service_vault")
+    assert svc.schema_name == "service_vault"
+
+
+def test_service_manifest_substrate_owner_must_be_state() -> None:
+    """A service owning a substrate but declaring non-state plane should raise."""
+    with pytest.raises(ManifestError, match="resource-ownership shape"):
+        _service(id="service_bad", plane="reason", owns=("substrate_x",))
+
+
+def test_service_manifest_adapter_owner_must_be_effect() -> None:
+    """A service owning an adapter but declaring non-effect plane should raise."""
+    with pytest.raises(ManifestError, match="resource-ownership shape"):
+        _service(id="service_bad", plane="reason", owns=("adapter_x",))
+
+
+def test_service_manifest_resourceless_must_be_reason() -> None:
+    """A service owning no resource but declaring non-reason plane should raise."""
+    with pytest.raises(ManifestError, match="resource-ownership shape"):
+        _service(id="service_bad", plane="state")
+
+
+def test_service_manifest_rejects_mixed_substrate_and_adapter_ownership() -> None:
+    """A service may not own both a substrate and an adapter."""
+    with pytest.raises(ManifestError, match="both a Substrate and an Adapter"):
+        _service(
+            id="service_bad",
+            plane="state",
+            owns=("substrate_x", "adapter_y"),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -234,8 +260,8 @@ def test_actor_manifest_rejects_empty_principal() -> None:
     with pytest.raises(ManifestError, match="principal must not be empty"):
         ActorManifest(
             id=ComponentId("actor_test"),
-            layer=2,
-            system="control",
+            tier=3,
+            plane="reason",
             module_roots=frozenset({ModuleRoot("actors.test")}),
             principal="",
         )
@@ -259,7 +285,7 @@ def test_registry_rejects_duplicate_id_with_different_definition() -> None:
     registry = ManifestRegistry()
     registry.register_component(_resource(id="substrate_dup"))
     with pytest.raises(ManifestError, match="duplicate"):
-        registry.register_component(_resource(id="substrate_dup", system="action"))
+        registry.register_component(_resource(id="substrate_dup", plane="effect"))
 
 
 def test_registry_allows_identical_re_registration() -> None:
@@ -295,19 +321,25 @@ def test_registry_list_resources_sorted_by_id() -> None:
 
 
 def test_registry_list_services_sorted_by_system_then_id() -> None:
-    """list_services should sort by system order (state < action < control) then id."""
+    """list_services should sort by plane order (state < effect < reason) then id."""
     registry = ManifestRegistry()
-    registry.register_component(_service(id="service_ctrl_a", system="control"))
-    registry.register_component(_service(id="service_state_b", system="state"))
-    registry.register_component(_service(id="service_action_a", system="action"))
-    registry.register_component(_service(id="service_state_a", system="state"))
+    registry.register_component(_service(id="service_reason_a", plane="reason"))
+    registry.register_component(
+        _service(id="service_state_b", plane="state", owns=("substrate_b",))
+    )
+    registry.register_component(
+        _service(id="service_effect_a", plane="effect", owns=("adapter_a",))
+    )
+    registry.register_component(
+        _service(id="service_state_a", plane="state", owns=("substrate_a",))
+    )
 
     ids = [str(s.id) for s in registry.list_services()]
     assert ids == [
         "service_state_a",
         "service_state_b",
-        "service_action_a",
-        "service_ctrl_a",
+        "service_effect_a",
+        "service_reason_a",
     ]
 
 
@@ -344,11 +376,11 @@ def test_registry_rejects_resource_with_multiple_owners() -> None:
     registry = ManifestRegistry()
     registry.register_component(_resource(id="substrate_shared"))
     registry.register_component(
-        _service(id="service_owner_a", owns=("substrate_shared",))
+        _service(id="service_owner_a", plane="state", owns=("substrate_shared",))
     )
     with pytest.raises(ManifestError, match="multiple owners"):
         registry.register_component(
-            _service(id="service_owner_b", owns=("substrate_shared",))
+            _service(id="service_owner_b", plane="state", owns=("substrate_shared",))
         )
 
 
@@ -367,7 +399,7 @@ def test_registry_detects_owner_mismatch_at_registration() -> None:
         _resource(id="substrate_contested", owner="service_owner_b")
     )
     registry.register_component(
-        _service(id="service_owner_a", owns=("substrate_contested",))
+        _service(id="service_owner_a", plane="state", owns=("substrate_contested",))
     )
     with pytest.raises(ManifestError, match="owner mismatch"):
         registry.register_component(_service(id="service_owner_b"))

@@ -1,0 +1,29 @@
+{
+  "op_id": "session-new",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Create a fresh Recall session.",
+  "call_target": "service_recall.create_session",
+  "enabled": true,
+  "input_schema": null,
+  "output_schema": {
+    "id": "string | The new session ULID",
+    "focus": "string | null | Always null for a fresh session",
+    "focus_token_count": "integer | null | Always null for a fresh session",
+    "dialogue_summary": "string | null | Always null for a fresh session",
+    "dialogue_summary_token_count": "integer | null | Always null for a fresh session",
+    "dialogue_start_turn_id": "string | null | Always null for a fresh session",
+    "created_at": "string | ISO-8601 creation timestamp",
+    "updated_at": "string | ISO-8601 update timestamp"
+  },
+  "simple_output_path": "id",
+  "slash_command": {
+    "name": "new",
+    "description": "start a fresh conversation session",
+    "aliases": [
+      "fresh"
+    ]
+  },
+  "effect": "execute",
+  "approval": "never"
+}

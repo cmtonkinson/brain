@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from lib.shared.envelope import (
+    Envelope,
     EnvelopeKind,
     EnvelopeMeta,
     empty,
@@ -16,7 +17,6 @@ from lib.shared.envelope import (
     success,
     with_error,
 )
-from lib.shared.envelope.envelope import Envelope
 from lib.shared.errors import ErrorCategory, ErrorDetail
 
 
@@ -24,7 +24,7 @@ def _meta() -> EnvelopeMeta:
     """Return deterministic metadata for envelope tests."""
     return new_meta(
         kind=EnvelopeKind.RESULT,
-        source="service_embedding_authority",
+        source="service_embedding",
         principal="operator",
         timestamp=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
         envelope_id="env-1",

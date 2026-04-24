@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from adapter import McpClientManager, McpToolCallError, McpServerConnectionError
 from config import McpAdapterConfig
@@ -16,11 +17,11 @@ from config import McpAdapterConfig
 class ToolCallRequest(BaseModel):
     """Request body for POST /tools/call."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     server_id: str
     tool_name: str
-    arguments: dict[str, Any] = {}
+    arguments: dict[str, Any] = Field(default_factory=dict)
 
 
 def create_app(*, config: McpAdapterConfig) -> FastAPI:
@@ -29,7 +30,7 @@ def create_app(*, config: McpAdapterConfig) -> FastAPI:
     start_time = time.monotonic()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         async with manager.run():
             yield
 

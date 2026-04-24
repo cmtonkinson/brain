@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 from urllib import parse as urllib_parse
 
@@ -416,7 +417,10 @@ class ObsidianLocalRestSubstrate(ObsidianSubstrate):
         result = self._request_json(
             method="POST",
             endpoint="/search/simple/",
-            query={"query": query, "contextLength": "120"},
+            query={
+                "query": query,
+                "contextLength": str(self._settings.search_context_length),
+            },
         )
         rows = _ensure_list_of_mappings(result.payload, field="payload")
 
@@ -442,7 +446,7 @@ class ObsidianLocalRestSubstrate(ObsidianSubstrate):
 
         return matches
 
-    def _iter_files_under_directory(self, directory_path: str) -> Sequence[str]:
+    def _iter_files_under_directory(self, directory_path: str) -> list[str]:
         """Yield markdown file paths recursively below one directory path."""
         files: list[str] = []
         for entry in self.list_directory(directory_path=directory_path):
@@ -642,10 +646,9 @@ def _vault_directory_endpoint(directory_path: str) -> str:
 def _http_error_message(exc: HttpStatusError) -> str:
     """Extract best-effort error message from an HTTP error response."""
     body = ""
-    raw = exc.response_body.encode("utf-8")
-    if raw:
+    if exc.response_body:
         try:
-            payload = json.loads(raw.decode("utf-8"))
+            payload = json.loads(exc.response_body)
             if isinstance(payload, Mapping):
                 value = payload.get("message") or payload.get("error")
                 if isinstance(value, str) and value.strip() != "":
@@ -698,8 +701,6 @@ def _to_iso_from_epoch_ms(value: object) -> str:
         epoch_ms = float(value)
     except TypeError, ValueError:
         return ""
-    from datetime import UTC, datetime
-
     return datetime.fromtimestamp(epoch_ms / 1000.0, tz=UTC).isoformat()
 
 

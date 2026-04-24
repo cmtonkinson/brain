@@ -11,14 +11,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from lib.dashboard.data_sources.health import HealthConfig
 from lib.dashboard.data_sources.postgres import PostgresConnectionConfig
+from lib.shared.config import DEFAULT_CONFIG_DIR
 
 DEFAULT_DASHBOARD_CONFIG_PATH = Path.home() / ".config" / "brain" / "dashboard.yaml"
-DEFAULT_CORE_CONFIG_PATH = Path.home() / ".config" / "brain" / "core.yaml"
-DEFAULT_RESOURCES_CONFIG_PATH = Path.home() / ".config" / "brain" / "resources.yaml"
 DEFAULT_GATEWAY_CONFIG_PATH = (
     Path.home() / ".config" / "brain" / "host-mcp-gateway.json"
 )
-SECRETS_CONFIG_FILENAME = "secrets.yaml"
 SIGNAL_HEALTH_PATH = "/v1/health"
 
 
@@ -26,7 +24,6 @@ class DataSourcePollConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     poll_seconds: float = Field(default=2.0, gt=0)
-    query_timeout_seconds: float = Field(default=5.0, gt=0)
     staleness_threshold_seconds: float = Field(default=10.0, gt=0)
 
 
@@ -46,6 +43,8 @@ class LogsConfig(BaseModel):
     backfill_lines: int = Field(default=200, gt=0)
     buffer_size: int = Field(default=5000, gt=0)
     refresh_seconds: float = Field(default=0.5, gt=0)
+    core_log_path: str = Field(default="logs/core.log")
+    assistant_log_path: str = Field(default="logs/assistant.log")
 
 
 class DashboardConfig(BaseModel):
@@ -111,33 +110,36 @@ def _load_yaml_mapping(path: Path) -> dict[str, Any]:
 
 
 def _load_brain_config_mapping(config_path: Path) -> dict[str, Any]:
-    """Load config plus sibling secrets overrides for one Brain YAML file."""
-    return _merge_mappings(
-        _load_yaml_mapping(config_path),
-        _load_yaml_mapping(config_path.parent / SECRETS_CONFIG_FILENAME),
-    )
-
-
-def _env_value(environ: Mapping[str, str], key: str) -> str | None:
-    """Resolve one env override key if present."""
-    return environ.get(key)
+    """Load one merged Brain runtime config mapping from a file or config dir."""
+    if config_path.is_dir():
+        merged: dict[str, Any] = {}
+        for path in sorted(config_path.iterdir()):
+            if (
+                not path.is_file()
+                or path.suffix != ".yaml"
+                or path.name in {"dashboard.yaml", "mcp-adapter.yaml"}
+            ):
+                continue
+            merged = _merge_mappings(merged, _load_yaml_mapping(path))
+        return merged
+    return _load_yaml_mapping(config_path)
 
 
 def _int_from_env(environ: Mapping[str, str], key: str, default: int) -> int:
     """Resolve one integer env override with fallback."""
-    value = _env_value(environ, key)
+    value = environ.get(key)
     return int(value) if value is not None else default
 
 
 def _float_from_env(environ: Mapping[str, str], key: str, default: float) -> float:
     """Resolve one float env override with fallback."""
-    value = _env_value(environ, key)
+    value = environ.get(key)
     return float(value) if value is not None else default
 
 
 def _str_from_env(environ: Mapping[str, str], key: str, default: str) -> str:
     """Resolve one string env override with fallback."""
-    value = _env_value(environ, key)
+    value = environ.get(key)
     return value if value is not None else default
 
 
@@ -178,115 +180,89 @@ def _resolved_dashboard_defaults(
     """Build dashboard defaults from Brain config files plus env overrides."""
     env = dict(environ or {})
     core_mapping = _load_brain_config_mapping(
-        Path(core_config_path)
-        if core_config_path is not None
-        else DEFAULT_CORE_CONFIG_PATH
+        Path(core_config_path) if core_config_path is not None else DEFAULT_CONFIG_DIR
     )
     resources_mapping = _load_brain_config_mapping(
         Path(resources_config_path)
         if resources_config_path is not None
-        else DEFAULT_RESOURCES_CONFIG_PATH
+        else DEFAULT_CONFIG_DIR
     )
 
     core_host = _str_from_env(
         env,
         "BRAIN_CORE__HTTP__HOST",
-        str(_nested(core_mapping, "http", "host") or "0.0.0.0"),
+        str(_nested(core_mapping, "core", "http", "host") or "0.0.0.0"),
     )
     core_port = _int_from_env(
         env,
         "BRAIN_CORE__HTTP__PORT",
-        int(_nested(core_mapping, "http", "port") or 8898),
+        int(_nested(core_mapping, "core", "http", "port") or 8898),
     )
     core_timeout = _float_from_env(
         env,
         "BRAIN_CORE__HEALTH__MAX_TIMEOUT_SECONDS",
-        float(_nested(core_mapping, "health", "max_timeout_seconds") or 1.0),
+        float(_nested(core_mapping, "core", "health", "max_timeout_seconds") or 1.0),
     )
 
     postgres_url = _str_from_env(
         env,
-        "BRAIN_RESOURCES__SUBSTRATE__POSTGRES__URL",
+        "BRAIN_POSTGRES__URL",
         str(
-            _nested(resources_mapping, "substrate", "postgres", "url")
+            _nested(resources_mapping, "postgres", "url")
             or "postgresql://brain:brain@localhost:8760/brain"
         ),
     )
     postgres_pool_size = _int_from_env(
         env,
-        "BRAIN_RESOURCES__SUBSTRATE__POSTGRES__POOL_SIZE",
-        int(_nested(resources_mapping, "substrate", "postgres", "pool_size") or 5),
+        "BRAIN_POSTGRES__POOL_SIZE",
+        int(_nested(resources_mapping, "postgres", "pool_size") or 5),
     )
     postgres_health_timeout = _float_from_env(
         env,
-        "BRAIN_RESOURCES__SUBSTRATE__POSTGRES__HEALTH_TIMEOUT_SECONDS",
-        float(
-            _nested(
-                resources_mapping, "substrate", "postgres", "health_timeout_seconds"
-            )
-            or 1.0
-        ),
+        "BRAIN_POSTGRES__HEALTH_TIMEOUT_SECONDS",
+        float(_nested(resources_mapping, "postgres", "health_timeout_seconds") or 1.0),
     )
     postgres_connect_timeout = _float_from_env(
         env,
-        "BRAIN_RESOURCES__SUBSTRATE__POSTGRES__CONNECT_TIMEOUT_SECONDS",
+        "BRAIN_POSTGRES__CONNECT_TIMEOUT_SECONDS",
         float(
-            _nested(
-                resources_mapping, "substrate", "postgres", "connect_timeout_seconds"
-            )
-            or 10.0
+            _nested(resources_mapping, "postgres", "connect_timeout_seconds") or 10.0
         ),
     )
 
     valkey_url = _str_from_env(
         env,
-        "BRAIN_RESOURCES__SUBSTRATE__VALKEY__URL",
-        str(
-            _nested(resources_mapping, "substrate", "valkey", "url")
-            or "valkey://localhost:8761/0"
-        ),
+        "BRAIN_VALKEY__URL",
+        str(_nested(resources_mapping, "valkey", "url") or "valkey://localhost:8761/0"),
     )
     valkey_health_timeout = _float_from_env(
         env,
-        "BRAIN_RESOURCES__SUBSTRATE__VALKEY__HEALTH_TIMEOUT_SECONDS",
-        float(
-            _nested(resources_mapping, "substrate", "valkey", "health_timeout_seconds")
-            or 1.0
-        ),
+        "BRAIN_VALKEY__HEALTH_TIMEOUT_SECONDS",
+        float(_nested(resources_mapping, "valkey", "health_timeout_seconds") or 1.0),
     )
 
     signal_base_url = _str_from_env(
         env,
-        "BRAIN_RESOURCES__ADAPTER__SIGNAL__BASE_URL",
+        "BRAIN_SIGNAL__BASE_URL",
         str(
-            _nested(resources_mapping, "adapter", "signal", "base_url")
-            or "http://signal-api:8080"
+            _nested(resources_mapping, "signal", "base_url") or "http://signal-api:8080"
         ),
     )
     signal_health_timeout = _float_from_env(
         env,
-        "BRAIN_RESOURCES__ADAPTER__SIGNAL__HEALTH_TIMEOUT_SECONDS",
-        float(
-            _nested(resources_mapping, "adapter", "signal", "health_timeout_seconds")
-            or 0.5
-        ),
+        "BRAIN_SIGNAL__HEALTH_TIMEOUT_SECONDS",
+        float(_nested(resources_mapping, "signal", "health_timeout_seconds") or 0.5),
     )
 
     qdrant_url = _str_from_env(
         env,
-        "BRAIN_RESOURCES__SUBSTRATE__QDRANT__URL",
-        str(
-            _nested(resources_mapping, "substrate", "qdrant", "url")
-            or "http://localhost:8762"
-        ),
+        "BRAIN_QDRANT__URL",
+        str(_nested(resources_mapping, "qdrant", "url") or "http://localhost:8762"),
     )
     qdrant_timeout = _float_from_env(
         env,
-        "BRAIN_RESOURCES__SUBSTRATE__QDRANT__REQUEST_TIMEOUT_SECONDS",
-        float(
-            _nested(resources_mapping, "substrate", "qdrant", "request_timeout_seconds")
-            or 10.0
-        ),
+        "BRAIN_QDRANT__REQUEST_TIMEOUT_SECONDS",
+        float(_nested(resources_mapping, "qdrant", "request_timeout_seconds") or 10.0),
     )
 
     gateway_health_url = _load_gateway_health_url(
@@ -317,7 +293,7 @@ def _resolved_dashboard_defaults(
         postgres=PostgresConnectionConfig(
             url=postgres_url,
             pool_size=postgres_pool_size,
-            query_timeout_seconds=postgres_connect_timeout,
+            connect_timeout_seconds=postgres_connect_timeout,
         ),
     )
 

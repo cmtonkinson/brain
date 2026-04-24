@@ -12,8 +12,8 @@ Phased implementation plan and current development status.
 
 ------------------------------------------------------------------------
 ## Phase 2: (✅ done) ~~The "Assistant Triangle"~~
-- ~~Skill framework + capability registry~~
-- ~~Attention router + interruption policy~~
+- ~~Op framework + op registry~~
+- ~~Relay outbound + interruption policy~~
 - ~~Commitment tracking + loop closure~~
 - ~~Requires scheduled/background jobs, policy engine, ingestion pipeline~~
 

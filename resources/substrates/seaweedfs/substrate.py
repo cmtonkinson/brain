@@ -22,7 +22,7 @@ class BlobStat(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     key: str
-    size_bytes: int
+    size_bytes: int | None
     etag: str
     content_type: str
 

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from lib.dashboard.models.workspace import WorkspaceState
 from textual.widgets import Static
+
+from lib.dashboard.models.workspace import WorkspaceState
 
 
 @dataclass

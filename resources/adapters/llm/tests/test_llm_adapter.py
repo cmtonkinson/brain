@@ -40,7 +40,7 @@ def _anthropic_settings(**provider_overrides: object) -> LlmAdapterSettings:
     return LlmAdapterSettings(
         timeout_seconds=9.0,
         max_retries=1,
-        timeout_retry_attempts=1,
+        retry_attempts=1,
         providers={"anthropic": provider},
     )
 
@@ -54,7 +54,7 @@ def _ollama_settings(**provider_overrides: object) -> LlmAdapterSettings:
     return LlmAdapterSettings(
         timeout_seconds=9.0,
         max_retries=1,
-        timeout_retry_attempts=1,
+        retry_attempts=1,
         providers={"ollama": provider},
     )
 
@@ -69,7 +69,7 @@ def _voyage_settings(**provider_overrides: object) -> LlmAdapterSettings:
     return LlmAdapterSettings(
         timeout_seconds=9.0,
         max_retries=1,
-        timeout_retry_attempts=1,
+        retry_attempts=1,
         providers={"voyage": provider},
     )
 
@@ -177,7 +177,7 @@ def test_chat_posts_native_anthropic_messages(monkeypatch: pytest.MonkeyPatch) -
     body = calls[0]["json"]
     assert isinstance(body, dict)
     assert body["model"] == "claude-sonnet-4-5"
-    assert body["max_tokens"] == adapter_module._DEFAULT_ANTHROPIC_MAX_TOKENS
+    assert body["max_tokens"] == adapter_module._ANTHROPIC_DEFAULT_MAX_TOKENS
     assert body["system"] == [{"type": "text", "text": "You are helpful."}]
     assert body["messages"] == [
         {"role": "user", "content": [{"type": "text", "text": "hi"}]}
@@ -276,7 +276,7 @@ def test_chat_with_tools_serializes_environment_context_after_cachepoint(
         environment_context=InferenceEnvironmentContext(
             items=(
                 InferenceEnvironmentItem(
-                    capability_id="current-datetime",
+                    op_id="current-datetime",
                     tag_name="current-datetime",
                     output={
                         "utc_timestamp": "2026-01-01T12:00:00+00:00",
@@ -622,7 +622,7 @@ def test_embed_posts_voyage_query_embedding(
 def test_embed_batch_accepts_single_embedding_payload_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Single-item embedding responses should accept Ollama's legacy payload shape."""
+    """Single-item embedding responses should accept Ollama's singular embedding field."""
 
     def _fake_post(
         url: str, *, headers: dict[str, str], json: object, timeout: float

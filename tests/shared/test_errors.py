@@ -87,13 +87,15 @@ def test_error_detail_default_metadata_is_empty_dict() -> None:
 _ALL_CODE_NAMES = [
     name
     for name in dir(codes)
-    if not name.startswith("_") and isinstance(getattr(codes, name), str)
+    if not name.startswith("_")
+    and isinstance(getattr(codes, name), str)
+    and name != "EXCEPTION_TYPE_KEY"
 ]
 
 
 @pytest.mark.parametrize("code_name", _ALL_CODE_NAMES)
 def test_error_codes_are_uppercase_strings(code_name: str) -> None:
-    """Every shared error code constant should be a non-empty uppercase string."""
+    """Every error code constant should be a non-empty uppercase string."""
     value = getattr(codes, code_name)
     assert isinstance(value, str)
     assert value != ""
@@ -101,8 +103,13 @@ def test_error_codes_are_uppercase_strings(code_name: str) -> None:
 
 
 def test_error_codes_count() -> None:
-    """Shared error codes module should define exactly 14 code constants."""
+    """Shared error codes module should define exactly 14 error code constants."""
     assert len(_ALL_CODE_NAMES) == 14
+
+
+def test_exception_type_key_constant() -> None:
+    """EXCEPTION_TYPE_KEY should be the canonical metadata key for exception type."""
+    assert codes.EXCEPTION_TYPE_KEY == "exception_type"
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +241,12 @@ def test_exception_to_error_maps_key_error_to_not_found() -> None:
     err = exception_to_error(KeyError("missing"))
     assert err.category == ErrorCategory.NOT_FOUND
     assert err.code == codes.RESOURCE_NOT_FOUND
+
+
+def test_exception_to_error_key_error_message_strips_python_quoting() -> None:
+    """KeyError message should be the raw key value, not Python's str() repr with extra quotes."""
+    err = exception_to_error(KeyError("some_key"))
+    assert err.message == "some_key"
 
 
 def test_exception_to_error_maps_permission_error_to_policy() -> None:

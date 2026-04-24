@@ -1,0 +1,18 @@
+{
+  "op_id": "vault-delete-file",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Delete one markdown file.",
+  "enabled": true,
+  "input_schema": {
+    "file_path": "string | The full path of the file to delete.",
+    "missing_ok": "boolean | optional | If true, do not raise an error if the file does not exist. Defaults to false.",
+    "use_trash": "boolean | optional | If true, move the file to a trash folder instead of permanently deleting. Defaults to true.",
+    "if_revision": "string | optional | Only delete the file if its current revision matches this value.",
+    "force": "boolean | optional | Bypass the trash folder and delete immediately. Defaults to false."
+  },
+  "output_schema": "boolean | True if the file was deleted, False otherwise.",
+  "call_target": "service_vault.delete_file",
+  "effect": "write",
+  "approval": "always"
+}

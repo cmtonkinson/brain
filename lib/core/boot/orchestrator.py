@@ -126,7 +126,7 @@ def _execute_with_retries(
         started = monotonic()
         try:
             hook.boot(context)
-        except Exception as exc:  # pragma: no cover - explicit fail-hard policy
+        except Exception as exc:
             failure = exc
             if attempt < retry_attempts and retry_delay_seconds > 0:
                 sleeper(retry_delay_seconds)

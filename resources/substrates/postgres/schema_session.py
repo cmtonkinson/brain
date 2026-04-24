@@ -15,9 +15,9 @@ class ServiceSchemaSessionProvider:
     """Provide transactional sessions pinned to one service-owned schema."""
 
     def __init__(self, *, session_factory: sessionmaker[Session], schema: str) -> None:
+        self._validate_schema(schema)
         self._session_factory = session_factory
         self._schema = schema
-        self._validate_schema(schema)
 
     @property
     def schema(self) -> str:
@@ -32,7 +32,7 @@ class ServiceSchemaSessionProvider:
             yield db
 
     def _validate_schema(self, schema: str) -> None:
-        """Validate schema names to prevent malformed search_path statements."""
+        """Reject schema names that could inject SQL into the search_path statement."""
         if not schema:
             raise ValueError("postgres schema is required")
         if not schema.replace("_", "").isalnum():

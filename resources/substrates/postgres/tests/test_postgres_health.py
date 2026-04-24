@@ -5,7 +5,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import resources.substrates.postgres.boot as boot_module
+import resources.substrates.postgres.substrate as substrate_module
 from resources.substrates.postgres.health import ping
+from resources.substrates.postgres.substrate import PostgresHealthStatus
 
 
 class _FakeConnection:
@@ -89,3 +91,64 @@ def test_boot_readiness_uses_configured_health_timeout(monkeypatch) -> None:
     assert result is True
     assert captured["timeout_seconds"] == 2.5
     assert captured["disposed"] is True
+
+
+def test_substrate_health_returns_ready_when_ping_succeeds(monkeypatch) -> None:
+    """SharedPostgresSubstrate.health() should return ready=True when ping succeeds."""
+
+    def _fake_ping(engine, *, timeout_seconds):
+        return True
+
+    monkeypatch.setattr(substrate_module, "ping", _fake_ping)
+    monkeypatch.setattr(substrate_module, "create_postgres_engine", lambda _: object())
+
+    from resources.substrates.postgres.config import PostgresSettings
+    from resources.substrates.postgres.substrate import SharedPostgresSubstrate
+
+    substrate = SharedPostgresSubstrate(
+        settings=PostgresSettings(url="postgresql+psycopg://u:p@h:5432/d")
+    )
+    result = substrate.health()
+    assert isinstance(result, PostgresHealthStatus)
+    assert result.ready is True
+    assert result.detail == "ok"
+
+
+def test_substrate_health_returns_not_ready_when_ping_fails(monkeypatch) -> None:
+    """SharedPostgresSubstrate.health() should return ready=False when ping returns False."""
+
+    def _fake_ping(engine, *, timeout_seconds):
+        return False
+
+    monkeypatch.setattr(substrate_module, "ping", _fake_ping)
+    monkeypatch.setattr(substrate_module, "create_postgres_engine", lambda _: object())
+
+    from resources.substrates.postgres.config import PostgresSettings
+    from resources.substrates.postgres.substrate import SharedPostgresSubstrate
+
+    substrate = SharedPostgresSubstrate(
+        settings=PostgresSettings(url="postgresql+psycopg://u:p@h:5432/d")
+    )
+    result = substrate.health()
+    assert result.ready is False
+    assert "ping failed" in result.detail
+
+
+def test_substrate_health_returns_not_ready_on_exception(monkeypatch) -> None:
+    """SharedPostgresSubstrate.health() should degrade cleanly when ping raises."""
+
+    def _fake_ping(engine, *, timeout_seconds):
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(substrate_module, "ping", _fake_ping)
+    monkeypatch.setattr(substrate_module, "create_postgres_engine", lambda _: object())
+
+    from resources.substrates.postgres.config import PostgresSettings
+    from resources.substrates.postgres.substrate import SharedPostgresSubstrate
+
+    substrate = SharedPostgresSubstrate(
+        settings=PostgresSettings(url="postgresql+psycopg://u:p@h:5432/d")
+    )
+    result = substrate.health()
+    assert result.ready is False
+    assert "RuntimeError" in result.detail

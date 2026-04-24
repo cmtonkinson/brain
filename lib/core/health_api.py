@@ -5,21 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from fastapi import APIRouter
-from pydantic import BaseModel
 
-from lib.core.health import evaluate_core_health
+from lib.core.health import CoreHealthResult, evaluate_core_health
 from lib.shared.config import CoreRuntimeSettings
-
-
-class _ComponentStatus(BaseModel):
-    ready: bool
-    detail: str
-
-
-class _HealthResponse(BaseModel):
-    ready: bool
-    services: dict[str, _ComponentStatus]
-    resources: dict[str, _ComponentStatus]
 
 
 def register_routes(
@@ -30,17 +18,6 @@ def register_routes(
 ) -> None:
     """Register core health route on one router."""
 
-    @router.get("/health", response_model=_HealthResponse)
-    def health() -> _HealthResponse:
-        result = evaluate_core_health(settings=settings, components=components)
-        return _HealthResponse(
-            ready=result.ready,
-            services={
-                k: _ComponentStatus(ready=v.ready, detail=v.detail)
-                for k, v in result.services.items()
-            },
-            resources={
-                k: _ComponentStatus(ready=v.ready, detail=v.detail)
-                for k, v in result.resources.items()
-            },
-        )
+    @router.get("/health", response_model=CoreHealthResult)
+    def health() -> CoreHealthResult:
+        return evaluate_core_health(settings=settings, components=components)

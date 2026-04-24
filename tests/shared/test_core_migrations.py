@@ -26,13 +26,21 @@ from lib.shared.config import (
 class _FakeService:
     """Minimal service manifest shape for migration discovery tests."""
 
-    system: str
+    plane: str
     module_roots: frozenset[str]
+
+
+_PLANE_SORT_KEY: dict[str, int] = {"state": 0, "effect": 1, "reason": 2}
 
 
 @dataclass(frozen=True, slots=True)
 class _FakeRegistry:
-    """Minimal registry shape for migration discovery tests."""
+    """Minimal registry shape for migration discovery tests.
+
+    list_services() returns services sorted by plane (state, effect, reason),
+    matching the real registry contract that discover_service_migration_configs
+    relies on for migration execution order.
+    """
 
     services: tuple[_FakeService, ...]
 
@@ -40,30 +48,26 @@ class _FakeRegistry:
         """Satisfy registry contract used by migration discovery."""
 
     def list_services(self) -> tuple[_FakeService, ...]:
-        """Return test service entries."""
-        return self.services
+        """Return services sorted by plane, mirroring the real registry."""
+        return tuple(sorted(self.services, key=lambda s: _PLANE_SORT_KEY[s.plane]))
 
 
-def test_discover_service_migration_configs_orders_by_system(
+def test_discover_service_migration_configs_orders_by_plane(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Discovery should emit registered service alembic configs in system order."""
+    """Discovery should emit registered service alembic configs in registry plane order."""
     state_ini = tmp_path / "services" / "state" / "a" / "migrations" / "alembic.ini"
-    control_ini = tmp_path / "services" / "control" / "b" / "migrations" / "alembic.ini"
+    reason_ini = tmp_path / "services" / "reason" / "b" / "migrations" / "alembic.ini"
     state_ini.parent.mkdir(parents=True)
-    control_ini.parent.mkdir(parents=True)
+    reason_ini.parent.mkdir(parents=True)
     state_ini.write_text("[alembic]\n", encoding="utf-8")
-    control_ini.write_text("[alembic]\n", encoding="utf-8")
+    reason_ini.write_text("[alembic]\n", encoding="utf-8")
 
     registry = _FakeRegistry(
         services=(
-            _FakeService(
-                system="control", module_roots=frozenset({"services.control.b"})
-            ),
-            _FakeService(system="state", module_roots=frozenset({"services.state.a"})),
-            _FakeService(
-                system="action", module_roots=frozenset({"services.action.c"})
-            ),
+            _FakeService(plane="reason", module_roots=frozenset({"services.reason.b"})),
+            _FakeService(plane="state", module_roots=frozenset({"services.state.a"})),
+            _FakeService(plane="effect", module_roots=frozenset({"services.effect.c"})),
         )
     )
     monkeypatch.setattr(
@@ -74,7 +78,7 @@ def test_discover_service_migration_configs_orders_by_system(
 
     configs = discover_service_migration_configs(repo_root=tmp_path)
 
-    assert configs == (state_ini, control_ini)
+    assert configs == (state_ini, reason_ini)
 
 
 def test_run_startup_migrations_executes_bootstrap_then_alembic_upgrades(
@@ -82,7 +86,7 @@ def test_run_startup_migrations_executes_bootstrap_then_alembic_upgrades(
 ) -> None:
     """Migration runner should include bootstrap result and execute each config."""
     ini_a = tmp_path / "services" / "state" / "a" / "migrations" / "alembic.ini"
-    ini_b = tmp_path / "services" / "action" / "b" / "migrations" / "alembic.ini"
+    ini_b = tmp_path / "services" / "effect" / "b" / "migrations" / "alembic.ini"
     ini_a.parent.mkdir(parents=True)
     ini_b.parent.mkdir(parents=True)
     ini_a.write_text("[alembic]\n", encoding="utf-8")

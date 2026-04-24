@@ -10,16 +10,18 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from threading import RLock
-from typing import Final, FrozenSet, Literal, NewType, Optional
+from typing import Final, Literal, NewType
 
 ComponentId = NewType("ComponentId", str)
 ModuleRoot = NewType("ModuleRoot", str)
 
-Layer = Literal[0, 1, 2]
-System = Literal["state", "action", "control"]
+Tier = Literal[1, 2, 3]
+Plane = Literal["state", "effect", "reason"]
 ResourceKind = Literal["substrate", "adapter"]
 
-_SYSTEM_ORDER: Final[dict[System, int]] = {"state": 0, "action": 1, "control": 2}
+_PLANE_ORDER: Final[dict[Plane, int]] = {"state": 0, "effect": 1, "reason": 2}
+_SUBSTRATE_PREFIX: Final[str] = "substrate_"
+_ADAPTER_PREFIX: Final[str] = "adapter_"
 _COMPONENT_ID_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_]{1,62}$")
 _MODULE_ROOT_RE: Final[re.Pattern[str]] = re.compile(
     r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$"
@@ -35,9 +37,9 @@ class ComponentManifest:
     """Base manifest model for any Brain component."""
 
     id: ComponentId
-    layer: Layer
-    system: System
-    module_roots: FrozenSet[ModuleRoot]
+    tier: Tier
+    plane: Plane
+    module_roots: frozenset[ModuleRoot]
 
     def __post_init__(self) -> None:
         """Validate base component invariants."""
@@ -50,43 +52,44 @@ class ComponentManifest:
 
 @dataclass(frozen=True, slots=True)
 class ResourceManifest(ComponentManifest):
-    """Manifest declaration for an L0 substrate/adapter component."""
+    """Manifest declaration for a Tier 1 substrate/adapter component."""
 
-    layer: Literal[0]
+    tier: Literal[1]
     kind: ResourceKind
 
     # Optional owner because some resources are intentionally shared infra.
-    owner_service_id: Optional[ComponentId] = None
+    owner_service_id: ComponentId | None = None
 
     def __post_init__(self) -> None:
         """Validate resource-specific invariants."""
-        super(ResourceManifest, self).__post_init__()
+        super().__post_init__()
         if self.owner_service_id is not None:
             validate_component_id(self.owner_service_id)
 
 
 @dataclass(frozen=True, slots=True)
 class ServiceManifest(ComponentManifest):
-    """Manifest declaration for an L1 service component."""
+    """Manifest declaration for a Tier 2 service component."""
 
-    layer: Literal[1]
-    public_api_roots: FrozenSet[ModuleRoot]
-    owns_resources: Optional[FrozenSet[ComponentId]] = None
-    exposes_capabilities: bool = False
+    tier: Literal[2]
+    public_api_roots: frozenset[ModuleRoot]
+    owns_resources: frozenset[ComponentId] | None = None
+    exposes_ops: bool = False
     tool_system_label: str = ""
     tool_system_summary: str = ""
 
     def __post_init__(self) -> None:
         """Validate service-specific invariants."""
-        super(ServiceManifest, self).__post_init__()
+        super().__post_init__()
         if len(self.public_api_roots) == 0:
             raise ManifestError("public_api_roots must not be empty")
         for root in self.public_api_roots:
             validate_module_root(root)
-        if self.exposes_capabilities and self.tool_system_summary.strip() == "":
+        if self.exposes_ops and self.tool_system_summary.strip() == "":
             raise ManifestError(
-                "tool_system_summary must be non-empty when exposes_capabilities is true"
+                "tool_system_summary must be non-empty when exposes_ops is true"
             )
+        _enforce_resource_plane_rule(self)
 
     @property
     def schema_name(self) -> str:
@@ -96,16 +99,16 @@ class ServiceManifest(ComponentManifest):
 
 @dataclass(frozen=True, slots=True)
 class ActorManifest(ComponentManifest):
-    """Manifest declaration for an L2 actor component."""
+    """Manifest declaration for a Tier 3 actor component."""
 
-    layer: Literal[2]
+    tier: Literal[3]
 
     # Optional ownership metadata for operations initiated by autonomous actors.
     principal: str = "operator"
 
     def __post_init__(self) -> None:
         """Validate actor-specific invariants."""
-        super(ActorManifest, self).__post_init__()
+        super().__post_init__()
         if not self.principal:
             raise ManifestError("principal must not be empty")
 
@@ -143,11 +146,11 @@ class ManifestRegistry:
         )
 
     def list_services(self) -> tuple[ServiceManifest, ...]:
-        """Return all registered services sorted by system and id."""
+        """Return all registered services sorted by plane and id."""
         return tuple(
             sorted(
                 self._iter_components_of_type(ServiceManifest),
-                key=lambda item: (_SYSTEM_ORDER[item.system], str(item.id)),
+                key=lambda item: (_PLANE_ORDER[item.plane], str(item.id)),
             )
         )
 
@@ -219,6 +222,42 @@ class ManifestRegistry:
                     f"resource '{resource.id}' owner mismatch: declared owner is '{expected}', "
                     f"resource manifest owner is '{resource.owner_service_id}'"
                 )
+
+
+def _enforce_resource_plane_rule(manifest: ServiceManifest) -> None:
+    """Enforce that a service's plane matches its resource ownership shape.
+
+    Rule (placement invariant):
+      owns a Substrate -> 'state'
+      owns an Adapter  -> 'effect'
+      owns no Resource -> 'reason'
+
+    A service may not own both a Substrate and an Adapter.
+    """
+    owned: frozenset[ComponentId] = manifest.owns_resources or frozenset()
+    has_substrate = any(str(rid).startswith(_SUBSTRATE_PREFIX) for rid in owned)
+    has_adapter = any(str(rid).startswith(_ADAPTER_PREFIX) for rid in owned)
+
+    if has_substrate and has_adapter:
+        raise ManifestError(
+            f"service '{manifest.id}' owns both a Substrate and an Adapter; "
+            "exactly one ownership kind is permitted"
+        )
+
+    expected: Plane
+    if has_substrate:
+        expected = "state"
+    elif has_adapter:
+        expected = "effect"
+    else:
+        expected = "reason"
+
+    if manifest.plane != expected:
+        raise ManifestError(
+            f"service '{manifest.id}' plane '{manifest.plane}' does not match "
+            f"resource-ownership shape (expected '{expected}'). "
+            "Substrate->state, Adapter->effect, none->reason."
+        )
 
 
 def validate_component_id(value: ComponentId) -> None:

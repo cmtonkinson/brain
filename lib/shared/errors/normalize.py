@@ -19,7 +19,7 @@ def exception_to_error(exc: Exception) -> ErrorDetail:
     This mapping is intentionally conservative and generic. Services can layer
     domain-specific normalization before falling back to this function.
     """
-    metadata = {"exception_type": type(exc).__name__}
+    metadata = {codes.EXCEPTION_TYPE_KEY: type(exc).__name__}
 
     if isinstance(exc, ValueError):
         return validation_error(
@@ -27,8 +27,10 @@ def exception_to_error(exc: Exception) -> ErrorDetail:
         )
 
     if isinstance(exc, KeyError):
+        # str(KeyError) wraps the key in extra quotes; extract the raw value.
+        message = str(exc.args[0]) if exc.args else str(exc)
         return not_found_error(
-            str(exc), code=codes.RESOURCE_NOT_FOUND, metadata=metadata
+            message, code=codes.RESOURCE_NOT_FOUND, metadata=metadata
         )
 
     if isinstance(exc, PermissionError):

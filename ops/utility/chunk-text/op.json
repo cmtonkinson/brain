@@ -1,0 +1,37 @@
+{
+  "op_id": "chunk-text",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Split text into ordered chunks.",
+  "enabled": true,
+  "input_schema": {
+    "text": "string | The text to chunk."
+  },
+  "output_schema": {
+    "type": "array",
+    "description": "Ordered chunks derived from the input text.",
+    "items": {
+      "type": "object",
+      "properties": {
+        "chunk_ordinal": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "reference_range": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "chunk_ordinal",
+        "text",
+        "reference_range"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "call_target": "service_utility.chunk_text",
+  "effect": "execute",
+  "approval": "never"
+}

@@ -1,0 +1,61 @@
+{
+  "op_id": "vault-list-directory",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "List file and directory entries under one vault-relative path.",
+  "simple_output_path": ".each.path",
+  "enabled": true,
+  "input_schema": {
+    "directory_path": "string | The path of the directory to list. Use '.' for the vault root."
+  },
+  "output_schema": {
+    "type": "array",
+    "description": "A list of files and directories in the specified path.",
+    "items": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "entry_type": {
+          "type": "string",
+          "enum": [
+            "directory",
+            "file"
+          ]
+        },
+        "size_bytes": {
+          "type": "integer"
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "name",
+        "entry_type"
+      ]
+    }
+  },
+  "call_target": "service_vault.list_directory",
+  "effect": "read",
+  "approval": "never"
+}

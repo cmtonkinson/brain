@@ -1,8 +1,10 @@
-"""Turn data source: polls service_memory_authority.turn for current session."""
+"""Turn data source: polls service_recall.turn for current session."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+
+from pydantic import BaseModel, ConfigDict
 
 from lib.dashboard.data_sources.postgres import (
     BasePostgresDataSource,
@@ -35,16 +37,16 @@ def _summarize_content(content: str, limit: int = _SUMMARY_LIMIT) -> str:
     return normalized if len(normalized) <= limit else normalized[:limit] + "..."
 
 
-def _build_recent_turns(rows: list[TurnRow]) -> list[RecentTurnItemView]:
+def _build_recent_turns(rows: list[TurnRow]) -> tuple[RecentTurnItemView, ...]:
     """Normalize recent turn rows for the compact recent list."""
-    return [
+    return tuple(
         RecentTurnItemView(
             timestamp=row[10],
             direction="in" if row[2] == "inbound" else "out",
             summary=_summarize_content(row[3]),
         )
         for row in rows
-    ]
+    )
 
 
 def _build_current_turn(session_turns: list[TurnRow]) -> CurrentTurnView | None:
@@ -99,18 +101,13 @@ def _build_current_turn(session_turns: list[TurnRow]) -> CurrentTurnView | None:
     )
 
 
-class TurnSnapshot:
+class TurnSnapshot(BaseModel):
     """Holds the latest turn state fetched from postgres."""
 
-    __slots__ = ("current", "recent")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
-    def __init__(
-        self,
-        current: CurrentTurnView | None,
-        recent: list[RecentTurnItemView],
-    ) -> None:
-        self.current = current
-        self.recent = recent
+    current: CurrentTurnView | None = None
+    recent: tuple[RecentTurnItemView, ...] = ()
 
 
 class TurnDataSource(BasePostgresDataSource[TurnSnapshot]):
@@ -140,7 +137,7 @@ class TurnDataSource(BasePostgresDataSource[TurnSnapshot]):
                     trace_id,
                     principal,
                     created_at
-                FROM service_memory_authority.turn
+                FROM service_recall.turn
                 ORDER BY created_at DESC
                 LIMIT %s
                 """,
@@ -149,7 +146,7 @@ class TurnDataSource(BasePostgresDataSource[TurnSnapshot]):
             rows = cur.fetchall()
 
         if not rows:
-            return TurnSnapshot(current=None, recent=[])
+            return TurnSnapshot()
 
         active_session = rows[0][1]
         session_turns = [row for row in rows if row[1] == active_session]

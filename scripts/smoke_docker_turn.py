@@ -103,28 +103,28 @@ def _write_smoke_configs(*, config_dir: Path) -> None:
                 "  brain_verbosity: normal",
                 "  operator:",
                 "    signal_contact_e164: '+16104257807'",
-                "service:",
-                "  switchboard:",
+                "relay:",
+                "  inbound:",
                 "    callback_register_max_retries: 2",
                 "    callback_register_retry_delay_seconds: 0.2",
-                "  language_model:",
-                "    document_embedding:",
-                "      provider: ollama",
-                "      model: mxbai-embed-large",
-                "      dimensions: 1024",
-                "    capability_embedding:",
-                "      provider: ollama",
-                "      model: mxbai-embed-large",
-                "      dimensions: 1024",
-                "    quick:",
-                "      provider: anthropic",
-                "      model: claude-haiku-4-5-20251001",
-                "    standard:",
-                "      provider: anthropic",
-                "      model: claude-sonnet-4-6-20251001",
-                "    deep:",
-                "      provider: anthropic",
-                "      model: claude-opus-4-7",
+                "language:",
+                "  document_embedding:",
+                "    provider: ollama",
+                "    model: mxbai-embed-large",
+                "    dimensions: 1024",
+                "  op_embedding:",
+                "    provider: ollama",
+                "    model: mxbai-embed-large",
+                "    dimensions: 1024",
+                "  quick:",
+                "    provider: anthropic",
+                "    model: claude-haiku-4-5-20251001",
+                "  standard:",
+                "    provider: anthropic",
+                "    model: claude-sonnet-4-6-20251001",
+                "  deep:",
+                "    provider: anthropic",
+                "    model: claude-opus-4-7",
             ]
         ),
         encoding="utf-8",
@@ -132,26 +132,29 @@ def _write_smoke_configs(*, config_dir: Path) -> None:
     (config_dir / "resources.yaml").write_text(
         "\n".join(
             [
-                "substrate:",
-                "  postgres:",
-                "    url: postgresql+psycopg://brain:brain@postgres:5432/brain",
-                "  obsidian:",
-                "    base_url: http://obsidian-fake:27123",
-                "adapter:",
-                "  signal:",
-                "    base_url: http://signal-api:8080",
-                "    receive_e164: '+17175371552'",
-                "  llm:",
-                "    providers:",
-                "      anthropic:",
-                "        api_base: http://llm-fake:4000",
-                "        api_key: smoke-key",
-                "      voyage:",
-                "        api_base: http://llm-fake:4000",
-                "        api_key: smoke-key",
-                "  mcp:",
-                "    base_url: http://brain-mcp:8763",
-                "    timeout_seconds: 10.0",
+                "postgres:",
+                "  url: postgresql+psycopg://brain:brain@postgres:5432/brain",
+                "obsidian:",
+                "  base_url: http://obsidian-fake:27123",
+                "seaweedfs:",
+                "  endpoint_url: http://seaweedfs:8333",
+                "  bucket: brain-oas",
+                "  access_key_id: replace-me",
+                "  secret_access_key: replace-me",
+                "signal:",
+                "  base_url: http://signal-api:8080",
+                "  receive_e164: '+17175371552'",
+                "llm:",
+                "  providers:",
+                "    anthropic:",
+                "      api_base: http://llm-fake:4000",
+                "      api_key: smoke-key",
+                "    voyage:",
+                "      api_base: http://llm-fake:4000",
+                "      api_key: smoke-key",
+                "mcp:",
+                "  base_url: http://brain-mcp:8763",
+                "  timeout_seconds: 10.0",
             ]
         ),
         encoding="utf-8",
@@ -234,12 +237,12 @@ def _write_override_file(
                     "obsidian-fake": {"condition": "service_healthy"},
                 },
             },
-            "brain-agent": {
+            "brain-assistant": {
                 "restart": "no",
                 "volumes": [
                     f"{config_dir}:/app/config:ro",
                     f"{generated_dir}:/app/config/generated:rw",
-                    f"{REPO_ROOT / 'scripts' / 'healthcheck-agent.sh'}:/usr/local/bin/brain-healthcheck:ro",
+                    f"{REPO_ROOT / 'scripts' / 'healthcheck-assistant.sh'}:/usr/local/bin/brain-healthcheck:ro",
                 ],
             },
             "brain-mcp": {
@@ -382,7 +385,7 @@ def _wait_for_agent_running(*, env: dict[str, str], override_file: Path) -> None
             override_file,
             "ps",
             "-q",
-            "brain-agent",
+            "brain-assistant",
             check=False,
         ).stdout.strip()
         if container_id != "":
@@ -398,7 +401,7 @@ def _wait_for_agent_running(*, env: dict[str, str], override_file: Path) -> None
             if inspect.returncode == 0 and inspect.stdout.strip() == "true false":
                 return
         time.sleep(1.0)
-    raise _SmokeFailure("timed out waiting for brain-agent to stay running")
+    raise _SmokeFailure("timed out waiting for brain-assistant to stay running")
 
 
 def _inject_signal_message(
@@ -479,27 +482,26 @@ def _psql_scalar(
 
 
 def _assert_database_evidence(*, env: dict[str, str], override_file: Path) -> None:
-    """Assert MAS and LMS persisted the handled turn and raw model call."""
+    """Assert Recall and Language persisted the handled turn and raw model call."""
     outbound_turn_count = int(
         _psql_scalar(
             env=env,
             override_file=override_file,
             sql=(
-                "SELECT COUNT(*) FROM service_memory_authority.turn "
-                "WHERE direction = 'outbound';"
+                "SELECT COUNT(*) FROM service_recall.turn WHERE direction = 'outbound';"
             ),
         )
     )
     if outbound_turn_count != 1:
         raise _SmokeFailure(
-            f"expected exactly one outbound MAS turn, found {outbound_turn_count}"
+            f"expected exactly one outbound Recall turn, found {outbound_turn_count}"
         )
 
     outbound_content = _psql_scalar(
         env=env,
         override_file=override_file,
         sql=(
-            "SELECT content FROM service_memory_authority.turn "
+            "SELECT content FROM service_recall.turn "
             "WHERE direction = 'outbound' "
             "ORDER BY created_at DESC LIMIT 1;"
         ),
@@ -507,20 +509,22 @@ def _assert_database_evidence(*, env: dict[str, str], override_file: Path) -> No
     if outbound_content != EXPECTED_REPLY:
         raise _SmokeFailure(f"unexpected outbound content: {outbound_content!r}")
 
-    lms_call_count = int(
+    language_call_count = int(
         _psql_scalar(
             env=env,
             override_file=override_file,
             sql=(
-                "SELECT COUNT(*) FROM service_language_model.call_audits "
+                "SELECT COUNT(*) FROM service_language.call_audits "
                 "WHERE operation = 'chat_with_tools' "
                 "AND request_json IS NOT NULL "
                 "AND response_json IS NOT NULL;"
             ),
         )
     )
-    if lms_call_count < 1:
-        raise _SmokeFailure("expected at least one LMS audit row with raw payloads")
+    if language_call_count < 1:
+        raise _SmokeFailure(
+            "expected at least one Language audit row with raw payloads"
+        )
 
 
 def _print_diagnostics(*, env: dict[str, str], override_file: Path) -> None:
@@ -537,11 +541,11 @@ def _build_smoke_environment() -> dict[str, str]:
     """Build one isolated compose environment for the Docker smoke stack."""
     return {
         **os.environ,
-        "BRAIN_CORE_PORT_BIND": "127.0.0.1::8898",
-        "BRAIN_POSTGRES_PORT_BIND": "127.0.0.1::5432",
-        "BRAIN_VALKEY_PORT_BIND": "127.0.0.1::6379",
-        "BRAIN_QDRANT_PORT_BIND": "127.0.0.1::6333",
-        "SEAWEEDFS_S3_PORT_BIND": "127.0.0.1::8333",
+        "BRAIN_CORE__PORT_BIND": "127.0.0.1::8898",
+        "BRAIN_POSTGRES__PORT_BIND": "127.0.0.1::5432",
+        "BRAIN_VALKEY__PORT_BIND": "127.0.0.1::6379",
+        "BRAIN_QDRANT__PORT_BIND": "127.0.0.1::6333",
+        "BRAIN_SEAWEEDFS__PORT_BIND": "127.0.0.1::8333",
         "PYTHON_VERSION": PYTHON_VERSION.split(".")[0]
         + "."
         + PYTHON_VERSION.split(".")[1],

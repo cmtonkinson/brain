@@ -14,7 +14,7 @@ class SignalAdapterSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     base_url: str = "http://signal-api:8080"
-    receive_e164: str = "+13333333333"
+    receive_e164: str
     health_timeout_seconds: float = Field(default=0.5, gt=0)
     receive_connect_timeout_seconds: float = Field(default=10.0, gt=0)
     receive_heartbeat_seconds: float = Field(default=30.0, gt=0)
@@ -24,6 +24,24 @@ class SignalAdapterSettings(BaseModel):
     failure_backoff_max_seconds: float = Field(default=30.0, gt=0)
     failure_backoff_multiplier: float = Field(default=2.0, gt=1.0)
     failure_backoff_jitter_ratio: float = Field(default=0.2, ge=0, lt=1.0)
+
+    @field_validator("base_url", mode="before")
+    @classmethod
+    def _validate_base_url(cls, value: object) -> object:
+        """Reject empty or unsupported-scheme base URLs at config load time."""
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        if stripped == "":
+            raise ValueError("base_url must be non-empty")
+        from urllib.parse import urlparse
+
+        scheme = urlparse(stripped).scheme
+        if scheme not in {"http", "https", "ws", "wss"}:
+            raise ValueError(
+                f"base_url scheme must be one of http/https/ws/wss, got: {scheme!r}"
+            )
+        return stripped
 
     @field_validator("receive_e164", mode="before")
     @classmethod

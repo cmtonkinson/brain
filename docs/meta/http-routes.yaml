@@ -1,25 +1,27 @@
 /health: full-system diagnostic health check
-/capabilities/always-on: return full descriptors for the configured always-on capabilities
-/capabilities/describe: enumerate all active Capabilities
-/capabilities/describe-one: return one full Capability descriptor by capability_id
-/capabilities/invoke: execute tool calls
-/capabilities/search: semantically search the enabled Capability catalog and return compact matches
-/capabilities/slash-lookup: resolve one capability descriptor by slash command name or alias
-/capabilities/tool-system-hints: return compact orientation hints for systems reachable through tools
-/lms/chat: direct access to model inference without CES/PS overhead
-/lms/chat-with-tools: direct access to tool-capable model inference without CES/PS overhead
-/memory/create_session: create one new MAS session for the agent
-/memory/get_latest_or_create_session: return the latest MAS session id or create one for the agent
-/memory/assemble_context: assemble MAS context for one inbound turn
-/memory/assemble_snapshot: return the stable historical MAS snapshot without the live inbound turn
-/memory/record_inbound_turn: persist one inbound MAS turn before prompt assembly
-/memory/record_outbound_candidate: persist one outbound MAS candidate turn before delivery
-/memory/record_outbound_delivery: persist the final delivery state for one outbound MAS turn
+/ops/always-on: return full descriptors for the configured always-on ops
+/ops/describe: enumerate all active ops
+/ops/describe-one: return one full Op descriptor by op_id
+/ops/dynamic/classifications: list observed dynamic ops and persisted classifications
+/ops/dynamic/classify: persist one operator-supplied dynamic op classification
+/ops/invoke: execute tool calls
+/ops/search: semantically search the enabled Op catalog and return compact matches
+/ops/slash-lookup: resolve one op descriptor by slash command name or alias
+/ops/tool-system-hints: return compact orientation hints for systems reachable through tools
+/lms/chat: direct access to model inference without Execution/Policy overhead
+/lms/chat-with-tools: direct access to tool-capable model inference without Execution/Policy overhead
+/memory/create_session: create one new Recall session for the agent
+/memory/get_latest_or_create_session: return the latest Recall session id or create one for the agent
+/memory/assemble_context: assemble Recall context for one inbound turn
+/memory/assemble_snapshot: return the stable historical Recall snapshot without the live inbound turn
+/memory/record_inbound_turn: persist one inbound Recall turn before prompt assembly
+/memory/record_outbound_candidate: persist one outbound Recall candidate turn before delivery
+/memory/record_outbound_delivery: persist the final delivery state for one outbound Recall turn
 /memory/compact_dialogue: force-summarize all visible turns and advance dialogue frontier
-/memory/record_response: persist one outbound MAS response turn
-/switchboard/enqueue_console_message: accept and enqueue one inbound console operator message
-/attention-router/poll_console_response: dequeue the next queued Brain response for the console channel
-/switchboard/poll_operator_instruction: dequeue the next queued operator instruction for the agent
+/memory/record_response: persist one outbound Recall response turn
+/relay/enqueue_console_message: accept and enqueue one inbound console operator message
+/relay/poll_console_response: dequeue the next queued Brain response for the console channel
+/relay/poll_operator_instruction: dequeue the next queued operator instruction for the agent
 /ingestion/submit: validate and submit one ingestion attempt; runs store stage inline
 /ingestion/get: read one ingestion record by id
 /ingestion/status: return current status snapshot for one ingestion
@@ -55,3 +57,11 @@
 /commitment/review-run: read one persisted commitment review run by id
 /commitment/transition: apply one commitment state transition or persist a transition proposal
 /commitment/update: update one commitment without changing lifecycle state
+/delegation/invoke: queue one delegated subagent invocation
+/delegation/invoke-and-wait: queue one delegated subagent invocation and block until terminal state
+/delegation/wait: block until a previously queued subagent invocation reaches terminal state
+/delegation/status: return current status projection for one subagent invocation
+/delegation/cancel: request cancellation of one queued or running subagent invocation
+/delegation/claim: atomically claim the next queued subagent invocation for the Subagent Actor
+/delegation/record-turn: increment per-turn counters and return whether to keep running
+/delegation/finalize: apply terminal status to one subagent invocation

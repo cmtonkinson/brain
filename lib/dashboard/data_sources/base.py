@@ -74,17 +74,18 @@ class BasePollingDataSource(DataSource[T]):
         try:
             raw = self._fetch()
             value = self._normalize(raw) if raw is not None else None
+            now = datetime.now(timezone.utc)
             with self._lock:
                 self._current = value
                 self._snapshot = Snapshot(
                     data=value,
                     stale=False,
                     error=None,
-                    refreshed_at=datetime.now(timezone.utc),
+                    refreshed_at=now,
                 )
                 if value is not None:
                     self._history.append(value)
-                self._last_refreshed_at = datetime.now(timezone.utc)
+                self._last_refreshed_at = now
         except Exception as e:
             with self._lock:
                 self._snapshot = Snapshot(

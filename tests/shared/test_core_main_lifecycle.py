@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from lib.core.main import _run_after_boot_lifecycle
+from lib.core.main import _assert_health_interface, _run_after_boot_lifecycle
 from lib.shared.config import (
     CoreRuntimeSettings,
     CoreSettings,
@@ -40,6 +40,40 @@ class _Registry:
     def list_services(self) -> tuple[_Manifest, ...]:
         """Return configured service manifests."""
         return self._services
+
+
+def test_assert_health_interface_passes_when_all_have_health() -> None:
+    """Validation should succeed when every component exposes health()."""
+
+    class _Ok:
+        def health(self) -> None:
+            pass
+
+    _assert_health_interface({"service_a": _Ok(), "resource_b": _Ok()})
+
+
+def test_assert_health_interface_raises_for_missing_health() -> None:
+    """Validation should raise immediately when any component lacks health()."""
+
+    class _Ok:
+        def health(self) -> None:
+            pass
+
+    class _Bad:
+        pass
+
+    with pytest.raises(RuntimeError, match="service_bad"):
+        _assert_health_interface({"service_good": _Ok(), "service_bad": _Bad()})
+
+
+def test_assert_health_interface_raises_for_non_callable_health() -> None:
+    """health attribute must be callable, not just present."""
+
+    class _Bad:
+        health = "not-callable"
+
+    with pytest.raises(RuntimeError, match="service_bad"):
+        _assert_health_interface({"service_bad": _Bad()})
 
 
 def test_run_after_boot_lifecycle_calls_hooks_in_component_order(

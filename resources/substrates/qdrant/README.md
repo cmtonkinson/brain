@@ -1,5 +1,5 @@
 # Qdrant Substrate
-Vector-search _Substrate_ _Resource_ used by the Embedding Authority _Service_ for derived semantic index storage and retrieval.
+Vector-search _Substrate_ _Resource_ used by the Embedding _Service_ for derived semantic index storage and retrieval.
 
 ------------------------------------------------------------------------
 ## What This Component Is
@@ -16,21 +16,21 @@ The package exports `QdrantConfig`, `QdrantSubstrate`, `RetrievedPoint`,
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
-This _Resource_ is owned by `service_embedding_authority` via
+This _Resource_ is owned by `service_embedding` via
 `owner_service_id` in `resources/substrates/qdrant/component.py`.
 
-It is a Layer 0 substrate focused on vector index operations only. It does not
+It is a Tier 1 substrate focused on vector index operations only. It does not
 own embedding domain invariants, spec lifecycle, or request validation; those
-remain in the Embedding Authority _Service_.
+remain in the Embedding _Service_.
 
 ------------------------------------------------------------------------
 ## Interactions
 Primary system interactions:
-- EAS constructs per-spec substrates via `QdrantEmbeddingBackend` in
-  `services/state/embedding_authority/qdrant_backend.py`.
+- Embedding constructs per-spec substrates via `QdrantEmbeddingBackend` in
+  `services/state/embedding/qdrant_backend.py`.
 - `QdrantEmbeddingBackend` builds `QdrantConfig` and instantiates
   `QdrantClientSubstrate` per `spec_id` (one collection per embedding spec).
-- EAS uses substrate calls to:
+- Embedding uses substrate calls to:
   - ensure collections exist and match dimensions
   - upsert/delete chunk vectors
   - run filtered semantic search (`source_id` filter when provided)
@@ -39,9 +39,9 @@ Primary system interactions:
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
-1. EAS resolves Qdrant substrate settings (`url`, `request_timeout_seconds`,
+1. Embedding resolves Qdrant substrate settings (`url`, `request_timeout_seconds`,
    `distance_metric`) from `components.substrate.qdrant`.
-2. EAS creates `QdrantConfig` for a spec collection and instantiates
+2. Embedding creates `QdrantConfig` for a spec collection and instantiates
    `QdrantClientSubstrate`.
 3. `QdrantClientSubstrate` creates a `QdrantClient` with URL and timeout.
 4. On first upsert, `_ensure_collection(...)` creates the collection with the
@@ -57,9 +57,9 @@ Primary system interactions:
   results, which keeps derived-index behavior explicit and predictable.
 - delete against a missing collection returns `False` and does not issue a
   delete request.
-- collection dimension mismatch is raised by EAS backend as a `ValueError` when
+- collection dimension mismatch is raised by Embedding backend as a `ValueError` when
   an existing collection does not match the required embedding dimensions.
-- transport/runtime failures from qdrant-client bubble to EAS, which maps them
+- transport/runtime failures from qdrant-client bubble to Embedding, which maps them
   to service-level structured dependency errors.
 
 ------------------------------------------------------------------------
@@ -84,7 +84,7 @@ Component tests:
 - `resources/substrates/qdrant/tests/test_qdrant_substrate.py`
 
 Related integration/behavior coverage:
-- `services/state/embedding_authority/tests/test_qdrant_backend.py`
+- `services/state/embedding/tests/test_qdrant_backend.py`
 
 Project-wide validation command:
 ```bash
@@ -98,7 +98,7 @@ make test
   `docs/conventions.md`.
 - Do not add service-domain policy or orchestration logic here.
 - Maintain operation instrumentation on public substrate methods.
-- If substrate API shape changes, update this README and EAS backend callsites
+- If substrate API shape changes, update this README and Embedding backend callsites
   together.
 
 

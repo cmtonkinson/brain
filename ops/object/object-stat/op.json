@@ -1,0 +1,84 @@
+{
+  "op_id": "object-stat",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Read metadata for one persisted object by canonical object key.",
+  "simple_output_path": ".ref.object_key",
+  "enabled": true,
+  "input_schema": {
+    "object_key": "string | The canonical object key to inspect."
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "ref": {
+        "type": "object",
+        "properties": {
+          "object_key": {
+            "type": "string",
+            "description": "The canonical object key."
+          }
+        },
+        "required": [
+          "object_key"
+        ]
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "digest_algorithm": {
+            "type": "string"
+          },
+          "digest_version": {
+            "type": "string"
+          },
+          "digest_hex": {
+            "type": "string"
+          },
+          "extension": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "original_filename": {
+            "type": "string"
+          },
+          "source_uri": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "digest_algorithm",
+          "digest_version",
+          "digest_hex",
+          "extension",
+          "content_type",
+          "size_bytes",
+          "original_filename",
+          "source_uri",
+          "created_at",
+          "updated_at"
+        ]
+      }
+    },
+    "required": [
+      "ref",
+      "metadata"
+    ]
+  },
+  "call_target": "service_object.stat_object",
+  "effect": "read",
+  "approval": "never"
+}

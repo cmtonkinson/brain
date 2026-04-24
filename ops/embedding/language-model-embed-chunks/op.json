@@ -1,0 +1,60 @@
+{
+  "op_id": "language-model-embed-chunks",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Generate embedding vectors for a batch of text chunks.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "texts": {
+        "type": "array",
+        "description": "The text chunks to embed.",
+        "items": {
+          "type": "string"
+        }
+      },
+      "profile": {
+        "type": "string",
+        "enum": [
+          "document_embedding",
+          "op_embedding"
+        ],
+        "description": "Optional embedding profile override."
+      }
+    },
+    "required": [
+      "texts"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "array",
+    "description": "One embedding vector result per input text chunk.",
+    "items": {
+      "type": "object",
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "values",
+        "provider",
+        "model"
+      ]
+    }
+  },
+  "call_target": "service_language.embed_batch",
+  "effect": "read",
+  "approval": "never"
+}

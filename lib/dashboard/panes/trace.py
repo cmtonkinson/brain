@@ -16,6 +16,8 @@ from lib.dashboard.models.trace import (
 )
 from lib.dashboard.panes.base import BaseView
 
+_REFRESH_INTERVAL = 2.0
+
 
 def _node_label(node: TraceTreeNode) -> str:
     """Compact label: component  operation  status."""
@@ -100,7 +102,7 @@ class TracePane(BaseView):
         tree.root.expand()
         if self._tree_view is not None:
             self._populate_tree(tree)
-        self.set_interval(2.0, self._refresh_from_source)
+        self.set_interval(_REFRESH_INTERVAL, self._refresh_from_source)
 
     def _refresh_from_source(self) -> None:
         if self._trace_source is None:

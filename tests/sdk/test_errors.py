@@ -48,7 +48,7 @@ def test_sdk_exceptions_allow_traceback_assignment() -> None:
 
     error = BrainTransportError(
         message="transport failed",
-        operation="switchboard.poll_operator_instruction",
+        operation="relay.poll_operator_instruction",
         status_code=504,
         retryable=True,
     )

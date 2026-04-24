@@ -19,7 +19,7 @@ class _FakeValkeyClient:
     queues: dict[str, list[str]] = field(default_factory=dict)
 
     def set(self, name: str, value: str, ex: int | None = None) -> bool:
-        del ex
+        del ex  # TTL not modeled in this fake
         self.values[name] = value
         return True
 
@@ -71,9 +71,12 @@ def test_valkey_substrate_wraps_key_value_operations(
     substrate = ValkeyClientSubstrate(settings=ValkeySettings())
 
     substrate.set_value(key="a", value="one", ttl_seconds=30)
+    substrate.set_value(key="b", value="two", ttl_seconds=None)
 
     assert substrate.get_value(key="a") == "one"
+    assert substrate.get_value(key="b") == "two"
     assert substrate.delete_value(key="a") is True
+    assert substrate.delete_value(key="nonexistent") is False
     assert substrate.get_value(key="a") is None
 
 
@@ -122,3 +125,32 @@ def test_valkey_substrate_reports_ping(
     substrate = ValkeyClientSubstrate(settings=ValkeySettings())
 
     assert substrate.ping() is True
+
+
+def test_valkey_substrate_health_reports_failure_on_ping_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """health() should return ready=False and include exception class name when ping raises."""
+
+    @dataclass
+    class _FailingPingClient(_FakeValkeyClient):
+        def ping(self) -> bool:
+            raise ConnectionError("unreachable")
+
+    fake_client = _FailingPingClient()
+    monkeypatch.setattr(
+        valkey_substrate_module,
+        "create_valkey_client",
+        lambda settings: fake_client,
+    )
+    monkeypatch.setattr(
+        valkey_substrate_module,
+        "create_valkey_client_with_timeouts",
+        lambda **kwargs: fake_client,
+    )
+    substrate = ValkeyClientSubstrate(settings=ValkeySettings())
+
+    status = substrate.health()
+
+    assert status.ready is False
+    assert "ConnectionError" in status.detail

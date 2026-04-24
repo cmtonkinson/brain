@@ -1,0 +1,26 @@
+{
+  "op_id": "index-vault-file",
+  "kind": "pipeline",
+  "version": "1.0.0",
+  "summary": "Generate and persist multi-chunk embeddings for one vault file.",
+  "enabled": false,
+  "input_schema": {
+    "file_path": "string | The vault-relative path of the document to index."
+  },
+  "output_schema": {
+    "embedding_count": "integer | The number of embedding vectors persisted."
+  },
+  "pipeline": [
+    "vault-get-file",
+    {
+      "op": "chunk-text",
+      "input_mapping": {
+        "text": "content"
+      }
+    },
+    "language-model-embed-chunks",
+    "embedding-upsert-document-batch"
+  ],
+  "effect": "execute",
+  "approval": "never"
+}

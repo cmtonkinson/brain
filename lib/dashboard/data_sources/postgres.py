@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,7 +16,7 @@ class PostgresConnectionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     url: str
     pool_size: int = Field(default=3, gt=0)
-    query_timeout_seconds: float = Field(default=5.0, gt=0)
+    connect_timeout_seconds: float = Field(default=5.0, gt=0)
     read_only: bool = True
 
 
@@ -38,9 +38,9 @@ class BasePostgresDataSource(BasePollingDataSource[T], Generic[T]):
     ) -> None:
         super().__init__(poll_interval, retention)
         self._config = config
-        self._conn = None
+        self._conn: Any = None
 
-    def _get_connection(self):
+    def _get_connection(self) -> Any:
         import psycopg  # noqa: PLC0415
 
         if self._conn is None or self._conn.closed:
@@ -48,7 +48,7 @@ class BasePostgresDataSource(BasePollingDataSource[T], Generic[T]):
                 normalize_postgres_dsn(self._config.url),
                 autocommit=True,
                 options="-c default_transaction_read_only=on",
-                connect_timeout=max(1, int(self._config.query_timeout_seconds)),
+                connect_timeout=max(1, int(self._config.connect_timeout_seconds)),
             )
         return self._conn
 

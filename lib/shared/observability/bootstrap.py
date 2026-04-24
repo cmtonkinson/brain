@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from lib.shared.config import ObservabilitySettings
 from lib.shared.logging import get_logger
 
+if TYPE_CHECKING:
+    from pydantic_ai.models.instrumented import InstrumentationSettings
+
 _LOGGER = get_logger(__name__)
-_SERVICE_VERSION = "0.1.0"
-_OTLP_TRACES_PATH = "/v1/traces"
-_OTLP_METRICS_PATH = "/v1/metrics"
+try:
+    _SERVICE_VERSION = importlib.metadata.version("brain")
+except importlib.metadata.PackageNotFoundError:
+    _SERVICE_VERSION = "0.0.0"
+_OTLP_TRACES_SUFFIX = "/v1/traces"
+_OTLP_METRICS_SUFFIX = "/v1/metrics"
 _BOOTSTRAPPED = False
 _LLM_CONTENT_CAPTURE_ENABLED = False
+_BOOTSTRAP_RESULT: "ObservabilityBootstrapResult | None" = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +33,7 @@ class ObservabilityBootstrapResult:
     traces_enabled: bool
     metrics_enabled: bool
     instrumented_httpx: bool
-    error: str = ""
+    error: str | None = None
 
 
 def is_observability_enabled() -> bool:
@@ -44,8 +53,13 @@ def bootstrap_observability(
     environment: str = "dev",
     service_version: str = _SERVICE_VERSION,
 ) -> ObservabilityBootstrapResult:
-    """Initialize OpenTelemetry providers and common instrumentation once."""
-    global _BOOTSTRAPPED, _LLM_CONTENT_CAPTURE_ENABLED
+    """Initialize OpenTelemetry providers and common instrumentation once.
+
+    Idempotent: a second call returns the result captured at first bootstrap.
+    The supplied ``settings`` are not re-applied; reconfiguration requires a
+    process restart (or explicit ``reset_for_tests`` between unit tests).
+    """
+    global _BOOTSTRAPPED, _LLM_CONTENT_CAPTURE_ENABLED, _BOOTSTRAP_RESULT
     if not settings.enabled:
         return ObservabilityBootstrapResult(
             enabled=False,
@@ -53,13 +67,8 @@ def bootstrap_observability(
             metrics_enabled=False,
             instrumented_httpx=False,
         )
-    if _BOOTSTRAPPED:
-        return ObservabilityBootstrapResult(
-            enabled=True,
-            traces_enabled=settings.traces.enabled,
-            metrics_enabled=settings.metrics.enabled,
-            instrumented_httpx=True,
-        )
+    if _BOOTSTRAPPED and _BOOTSTRAP_RESULT is not None:
+        return _BOOTSTRAP_RESULT
 
     try:
         from opentelemetry import metrics, trace
@@ -108,7 +117,7 @@ def bootstrap_observability(
                 BatchSpanProcessor(
                     OTLPSpanExporter(
                         endpoint=_otlp_endpoint(
-                            settings.otlp.endpoint, _OTLP_TRACES_PATH
+                            settings.otlp.endpoint, _OTLP_TRACES_SUFFIX
                         ),
                         headers=headers,
                     )
@@ -119,7 +128,9 @@ def bootstrap_observability(
         if settings.metrics.enabled:
             metric_reader = PeriodicExportingMetricReader(
                 OTLPMetricExporter(
-                    endpoint=_otlp_endpoint(settings.otlp.endpoint, _OTLP_METRICS_PATH),
+                    endpoint=_otlp_endpoint(
+                        settings.otlp.endpoint, _OTLP_METRICS_SUFFIX
+                    ),
                     headers=headers,
                 )
             )
@@ -142,12 +153,14 @@ def bootstrap_observability(
                 "metrics_enabled": settings.metrics.enabled,
             },
         )
-        return ObservabilityBootstrapResult(
+        result = ObservabilityBootstrapResult(
             enabled=True,
             traces_enabled=settings.traces.enabled,
             metrics_enabled=settings.metrics.enabled,
             instrumented_httpx=True,
         )
+        _BOOTSTRAP_RESULT = result
+        return result
     except Exception as exc:  # noqa: BLE001
         _LOGGER.warning(
             "observability initialization failed",
@@ -164,7 +177,7 @@ def bootstrap_observability(
 
 def pydantic_ai_instrumentation_settings(
     settings: ObservabilitySettings,
-) -> object | None:
+) -> InstrumentationSettings | None:
     """Return PydanticAI instrumentation settings when LLM telemetry is enabled."""
     if not settings.enabled or not settings.llm.enabled:
         return None
@@ -173,8 +186,10 @@ def pydantic_ai_instrumentation_settings(
     )
 
 
-@lru_cache(maxsize=2)
-def _build_pydantic_ai_instrumentation_settings(*, include_content: bool) -> object:
+@lru_cache(maxsize=2)  # bool param → 2 possible cache entries
+def _build_pydantic_ai_instrumentation_settings(
+    *, include_content: bool
+) -> InstrumentationSettings:
     """Build PydanticAI instrumentation settings without importing at module load."""
     from pydantic_ai.models.instrumented import InstrumentationSettings
 
@@ -188,15 +203,19 @@ def _otlp_endpoint(base: str, suffix: str) -> str:
     """Resolve one OTLP HTTP signal endpoint from a base collector endpoint."""
     endpoint = base.strip().rstrip("/")
     if endpoint == "":
-        return suffix
+        raise ValueError(
+            "otlp.endpoint must be a non-empty absolute URL; "
+            "configure observability.otlp.endpoint or disable telemetry"
+        )
     if endpoint.endswith(suffix):
         return endpoint
     return f"{endpoint}{suffix}"
 
 
-def _reset_for_tests() -> None:
+def reset_for_tests() -> None:
     """Reset process-local bootstrap state for unit tests."""
-    global _BOOTSTRAPPED, _LLM_CONTENT_CAPTURE_ENABLED
+    global _BOOTSTRAPPED, _LLM_CONTENT_CAPTURE_ENABLED, _BOOTSTRAP_RESULT
     _BOOTSTRAPPED = False
     _LLM_CONTENT_CAPTURE_ENABLED = False
+    _BOOTSTRAP_RESULT = None
     _build_pydantic_ai_instrumentation_settings.cache_clear()

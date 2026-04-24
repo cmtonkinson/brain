@@ -18,11 +18,17 @@ _INTERFACE_ERROR_TYPE_NAME = "InterfaceError"
 _PROGRAMMING_ERROR_TYPE_NAME = "ProgrammingError"
 
 
+def is_postgres_error(exc: Exception) -> bool:
+    """Return whether one exception appears to originate from the Postgres stack."""
+    module_name = type(exc).__module__
+    return "sqlalchemy" in module_name or "psycopg" in module_name
+
+
 def normalize_postgres_error(exc: Exception) -> ErrorDetail:
     """Map low-level DB exceptions into shared structured error semantics."""
     exc_type_name = type(exc).__name__
     message = str(exc)
-    metadata = {"exception_type": exc_type_name}
+    metadata = {codes.EXCEPTION_TYPE_KEY: exc_type_name}
 
     if (
         _UNIQUE_VIOLATION_TYPE_NAME in exc_type_name

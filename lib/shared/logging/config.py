@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .context import get_context
+from .context import bind_context, get_context
 from . import fields
 
 VERBOSE = 5
@@ -84,7 +84,7 @@ class JsonFormatter(logging.Formatter):
         payload.update(_record_extras(record))
 
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
+            payload[fields.EXCEPTION] = self.formatException(record.exc_info)
 
         return json.dumps(payload, default=str, separators=(",", ":"))
 
@@ -130,7 +130,6 @@ def configure_logging(
     This function is idempotent for handler setup: existing root handlers are
     replaced to avoid duplicate emissions when called multiple times.
     """
-    _register_verbose_level()
     root = logging.getLogger()
     root.handlers.clear()
     stream_level = _resolve_level(level)
@@ -157,13 +156,20 @@ def configure_logging(
     for handler in handlers:
         root.addHandler(handler)
     root.propagate = False
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    for noisy_namespace in (
+        "httpcore",
+        "httpx",
+        "urllib3",
+        "urllib3.connectionpool",
+        "requests",
+    ):
+        logging.getLogger(noisy_namespace).setLevel(logging.WARNING)
+
+    bind_context(**{fields.PROCESS_NAME: process_name, fields.ENVIRONMENT: environment})
 
 
 def get_logger(name: str | None = None) -> logging.Logger:
     """Return a logger using Python's standard logging hierarchy."""
-    _register_verbose_level()
     return logging.getLogger(name)
 
 

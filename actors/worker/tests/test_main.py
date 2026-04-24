@@ -3,8 +3,8 @@
 Test approach: BrainClient is replaced by a lightweight fake that records
 calls and can be configured to raise on demand. No live Core connection is
 required. The module-level signal handlers and poll loop (_main) are not
-tested here — only the pure execution units (_run_execution, _safe_fail)
-and the utility helpers (_resolve_heartbeat_path, _write_heartbeat).
+tested here — only the pure execution units (_run_execution, _safe_fail,
+_resolve_heartbeat_path) and the utility helper _write_heartbeat.
 """
 
 from __future__ import annotations
@@ -13,8 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from lib.sdk.calls import JobClaimResult
 from lib.sdk.errors import (
     BrainDependencyError,
@@ -22,7 +20,7 @@ from lib.sdk.errors import (
     BrainTransportError,
 )
 from actors.worker.main import (
-    _WORKER_CHANNEL,
+    _HEARTBEAT_PATH,
     _resolve_heartbeat_path,
     _run_execution,
     _safe_fail,
@@ -39,7 +37,7 @@ def _make_claim(
     *,
     execution_id: str = "exec-001",
     job_id: str = "job-001",
-    capability_id: str = "test-cap",
+    op_id: str = "test-cap",
     input_payload: dict[str, Any] | None = None,
     actor: str = "agent",
     trace_id: str = "trace-abc",
@@ -51,7 +49,7 @@ def _make_claim(
     return JobClaimResult(
         execution_id=execution_id,
         job_id=job_id,
-        capability_id=capability_id,
+        op_id=op_id,
         input_payload=input_payload or {},
         actor=actor,
         trace_id=trace_id,
@@ -86,9 +84,9 @@ class _FakeClient:
         self._invoke_raises = invoke_raises
         self._fail_raises = fail_raises
 
-    def invoke_capability(self, **kwargs: Any) -> None:
+    def invoke_op(self, **kwargs: Any) -> None:
         """Record call; raise configured error when present."""
-        self.calls.append(_Call(method="invoke_capability", kwargs=kwargs))
+        self.calls.append(_Call(method="invoke_op", kwargs=kwargs))
         if self._invoke_raises is not None:
             raise self._invoke_raises
 
@@ -112,14 +110,14 @@ class _FakeClient:
 # ---------------------------------------------------------------------------
 
 
-def test_run_execution_success_invokes_capability_then_completes() -> None:
-    """Successful execution calls invoke_capability then job_complete_execution."""
+def test_run_execution_success_invokes_op_then_completes() -> None:
+    """Successful execution calls invoke_op then job_complete_execution."""
     client = _FakeClient()
     claim = _make_claim()
 
-    _run_execution(client=client, claim=claim)
+    _run_execution(client=client, claim=claim, channel="worker")
 
-    invoke_calls = client._calls_for("invoke_capability")
+    invoke_calls = client._calls_for("invoke_op")
     complete_calls = client._calls_for("job_complete_execution")
     fail_calls = client._calls_for("job_fail_execution")
 
@@ -129,23 +127,23 @@ def test_run_execution_success_invokes_capability_then_completes() -> None:
 
 
 def test_run_execution_forwards_claim_fields_to_invoke() -> None:
-    """Claim fields are forwarded verbatim to invoke_capability."""
+    """Claim fields are forwarded verbatim to invoke_op."""
     client = _FakeClient()
     claim = _make_claim(
-        capability_id="my-cap",
+        op_id="my-cap",
         input_payload={"key": "value"},
         actor="agent",
         trace_id="trace-111",
         parent_envelope_id="env-222",
     )
 
-    _run_execution(client=client, claim=claim)
+    _run_execution(client=client, claim=claim, channel="worker")
 
-    kwargs = client._calls_for("invoke_capability")[0].kwargs
-    assert kwargs["capability_id"] == "my-cap"
+    kwargs = client._calls_for("invoke_op")[0].kwargs
+    assert kwargs["op_id"] == "my-cap"
     assert kwargs["input_payload"] == {"key": "value"}
     assert kwargs["actor"] == "agent"
-    assert kwargs["channel"] == _WORKER_CHANNEL
+    assert kwargs["channel"] == "worker"
     assert kwargs["invocation_id"] == "trace-111"
     assert kwargs["parent_invocation_id"] == "env-222"
 
@@ -155,7 +153,7 @@ def test_run_execution_forwards_execution_id_to_complete() -> None:
     client = _FakeClient()
     claim = _make_claim(execution_id="exec-xyz")
 
-    _run_execution(client=client, claim=claim)
+    _run_execution(client=client, claim=claim, channel="worker")
 
     kwargs = client._calls_for("job_complete_execution")[0].kwargs
     assert kwargs["execution_id"] == "exec-xyz"
@@ -168,11 +166,11 @@ def test_run_execution_forwards_execution_id_to_complete() -> None:
 
 def test_run_execution_dependency_error_fails_retryable() -> None:
     """BrainDependencyError maps to a retryable job_fail_execution call."""
-    exc = BrainDependencyError(message="dep down", operation="capabilities.invoke")
+    exc = BrainDependencyError(message="dep down", operation="ops.invoke")
     client = _FakeClient(invoke_raises=exc)
     claim = _make_claim(execution_id="exec-dep")
 
-    _run_execution(client=client, claim=claim)
+    _run_execution(client=client, claim=claim, channel="worker")
 
     fail_calls = client._calls_for("job_fail_execution")
     assert len(fail_calls) == 1
@@ -183,11 +181,11 @@ def test_run_execution_dependency_error_fails_retryable() -> None:
 
 def test_run_execution_domain_error_fails_non_retryable() -> None:
     """BrainDomainError maps to a non-retryable job_fail_execution call."""
-    exc = BrainDomainError(message="domain boom", operation="capabilities.invoke")
+    exc = BrainDomainError(message="domain boom", operation="ops.invoke")
     client = _FakeClient(invoke_raises=exc)
     claim = _make_claim(execution_id="exec-dom")
 
-    _run_execution(client=client, claim=claim)
+    _run_execution(client=client, claim=claim, channel="worker")
 
     fail_calls = client._calls_for("job_fail_execution")
     assert len(fail_calls) == 1
@@ -199,14 +197,14 @@ def test_run_execution_transport_error_retryable_true() -> None:
     """BrainTransportError with retryable=True propagates that flag."""
     exc = BrainTransportError(
         message="timeout",
-        operation="capabilities.invoke",
+        operation="ops.invoke",
         status_code=503,
         retryable=True,
     )
     client = _FakeClient(invoke_raises=exc)
     claim = _make_claim()
 
-    _run_execution(client=client, claim=claim)
+    _run_execution(client=client, claim=claim, channel="worker")
 
     fail_calls = client._calls_for("job_fail_execution")
     assert len(fail_calls) == 1
@@ -217,14 +215,14 @@ def test_run_execution_transport_error_retryable_false() -> None:
     """BrainTransportError with retryable=False propagates that flag."""
     exc = BrainTransportError(
         message="bad request",
-        operation="capabilities.invoke",
+        operation="ops.invoke",
         status_code=400,
         retryable=False,
     )
     client = _FakeClient(invoke_raises=exc)
     claim = _make_claim()
 
-    _run_execution(client=client, claim=claim)
+    _run_execution(client=client, claim=claim, channel="worker")
 
     fail_calls = client._calls_for("job_fail_execution")
     assert len(fail_calls) == 1
@@ -236,7 +234,7 @@ def test_run_execution_unexpected_error_fails_non_retryable() -> None:
     client = _FakeClient(invoke_raises=RuntimeError("oops"))
     claim = _make_claim(execution_id="exec-unk")
 
-    _run_execution(client=client, claim=claim)
+    _run_execution(client=client, claim=claim, channel="worker")
 
     fail_calls = client._calls_for("job_fail_execution")
     assert len(fail_calls) == 1
@@ -247,10 +245,10 @@ def test_run_execution_unexpected_error_fails_non_retryable() -> None:
 
 def test_run_execution_failure_message_contains_original_error() -> None:
     """The error message forwarded to job_fail_execution includes the original text."""
-    exc = BrainDomainError(message="quota exceeded", operation="capabilities.invoke")
+    exc = BrainDomainError(message="quota exceeded", operation="ops.invoke")
     client = _FakeClient(invoke_raises=exc)
 
-    _run_execution(client=client, claim=_make_claim())
+    _run_execution(client=client, claim=_make_claim(), channel="worker")
 
     msg = client._calls_for("job_fail_execution")[0].kwargs["error_message"]
     assert "quota exceeded" in msg
@@ -297,44 +295,6 @@ def test_safe_fail_swallows_secondary_exception() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _resolve_heartbeat_path
-# ---------------------------------------------------------------------------
-
-
-def test_resolve_heartbeat_path_returns_default_when_env_unset(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Default heartbeat path is used when the env var is absent."""
-    monkeypatch.delenv("BRAIN_WORKER_HEARTBEAT_FILE", raising=False)
-
-    path = _resolve_heartbeat_path()
-
-    assert path == Path("/run/brain/worker-heartbeat")
-
-
-def test_resolve_heartbeat_path_uses_env_override(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Custom path is returned when the env var is set."""
-    monkeypatch.setenv("BRAIN_WORKER_HEARTBEAT_FILE", "/tmp/custom-heartbeat")
-
-    path = _resolve_heartbeat_path()
-
-    assert path == Path("/tmp/custom-heartbeat")
-
-
-def test_resolve_heartbeat_path_ignores_blank_env_var(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Blank env var value falls back to the default path."""
-    monkeypatch.setenv("BRAIN_WORKER_HEARTBEAT_FILE", "   ")
-
-    path = _resolve_heartbeat_path()
-
-    assert path == Path("/run/brain/worker-heartbeat")
-
-
-# ---------------------------------------------------------------------------
 # _write_heartbeat
 # ---------------------------------------------------------------------------
 
@@ -356,3 +316,30 @@ def test_write_heartbeat_updates_existing_file(tmp_path: Path) -> None:
     _write_heartbeat(target)
 
     assert target.exists()
+
+
+# ---------------------------------------------------------------------------
+# _resolve_heartbeat_path
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_heartbeat_path_default(monkeypatch) -> None:
+    """Returns the compiled-in default when the env var is absent."""
+    monkeypatch.delenv("BRAIN_WORKER_HEARTBEAT_FILE", raising=False)
+
+    assert _resolve_heartbeat_path() == _HEARTBEAT_PATH
+
+
+def test_resolve_heartbeat_path_env_override(monkeypatch, tmp_path: Path) -> None:
+    """Returns the env-var path when BRAIN_WORKER_HEARTBEAT_FILE is set."""
+    custom = str(tmp_path / "custom-heartbeat")
+    monkeypatch.setenv("BRAIN_WORKER_HEARTBEAT_FILE", custom)
+
+    assert _resolve_heartbeat_path() == Path(custom)
+
+
+def test_resolve_heartbeat_path_blank_env_uses_default(monkeypatch) -> None:
+    """Falls back to the default when the env var is set to whitespace."""
+    monkeypatch.setenv("BRAIN_WORKER_HEARTBEAT_FILE", "   ")
+
+    assert _resolve_heartbeat_path() == _HEARTBEAT_PATH

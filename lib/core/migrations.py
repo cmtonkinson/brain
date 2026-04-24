@@ -14,8 +14,6 @@ from lib.shared.config import CoreRuntimeSettings
 from lib.shared.manifest import get_registry
 from resources.substrates.postgres.bootstrap import bootstrap_service_schemas
 
-_SYSTEM_ORDER: tuple[str, ...] = ("state", "action", "control")
-
 
 class MigrationExecutionError(RuntimeError):
     """Raised when startup migration execution fails."""
@@ -34,7 +32,7 @@ def discover_service_migration_configs(
     *,
     repo_root: Path | None = None,
 ) -> tuple[Path, ...]:
-    """Discover alembic config files for registered services in system order."""
+    """Discover alembic config files for registered services in plane order."""
     root = (repo_root or Path.cwd()).resolve()
     import_registered_component_modules()
     registry = get_registry()
@@ -42,20 +40,14 @@ def discover_service_migration_configs(
     services = registry.list_services()
 
     config_paths: list[Path] = []
-    for system in _SYSTEM_ORDER:
-        for service in services:
-            if service.system != system:
-                continue
-            for module_root in sorted(service.module_roots):
-                candidate = (
-                    root
-                    / Path(*str(module_root).split("."))
-                    / "migrations"
-                    / "alembic.ini"
-                )
-                if candidate.exists():
-                    config_paths.append(candidate)
-                    break
+    for service in services:
+        for module_root in sorted(service.module_roots):
+            candidate = (
+                root / Path(*str(module_root).split(".")) / "migrations" / "alembic.ini"
+            )
+            if candidate.exists():
+                config_paths.append(candidate)
+                break
     return tuple(config_paths)
 
 

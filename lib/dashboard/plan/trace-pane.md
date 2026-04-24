@@ -124,10 +124,10 @@ Each node label should render:
 Preferred compact shape:
 
 ```text
-> switchboard  ingest_signal           OK
+> inbound  ingest_signal           OK
   agent        process_instruction     OK
     memory     assemble_context        OK
-    capability search                  OK
+    op search                  OK
     policy     authorize               OK
     lms        chat_with_tools         OK
     attention  route_notify            OK
@@ -205,7 +205,7 @@ Parent      E01JQX...
 Elapsed     2.87s
 
 Summary
-Tool-capable chat completion started with 3 candidate capabilities.
+Tool-capable chat completion started with 3 candidate ops.
 
 Errors
 none
@@ -360,10 +360,10 @@ Illustrative conceptual shape:
 Trace
 
 Tree
-> switchboard  ingest_signal           OK
+> inbound  ingest_signal           OK
   agent        process_instruction     OK
     memory     assemble_context        OK
-    capability search                  OK
+    op search                  OK
     policy     authorize               OK
     lms        chat_with_tools         OK
     attention  route_notify            OK
@@ -380,7 +380,7 @@ Parent      E01JQX...
 Elapsed     2.87s
 
 Summary
-Tool-capable chat completion started with 3 candidate capabilities.
+Tool-capable chat completion started with 3 candidate ops.
 ```
 
 ------------------------------------------------------------------------
@@ -396,11 +396,11 @@ The inspect modal exists to expose structured execution details for the
 currently selected trace node without turning the main trace view into an
 unreadable blob.
 
-This is especially valuable for LMS nodes such as:
+This is especially valuable for Language nodes such as:
 - `chat`
 - `chat_with_tools`
 
-and for policy decision and capability invocation nodes where the full envelope
+and for policy decision and op invocation nodes where the full envelope
 payload is relevant.
 
 ### Core Principles
@@ -421,7 +421,7 @@ The modal should be aware of the selected node type.
 
 Not every node needs or supports a rich inspect view.
 
-LMS nodes are the primary target.
+Language nodes are the primary target.
 
 ### Invocation
 The inspect modal should be opened from the trace view by a dedicated action.
@@ -440,15 +440,15 @@ Rules:
   compact unsupported-state message
 
 ### Scope
-The inspect modal initially targets LMS request/response inspection.
+The inspect modal initially targets Language request/response inspection.
 
 Primary supported node types:
-- LMS `chat`
-- LMS `chat_with_tools`
+- Language `chat`
+- Language `chat_with_tools`
 
 Possible future supported node types:
 - policy decisions
-- capability invocations
+- op invocations
 - tool-call results
 
 ### Modal Layout
@@ -468,7 +468,7 @@ The modal should not require the engineer to parse transport-level shapes or raw
 wire payloads.
 
 ### Request Section
-The `Request` section should summarize the selected LMS request.
+The `Request` section should summarize the selected Language request.
 
 Suggested fields:
 - provider
@@ -502,7 +502,7 @@ User Content
 
 ### Tools Section
 The `Tools` section should summarize the tool definitions made available to the
-selected LMS call.
+selected Language call.
 
 Suggested fields:
 - tool count
@@ -518,11 +518,11 @@ Tools
 Count           3
 Tool Tokens     ~1250
 
-- discover_capabilities
+- discover_ops
   query: string
 
-- describe_capability
-  capability_id: string
+- describe_op
+  op_id: string
 
 - send-message-draft
   recipient: string
@@ -547,17 +547,17 @@ Tool Results
 Calls           2
 Result Tokens   ~980
 
-- discover_capabilities
+- discover_ops
   input: query="text Chris back"
-  result: 4 capability hits
+  result: 4 op hits
 
-- describe_capability
-  input: capability_id="send-message-draft"
-  result: 1 capability descriptor
+- describe_op
+  input: op_id="send-message-draft"
+  result: 1 op descriptor
 ```
 
 ### Response Section
-The `Response` section should summarize the selected LMS response.
+The `Response` section should summarize the selected Language response.
 
 Suggested fields:
 - finish reason
@@ -654,7 +654,7 @@ Possible later additions:
 - direct jump to active node
 - richer error drill-down
 - inspect modal drill-down for policy nodes
-- inspect modal drill-down for capability invocation payloads
+- inspect modal drill-down for op invocation payloads
 - expandable sections inside the inspect modal
 - copy-to-clipboard or export actions from the inspect modal
 

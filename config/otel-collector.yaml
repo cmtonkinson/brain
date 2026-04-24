@@ -22,9 +22,9 @@ receivers:
         parse_from: attributes.timestamp
         layout_type: gotime
         layout: "2006-01-02T15:04:05.999999Z07:00"
-  filelog/brain_agent:
+  filelog/brain_assistant:
     include:
-      - /logs/agent.log
+      - /logs/assistant.log
     start_at: end
     operators:
       - type: json_parser
@@ -34,7 +34,7 @@ receivers:
         to: body
       - type: add
         field: resource["service.name"]
-        value: brain-agent
+        value: brain-assistant
       - type: severity_parser
         parse_from: attributes.level
       - type: time_parser
@@ -88,7 +88,7 @@ service:
     logs:
       receivers:
         - filelog/core
-        - filelog/brain_agent
+        - filelog/brain_assistant
       processors:
         - batch/logs
       exporters:

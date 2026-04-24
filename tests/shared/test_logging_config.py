@@ -68,17 +68,17 @@ def test_json_formatter_includes_extra_fields() -> None:
         args=(),
         exc_info=None,
     )
-    record.service = "switchboard"
-    record.operation = "switchboard.poll_operator_instruction"
-    record.endpoint = "/switchboard/poll_operator_instruction"
+    record.service = "inbound"
+    record.operation = "relay.poll_operator_instruction"
+    record.endpoint = "/relay/poll_operator_instruction"
     record.status_code = 200
 
     rendered = formatter.format(record)
     payload = json.loads(rendered)
 
-    assert payload["service"] == "switchboard"
-    assert payload["operation"] == "switchboard.poll_operator_instruction"
-    assert payload["endpoint"] == "/switchboard/poll_operator_instruction"
+    assert payload["service"] == "inbound"
+    assert payload["operation"] == "relay.poll_operator_instruction"
+    assert payload["endpoint"] == "/relay/poll_operator_instruction"
     assert payload["status_code"] == 200
 
 
@@ -119,12 +119,12 @@ def test_configure_logging_uses_process_name_for_file_capture(tmp_path: Path) ->
         file_capture_level="INFO",
         file_capture_directory=str(tmp_path / "logs"),
         json_output=False,
-        process_name="agent",
+        process_name="assistant",
     )
 
     logger = get_logger("tests.shared.logging.process_name")
-    logger.info("agent detail")
+    logger.info("assistant detail")
 
-    agent_log_file = tmp_path / "logs" / "agent.log"
-    assert agent_log_file.exists()
-    assert "agent detail" in agent_log_file.read_text(encoding="utf-8")
+    assistant_log_file = tmp_path / "logs" / "assistant.log"
+    assert assistant_log_file.exists()
+    assert "assistant detail" in assistant_log_file.read_text(encoding="utf-8")

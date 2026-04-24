@@ -1,5 +1,5 @@
 # CLI Actor
-L2 Actor that exposes Brain Core operations as a Typer command-line interface.
+T3 Actor that exposes Brain Core operations as a Typer command-line interface.
 
 ------------------------------------------------------------------------
 ## What This Component Is
@@ -10,7 +10,7 @@ Core module roles:
 
 Sub-command groups:
 - `health core` — reports Brain Core readiness across services and resources
-- `lms chat` — submits a prompt to the Language Model Service
+- `lms chat` — submits a prompt to the Language Service
 - `vault get` — retrieves a single vault file by path
 - `vault list` — lists entries under a vault directory path
 - `vault search` — searches vault entries by query string
@@ -21,7 +21,7 @@ stored in a `CliConfig` dataclass on the Typer context object.
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
-CLI Actor is a Layer 2 Actor. It owns no _Resource_ or _Service_ components.
+CLI Actor is a Tier 3 Actor. It owns no _Resource_ or _Service_ components.
 
 Boundary rules:
 - All Brain Core access is through `BrainSdkClient` (`lib/sdk`).
@@ -33,8 +33,8 @@ Boundary rules:
 Primary interactions:
 - `BrainSdkClient` is constructed per command with envelope metadata
   (`principal`, `source`, `trace_id`, `parent_id`) forwarded on each SDK call.
-- `lib/sdk` exports `core_health`, `lms_chat`, `vault_get`,
-  `vault_list`, `vault_search`, `DomainError`, `TransportError`.
+- `lib/sdk` exports `core_health`, `language_chat`, `vault_get`,
+  `vault_list`, `vault_search`, `BrainDomainError`, `BrainTransportError`.
 - `lib/sdk/config.py` provides `resolve_target` and
   `resolve_timeout_seconds` for default option resolution.
 
@@ -47,13 +47,13 @@ Primary interactions:
    `invoke`, then calls `_emit_output` on the result.
 5. `_emit_output` delegates to `_render_human` for recognized shapes or falls
    back to compact JSON; `--json` bypasses human rendering.
-6. Errors from the SDK are caught and mapped: `DomainError` → exit 3,
-   `TransportError` → exit 4, each with a message written to stderr.
+6. Errors from the SDK are caught and mapped: `BrainDomainError` → exit 3,
+   `BrainTransportError` → exit 4, each with a message written to stderr.
 
 ------------------------------------------------------------------------
 ## Failure Modes and Error Semantics
-- `DomainError` raised by SDK → exit code 3, message written to stderr.
-- `TransportError` raised by SDK → exit code 4, message written to stderr.
+- `BrainDomainError` raised by SDK → exit code 3, message written to stderr.
+- `BrainTransportError` raised by SDK → exit code 4, message written to stderr.
 - Typer validation/usage errors → exit code 2 (Typer default behavior).
 - No retry logic; errors surface immediately.
 - `--json` flag wraps error messages in `{"error": "..."}` JSON on stderr.

@@ -1,5 +1,4 @@
 services:
-
   brain-core:
     build:
       context: .
@@ -9,19 +8,19 @@ services:
     restart: unless-stopped
     user: "0:0"
     environment:
-      BRAIN_CORE_HTTP__HOST: 0.0.0.0
-      BRAIN_CORE_HTTP__PORT: 8898
-      BRAIN_RESOURCES__SUBSTRATE__SEAWEEDFS__ENDPOINT_URL: http://seaweedfs:8333
-      BRAIN_RESOURCES__SUBSTRATE__SEAWEEDFS__BUCKET: ${SEAWEEDFS_OAS_BUCKET:-brain-oas}
-      BRAIN_RESOURCES__SUBSTRATE__SEAWEEDFS__ACCESS_KEY_ID: ${SEAWEEDFS_S3_ACCESS_KEY_ID:-replace-me}
-      BRAIN_RESOURCES__SUBSTRATE__SEAWEEDFS__SECRET_ACCESS_KEY: ${SEAWEEDFS_S3_SECRET_ACCESS_KEY:-replace-me}
+      BRAIN_CORE__HTTP__HOST: 0.0.0.0
+      BRAIN_CORE__HTTP__PORT: 8898
+      BRAIN_SEAWEEDFS__ENDPOINT_URL: http://seaweedfs:8333
+      BRAIN_SEAWEEDFS__BUCKET: ${BRAIN_SEAWEEDFS__BUCKET:-brain-oas}
+      BRAIN_SEAWEEDFS__ACCESS_KEY_ID: ${BRAIN_SEAWEEDFS__ACCESS_KEY_ID:-replace-me}
+      BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY: ${BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY:-replace-me}
     volumes:
       - ${HOME}/.config/brain:/app/config:ro
       - ${HOME}/.config/brain/generated:/app/config/generated:rw
       - ./logs:/app/logs
       - ./scripts/healthcheck-core.sh:/usr/local/bin/brain-healthcheck:ro
     ports:
-      - "${BRAIN_CORE_PORT_BIND:-8898:8898}"
+      - "${BRAIN_CORE__PORT_BIND:-8898:8898}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -35,7 +34,7 @@ services:
         condition: service_healthy
     command: ["python", "-m", "lib.core.main"]
 
-  brain-agent:
+  brain-assistant:
     build:
       context: .
       dockerfile: Dockerfile
@@ -44,19 +43,65 @@ services:
     restart: unless-stopped
     user: "0:0"
     environment:
-      BRAIN_ACTORS_CORE__HOST: brain-core
-      BRAIN_ACTORS_CORE__PORT: 8898
-      BRAIN_AGENT_HEARTBEAT_FILE: /run/brain/agent-heartbeat
-      BRAIN_AGENT_HEARTBEAT_MAX_AGE_SECONDS: 90
+      BRAIN_CORE__HOST: brain-core
+      BRAIN_CORE__PORT: 8898
+      BRAIN_ASSISTANT_HEARTBEAT_FILE: /run/brain/assistant-heartbeat
+      BRAIN_ASSISTANT_HEARTBEAT_MAX_AGE_SECONDS: 90
     volumes:
       - ${HOME}/.config/brain:/app/config:ro
       - ${HOME}/.config/brain/generated:/app/config/generated:rw
       - ./logs:/app/logs
-      - ./scripts/healthcheck-agent.sh:/usr/local/bin/brain-healthcheck:ro
+      - ./scripts/healthcheck-assistant.sh:/usr/local/bin/brain-healthcheck:ro
     depends_on:
       brain-core:
         condition: service_healthy
-    command: ["python", "-m", "actors.agent.main"]
+    command: ["python", "-m", "actors.assistant.main"]
+
+  brain-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.14}
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      BRAIN_CORE__HOST: brain-core
+      BRAIN_CORE__PORT: 8898
+      BRAIN_WORKER_HEARTBEAT_FILE: /run/brain/worker-heartbeat
+      BRAIN_WORKER_HEARTBEAT_MAX_AGE_SECONDS: 90
+    volumes:
+      - ${HOME}/.config/brain:/app/config:ro
+      - ${HOME}/.config/brain/generated:/app/config/generated:rw
+      - ./logs:/app/logs
+      - ./scripts/healthcheck-worker.sh:/usr/local/bin/brain-healthcheck:ro
+    depends_on:
+      brain-core:
+        condition: service_healthy
+    command: ["python", "-m", "actors.worker.main"]
+
+  brain-subagent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.14}
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      BRAIN_CORE__HOST: brain-core
+      BRAIN_CORE__PORT: 8898
+      BRAIN_SUBAGENT_HEARTBEAT_FILE: /run/brain/subagent-heartbeat
+      BRAIN_SUBAGENT_HEARTBEAT_MAX_AGE_SECONDS: 90
+    volumes:
+      - ${HOME}/.config/brain:/app/config:ro
+      - ${HOME}/.config/brain/generated:/app/config/generated:rw
+      - ./logs:/app/logs
+      - ./scripts/healthcheck-subagent.sh:/usr/local/bin/brain-healthcheck:ro
+    depends_on:
+      brain-core:
+        condition: service_healthy
+    command: ["python", "-m", "actors.subagent.main"]
 
   brain-mcp:
     build:
@@ -71,7 +116,8 @@ services:
       - ${HOME}/.config/brain:/app/config:ro
       - ${BRAIN_MCP_FILESYSTEM_RO_SOURCE:-${HOME}}:/mnt/host:ro
     healthcheck:
-      test: ["CMD", "curl", "--silent", "--fail", "http://127.0.0.1:8763/health"]
+      test:
+        ["CMD", "curl", "--silent", "--fail", "http://127.0.0.1:8763/health"]
       interval: 10s
       timeout: 5s
       start_period: 30s
@@ -82,9 +128,9 @@ services:
     restart: unless-stopped
     command: ["valkey-server", "--appendonly", "yes", "--loglevel", "warning"]
     ports:
-      - "${BRAIN_VALKEY_PORT_BIND:-8761:6379}"
+      - "${BRAIN_VALKEY__PORT_BIND:-8761:6379}"
     volumes:
-      - ./data/valkey:/data
+      - brain-valkey:/data
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
@@ -97,20 +143,34 @@ services:
     environment:
       QDRANT__LOG_LEVEL: WARN
     ports:
-      - "${BRAIN_QDRANT_PORT_BIND:-8762:6333}"
+      - "${BRAIN_QDRANT__PORT_BIND:-8762:6333}"
     volumes:
-      - ./data/qdrant:/qdrant/storage
+      - brain-qdrant:/qdrant/storage
 
   seaweedfs:
     image: chrislusf/seaweedfs:3.97
     restart: unless-stopped
-    command: ["-logtostderr=false", "-alsologtostderr=false", "-stderrthreshold", "1", "server", "-dir=/data", "-s3", "-s3.port=8333"]
+    command:
+      [
+        "-logtostderr=false",
+        "-alsologtostderr=false",
+        "-stderrthreshold",
+        "1",
+        "server",
+        "-dir=/data",
+        "-s3",
+        "-s3.port=8333",
+      ]
     volumes:
-      - ./data/seaweedfs:/data
+      - brain-seaweedfs:/data
     ports:
-      - "${SEAWEEDFS_S3_PORT_BIND:-8333:8333}"
+      - "${BRAIN_SEAWEEDFS__PORT_BIND:-8333:8333}"
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8333 || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://127.0.0.1:8333 || exit 1",
+        ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -120,10 +180,10 @@ services:
     image: amazon/aws-cli:2.32.17
     restart: "no"
     environment:
-      AWS_ACCESS_KEY_ID: ${SEAWEEDFS_S3_ACCESS_KEY_ID:-replace-me}
-      AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_S3_SECRET_ACCESS_KEY:-replace-me}
+      AWS_ACCESS_KEY_ID: ${BRAIN_SEAWEEDFS__ACCESS_KEY_ID:-replace-me}
+      AWS_SECRET_ACCESS_KEY: ${BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY:-replace-me}
       AWS_DEFAULT_REGION: us-east-1
-      SEAWEEDFS_OAS_BUCKET: ${SEAWEEDFS_OAS_BUCKET:-brain-oas}
+      SEAWEEDFS_OAS_BUCKET: ${BRAIN_SEAWEEDFS__BUCKET:-brain-oas}
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -141,9 +201,9 @@ services:
       POSTGRES_USER: brain
       POSTGRES_PASSWORD: brain
     ports:
-      - "${BRAIN_POSTGRES_PORT_BIND:-8760:5432}"
+      - "${BRAIN_POSTGRES__PORT_BIND:-8760:5432}"
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - brain-postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U brain -d brain"]
       interval: 10s
@@ -163,3 +223,9 @@ services:
       JSON_RPC_IGNORE_STORIES: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_STORIES:-true}
     volumes:
       - ${SIGNAL_CLI_CONFIG_DIR:-./data/signal-cli}:/home/.local/share/signal-cli
+
+volumes:
+  brain-valkey:
+  brain-qdrant:
+  brain-seaweedfs:
+  brain-postgres:

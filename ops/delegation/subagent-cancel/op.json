@@ -1,0 +1,46 @@
+{
+  "op_id": "subagent-cancel",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Request cancellation of one queued or running subagent invocation.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "invocation_id": {
+        "type": "string",
+        "description": "The ULID identifier of the invocation to cancel."
+      },
+      "reason": {
+        "type": "string",
+        "description": "Cancel reason code (default 'manual').",
+        "enum": [
+          "manual",
+          "budget_tokens",
+          "budget_turns",
+          "budget_wallclock",
+          "parent_canceled",
+          "actor_lost"
+        ]
+      }
+    },
+    "required": [
+      "invocation_id"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "accepted": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "accepted"
+    ]
+  },
+  "call_target": "service_delegation.cancel",
+  "effect": "execute",
+  "approval": "never"
+}

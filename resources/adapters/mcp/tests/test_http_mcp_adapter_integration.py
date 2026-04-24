@@ -144,6 +144,18 @@ class TestHttpMcpAdapterCallTool:
             with pytest.raises(McpToolCallError):
                 adapter.call_tool(server_id="fs", tool_name="t", arguments={})
 
+    def test_client_error_raises(self) -> None:
+        adapter = HttpMcpAdapter(
+            settings=McpAdapterSettings(base_url="http://test:8763")
+        )
+        with patch.object(
+            adapter._client,
+            "post",
+            return_value=_mock_response(status_code=422, text="unprocessable"),
+        ):
+            with pytest.raises(McpToolCallError):
+                adapter.call_tool(server_id="fs", tool_name="t", arguments={})
+
 
 class TestHttpMcpAdapterHealth:
     """health() over HTTP."""

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import datetime
+
 from textual.app import ComposeResult
 from textual.widgets import Static
 
@@ -11,13 +14,14 @@ from lib.dashboard.panes.base import BaseView
 
 _RECENT_MAX = 8
 _TRUNCATE = 52
+_REFRESH_INTERVAL = 2.0
 
 
 def _trunc(text: str, n: int = _TRUNCATE) -> str:
     return text if len(text) <= n else text[:n] + "..."
 
 
-def _fmt_time(value) -> str:
+def _fmt_time(value: datetime) -> str:
     """Format one timestamp for compact dashboard display."""
     return value.strftime("%H:%M:%S")
 
@@ -38,20 +42,20 @@ class TurnPane(BaseView):
         self,
         turn_source: TurnDataSource | None = None,
         current: CurrentTurnView | None = None,
-        recent: list[RecentTurnItemView] | None = None,
+        recent: Sequence[RecentTurnItemView] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self._turn_source = turn_source
         self._current = current
-        self._recent: list[RecentTurnItemView] = recent or []
+        self._recent: Sequence[RecentTurnItemView] = recent or ()
 
     def compose(self) -> ComposeResult:
         yield Static(self._render_current(), id="turn-current")
         yield Static(self._render_recent(), id="turn-recent")
 
     def on_mount(self) -> None:
-        self.set_interval(2.0, self._refresh_from_source)
+        self.set_interval(_REFRESH_INTERVAL, self._refresh_from_source)
 
     def _refresh_from_source(self) -> None:
         if self._turn_source is None:
@@ -99,7 +103,7 @@ class TurnPane(BaseView):
     def refresh_data(
         self,
         current: CurrentTurnView | None,
-        recent: list[RecentTurnItemView],
+        recent: Sequence[RecentTurnItemView],
     ) -> None:
         self._current = current
         self._recent = recent

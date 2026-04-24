@@ -1,4 +1,4 @@
-"""Unit tests for the Core L0 MCP adapter."""
+"""Unit tests for the Core Tier 1 MCP adapter."""
 
 from __future__ import annotations
 

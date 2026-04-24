@@ -1,0 +1,16 @@
+{
+  "op_id": "current-datetime",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Return the current UTC and operator-local datetimes.",
+  "enabled": true,
+  "input_schema": null,
+  "output_schema": {
+    "utc_timestamp": "date-time | The current UTC datetime in ISO 8601 format.",
+    "local_timestamp": "date-time | The current datetime in the operator's preferred timezone.",
+    "local_timezone": "string | The operator's preferred IANA timezone name."
+  },
+  "call_target": "service_utility.current_datetime",
+  "effect": "read",
+  "approval": "never"
+}

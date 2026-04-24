@@ -42,7 +42,7 @@ The policy view may publish to and follow shared inspection context, but it must
 remain useful standalone.
 
 Compatible context fields include:
-- `capability`
+- `op`
 - `component`
 - `trace_id` when policy records can be correlated
 - focal timestamp or time range
@@ -66,7 +66,7 @@ The current section should present the selected item in a compact detail layout.
 ### For an Open Approval
 Suggested fields:
 - `State`
-- `Capability`
+- `Op`
 - `Actor`
 - `Channel`
 - `Summary`
@@ -80,7 +80,7 @@ Policy
 
 Current
 State       pending
-Capability  send-message-draft
+Op  send-message-draft
 Actor       operator
 Channel     signal
 Summary     Draft and send a reply to Chris about tomorrow
@@ -91,7 +91,7 @@ Expires     14:36:59
 ### For a Recent Decision
 Suggested fields:
 - `State`
-- `Capability`
+- `Op`
 - `Actor`
 - `Channel`
 - `Summary`
@@ -104,7 +104,7 @@ Policy
 
 Current
 State       allowed
-Capability  send-message-draft
+Op  send-message-draft
 Actor       operator
 Channel     signal
 Summary     Draft a reply for operator review
@@ -132,7 +132,7 @@ space permits.
 Columns:
 - time
 - state
-- capability
+- op
 
 Rules:
 - newest first
@@ -143,7 +143,7 @@ Illustrative render:
 
 ```text
 Recent
-14:31:58  allowed  capability.search
+14:31:58  allowed  op.search
 14:31:59  pending  send-message-draft
 14:32:03  allowed  attention.route_notify
 ```
@@ -181,7 +181,7 @@ Suggested shapes:
 ```text
 CurrentApprovalView
 - state: str
-- capability_id: str
+- op_id: str
 - actor: str
 - channel: str
 - summary: str
@@ -190,7 +190,7 @@ CurrentApprovalView
 
 CurrentDecisionView
 - state: str
-- capability_id: str
+- op_id: str
 - actor: str
 - channel: str
 - summary: str
@@ -199,7 +199,7 @@ CurrentDecisionView
 RecentPolicyItemView
 - timestamp: datetime
 - state: str
-- capability_id: str
+- op_id: str
 ```
 
 ------------------------------------------------------------------------
@@ -221,9 +221,9 @@ It may contain:
 As long as each row can normalize to:
 - time
 - state
-- capability
+- op
 
-If shared inspection context provides a compatible capability or time range, a
+If shared inspection context provides a compatible op or time range, a
 context-following policy view may narrow its recent list to that scope.
 
 ------------------------------------------------------------------------
@@ -239,7 +239,7 @@ The current section should:
 The recent section should:
 - remain compact
 - align columns consistently
-- truncate capability ids if required by narrow width
+- truncate op ids if required by narrow width
 
 ### Space-Constrained Behavior
 When the pane is short:
@@ -249,12 +249,12 @@ When the pane is short:
 When the pane is narrow:
 - keep labels short
 - wrap summary text
-- preserve state/capability visibility over secondary fields if needed
+- preserve state/op visibility over secondary fields if needed
 
 ------------------------------------------------------------------------
 ## Context Workflows
 Illustrative policy-view workflows:
-- selecting a recent policy item publishes `capability`, focal timestamp, and
+- selecting a recent policy item publishes `op`, focal timestamp, and
   any known correlated ids
 - a `LogView` may follow the same time range or correlated component to inspect
   surrounding activity
@@ -276,7 +276,7 @@ Policy
 
 Current
 State       pending
-Capability  send-message-draft
+Op  send-message-draft
 Actor       operator
 Channel     signal
 Summary     Draft and send a reply to Chris about tomorrow
@@ -284,7 +284,7 @@ Requested   14:31:59
 Expires     14:36:59
 
 Recent
-14:31:58  allowed  capability.search
+14:31:58  allowed  op.search
 14:31:59  pending  send-message-draft
 14:32:03  allowed  attention.route_notify
 ```
@@ -296,14 +296,14 @@ Policy
 
 Current
 State       allowed
-Capability  send-message-draft
+Op  send-message-draft
 Actor       operator
 Channel     signal
 Summary     Draft a reply for operator review
 Decided     14:31:59
 
 Recent
-14:31:58  allowed  capability.search
+14:31:58  allowed  op.search
 14:31:59  allowed  send-message-draft
 14:32:03  allowed  attention.route_notify
 ```

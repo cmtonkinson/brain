@@ -44,7 +44,7 @@ Yes, this is a meta doc about docs &mdash; Yo Dawg.
   code references (e.g., `EnvelopeMeta`, `services/state/`, `trace_id`).
 - Trail directory references with `/` (e.g., `services/`, `docs/`).
 - Italicize defined Glossary terms on at least first/significant use in a
-  document (e.g., _Service_, _Resource_, _Layer_).
+  document (e.g., _Service_, _Resource_, _Tier_).
 
 ------------------------------------------------------------------------
 ## Links

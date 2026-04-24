@@ -12,6 +12,10 @@ from lib.dashboard.models.log_event import DashboardLogEvent
 from lib.dashboard.panes.base import BaseView
 
 
+_REFRESH_INTERVAL = 0.5
+_MAX_DISPLAYED_EVENTS = 500
+
+
 class LogPane(BaseView):
     """Live log event stream with freeze/follow and filter support."""
 
@@ -43,7 +47,7 @@ class LogPane(BaseView):
         yield RichLog(id="log-output", highlight=True, markup=True, wrap=True)
 
     def on_mount(self) -> None:
-        self.set_interval(0.5, self._refresh_log)
+        self.set_interval(_REFRESH_INTERVAL, self._refresh_log)
 
     def _status_line(self) -> str:
         mode = "FOLLOW" if self.following else "FROZEN"
@@ -89,7 +93,7 @@ class LogPane(BaseView):
         status.update(self._status_line())
         events = [e for e in self._buffer.get_all() if self._matches(e)]
         log_widget.clear()
-        for event in events[-500:]:
+        for event in events[-_MAX_DISPLAYED_EVENTS:]:
             log_widget.write(self._format_event(event))
 
     def action_toggle_follow(self) -> None:

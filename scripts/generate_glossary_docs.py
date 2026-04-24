@@ -25,6 +25,7 @@ class GlossaryTerm:
 
     term: str
     definition: str
+    note: str | None = None
 
 
 def _title_case_term(term: str) -> str:
@@ -118,14 +119,21 @@ def _load_glossary(path: Path) -> tuple[str, list[GlossaryTerm]]:
             raise ValueError("glossary term is required")
         if not definition:
             raise ValueError(f"definition is required for term '{term}'")
+        note_raw = item.get("note")
+        note = str(note_raw).strip() if note_raw is not None else None
         raw_terms.append(term)
-        terms.append(GlossaryTerm(term=term, definition=definition))
+        terms.append(GlossaryTerm(term=term, definition=definition, note=note))
 
     normalized_terms = [
         GlossaryTerm(
             term=term.term,
             definition=_normalize_definition_terms(
                 definition=term.definition, known_terms=raw_terms
+            ),
+            note=(
+                _normalize_definition_terms(definition=term.note, known_terms=raw_terms)
+                if term.note is not None
+                else None
             ),
         )
         for term in terms
@@ -139,7 +147,10 @@ def _render_markdown(*, title: str, terms: list[GlossaryTerm]) -> str:
     """Render glossary markdown in deterministic bullet format."""
     lines = [f"# {DOC_NAME}", GENERATED_NOTE, "", HR, "## Terms"]
     for item in terms:
-        lines.append(f"- **{item.term} &mdash;** {item.definition}")
+        line = f"- **{item.term} &mdash;** {item.definition}"
+        if item.note is not None:
+            line += f"\n  _(Note: {item.note})_"
+        lines.append(line)
     lines.append("")
     lines.append("")
     lines.append(HR)

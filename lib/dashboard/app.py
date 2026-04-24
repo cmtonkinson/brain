@@ -47,14 +47,14 @@ class BrainDashboardApp(App[None]):
         self._log_buffer = LogBuffer(max_size=self._config.logs.buffer_size)
         self._log_sources = [
             FileLogSource(
-                path="logs/core.log",
+                path=self._config.logs.core_log_path,
                 component="core",
                 buffer=self._log_buffer,
                 backfill_lines=self._config.logs.backfill_lines,
             ),
             FileLogSource(
-                path="logs/agent.log",
-                component="agent",
+                path=self._config.logs.assistant_log_path,
+                component="assistant",
                 buffer=self._log_buffer,
                 backfill_lines=self._config.logs.backfill_lines,
             ),
@@ -99,23 +99,14 @@ class BrainDashboardApp(App[None]):
 
     def on_unmount(self) -> None:
         """Stop all long-running data source threads."""
-        try:
-            self._health_aggregator.stop()
-        except Exception:
-            pass
-        try:
-            self._turn_source.stop()
-        except Exception:
-            pass
-        try:
-            self._trace_source.stop()
-        except Exception:
-            pass
-        try:
-            self._policy_source.stop()
-        except Exception:
-            pass
-        for src in self._log_sources:
+        stoppables = [
+            self._health_aggregator,
+            self._turn_source,
+            self._trace_source,
+            self._policy_source,
+            *self._log_sources,
+        ]
+        for src in stoppables:
             try:
                 src.stop()
             except Exception:

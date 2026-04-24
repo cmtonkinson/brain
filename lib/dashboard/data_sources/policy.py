@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pydantic import BaseModel, ConfigDict
+
 from lib.dashboard.data_sources.postgres import (
     BasePostgresDataSource,
     PostgresConnectionConfig,
@@ -16,18 +18,12 @@ from lib.dashboard.models.policy import (
 _RECENT_LIMIT = 20
 
 
-class PolicySnapshot:
-    __slots__ = ("approval", "decision", "recent")
+class PolicySnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
-    def __init__(
-        self,
-        approval: CurrentApprovalView | None,
-        decision: CurrentDecisionView | None,
-        recent: list[RecentPolicyItemView],
-    ) -> None:
-        self.approval = approval
-        self.decision = decision
-        self.recent = recent
+    approval: CurrentApprovalView | None = None
+    decision: CurrentDecisionView | None = None
+    recent: tuple[RecentPolicyItemView, ...] = ()
 
 
 class PolicyDataSource(BasePostgresDataSource[PolicySnapshot]):
@@ -44,8 +40,8 @@ class PolicyDataSource(BasePostgresDataSource[PolicySnapshot]):
             # Newest pending approval
             cur.execute(
                 """
-                SELECT status, capability_id, actor, channel, summary, created_at, expires_at
-                FROM service_policy_service.approvals
+                SELECT status, op_id, actor, channel, summary, created_at, expires_at
+                FROM service_policy.approvals
                 WHERE status = 'pending' AND expires_at > now()
                 ORDER BY created_at DESC
                 LIMIT 1
@@ -56,8 +52,8 @@ class PolicyDataSource(BasePostgresDataSource[PolicySnapshot]):
             # Most recent policy decision
             cur.execute(
                 """
-                SELECT capability_id, actor, channel, allowed, created_at
-                FROM service_policy_service.policy_decisions
+                SELECT op_id, actor, channel, allowed, created_at
+                FROM service_policy.policy_decisions
                 ORDER BY created_at DESC
                 LIMIT 1
                 """
@@ -67,13 +63,13 @@ class PolicyDataSource(BasePostgresDataSource[PolicySnapshot]):
             # Recent list: union of approvals + decisions, newest first
             cur.execute(
                 """
-                SELECT created_at, status AS state, capability_id
-                FROM service_policy_service.approvals
+                SELECT created_at, status AS state, op_id
+                FROM service_policy.approvals
                 UNION ALL
                 SELECT created_at,
                        CASE WHEN allowed THEN 'allowed' ELSE 'denied' END,
-                       capability_id
-                FROM service_policy_service.policy_decisions
+                       op_id
+                FROM service_policy.policy_decisions
                 ORDER BY created_at DESC
                 LIMIT %s
                 """,
@@ -85,7 +81,7 @@ class PolicyDataSource(BasePostgresDataSource[PolicySnapshot]):
         if approval_row:
             approval = CurrentApprovalView(
                 state=approval_row[0],
-                capability_id=approval_row[1],
+                op_id=approval_row[1],
                 actor=approval_row[2],
                 channel=approval_row[3],
                 summary=approval_row[4],
@@ -97,20 +93,20 @@ class PolicyDataSource(BasePostgresDataSource[PolicySnapshot]):
         if decision_row:
             cap_id, actor, channel, allowed, created_at = decision_row
             decision = CurrentDecisionView(
-                capability_id=cap_id,
+                op_id=cap_id,
                 actor=actor,
                 channel=channel,
                 state="allowed" if allowed else "denied",
                 decided_at=created_at,
             )
 
-        recent = [
+        recent = tuple(
             RecentPolicyItemView(
                 timestamp=r[0],
                 state=r[1],
-                capability_id=r[2],
+                op_id=r[2],
             )
             for r in recent_rows
-        ]
+        )
 
         return PolicySnapshot(approval=approval, decision=decision, recent=recent)

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from lib.sdk import CapabilityDescriptor, CapabilitySearchHit
+from lib.sdk import OpDescriptor, OpSearchHit
 from resources.adapters.llm import AdapterToolChatResult, AdapterChatToolCall
 from tests.helpers.inprocess_core_smoke import run_agent_e2e_smoke
 
 
 def test_agent_e2e_smoke_runs_inbound_message_to_outbound_reply(tmp_path) -> None:
-    """Inbound message, Switchboard poll, MAS/LMS turn, and AR send should all complete."""
+    """Inbound message, Relay inbound poll, Recall/Language turn, and AR send should all complete."""
     result = run_agent_e2e_smoke(tmp_path=tmp_path)
 
     assert result.inbound_status_code == 202
@@ -50,17 +50,17 @@ def test_agent_e2e_smoke_keeps_tool_set_stable_during_discovery(tmp_path) -> Non
                 tool_calls=(),
             ),
         ),
-        capability_search_results=(
-            CapabilitySearchHit(
-                capability_id="vault-get-file",
+        op_search_results=(
+            OpSearchHit(
+                op_id="vault-get-file",
                 required_params=("file_path",),
                 summary="Read one markdown file by path.",
             ),
         ),
-        described_capabilities=(
-            CapabilityDescriptor(
-                capability_id="vault-get-file",
-                kind="native_op",
+        described_ops=(
+            OpDescriptor(
+                op_id="vault-get-file",
+                kind="native",
                 version="1.0.0",
                 summary="Read one markdown file by path.",
                 input_schema={
@@ -70,13 +70,12 @@ def test_agent_e2e_smoke_keeps_tool_set_stable_during_discovery(tmp_path) -> Non
                     "additionalProperties": False,
                 },
                 output_schema={"type": "object"},
-                autonomy=0,
-                requires_approval=False,
-                side_effects=(),
-                required_capabilities=(),
+                effect="read",
+                approval="never",
+                required_ops=(),
             ),
         ),
-        capability_invoke_outputs={"vault-get-file": {"content": "# Resume"}},
+        op_invoke_outputs={"vault-get-file": {"content": "# Resume"}},
     )
 
     assert result.response_text == "assistant reply"

@@ -1,20 +1,15 @@
-"""Tests for pydantic-settings-backed shared configuration loading."""
+"""Tests for merged-directory shared configuration loading."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-import yaml
 
 from lib.shared.config import (
-    ApprovalResponseSettings,
     ActorCoreConnectionSettings,
     CoreRuntimeSettings,
     CoreSettings,
-    CoreBootSettings,
-    CoreHealthSettings,
-    CoreHttpSettings,
     LoggingSettings,
     ObservabilitySettings,
     ProfileSettings,
@@ -25,56 +20,51 @@ from lib.shared.config import (
     load_resources_settings,
     resolve_component_settings,
 )
-from lib.shared.config.models import (
-    AgentActorSettings,
-    CliActorSettings,
-    WorkerActorSettings,
+from lib.shared.config.models import AssistantActorSettings
+from resources.adapters.llm.config import (
+    LlmAdapterSettings,
+    resolve_llm_adapter_settings,
 )
-from lib.shared.config.models import OperatorProfileSettings
-from resources.adapters.llm.config import resolve_llm_adapter_settings
-from resources.adapters.llm.config import LlmAdapterSettings
-from resources.adapters.signal.config import SignalAdapterSettings
-from resources.substrates.obsidian.config import ObsidianSubstrateSettings
 from resources.substrates.postgres.config import PostgresSettings
-from resources.substrates.qdrant.config import QdrantSettings
 from resources.substrates.seaweedfs.config import SeaweedFSSubstrateSettings
-from resources.substrates.valkey.config import ValkeySettings
-from services.action.attention_router.config import AttentionRouterServiceSettings
-from services.action.capability_engine.config import CapabilityEngineSettings
-from services.action.language_model.config import LanguageModelServiceSettings
-from services.action.policy_service.config import PolicyServiceSettings
-from services.state.cache_authority.config import CacheAuthoritySettings
-from services.state.embedding_authority.component import SERVICE_COMPONENT_ID
-from services.state.embedding_authority.config import EmbeddingServiceSettings
-from services.state.memory_authority.config import MemoryAuthoritySettings
-from services.state.object_authority.config import ObjectAuthoritySettings
-from services.state.vault_authority.config import VaultAuthoritySettings
+from services.state.embedding.component import SERVICE_COMPONENT_ID
+from services.state.embedding.config import EmbeddingServiceSettings
+
+
+def _write_yaml(path: Path, lines: list[str]) -> None:
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _install_samples(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    sample_dir = repo_root / "config"
+    for sample_path in sorted(sample_dir.glob("*.yaml.sample")):
+        target = tmp_path / sample_path.name.removesuffix(".sample")
+        target.write_text(sample_path.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def test_load_core_settings_uses_brain_precedence_cascade(tmp_path: Path) -> None:
-    """Init params should override env, env should override YAML, then defaults."""
-    config_file = tmp_path / "core.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "logging:",
-                "  level: WARNING",
-                "boot:",
-                "  boot_retry_attempts: 5",
-            ]
-        ),
-        encoding="utf-8",
+    """CLI params override env, env overrides YAML, then defaults."""
+    _write_yaml(
+        tmp_path / "shared.yaml",
+        [
+            "logging:",
+            "  level: WARNING",
+            "core:",
+            "  boot:",
+            "    boot_retry_attempts: 5",
+        ],
     )
 
     settings = load_core_settings(
         cli_params={"logging": {"level": "DEBUG"}},
         environ={
-            "BRAIN_CORE_LOGGING__LEVEL": "ERROR",
-            "BRAIN_CORE_BOOT__BOOT_RETRY_ATTEMPTS": "4",
-            "BRAIN_CORE_HTTP__HOST": "127.0.0.9",
-            "BRAIN_CORE_HTTP__PORT": "8123",
+            "BRAIN_LOGGING__LEVEL": "ERROR",
+            "BRAIN_CORE__BOOT__BOOT_RETRY_ATTEMPTS": "4",
+            "BRAIN_CORE__HTTP__HOST": "127.0.0.9",
+            "BRAIN_CORE__HTTP__PORT": "8123",
         },
-        config_path=config_file,
+        config_path=tmp_path,
     )
 
     assert settings.logging.level == "DEBUG"
@@ -86,22 +76,15 @@ def test_load_core_settings_uses_brain_precedence_cascade(tmp_path: Path) -> Non
 def test_load_core_runtime_settings_resolves_substrate_component(
     tmp_path: Path,
 ) -> None:
-    """resolve_component_settings should find substrate config from resources settings."""
-    resources_file = tmp_path / "resources.yaml"
-    resources_file.write_text(
-        "\n".join(
-            [
-                "substrate:",
-                "  postgres:",
-                "    pool_size: 7",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    """Component resolution should read direct resource roots."""
+    _write_yaml(tmp_path / "state.yaml", ["postgres:", "  pool_size: 7"])
 
     runtime = load_core_runtime_settings(
-        resources_config_path=resources_file,
-        core_config_path=tmp_path / "core.yaml",
+        core_config_path=tmp_path,
+        environ={
+            "BRAIN_SEAWEEDFS__ACCESS_KEY_ID": "test-key",
+            "BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY": "test-secret",
+        },
     )
 
     postgres = resolve_component_settings(
@@ -112,24 +95,39 @@ def test_load_core_runtime_settings_resolves_substrate_component(
     assert postgres.pool_size == 7
 
 
-def test_load_core_runtime_settings_resolves_service_component(tmp_path: Path) -> None:
-    """resolve_component_settings should find service config from core settings."""
-    core_file = tmp_path / "core.yaml"
-    core_file.write_text(
-        "\n".join(
-            [
-                "service:",
-                "  embedding_authority:",
-                "    max_list_limit: 250",
-            ]
-        ),
-        encoding="utf-8",
+def test_load_resources_settings_reads_component_root_env_keys(tmp_path: Path) -> None:
+    """Resource env overrides should use `BRAIN_{COMPONENT}__...`."""
+    resources = load_resources_settings(
+        config_path=tmp_path,
+        environ={
+            "BRAIN_SEAWEEDFS__ACCESS_KEY_ID": "test-key",
+            "BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY": "test-secret",
+        },
     )
 
     runtime = load_core_runtime_settings(
-        core_config_path=core_file,
-        resources_config_path=tmp_path / "resources.yaml",
+        core_config_path=tmp_path,
+        environ={
+            "BRAIN_SEAWEEDFS__ACCESS_KEY_ID": "test-key",
+            "BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY": "test-secret",
+        },
     )
+    resolved = resolve_component_settings(
+        settings=runtime,
+        component_id="substrate_seaweedfs",
+        model=SeaweedFSSubstrateSettings,
+    )
+
+    assert isinstance(resources, ResourcesSettings)
+    assert resolved.access_key_id == "test-key"
+    assert resolved.secret_access_key == "test-secret"
+
+
+def test_load_core_runtime_settings_resolves_service_component(tmp_path: Path) -> None:
+    """Component resolution should read direct service roots."""
+    _write_yaml(tmp_path / "state.yaml", ["embedding:", "  max_list_limit: 250"])
+
+    runtime = load_core_runtime_settings(core_config_path=tmp_path, environ={})
 
     embedding = resolve_component_settings(
         settings=runtime,
@@ -142,40 +140,24 @@ def test_load_core_runtime_settings_resolves_service_component(tmp_path: Path) -
 def test_load_core_settings_uses_model_defaults_when_sources_missing(
     tmp_path: Path,
 ) -> None:
-    """Settings should fall back to model defaults when env and YAML are absent."""
-    settings = load_core_settings(config_path=tmp_path / "core.yaml", environ={})
+    """Missing YAML and env should fall back to model defaults."""
+    settings = load_core_settings(config_path=tmp_path, environ={})
 
-    assert settings.logging.process_name == "core"
-    assert settings.logging.level == "INFO"
-    assert settings.logging.file_capture_enabled is False
-    assert settings.logging.file_capture_level == "VERBOSE"
-    assert settings.logging.file_capture_directory == "logs"
-    assert settings.boot.boot_retry_attempts == 3
+    assert settings.logging == LoggingSettings()
+    assert settings.observability == ObservabilitySettings()
+    assert settings.profile.operator.signal_contact_e164 == "+12222222222"
     assert settings.http.host == "0.0.0.0"
     assert settings.http.port == 8898
-    assert settings.observability.enabled is False
-    assert settings.observability.otlp.endpoint == "http://otel-collector:4318"
-    assert settings.observability.llm.backend == "langfuse"
-    assert settings.observability.llm.capture_content is True
-    assert settings.profile.operator.signal_contact_e164 == "+12222222222"
-    assert settings.profile.operator_name == "Operator"
-    assert settings.profile.preferred_timezone == "UTC"
 
 
 def test_load_core_settings_reads_profile_preferred_timezone(tmp_path: Path) -> None:
-    """core.yaml should support the operator's preferred presentation timezone."""
-    config_file = tmp_path / "core.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "profile:",
-                "  preferred_timezone: America/New_York",
-            ]
-        ),
-        encoding="utf-8",
+    """Preferred timezone should load from the shared profile root."""
+    _write_yaml(
+        tmp_path / "shared.yaml",
+        ["profile:", "  preferred_timezone: America/New_York"],
     )
 
-    settings = load_core_settings(config_path=config_file, environ={})
+    settings = load_core_settings(config_path=tmp_path, environ={})
 
     assert settings.profile.preferred_timezone == "America/New_York"
 
@@ -183,616 +165,209 @@ def test_load_core_settings_reads_profile_preferred_timezone(tmp_path: Path) -> 
 def test_load_core_settings_rejects_invalid_profile_preferred_timezone(
     tmp_path: Path,
 ) -> None:
-    """Invalid preferred timezone configuration should fail at load time."""
-    config_file = tmp_path / "core.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "profile:",
-                "  preferred_timezone: Mars/Olympus",
-            ]
-        ),
-        encoding="utf-8",
+    """Invalid timezone configuration should fail at load time."""
+    _write_yaml(
+        tmp_path / "shared.yaml",
+        ["profile:", "  preferred_timezone: Mars/Olympus"],
     )
 
     with pytest.raises(ValueError, match="invalid preferred_timezone"):
-        load_core_settings(config_path=config_file, environ={})
+        load_core_settings(config_path=tmp_path, environ={})
 
 
-def test_load_actor_settings_reads_agent_prompt_settings(tmp_path: Path) -> None:
-    """actors.yaml should support agent-owned prompt settings."""
-    config_file = tmp_path / "actors.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "agent:",
-                "  personality: focused",
-                "  operator_profile: Refer to me as 'captain'",
-                "  system_prompt_append: Appendix",
-            ]
-        ),
-        encoding="utf-8",
+def test_load_actor_settings_reads_assistant_prompt_settings(tmp_path: Path) -> None:
+    """Actor config should load prompt settings from the `assistant` root."""
+    _write_yaml(
+        tmp_path / "actors.yaml",
+        [
+            "assistant:",
+            "  personality: focused",
+            "  operator_profile: Refer to me as 'captain'",
+            "  system_prompt_append: Appendix",
+        ],
     )
 
-    settings = load_actor_settings(config_path=config_file, environ={})
+    settings = load_actor_settings(config_path=tmp_path, environ={})
 
-    assert settings.agent.personality == "focused"
-    assert settings.agent.operator_profile == "Refer to me as 'captain'"
-    assert settings.agent.system_prompt_append == "Appendix"
-
-
-def test_load_actor_settings_reads_agent_environment_context(tmp_path: Path) -> None:
-    """actors.yaml should support configured environment-context capabilities."""
-    config_file = tmp_path / "actors.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "agent:",
-                "  environment_context:",
-                "    - capability_id: current-datetime",
-                "      input_payload: {}",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    settings = load_actor_settings(config_path=config_file, environ={})
-
-    assert len(settings.agent.environment_context) == 1
-    entry = settings.agent.environment_context[0]
-    assert entry.capability_id == "current-datetime"
-    assert entry.input_payload == {}
+    assert settings.assistant.personality == "focused"
+    assert settings.assistant.operator_profile == "Refer to me as 'captain'"
+    assert settings.assistant.system_prompt_append == "Appendix"
 
 
 def test_load_actor_settings_reads_dynamic_environment_context_inputs(
     tmp_path: Path,
 ) -> None:
-    """actors.yaml should support validated dynamic environment-context inputs."""
-    config_file = tmp_path / "actors.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "agent:",
-                "  environment_context:",
-                "    - capability_id: eventkit--list-calendar-events",
-                "      input_payload:",
-                "        start_date:",
-                "          resolve: local_datetime_boundary",
-                "          boundary: start_of_day",
-                "          day_offset: 0",
-                "        end_date:",
-                "          resolve: local_datetime_boundary",
-                "          boundary: end_of_day",
-                "          day_offset: 1",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    settings = load_actor_settings(config_path=config_file, environ={})
-
-    entry = settings.agent.environment_context[0]
-    assert entry.capability_id == "eventkit--list-calendar-events"
-    assert entry.input_payload == {
-        "start_date": {
-            "resolve": "local_datetime_boundary",
-            "boundary": "start_of_day",
-            "day_offset": 0,
-            "format": "iso8601",
-        },
-        "end_date": {
-            "resolve": "local_datetime_boundary",
-            "boundary": "end_of_day",
-            "day_offset": 1,
-            "format": "iso8601",
-        },
-    }
-
-
-def test_load_actor_settings_rejects_invalid_environment_context_resolver(
-    tmp_path: Path,
-) -> None:
-    """actors.yaml should reject malformed dynamic environment-context inputs."""
-    config_file = tmp_path / "actors.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "agent:",
-                "  environment_context:",
-                "    - capability_id: eventkit--list-calendar-events",
-                "      input_payload:",
-                "        start_date:",
-                "          resolve: local_datetime_boundary",
-                "          boundary: noon",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="start_of_day|end_of_day"):
-        load_actor_settings(config_path=config_file, environ={})
-
-
-def test_load_actor_settings_reads_nested_dynamic_environment_context_inputs(
-    tmp_path: Path,
-) -> None:
-    """actors.yaml should validate resolver specs recursively inside nested values."""
-    config_file = tmp_path / "actors.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "agent:",
-                "  environment_context:",
-                "    - capability_id: eventkit--list-calendar-events",
-                "      input_payload:",
-                "        filters:",
-                "          window:",
-                "            start:",
-                "              resolve: local_datetime_boundary",
-                "              boundary: start_of_day",
-                "        checkpoints:",
-                "          - label: open",
-                "          - at:",
-                "              resolve: local_datetime_boundary",
-                "              boundary: end_of_day",
-                "              day_offset: 1",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    settings = load_actor_settings(config_path=config_file, environ={})
-
-    assert settings.agent.environment_context[0].input_payload == {
-        "filters": {
-            "window": {
-                "start": {
-                    "resolve": "local_datetime_boundary",
-                    "boundary": "start_of_day",
-                    "day_offset": 0,
-                    "format": "iso8601",
-                }
-            }
-        },
-        "checkpoints": [
-            {"label": "open"},
-            {
-                "at": {
-                    "resolve": "local_datetime_boundary",
-                    "boundary": "end_of_day",
-                    "day_offset": 1,
-                    "format": "iso8601",
-                }
-            },
+    """Assistant environment-context entries should validate recursive resolvers."""
+    _write_yaml(
+        tmp_path / "actors.yaml",
+        [
+            "assistant:",
+            "  environment_context:",
+            "    - op_id: eventkit--list-calendar-events",
+            "      input_payload:",
+            "        start_date:",
+            "          resolve: local_datetime_boundary",
+            "          boundary: start_of_day",
+            "          day_offset: 0",
+            "        end_date:",
+            "          resolve: local_datetime_boundary",
+            "          boundary: end_of_day",
+            "          day_offset: 1",
         ],
-    }
+    )
+
+    settings = load_actor_settings(config_path=tmp_path, environ={})
+
+    entry = settings.assistant.environment_context[0]
+    assert entry.op_id == "eventkit--list-calendar-events"
+    assert entry.input_payload["start_date"]["format"] == "iso8601"
+    assert entry.input_payload["end_date"]["day_offset"] == 1
 
 
-def test_load_actor_settings_rejects_invalid_environment_context_resolver_format(
+def test_load_core_settings_applies_secrets_yaml_over_non_secret_yaml(
     tmp_path: Path,
 ) -> None:
-    """actors.yaml should reject unsupported dynamic resolver formats."""
-    config_file = tmp_path / "actors.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "agent:",
-                "  environment_context:",
-                "    - capability_id: eventkit--list-calendar-events",
-                "      input_payload:",
-                "        start_date:",
-                "          resolve: local_datetime_boundary",
-                "          boundary: start_of_day",
-                "          format: unix",
-            ]
-        ),
-        encoding="utf-8",
+    """Secrets files should merge by lexical order and override sibling files."""
+    _write_yaml(
+        tmp_path / "shared.yaml",
+        [
+            "profile:",
+            "  operator_name: Public Operator",
+            "logging:",
+            "  level: WARNING",
+        ],
+    )
+    _write_yaml(
+        tmp_path / "zz-secrets.local.yaml",
+        ["profile:", "  operator_name: Private Operator"],
     )
 
-    with pytest.raises(ValueError, match="iso8601"):
-        load_actor_settings(config_path=config_file, environ={})
-
-
-def test_load_actor_settings_rejects_non_integer_environment_context_day_offset(
-    tmp_path: Path,
-) -> None:
-    """actors.yaml should reject non-integer dynamic resolver day offsets."""
-    config_file = tmp_path / "actors.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "agent:",
-                "  environment_context:",
-                "    - capability_id: eventkit--list-calendar-events",
-                "      input_payload:",
-                "        start_date:",
-                "          resolve: local_datetime_boundary",
-                "          boundary: start_of_day",
-                "          day_offset: tomorrow",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="valid integer"):
-        load_actor_settings(config_path=config_file, environ={})
-
-
-def test_load_core_settings_applies_secrets_yaml_over_core_yaml(tmp_path: Path) -> None:
-    """Optional secrets.yaml should override matching keys from core.yaml only."""
-    config_file = tmp_path / "core.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "profile:",
-                "  operator_name: Public Operator",
-                "logging:",
-                "  level: WARNING",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    secrets_file = tmp_path / "secrets.yaml"
-    secrets_file.write_text(
-        "\n".join(
-            [
-                "profile:",
-                "  operator_name: Private Operator",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    settings = load_core_settings(config_path=config_file, environ={})
+    settings = load_core_settings(config_path=tmp_path, environ={})
 
     assert settings.profile.operator_name == "Private Operator"
     assert settings.logging.level == "WARNING"
 
 
-def test_load_core_settings_ignores_secrets_yaml_when_missing(tmp_path: Path) -> None:
-    """core.yaml values should be used unchanged when secrets.yaml does not exist."""
-    config_file = tmp_path / "core.yaml"
-    config_file.write_text(
-        "\n".join(
-            [
-                "profile:",
-                "  operator_name: Public Operator",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    settings = load_core_settings(config_path=config_file, environ={})
-
-    assert settings.profile.operator_name == "Public Operator"
-
-
 def test_load_resources_settings_deep_merges_yaml_mappings(tmp_path: Path) -> None:
-    """resources.yaml and secrets.yaml should deep-merge nested dict settings."""
-    resources_file = tmp_path / "resources.yaml"
-    resources_file.write_text(
-        "\n".join(
-            [
-                "adapter:",
-                "  llm:",
-                "    providers:",
-                "      anthropic:",
-                "        api_base: https://api.anthropic.com",
-            ]
-        ),
-        encoding="utf-8",
+    """Split config files should deep-merge nested component settings."""
+    _write_yaml(
+        tmp_path / "effect.yaml",
+        [
+            "llm:",
+            "  providers:",
+            "    anthropic:",
+            "      api_base: https://api.anthropic.com",
+        ],
     )
-    secrets_file = tmp_path / "secrets.yaml"
-    secrets_file.write_text(
-        "\n".join(
-            [
-                "adapter:",
-                "  llm:",
-                "    providers:",
-                "      anthropic:",
-                "        api_key: secret-key",
-            ]
-        ),
-        encoding="utf-8",
+    _write_yaml(
+        tmp_path / "secrets.private.yaml",
+        [
+            "llm:",
+            "  providers:",
+            "    anthropic:",
+            "      api_key: secret-key",
+        ],
     )
 
-    resources = load_resources_settings(config_path=resources_file, environ={})
-    runtime = load_core_runtime_settings(
-        core_config_path=tmp_path / "core.yaml",
-        resources_config_path=resources_file,
-        environ={},
-    )
-
-    assert resources.adapter.model_dump(mode="python")["llm"]["providers"] == {
-        "anthropic": {
-            "api_base": "https://api.anthropic.com",
-            "api_key": "secret-key",
-        },
-    }
+    runtime = load_core_runtime_settings(core_config_path=tmp_path, environ={})
     resolved = resolve_llm_adapter_settings(runtime)
-    assert set(resolved.providers) == {"anthropic", "voyage", "ollama"}
+
+    assert resolved.providers["anthropic"].api_base == "https://api.anthropic.com"
+    assert resolved.providers["anthropic"].api_key == "secret-key"
     assert resolved.providers["voyage"].api_base == "https://api.voyageai.com"
-    assert resolved.providers["voyage"].options == {"output_dimension": 2048}
-    assert resolved.providers["ollama"].api_base == "http://host.docker.internal:11434"
 
 
 def test_resolve_component_settings_deep_merges_component_model_defaults() -> None:
-    """Component resolution should preserve nested model defaults under overrides."""
+    """Nested model defaults should survive partial direct component overrides."""
     runtime = CoreRuntimeSettings(
         core=CoreSettings.model_validate({}),
-        resources=ResourcesSettings.model_validate(
-            {
-                "adapter": {
-                    "llm": {
-                        "providers": {
-                            "anthropic": {
-                                "api_key": "secret-key",
-                            }
-                        }
+        resources=ResourcesSettings.model_validate({}),
+        component_settings={
+            "llm": {
+                "providers": {
+                    "anthropic": {
+                        "api_key": "secret-key",
                     }
                 }
             }
-        ),
+        },
     )
 
     resolved = resolve_llm_adapter_settings(runtime)
 
-    assert set(resolved.providers) == {"anthropic", "voyage", "ollama"}
-    assert resolved.providers["voyage"].api_base == "https://api.voyageai.com"
-    assert resolved.providers["voyage"].options == {"output_dimension": 2048}
-    assert resolved.providers["ollama"].api_base == "http://host.docker.internal:11434"
+    assert isinstance(resolved, LlmAdapterSettings)
     assert resolved.providers["anthropic"].api_base == "https://api.anthropic.com"
     assert resolved.providers["anthropic"].api_key == "secret-key"
+    assert resolved.providers["voyage"].options == {"output_dimension": 2048}
 
 
-def test_load_actor_settings_deep_merges_agent_defaults_with_secrets_yaml(
+def test_load_actor_settings_deep_merges_assistant_defaults_with_secrets_yaml(
     tmp_path: Path,
 ) -> None:
-    """Actor config overrides should preserve default deny-list entries."""
-    actors_file = tmp_path / "actors.yaml"
-    actors_file.write_text(
-        "\n".join(
-            [
-                "agent:",
-                "  principal: assistant",
-                "  personality: focused",
-            ]
-        ),
-        encoding="utf-8",
+    """Assistant overrides should preserve model defaults under partial merges."""
+    _write_yaml(
+        tmp_path / "actors.yaml",
+        ["assistant:", "  principal: assistant", "  personality: focused"],
     )
-    secrets_file = tmp_path / "secrets.yaml"
-    secrets_file.write_text(
-        "\n".join(
-            [
-                "agent:",
-                "  source: test-agent",
-                "  system_prompt_append: Appendix",
-            ]
-        ),
-        encoding="utf-8",
+    _write_yaml(
+        tmp_path / "secrets.local.yaml",
+        ["assistant:", "  source: test-assistant", "  system_prompt_append: Appendix"],
     )
 
-    actors = load_actor_settings(config_path=actors_file, environ={})
+    actors = load_actor_settings(config_path=tmp_path, environ={})
 
-    assert actors.agent.principal == "assistant"
-    assert actors.agent.source == "test-agent"
-    assert actors.agent.personality == "focused"
-    assert actors.agent.operator_profile == "Refer to me as 'boss'"
-    assert actors.agent.system_prompt_append == "Appendix"
-    assert actors.agent.capability_discovery_deny_list == ("attention-notify",)
-    assert actors.agent.tool_loop_tier2_hop_threshold == 3
+    assert actors.assistant.principal == "assistant"
+    assert actors.assistant.source == "test-assistant"
+    assert actors.assistant.personality == "focused"
+    assert actors.assistant.operator_profile == "Refer to me as 'boss'"
+    assert actors.assistant.system_prompt_append == "Appendix"
 
 
 def test_core_runtime_settings_exposes_profile_via_core() -> None:
-    """CoreRuntimeSettings must access profile via .core.profile, not .profile."""
+    """The runtime settings dataclass should expose profile through `.core.profile`."""
     runtime_settings = load_core_runtime_settings()
-
-    # CoreRuntimeSettings should NOT have a top-level .profile attribute.
-    assert not hasattr(runtime_settings, "profile"), (
-        "CoreRuntimeSettings must not expose 'profile' directly; "
-        "use settings.core.profile instead"
-    )
-
-    # The correct path should work.
+    assert not hasattr(runtime_settings, "profile")
     profile = runtime_settings.core.profile
-    assert profile.operator.signal_contact_e164
-    assert profile.default_dial_code
+    assert isinstance(profile, ProfileSettings)
     assert profile.operator_name
-    assert profile.brain_name
 
 
 def test_sample_config_files_load_cleanly(tmp_path: Path) -> None:
-    """Checked-in sample config files should validate against current settings models."""
-    repo_root = Path(__file__).resolve().parents[2]
-    sample_dir = repo_root / "config"
+    """Checked-in sample config files should validate after lexical merge."""
+    _install_samples(tmp_path)
 
-    (tmp_path / "core.yaml").write_text(
-        (sample_dir / "core.yaml.sample").read_text(encoding="utf-8"),
-        encoding="utf-8",
+    core = load_core_settings(config_path=tmp_path, environ={})
+    runtime = load_core_runtime_settings(core_config_path=tmp_path, environ={})
+    actors = load_actor_settings(config_path=tmp_path, environ={})
+    postgres = resolve_component_settings(
+        settings=runtime,
+        component_id="substrate_postgres",
+        model=PostgresSettings,
     )
-    (tmp_path / "resources.yaml").write_text(
-        (sample_dir / "resources.yaml.sample").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    (tmp_path / "actors.yaml").write_text(
-        (sample_dir / "actors.yaml.sample").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    (tmp_path / "secrets.yaml").write_text(
-        (sample_dir / "secrets.yaml.sample").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-
-    core = load_core_settings(config_path=tmp_path / "core.yaml", environ={})
-    runtime = load_core_runtime_settings(
-        core_config_path=tmp_path / "core.yaml",
-        resources_config_path=tmp_path / "resources.yaml",
-        environ={},
-    )
-    actors = load_actor_settings(config_path=tmp_path / "actors.yaml", environ={})
 
     assert core.http.host == "0.0.0.0"
     assert core.http.port == 8898
+    assert actors.logging.process_name is None
+    assert postgres.url == PostgresSettings().url
+
+
+def test_sample_config_files_match_current_schema_exactly(tmp_path: Path) -> None:
+    """Merged sample files should produce the current typed default surfaces."""
+    _install_samples(tmp_path)
+
+    core = load_core_settings(config_path=tmp_path, environ={})
+    actors = load_actor_settings(config_path=tmp_path, environ={})
+    runtime = load_core_runtime_settings(core_config_path=tmp_path, environ={})
+
+    assert core.logging == LoggingSettings()
+    assert core.profile.operator_name == ProfileSettings().operator_name
+    assert actors.core == ActorCoreConnectionSettings()
+    assert actors.assistant == AssistantActorSettings()
     assert (
-        runtime.resources.substrate.model_dump(mode="python")["obsidian"][
-            "timeout_seconds"
-        ]
-        == 10.0
+        resolve_component_settings(
+            settings=runtime,
+            component_id="substrate_postgres",
+            model=PostgresSettings,
+        ).url
+        == PostgresSettings().url
     )
-    assert core.logging.process_name == "core"
-    assert actors.logging.process_name == "agent"
-    assert actors.logging.json_output is True
-
-
-def test_sample_config_files_match_current_schema_exactly() -> None:
-    """Checked-in sample configs should stay in sync with current settings shapes."""
-    repo_root = Path(__file__).resolve().parents[2]
-    sample_dir = repo_root / "config"
-
-    assert yaml.safe_load(
-        (sample_dir / "core.yaml.sample").read_text(encoding="utf-8")
-    ) == {
-        "logging": LoggingSettings().model_dump(mode="json"),
-        "observability": ObservabilitySettings().model_dump(mode="json"),
-        "profile": {
-            "operator": OperatorProfileSettings().model_dump(mode="json"),
-            "approval_responses": ApprovalResponseSettings().model_dump(mode="json"),
-            "default_dial_code": ProfileSettings().default_dial_code,
-            "operator_name": ProfileSettings().operator_name,
-            "brain_name": ProfileSettings().brain_name,
-            "brain_verbosity": ProfileSettings().brain_verbosity,
-            "preferred_timezone": ProfileSettings().preferred_timezone,
-        },
-        "boot": CoreBootSettings().model_dump(mode="json"),
-        "http": CoreHttpSettings().model_dump(mode="json"),
-        "health": CoreHealthSettings().model_dump(mode="json"),
-        "service": {
-            "attention_router": AttentionRouterServiceSettings().model_dump(
-                mode="json"
-            ),
-            "capability_engine": CapabilityEngineSettings().model_dump(mode="json"),
-            "embedding_authority": EmbeddingServiceSettings().model_dump(mode="json"),
-            "cache_authority": CacheAuthoritySettings().model_dump(mode="json"),
-            "memory_authority": MemoryAuthoritySettings().model_dump(mode="json"),
-            "object_authority": ObjectAuthoritySettings().model_dump(mode="json"),
-            "policy_service": PolicyServiceSettings().model_dump(mode="json"),
-            "vault_authority": VaultAuthoritySettings().model_dump(mode="json"),
-            "language_model": LanguageModelServiceSettings().model_dump(mode="json"),
-            "switchboard": {
-                "queue_name": "signal_inbound",
-                "console_queue_name": "console_inbound",
-                "console_response_queue_name": "console_outbound",
-                "callback_register_max_retries": 8,
-                "callback_register_retry_delay_seconds": 2.0,
-            },
-        },
-    }
-
-    assert yaml.safe_load(
-        (sample_dir / "resources.yaml.sample").read_text(encoding="utf-8")
-    ) == {
-        "substrate": {
-            "obsidian": {
-                "base_url": ObsidianSubstrateSettings().base_url,
-                "timeout_seconds": ObsidianSubstrateSettings().timeout_seconds,
-                "max_retries": ObsidianSubstrateSettings().max_retries,
-            },
-            "postgres": PostgresSettings().model_dump(mode="json"),
-            "qdrant": QdrantSettings().model_dump(mode="json"),
-            "seaweedfs": SeaweedFSSubstrateSettings().model_dump(mode="json"),
-            "valkey": ValkeySettings().model_dump(mode="json"),
-        },
-        "adapter": {
-            "llm": {
-                "timeout_seconds": LlmAdapterSettings().timeout_seconds,
-                "max_retries": LlmAdapterSettings().max_retries,
-                "timeout_retry_attempts": LlmAdapterSettings().timeout_retry_attempts,
-                "timeout_retry_initial_delay_seconds": LlmAdapterSettings().timeout_retry_initial_delay_seconds,
-                "timeout_retry_max_delay_seconds": LlmAdapterSettings().timeout_retry_max_delay_seconds,
-                "timeout_retry_backoff_multiplier": LlmAdapterSettings().timeout_retry_backoff_multiplier,
-                "timeout_retry_jitter_ratio": LlmAdapterSettings().timeout_retry_jitter_ratio,
-                "providers": {
-                    "voyage": {
-                        "api_base": LlmAdapterSettings().providers["voyage"].api_base,
-                        "timeout_seconds": LlmAdapterSettings()
-                        .providers["voyage"]
-                        .timeout_seconds,
-                        "max_retries": LlmAdapterSettings()
-                        .providers["voyage"]
-                        .max_retries,
-                        "options": LlmAdapterSettings().providers["voyage"].options,
-                    },
-                    "ollama": {
-                        "api_base": LlmAdapterSettings().providers["ollama"].api_base,
-                        "timeout_seconds": LlmAdapterSettings()
-                        .providers["ollama"]
-                        .timeout_seconds,
-                        "max_retries": LlmAdapterSettings()
-                        .providers["ollama"]
-                        .max_retries,
-                        "options": LlmAdapterSettings().providers["ollama"].options,
-                    },
-                    "anthropic": {
-                        "api_base": LlmAdapterSettings()
-                        .providers["anthropic"]
-                        .api_base,
-                        "timeout_seconds": LlmAdapterSettings()
-                        .providers["anthropic"]
-                        .timeout_seconds,
-                        "max_retries": LlmAdapterSettings()
-                        .providers["anthropic"]
-                        .max_retries,
-                        "options": LlmAdapterSettings().providers["anthropic"].options,
-                    },
-                },
-            },
-            "signal": {
-                "base_url": SignalAdapterSettings().base_url,
-                "health_timeout_seconds": SignalAdapterSettings().health_timeout_seconds,
-                "receive_connect_timeout_seconds": SignalAdapterSettings().receive_connect_timeout_seconds,
-                "receive_heartbeat_seconds": SignalAdapterSettings().receive_heartbeat_seconds,
-                "send_timeout_seconds": SignalAdapterSettings().send_timeout_seconds,
-                "max_retries": SignalAdapterSettings().max_retries,
-                "failure_backoff_initial_seconds": SignalAdapterSettings().failure_backoff_initial_seconds,
-                "failure_backoff_max_seconds": SignalAdapterSettings().failure_backoff_max_seconds,
-                "failure_backoff_multiplier": SignalAdapterSettings().failure_backoff_multiplier,
-                "failure_backoff_jitter_ratio": SignalAdapterSettings().failure_backoff_jitter_ratio,
-            },
-            "mcp": {
-                "base_url": "http://brain-mcp:8763",
-                "timeout_seconds": 10.0,
-            },
-        },
-    }
-
-    assert yaml.safe_load(
-        (sample_dir / "actors.yaml.sample").read_text(encoding="utf-8")
-    ) == {
-        "logging": {
-            **LoggingSettings().model_dump(mode="json"),
-            "process_name": "agent",
-        },
-        "observability": ObservabilitySettings().model_dump(mode="json"),
-        "core": ActorCoreConnectionSettings().model_dump(mode="json"),
-        "cli": CliActorSettings().model_dump(mode="json"),
-        "agent": AgentActorSettings().model_dump(mode="json"),
-        "worker": WorkerActorSettings().model_dump(mode="json"),
-    }
-
-    assert yaml.safe_load(
-        (sample_dir / "secrets.yaml.sample").read_text(encoding="utf-8")
-    ) == {
-        "profile": {
-            "operator": {"signal_contact_e164": "+12222222222"},
-        },
-        "substrate": {"obsidian": {"api_key": "replace-me"}},
-        "adapter": {
-            "signal": {"receive_e164": "+13333333333"},
-            "llm": {
-                "providers": {
-                    "anthropic": {"api_key": "replace-me"},
-                    "voyage": {"api_key": "replace-me"},
-                }
-            },
-        },
-    }

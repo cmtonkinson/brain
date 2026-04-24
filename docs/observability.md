@@ -30,25 +30,25 @@ The base stack provides the shared `seaweedfs` service. The overlay adds:
 
 Brain's existing Postgres, Valkey, and SeaweedFS services are reused. Langfuse
 data must stay in its own Postgres database and SeaweedFS bucket/prefixes; it
-is operational observability data, not Brain domain state or OAS-managed object
+is operational observability data, not Brain domain state or Object-managed object
 data.
 
 ------------------------------------------------------------------------
 ## Storage
-Observability runtime state is stored under `./data/` instead of Docker named
-volumes:
-- ClickHouse data: `./data/clickhouse/data/`
-- ClickHouse logs: `./data/clickhouse/logs/`
-- Prometheus data: `./data/prometheus/`
-- Loki data: `./data/loki/`
-- Grafana data: `./data/grafana/`
-- SeaweedFS data: `./data/seaweedfs/`
-- Langfuse Postgres database: `./data/postgres/`, in the dedicated `langfuse`
-  database created by `langfuse-postgres-init`
-- Langfuse Valkey use: `./data/valkey/`, via the shared Valkey service
+All service data is stored in Docker named volumes for performance (avoids
+macOS VirtioFS overhead on write-heavy workloads):
+- `brain-postgres` — Postgres data (Brain + Langfuse databases)
+- `brain-valkey` — Valkey append-only file
+- `brain-qdrant` — Qdrant vector storage
+- `brain-seaweedfs` — SeaweedFS blob data
+- `brain-prometheus` — Prometheus TSDB
+- `brain-loki` — Loki chunk storage
+- `brain-grafana` — Grafana dashboards and state
+- `brain-clickhouse-data` — ClickHouse data
+- `brain-clickhouse-logs` — ClickHouse logs
 
-`clickhouse-data-init` prepares the ClickHouse host directories and gives them
-to the same UID/GID used by the ClickHouse container. Override
+`clickhouse-data-init` prepares the ClickHouse volume directories and sets
+ownership to the UID/GID used by the ClickHouse container. Override
 `LANGFUSE_CLICKHOUSE_UID` and `LANGFUSE_CLICKHOUSE_GID` only when using a
 different ClickHouse image or local ownership model.
 
@@ -72,7 +72,7 @@ Container-to-container endpoints:
 
 | Consumer | Target | Purpose |
 |---|---|---|
-| `brain-core`, `brain-agent` | `http://otel-collector:4318` | OTLP trace and metric export. |
+| `brain-core`, `brain-assistant` | `http://otel-collector:4318` | OTLP trace and metric export. |
 | `otel-collector` | `http://langfuse-web:3000/api/public/otel` | Langfuse OTel ingestion. |
 | `otel-collector` | `http://loki:3100/otlp` | OTLP log ingestion for Brain structured file logs. |
 | `prometheus` | `http://otel-collector:9464/metrics` | Scrape Brain metrics exposed by the collector. |
@@ -165,10 +165,10 @@ Expected first-boot behavior:
 - `langfuse-postgres-init` exits successfully after creating the `langfuse`
   role/database if missing.
 - `clickhouse-data-init` exits successfully after creating and owning the
-  ClickHouse directories under `./data/clickhouse/`.
+  ClickHouse volume directories.
 - `seaweedfs-bucket-init` exits successfully after creating the `langfuse`
   bucket if missing.
-- `brain-core` and `brain-agent` set observability enabled via compose
+- `brain-core` and `brain-assistant` set observability enabled via compose
   environment overrides and write structured file logs under `./logs/` for
   collector ingestion.
 - The Grafana UI is reachable at `http://localhost:3001` with Prometheus and

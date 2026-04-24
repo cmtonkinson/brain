@@ -152,7 +152,7 @@ Exact behavior:
 - if the heartbeat file is missing or unreadable, normalize to `??`
 
 Secondary fallback:
-- Docker container inspect for `brain-agent`
+- Docker container inspect for `brain-assistant`
 
 Fallback behavior:
 - if heartbeat cannot be evaluated and Docker shows container present and
@@ -275,7 +275,7 @@ All header checks must be read-only.
 No header probe may:
 - mutate state
 - enqueue work
-- invoke capabilities
+- invoke ops
 - alter runtime configuration
 
 ### Timeouts

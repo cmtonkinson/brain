@@ -6,7 +6,7 @@ from typing import Protocol, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from lib.shared.language_model import ChatContentPart, InferenceRequest
+from lib.shared.language_model import InferenceRequest
 
 
 class AdapterError(Exception):
@@ -75,18 +75,6 @@ class AdapterChatToolCall(BaseModel):
     tool_name: str
     args_json: str
     tool_call_id: str
-
-
-class AdapterChatMessage(BaseModel):
-    """One normalized chat history message passed through native LLM."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    role: str
-    content_parts: tuple[ChatContentPart, ...] = ()
-    tool_name: str = ""
-    tool_call_id: str = ""
-    tool_calls: tuple[AdapterChatToolCall, ...] = ()
 
 
 class AdapterToolChatResult(BaseModel):

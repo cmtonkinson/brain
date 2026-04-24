@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from textual.app import ComposeResult
 from textual.widgets import Static
 
@@ -14,7 +16,7 @@ from lib.dashboard.models.policy import (
 from lib.dashboard.panes.base import BaseView
 
 _RECENT_MAX = 8
-_MIN_HEIGHT_FOR_RECENT = 12
+_REFRESH_INTERVAL = 2.0
 
 
 class PolicyPane(BaseView):
@@ -34,21 +36,21 @@ class PolicyPane(BaseView):
         policy_source: PolicyDataSource | None = None,
         approval: CurrentApprovalView | None = None,
         decision: CurrentDecisionView | None = None,
-        recent: list[RecentPolicyItemView] | None = None,
+        recent: Sequence[RecentPolicyItemView] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self._policy_source = policy_source
         self._approval = approval
         self._decision = decision
-        self._recent: list[RecentPolicyItemView] = recent or []
+        self._recent: Sequence[RecentPolicyItemView] = recent or ()
 
     def compose(self) -> ComposeResult:
         yield Static(self._render_current(), id="policy-current")
         yield Static(self._render_recent(), id="policy-recent")
 
     def on_mount(self) -> None:
-        self.set_interval(2.0, self._refresh_from_source)
+        self.set_interval(_REFRESH_INTERVAL, self._refresh_from_source)
 
     def _refresh_from_source(self) -> None:
         if self._policy_source is None:
@@ -66,7 +68,7 @@ class PolicyPane(BaseView):
         self,
         approval: CurrentApprovalView | None,
         decision: CurrentDecisionView | None,
-        recent: list[RecentPolicyItemView],
+        recent: Sequence[RecentPolicyItemView],
     ) -> None:
         self._approval = approval
         self._decision = decision
@@ -85,7 +87,7 @@ class PolicyPane(BaseView):
             return (
                 "Current\n"
                 f"State       {a.state}\n"
-                f"Capability  {a.capability_id}\n"
+                f"Op  {a.op_id}\n"
                 f"Actor       {a.actor}\n"
                 f"Channel     {a.channel}\n"
                 f"Summary     {a.summary}\n"
@@ -98,7 +100,7 @@ class PolicyPane(BaseView):
             return (
                 "Current\n"
                 f"State       {d.state}\n"
-                f"Capability  {d.capability_id}\n"
+                f"Op  {d.op_id}\n"
                 f"Actor       {d.actor}\n"
                 f"Channel     {d.channel}\n"
                 f"Decided     {ts}"
@@ -111,6 +113,6 @@ class PolicyPane(BaseView):
         lines = ["Recent"]
         for item in self._recent[:_RECENT_MAX]:
             ts = item.timestamp.strftime("%H:%M:%S")
-            cap = item.capability_id[:30]
+            cap = item.op_id[:30]
             lines.append(f"{ts}  {item.state:<8}  {cap}")
         return "\n".join(lines)

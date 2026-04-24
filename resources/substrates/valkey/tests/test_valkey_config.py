@@ -26,10 +26,16 @@ def test_valkey_settings_resolves_password_from_env(
     assert settings.url == "valkey://:secret@valkey:6379/0"
 
 
+def test_valkey_settings_rejects_empty_url() -> None:
+    """Empty string url must be rejected; callers must use None for split-field mode."""
+    with pytest.raises(ValidationError, match="must not be empty"):
+        ValkeySettings(url="")
+
+
 def test_valkey_settings_builds_url_from_split_fields() -> None:
     """Settings should build URL when explicit URL is not provided."""
     settings = ValkeySettings(
-        url="",
+        url=None,
         host="localhost",
         port=6380,
         db=4,

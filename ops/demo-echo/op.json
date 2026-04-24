@@ -1,0 +1,11 @@
+{
+  "op_id": "demo-echo",
+  "kind": "logic",
+  "version": "1.0.0",
+  "summary": "Returns the static string 'Hello, World!'.",
+  "enabled": true,
+  "input_schema": null,
+  "output_schema": "string | Returns the static string 'Hello, World!'.",
+  "effect": "read",
+  "approval": "never"
+}

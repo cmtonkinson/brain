@@ -1,4 +1,4 @@
-"""Capability-backed environment context assembly for Agent inference."""
+"""Op-backed environment context assembly for Agent inference."""
 
 from __future__ import annotations
 
@@ -18,17 +18,17 @@ from lib.shared.language_model import (
 
 @dataclass(frozen=True, slots=True)
 class EnvironmentContextEntry:
-    """One configured environment-context capability invocation."""
+    """One configured environment-context op invocation."""
 
-    capability_id: str
+    op_id: str
     input_payload: dict[str, object]
 
 
 @dataclass(frozen=True, slots=True)
 class EnvironmentContextDiagnostic:
-    """One omitted environment-context capability invocation."""
+    """One omitted environment-context op invocation."""
 
-    capability_id: str
+    op_id: str
     error_type: str
     message: str
 
@@ -51,7 +51,7 @@ def assemble_environment_context(
     reference_now: datetime | None = None,
     meta: MetaOverrides | None = None,
 ) -> tuple[InferenceEnvironmentContext, tuple[EnvironmentContextDiagnostic, ...]]:
-    """Invoke configured capabilities and assemble transient environment context."""
+    """Invoke configured ops and assemble transient environment context."""
     items: list[InferenceEnvironmentItem] = []
     diagnostics: list[EnvironmentContextDiagnostic] = []
     resolved_now = (
@@ -67,20 +67,20 @@ def assemble_environment_context(
                 reference_now=resolved_now,
             )
         except EnvironmentContextResolutionError as exc:
-            capability_id = _extract_capability_id(raw_entry)
+            op_id = _extract_op_id(raw_entry)
             diagnostics.append(
                 EnvironmentContextDiagnostic(
-                    capability_id=capability_id,
+                    op_id=op_id,
                     error_type=type(exc).__name__,
                     message=str(exc),
                 )
             )
             continue
-        if entry.capability_id == "":
+        if entry.op_id == "":
             continue
         try:
-            result = client.invoke_capability(  # type: ignore[attr-defined]
-                capability_id=entry.capability_id,
+            result = client.invoke_op(  # type: ignore[attr-defined]
+                op_id=entry.op_id,
                 input_payload=entry.input_payload,
                 actor=actor,
                 channel=channel,
@@ -89,7 +89,7 @@ def assemble_environment_context(
         except BrainSdkError as exc:
             diagnostics.append(
                 EnvironmentContextDiagnostic(
-                    capability_id=entry.capability_id,
+                    op_id=entry.op_id,
                     error_type=type(exc).__name__,
                     message=str(exc),
                 )
@@ -100,8 +100,8 @@ def assemble_environment_context(
             continue
         items.append(
             InferenceEnvironmentItem(
-                capability_id=entry.capability_id,
-                tag_name=_capability_id_to_tag_name(entry.capability_id),
+                op_id=entry.op_id,
+                tag_name=_op_id_to_tag_name(entry.op_id),
                 output=output,
             )
         )
@@ -117,7 +117,7 @@ def _normalize_entry(
     """Normalize one entry and resolve any dynamic input payload values."""
     raw_entry = _normalize_entry_static(value)
     return EnvironmentContextEntry(
-        capability_id=raw_entry.capability_id,
+        op_id=raw_entry.op_id,
         input_payload=_resolve_payload(
             raw_entry.input_payload,
             preferred_timezone=preferred_timezone,
@@ -130,22 +130,22 @@ def _normalize_entry_static(value: object) -> EnvironmentContextEntry:
     """Normalize pydantic/dataclass/dict/string config entries without resolution."""
     if isinstance(value, str):
         return EnvironmentContextEntry(
-            capability_id=value.strip(),
+            op_id=value.strip(),
             input_payload={},
         )
     if isinstance(value, Mapping):
-        capability_id = str(value.get("capability_id", "")).strip()
+        op_id = str(value.get("op_id", "")).strip()
         raw_payload = value.get("input_payload", {})
         payload = raw_payload if isinstance(raw_payload, dict) else {}
         return EnvironmentContextEntry(
-            capability_id=capability_id,
+            op_id=op_id,
             input_payload={str(key): item for key, item in payload.items()},
         )
-    capability_id = str(getattr(value, "capability_id", "")).strip()
+    op_id = str(getattr(value, "op_id", "")).strip()
     raw_payload: Any = getattr(value, "input_payload", {})
     payload = raw_payload if isinstance(raw_payload, dict) else {}
     return EnvironmentContextEntry(
-        capability_id=capability_id,
+        op_id=op_id,
         input_payload={str(key): item for key, item in payload.items()},
     )
 
@@ -262,15 +262,15 @@ def _normalize_reference_now(reference_now: datetime) -> datetime:
     return reference_now.astimezone(UTC)
 
 
-def _extract_capability_id(value: object) -> str:
-    """Best-effort capability id extraction for diagnostics."""
+def _extract_op_id(value: object) -> str:
+    """Best-effort op id extraction for diagnostics."""
     if isinstance(value, str):
         return value.strip()
     if isinstance(value, Mapping):
-        return str(value.get("capability_id", "")).strip()
-    return str(getattr(value, "capability_id", "")).strip()
+        return str(value.get("op_id", "")).strip()
+    return str(getattr(value, "op_id", "")).strip()
 
 
-def _capability_id_to_tag_name(capability_id: str) -> str:
-    """Derive an SGML-safe tag name from one capability id."""
-    return capability_id.strip().replace("_", "-")
+def _op_id_to_tag_name(op_id: str) -> str:
+    """Derive an SGML-safe tag name from one op id."""
+    return op_id.strip().replace("_", "-")

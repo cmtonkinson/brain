@@ -1,0 +1,91 @@
+{
+  "op_id": "embedding-upsert-document-batch",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Persist a batch of embedding vectors for chunk and spec pairs.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "description": "Batch of chunk/spec/vector inputs to persist.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "chunk_id": {
+              "type": "string"
+            },
+            "spec_id": {
+              "type": "string"
+            },
+            "vector": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "required": [
+            "chunk_id",
+            "spec_id",
+            "vector"
+          ]
+        }
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "array",
+    "description": "Persisted embedding materialization records.",
+    "items": {
+      "type": "object",
+      "properties": {
+        "chunk_id": {
+          "type": "string"
+        },
+        "spec_id": {
+          "type": "string"
+        },
+        "content_hash": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "indexed",
+            "failed"
+          ]
+        },
+        "error_detail": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "spec_id",
+        "content_hash",
+        "status",
+        "error_detail",
+        "created_at",
+        "updated_at"
+      ]
+    }
+  },
+  "call_target": "service_embedding.upsert_embedding_vectors",
+  "effect": "write",
+  "approval": "never"
+}

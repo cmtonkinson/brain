@@ -5,6 +5,9 @@ handling across services. Service-specific codes should extend this set in local
 service modules rather than modifying shared constants for one domain.
 """
 
+# Metadata keys used when constructing ErrorDetail.metadata dicts.
+EXCEPTION_TYPE_KEY = "exception_type"
+
 # Validation
 VALIDATION_ERROR = "VALIDATION_ERROR"
 INVALID_ARGUMENT = "INVALID_ARGUMENT"

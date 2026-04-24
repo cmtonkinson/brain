@@ -24,6 +24,15 @@ _DYNAMIC_IMPORT_ALLOWLIST = (
     "lib/shared/component_loader.py",
 )
 
+# stdlib importlib submodules that provide metadata/resource access, not
+# dynamic import capabilities.
+_IMPORTLIB_NON_DYNAMIC_MODULES = frozenset(
+    {
+        "importlib.metadata",
+        "importlib.resources",
+    }
+)
+
 
 @dataclass(frozen=True)
 class _Violation:
@@ -87,6 +96,8 @@ def _analyze_source_for_dynamic_imports(
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name == "importlib" or alias.name.startswith("importlib."):
+                    if alias.name in _IMPORTLIB_NON_DYNAMIC_MODULES:
+                        continue
                     as_name = alias.asname or alias.name.split(".", maxsplit=1)[0]
                     importlib_aliases.add(as_name)
                     violations.append(
@@ -101,6 +112,8 @@ def _analyze_source_for_dynamic_imports(
         if isinstance(node, ast.ImportFrom):
             module_name = node.module or ""
             if module_name == "importlib" or module_name.startswith("importlib."):
+                if module_name in _IMPORTLIB_NON_DYNAMIC_MODULES:
+                    continue
                 violations.append(
                     _Violation(
                         file_path=file_path,

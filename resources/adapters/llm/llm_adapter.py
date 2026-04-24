@@ -25,7 +25,6 @@ from lib.shared.language_model import (
     InferenceCache,
     InferenceCurrentTurn,
     InferenceEnvironmentContext,
-    InferenceLiveEvent,
     InferenceMemoryContext,
     InferenceOperatorMessage,
     InferenceParallelToolCalls,
@@ -47,10 +46,10 @@ from lib.shared.logging import get_logger, public_api_instrumented
 from lib.shared.observability import (
     is_llm_content_capture_enabled,
     is_observability_enabled,
+    set_span_attributes,
 )
 from resources.adapters.llm.adapter import (
     AdapterChatResult,
-    AdapterChatMessage,
     AdapterChatToolCall,
     AdapterChatToolDefinition,
     AdapterDependencyError,
@@ -65,15 +64,15 @@ from resources.adapters.llm.component import RESOURCE_COMPONENT_ID
 from resources.adapters.llm.config import (
     LlmAdapterSettings,
     LlmProviderSettings,
-    timeout_retry_backoff_schedule_seconds,
+    _ANTHROPIC_API_BASE,
+    _ANTHROPIC_DEFAULT_MAX_TOKENS,
+    _OLLAMA_API_BASE,
+    _VOYAGE_API_BASE,
+    retry_backoff_schedule_seconds,
 )
 
 _LOGGER = get_logger(__name__)
-_VOYAGE_API_BASE = "https://api.voyageai.com"
-_OLLAMA_API_BASE = "http://host.docker.internal:11434"
-_ANTHROPIC_API_BASE = "https://api.anthropic.com"
 _ANTHROPIC_VERSION = "2023-06-01"
-_DEFAULT_ANTHROPIC_MAX_TOKENS = 1024
 _MAX_ANTHROPIC_CACHE_CONTROL_BLOCKS = 4
 _CHAT_PROVIDERS = frozenset({"anthropic"})
 _EMBEDDING_PROVIDERS = frozenset({"voyage", "ollama"})
@@ -112,17 +111,6 @@ def _render_prompt_template(template: str, /, **values: str) -> str:
     return rendered
 
 
-def _set_span_attributes(span: object, attributes: dict[str, object | None]) -> None:
-    """Attach non-empty OTel-compatible attributes to one active span."""
-    set_attribute = getattr(span, "set_attribute", None)
-    if not callable(set_attribute):
-        return
-    for key, value in attributes.items():
-        if value in (None, "", {}, []):
-            continue
-        set_attribute(key, value)
-
-
 def _set_current_span_attributes(attributes: dict[str, object | None]) -> None:
     """Attach attributes to the active OTel span when tracing is enabled."""
     if not is_observability_enabled():
@@ -134,7 +122,7 @@ def _set_current_span_attributes(attributes: dict[str, object | None]) -> None:
     span = trace.get_current_span()
     if span is None:
         return
-    _set_span_attributes(span, attributes)
+    set_span_attributes(span, attributes)
 
 
 _FOCUS_TEMPLATE = _load_prompt_file(_FOCUS_TEMPLATE_PATH)
@@ -154,10 +142,10 @@ if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_CONVERSATION_SUMMARY_TEMPLATE)) !=
         "conversation-summary-template.txt must contain exactly {{ text }}"
     )
 if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_ENVIRONMENT_CONTEXT_TEMPLATE)) != {
-    "capability_blocks"
+    "op_blocks"
 }:
     raise ValueError(
-        "environment-context-template.txt must contain exactly {{ capability_blocks }}"
+        "environment-context-template.txt must contain exactly {{ op_blocks }}"
     )
 if frozenset(_PROMPT_TEMPLATE_VAR_RE.findall(_DIALOGUE_TEMPLATE)) != {"turns"}:
     raise ValueError("dialogue-template.txt must contain exactly {{ turns }}")
@@ -400,19 +388,15 @@ class HttpLlmAdapter(LlmAdapter):
                 payload=payload,
                 expected_count=len(texts),
             )
-            response_model = _extract_ollama_response_model(
-                payload=payload,
-                fallback=model,
-            )
         else:
             embeddings = _extract_voyage_embedding_vectors(
                 payload=payload,
                 expected_count=len(texts),
             )
-            response_model = _extract_voyage_response_model(
-                payload=payload,
-                fallback=model,
-            )
+        response_model = _extract_response_model_name(
+            payload=payload,
+            fallback=model,
+        )
         return [
             AdapterEmbeddingResult(
                 values=vector,
@@ -464,7 +448,7 @@ class HttpLlmAdapter(LlmAdapter):
             body.update(extra_kwargs)
         for key, value in resolved.options.items():
             body.setdefault(key, value)
-        body.setdefault("max_tokens", _DEFAULT_ANTHROPIC_MAX_TOKENS)
+        body.setdefault("max_tokens", _ANTHROPIC_DEFAULT_MAX_TOKENS)
         return self._post_json(
             provider=provider,
             model=model,
@@ -489,7 +473,7 @@ class HttpLlmAdapter(LlmAdapter):
         """POST one provider JSON request with audit and retry handling."""
         api_base = resolved.api_base or _default_api_base_for_provider(provider)
         url = f"{api_base.rstrip('/')}{path}"
-        timeout_schedule = timeout_retry_backoff_schedule_seconds(self._settings)
+        timeout_schedule = retry_backoff_schedule_seconds(self._settings)
         timeout_attempt = 0
         dependency_attempt = 0
         started_at = perf_counter()
@@ -538,7 +522,7 @@ class HttpLlmAdapter(LlmAdapter):
                 ):
                     delay = _jittered_delay(
                         base_delay=timeout_schedule[timeout_attempt],
-                        jitter_ratio=self._settings.timeout_retry_jitter_ratio,
+                        jitter_ratio=self._settings.retry_jitter_ratio,
                     )
                     timeout_attempt += 1
                     _log_retry(
@@ -814,7 +798,7 @@ def _dependency_retry_delay_seconds(
     settings: LlmAdapterSettings,
 ) -> float:
     """Return the bounded delay for one dependency retry attempt."""
-    schedule = timeout_retry_backoff_schedule_seconds(settings)
+    schedule = retry_backoff_schedule_seconds(settings)
     if attempt_index < len(schedule):
         base_delay = schedule[attempt_index]
     elif schedule:
@@ -823,7 +807,7 @@ def _dependency_retry_delay_seconds(
         base_delay = 0.5
     return _jittered_delay(
         base_delay=base_delay,
-        jitter_ratio=settings.timeout_retry_jitter_ratio,
+        jitter_ratio=settings.retry_jitter_ratio,
     )
 
 
@@ -882,16 +866,8 @@ def _provider_error_message(*, provider: str, response: httpx.Response) -> str:
     return f"{provider} request failed with status {response.status_code}"
 
 
-def _extract_ollama_response_model(*, payload: object, fallback: str) -> str:
-    """Return the model name recorded in one Ollama embedding response."""
-    response_model = _mapping_get(payload, "model", fallback)
-    if isinstance(response_model, str) and response_model.strip() != "":
-        return response_model
-    return fallback
-
-
-def _extract_voyage_response_model(*, payload: object, fallback: str) -> str:
-    """Return the model name recorded in one Voyage embeddings response."""
+def _extract_response_model_name(*, payload: object, fallback: str) -> str:
+    """Return the model name recorded in one provider embedding response."""
     response_model = _mapping_get(payload, "model", fallback)
     if isinstance(response_model, str) and response_model.strip() != "":
         return response_model
@@ -962,102 +938,6 @@ def _coerce_embedding_vector(value: object, *, index: int) -> tuple[float, ...]:
     return tuple(vector)
 
 
-def _fallback_request_audit(*, kwargs: Mapping[str, Any]) -> AdapterProviderCallAudit:
-    """Build one sanitized fallback request audit from adapter call kwargs."""
-    api_base = kwargs.get("api_base")
-    headers = kwargs.get("headers")
-    excluded_body_keys = {"api_base", "api_key", "logger_fn", "num_retries", "timeout"}
-    request_body = {
-        key: _json_safe_value(value)
-        for key, value in kwargs.items()
-        if key not in excluded_body_keys
-    }
-    return AdapterProviderCallAudit(
-        request_api_base="" if not isinstance(api_base, str) else api_base,
-        request_headers=_coerce_json_object(headers),
-        request_body=request_body,
-        response_body=None,
-    )
-
-
-def _finalize_exception_raw_call(
-    exc: Exception,
-    *,
-    capture: "_RawCallCapture",
-    fallback_request: AdapterProviderCallAudit,
-) -> AdapterProviderCallAudit:
-    """Return the richest raw-call audit available for one failed provider call."""
-    request_api_base = capture.request_api_base or fallback_request.request_api_base
-    request_headers = (
-        fallback_request.request_headers
-        if capture.request_headers is None
-        else capture.request_headers
-    )
-    request_body = (
-        fallback_request.request_body
-        if capture.request_body is None
-        else capture.request_body
-    )
-    response_body = capture.response_body
-    if response_body is None:
-        response_body = _response_body_from_exception(exc)
-    return AdapterProviderCallAudit(
-        request_api_base=request_api_base,
-        request_headers=request_headers,
-        request_body=request_body,
-        response_body=response_body,
-    )
-
-
-def _finalize_success_raw_call(
-    *,
-    response: object,
-    capture: "_RawCallCapture",
-    fallback_request: AdapterProviderCallAudit,
-) -> AdapterProviderCallAudit:
-    """Return one normalized success audit using local request kwargs as baseline."""
-    request_api_base = capture.request_api_base or fallback_request.request_api_base
-    request_headers = _prefer_nonempty_mapping(
-        capture.request_headers,
-        fallback_request.request_headers,
-    )
-    request_body = _prefer_nonempty_value(
-        capture.request_body,
-        fallback_request.request_body,
-    )
-    response_body = _prefer_nonempty_value(
-        capture.response_body,
-        _json_safe_value(response),
-    )
-    return AdapterProviderCallAudit(
-        request_api_base=request_api_base,
-        request_headers=request_headers,
-        request_body=request_body,
-        response_body=response_body,
-    )
-
-
-def _prefer_nonempty_mapping(
-    primary: dict[str, object] | None,
-    fallback: dict[str, object],
-) -> dict[str, object]:
-    """Prefer one mapping when it carries any keys, else return the fallback."""
-    if primary:
-        return primary
-    return fallback
-
-
-def _prefer_nonempty_value(
-    primary: object | None, fallback: object | None
-) -> object | None:
-    """Prefer one value when it is meaningfully populated, else return fallback."""
-    if primary is None:
-        return fallback
-    if isinstance(primary, (dict, list, tuple, str)) and len(primary) == 0:
-        return fallback
-    return primary
-
-
 def _response_body_from_exception(exc: Exception) -> object | None:
     """Extract one JSON-safe upstream error payload from a native LLM exception."""
     body = _json_safe_value(getattr(exc, "body", None))
@@ -1125,34 +1005,6 @@ def _is_timeout_exception(exc: Exception) -> bool:
         return True
     message = str(exc).lower()
     return "timed out" in message or "timeout" in message
-
-
-@dataclass
-class _RawCallCapture:
-    """Mutable per-call raw provider payload capture populated by native LLM hooks."""
-
-    request_api_base: str = ""
-    request_headers: dict[str, object] | None = None
-    request_body: object | None = None
-    response_body: object | None = None
-
-    def to_model(self) -> AdapterProviderCallAudit | None:
-        """Return immutable audit payload when any raw call data was captured."""
-        if (
-            self.request_api_base == ""
-            and self.request_headers is None
-            and self.request_body is None
-            and self.response_body is None
-        ):
-            return None
-        return AdapterProviderCallAudit(
-            request_api_base=self.request_api_base,
-            request_headers={}
-            if self.request_headers is None
-            else self.request_headers,
-            request_body=self.request_body,
-            response_body=self.response_body,
-        )
 
 
 def _extract_anthropic_text_content(response: object) -> str:
@@ -1229,19 +1081,21 @@ def _response_value(*, response: object, field: str) -> object | None:
     return getattr(response, field, None)
 
 
-def _first_item(payload: object, *, field: str) -> object:
-    """Return first item from a non-empty list payload."""
-    if not isinstance(payload, list) or len(payload) == 0:
-        raise AdapterInternalError(f"response missing {field}")
-    return payload[0]
-
-
 def _is_dependency_exception(exc: Exception) -> bool:
-    """Heuristic mapping of native LLM/provider failures to dependency class."""
+    """Map native LLM/provider failures to the dependency class.
+
+    HTTP-status-class signals route through ``_is_retryable_status_code`` on
+    the response object; this helper handles connection/timeout-class
+    exceptions and provider error semantics expressed as exception types or
+    messages.
+    """
     if isinstance(exc, (TimeoutError, ConnectionError)):
         return True
 
     name = exc.__class__.__name__.lower()
+    if any(token in name for token in ("timeout", "connection", "ratelimit")):
+        return True
+
     text = str(exc).lower()
     dependency_tokens = (
         "timeout",
@@ -1251,58 +1105,8 @@ def _is_dependency_exception(exc: Exception) -> bool:
         "temporarily unavailable",
         "service unavailable",
         "unavailable",
-        "http",
-        "429",
-        "502",
-        "503",
-        "504",
     )
-    if any(token in name for token in ("timeout", "connection", "ratelimit")):
-        return True
-    if any(token in text for token in dependency_tokens):
-        return True
-    return False
-
-
-def _to_llm_tool(value: AdapterChatToolDefinition) -> dict[str, Any]:
-    """Convert one normalized tool definition into native LLM/OpenAI tool shape."""
-    function: dict[str, Any] = {
-        "name": value.name,
-        "parameters": value.parameters_json_schema,
-    }
-    if value.description is not None:
-        function["description"] = value.description
-    if value.strict is not None:
-        function["strict"] = value.strict
-    return {"type": "function", "function": function}
-
-
-def _to_llm_message(value: AdapterChatMessage) -> dict[str, Any]:
-    """Convert one normalized chat message into native LLM/OpenAI message shape."""
-    content = _render_content_parts(value.content_parts)
-    if value.role == "assistant":
-        payload: dict[str, Any] = {"role": "assistant"}
-        payload["content"] = None if content == "" else content
-        if value.tool_calls:
-            payload["tool_calls"] = [
-                {
-                    "id": item.tool_call_id,
-                    "type": "function",
-                    "function": {
-                        "name": item.tool_name,
-                        "arguments": item.args_json,
-                    },
-                }
-                for item in value.tool_calls
-            ]
-        return payload
-    if value.role == "tool":
-        return {
-            "role": "tool",
-            "tool_call_id": value.tool_call_id,
-            "content": content,
-        }
-    return {"role": value.role, "content": content}
+    return any(token in text for token in dependency_tokens)
 
 
 def _serialize_simple_prompt_for_provider(
@@ -1311,46 +1115,13 @@ def _serialize_simple_prompt_for_provider(
     system_prompt: str,
     prompt: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Serialize one direct chat prompt into provider-specific completion kwargs."""
-    if provider == "anthropic":
-        messages = [
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": prompt}],
-            }
-        ]
-        extra_kwargs: dict[str, Any] = {}
-        if system_prompt != "":
-            extra_kwargs["system"] = [{"type": "text", "text": system_prompt}]
-        return messages, extra_kwargs
-    if provider == "openai":
-        messages: list[dict[str, Any]] = []
-        if system_prompt != "":
-            messages.append(
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": system_prompt}],
-                }
-            )
-        messages.append({"role": "user", "content": [{"type": "text", "text": prompt}]})
-        return messages, {}
-    if provider == "gemini":
-        messages: list[dict[str, Any]] = []
-        if system_prompt != "":
-            messages.append(
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": system_prompt}],
-                }
-            )
-        messages.append({"role": "user", "content": [{"type": "text", "text": prompt}]})
-        return messages, {}
-
-    messages: list[dict[str, Any]] = []
+    """Serialize one direct chat prompt into Anthropic completion kwargs."""
+    del provider  # validated upstream; only "anthropic" is a chat provider
+    messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+    extra_kwargs: dict[str, Any] = {}
     if system_prompt != "":
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
-    return messages, {}
+        extra_kwargs["system"] = [{"type": "text", "text": system_prompt}]
+    return messages, extra_kwargs
 
 
 def _lower_inference_request_for_provider(
@@ -1358,38 +1129,9 @@ def _lower_inference_request_for_provider(
     provider: str,
     inference_request: InferenceRequest,
 ) -> _LoweredToolInferenceRequest:
-    """Lower one canonical inference request into provider-ready native LLM kwargs."""
-    if provider == "anthropic":
-        return _lower_anthropic_inference_request(inference_request)
-
-    adapter_messages = _inference_request_to_adapter_messages(inference_request)
-    adapter_tools = _inference_tools_to_adapter_tools(inference_request.tools)
-    serialized_messages, extra_kwargs = _serialize_messages_for_provider(
-        provider=provider,
-        messages=adapter_messages,
-    )
-    serialized_tools = _serialize_tools_for_provider(
-        provider=provider,
-        tools=adapter_tools,
-    )
-    serialized_tool_choice, serialized_parallel_tool_calls = (
-        _serialize_tool_selection_for_provider(
-            provider=provider,
-            tool_choice=_tool_choice_to_generic_selector(
-                inference_request.controls.tool_choice
-            ),
-            parallel_tool_calls=_parallel_tool_calls_to_generic_flag(
-                inference_request.controls.parallel_tool_calls
-            ),
-        )
-    )
-    return _LoweredToolInferenceRequest(
-        messages=serialized_messages,
-        tools=serialized_tools,
-        tool_choice=serialized_tool_choice,
-        parallel_tool_calls=serialized_parallel_tool_calls,
-        extra_kwargs=extra_kwargs,
-    )
+    """Lower one canonical inference request into Anthropic Messages API kwargs."""
+    del provider  # validated upstream; only "anthropic" is a chat provider
+    return _lower_anthropic_inference_request(inference_request)
 
 
 def _lower_anthropic_inference_request(
@@ -1429,94 +1171,6 @@ def _lower_anthropic_inference_request(
         parallel_tool_calls=None,
         extra_kwargs=extra_kwargs,
     )
-
-
-def _inference_request_to_adapter_messages(
-    inference_request: InferenceRequest,
-) -> tuple[AdapterChatMessage, ...]:
-    """Convert one inference request into normalized helper transcript messages."""
-    messages: list[AdapterChatMessage] = []
-    system_parts = _system_blocks_to_content_parts(
-        inference_request.system.blocks,
-        cache=inference_request.cache,
-    )
-    if len(system_parts) > 0:
-        messages.append(
-            AdapterChatMessage(role="system", content_parts=tuple(system_parts))
-        )
-    messages.append(
-        AdapterChatMessage(
-            role="user",
-            content_parts=_context_to_content_parts(
-                memory_context=inference_request.memory_context,
-                environment_context=inference_request.environment_context,
-                current_turn=inference_request.current_turn,
-                cache=inference_request.cache,
-            ),
-        )
-    )
-    messages.extend(_live_events_to_adapter_messages(inference_request.live_events))
-    return tuple(messages)
-
-
-def _live_events_to_adapter_messages(
-    events: Sequence[InferenceLiveEvent],
-) -> list[AdapterChatMessage]:
-    """Convert the ordered live event stream into helper transcript messages."""
-    messages: list[AdapterChatMessage] = []
-    pending_assistant_parts: list[ChatContentPart] = []
-
-    def flush_assistant() -> None:
-        if len(pending_assistant_parts) == 0:
-            return
-        messages.append(
-            AdapterChatMessage(
-                role="assistant",
-                content_parts=tuple(pending_assistant_parts),
-            )
-        )
-        pending_assistant_parts.clear()
-
-    for event in events:
-        if isinstance(event, InferenceAssistantTextEvent):
-            pending_assistant_parts.append(TextContentPart(text=event.text))
-            if event.cache_after:
-                pending_assistant_parts.append(CachePointContentPart())
-            continue
-        if isinstance(event, InferenceToolCallBatchEvent):
-            if event.cache_after and len(pending_assistant_parts) > 0:
-                pending_assistant_parts.append(CachePointContentPart())
-            messages.append(
-                AdapterChatMessage(
-                    role="assistant",
-                    content_parts=tuple(pending_assistant_parts),
-                    tool_calls=tuple(
-                        _inference_tool_call_to_adapter_tool_call(item)
-                        for item in event.calls
-                    ),
-                )
-            )
-            pending_assistant_parts.clear()
-            continue
-        if isinstance(event, InferenceToolResultBatchEvent):
-            flush_assistant()
-            for item in event.results:
-                tool_parts = _tool_result_payload_to_content_parts(item.result)
-                if event.cache_after:
-                    tool_parts = (*tool_parts, CachePointContentPart())
-                messages.append(
-                    AdapterChatMessage(
-                        role="tool",
-                        content_parts=tool_parts,
-                        tool_name=item.tool_name,
-                        tool_call_id=item.call_id,
-                    )
-                )
-            continue
-        raise TypeError(f"unsupported inference live event: {type(event)!r}")
-
-    flush_assistant()
-    return messages
 
 
 def _inference_tools_to_adapter_tools(
@@ -1662,40 +1316,6 @@ def _json_dumps_or_str(value: object) -> str:
         return json.dumps(value, sort_keys=True)
     except TypeError:
         return str(value)
-
-
-def _serialize_messages_for_provider(
-    *,
-    provider: str,
-    messages: Sequence[AdapterChatMessage],
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Serialize one chat history into provider-specific message kwargs."""
-    if provider == "openai":
-        return _serialize_openai_messages(messages), {}
-    if provider == "gemini":
-        return _serialize_gemini_messages(messages), {}
-    if provider == "anthropic":
-        return _serialize_anthropic_compat_messages(messages)
-    return ([_to_llm_message(item) for item in messages], {})
-
-
-def _serialize_tools_for_provider(
-    *,
-    provider: str,
-    tools: Sequence[AdapterChatToolDefinition],
-) -> list[dict[str, Any]]:
-    """Serialize one tool set into provider-specific tool definitions."""
-    return [_to_llm_tool(item) for item in tools]
-
-
-def _serialize_tool_selection_for_provider(
-    *,
-    provider: str,
-    tool_choice: str | dict[str, object] | None,
-    parallel_tool_calls: bool | None,
-) -> tuple[str | dict[str, object] | None, bool | None]:
-    """Serialize tool-choice and parallelism settings for one provider."""
-    return tool_choice, parallel_tool_calls
 
 
 def _serialize_anthropic_inference_messages(
@@ -1849,228 +1469,6 @@ def _enforce_anthropic_cache_control_limit(
                 updated_content.append(_strip_cache_control(block))
         updated_messages.append({**message, "content": updated_content})
     return updated_system_blocks, updated_messages
-
-
-def _serialize_anthropic_messages(
-    messages: Sequence[AdapterChatMessage],
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Serialize chat history into Anthropic Messages API shape."""
-    system_blocks: list[dict[str, Any]] = []
-    serialized_messages: list[dict[str, Any]] = []
-    pending_tool_result_blocks: list[dict[str, Any]] = []
-
-    def flush_pending_tool_results() -> None:
-        if len(pending_tool_result_blocks) == 0:
-            return
-        serialized_messages.append(
-            {"role": "user", "content": list(pending_tool_result_blocks)}
-        )
-        pending_tool_result_blocks.clear()
-
-    for message in messages:
-        if message.role == "system":
-            system_blocks.extend(
-                _serialize_anthropic_content_parts(message.content_parts)
-            )
-            continue
-        if message.role == "tool":
-            pending_tool_result_blocks.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": message.tool_call_id,
-                    "content": _render_content_parts(message.content_parts),
-                }
-            )
-            continue
-        flush_pending_tool_results()
-        content = _serialize_anthropic_content_parts(message.content_parts)
-        if message.role == "assistant" and message.tool_calls:
-            content.extend(_to_anthropic_tool_use(item) for item in message.tool_calls)
-        serialized_messages.append({"role": message.role, "content": content})
-    flush_pending_tool_results()
-    extra_kwargs: dict[str, Any] = {}
-    if system_blocks:
-        extra_kwargs["system"] = system_blocks
-    return serialized_messages, extra_kwargs
-
-
-def _serialize_openai_messages(
-    messages: Sequence[AdapterChatMessage],
-) -> list[dict[str, Any]]:
-    """Serialize chat history into OpenAI Chat Completions native shape."""
-    serialized_messages: list[dict[str, Any]] = []
-    for message in messages:
-        if message.role == "assistant":
-            payload: dict[str, Any] = {"role": "assistant"}
-            content = _serialize_openai_content_parts(message.content_parts)
-            payload["content"] = None if len(content) == 0 else content
-            if message.tool_calls:
-                payload["tool_calls"] = [
-                    {
-                        "id": item.tool_call_id,
-                        "type": "function",
-                        "function": {
-                            "name": item.tool_name,
-                            "arguments": item.args_json,
-                        },
-                    }
-                    for item in message.tool_calls
-                ]
-            serialized_messages.append(payload)
-            continue
-        if message.role == "tool":
-            content = _serialize_openai_content_parts(message.content_parts)
-            text = (
-                ""
-                if len(content) == 0
-                else "".join(
-                    str(item.get("text", ""))
-                    for item in content
-                    if isinstance(item, dict)
-                )
-            )
-            serialized_messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": message.tool_call_id,
-                    "content": text,
-                }
-            )
-            continue
-        content = _serialize_openai_content_parts(message.content_parts)
-        serialized_messages.append(
-            {
-                "role": message.role,
-                "content": [] if len(content) == 0 else content,
-            }
-        )
-    return serialized_messages
-
-
-def _serialize_gemini_messages(
-    messages: Sequence[AdapterChatMessage],
-) -> list[dict[str, Any]]:
-    """Serialize chat history into Gemini-friendly structured chat messages."""
-    serialized_messages: list[dict[str, Any]] = []
-    for message in messages:
-        if message.role == "assistant":
-            payload: dict[str, Any] = {"role": "assistant"}
-            content = _serialize_gemini_content_parts(message.content_parts)
-            payload["content"] = "" if len(content) == 0 else content
-            if message.tool_calls:
-                payload["tool_calls"] = [
-                    {
-                        "id": item.tool_call_id,
-                        "type": "function",
-                        "function": {
-                            "name": item.tool_name,
-                            "arguments": item.args_json,
-                        },
-                    }
-                    for item in message.tool_calls
-                ]
-            serialized_messages.append(payload)
-            continue
-        if message.role == "tool":
-            content = _serialize_gemini_content_parts(message.content_parts)
-            text = (
-                ""
-                if len(content) == 0
-                else "".join(
-                    str(item.get("text", ""))
-                    for item in content
-                    if isinstance(item, dict)
-                )
-            )
-            serialized_messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": message.tool_call_id,
-                    "content": text,
-                }
-            )
-            continue
-        content = _serialize_gemini_content_parts(message.content_parts)
-        serialized_messages.append(
-            {
-                "role": message.role,
-                "content": "" if len(content) == 0 else content,
-            }
-        )
-    return serialized_messages
-
-
-def _serialize_anthropic_compat_messages(
-    messages: Sequence[AdapterChatMessage],
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Serialize chat history for Anthropic: extract system blocks, pass rest as OpenAI format.
-
-    native LLM translates OpenAI-format messages to Anthropic wire format internally.
-    This function only handles what native LLM does NOT do reliably: extracting system
-    messages into the top-level ``system`` param so they never appear inline mid-turn.
-    Tool messages stay as ``role=tool`` (OpenAI format); native LLM groups them correctly.
-    """
-    system_blocks: list[dict[str, Any]] = []
-    serialized_messages: list[dict[str, Any]] = []
-    for message in messages:
-        if message.role == "system":
-            system_blocks.extend(
-                _serialize_anthropic_content_parts(message.content_parts)
-            )
-            continue
-        serialized_messages.append(_to_llm_message(message))
-    extra_kwargs: dict[str, Any] = {}
-    if system_blocks:
-        extra_kwargs["system"] = system_blocks
-    return serialized_messages, extra_kwargs
-
-
-def _serialize_openai_content_parts(
-    parts: Sequence[ChatContentPart],
-) -> list[dict[str, Any]]:
-    """Serialize structured parts into OpenAI native text content blocks."""
-    blocks: list[dict[str, Any]] = []
-    run: list[ChatContentPart] = []
-
-    def flush() -> None:
-        if len(run) == 0:
-            return
-        text = _render_content_parts(tuple(run))
-        run.clear()
-        if text != "":
-            blocks.append({"type": "text", "text": text})
-
-    for part in parts:
-        if isinstance(part, CachePointContentPart):
-            flush()
-            continue
-        run.append(part)
-    flush()
-    return blocks
-
-
-def _serialize_gemini_content_parts(
-    parts: Sequence[ChatContentPart],
-) -> list[dict[str, Any]]:
-    """Serialize structured parts into Gemini-friendly text content blocks."""
-    blocks: list[dict[str, Any]] = []
-    run: list[ChatContentPart] = []
-
-    def flush() -> None:
-        if len(run) == 0:
-            return
-        text = _render_content_parts(tuple(run))
-        run.clear()
-        if text != "":
-            blocks.append({"type": "text", "text": text})
-
-    for part in parts:
-        if isinstance(part, CachePointContentPart):
-            flush()
-            continue
-        run.append(part)
-    flush()
-    return blocks
 
 
 def _serialize_anthropic_content_parts(
@@ -2254,7 +1652,7 @@ def _render_content_parts(parts: Sequence[ChatContentPart]) -> str:
         reference_snippets.clear()
 
     def render_environment_context(part: EnvironmentContextContentPart) -> str:
-        capability_blocks = "\n".join(
+        op_blocks = "\n".join(
             "\n".join(
                 (
                     f"<{item.tag_name}>",
@@ -2264,11 +1662,11 @@ def _render_content_parts(parts: Sequence[ChatContentPart]) -> str:
             )
             for item in part.items
         )
-        if capability_blocks == "":
+        if op_blocks == "":
             return ""
         return _render_prompt_template(
             _ENVIRONMENT_CONTEXT_TEMPLATE,
-            capability_blocks=capability_blocks,
+            op_blocks=op_blocks,
         )
 
     for part in parts:

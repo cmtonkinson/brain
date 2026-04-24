@@ -10,6 +10,8 @@ from textual.widgets import Static
 from lib.dashboard.models.llm import LLMUsageRowView, LLMUsageTableView
 from lib.dashboard.panes.base import BaseView
 
+_REFRESH_INTERVAL = 2.0
+
 
 class LLMUsageDataSource(Protocol):
     """Minimal LLM-usage contract consumed by the LLM pane."""
@@ -105,7 +107,7 @@ class LLMPane(BaseView):
         yield Static(self._render_body(), id="llm-body")
 
     def on_mount(self) -> None:
-        self.set_interval(2.0, self._refresh_from_source)
+        self.set_interval(_REFRESH_INTERVAL, self._refresh_from_source)
 
     def _refresh_from_source(self) -> None:
         if self._usage_source is None:

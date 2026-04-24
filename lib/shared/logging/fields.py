@@ -7,8 +7,8 @@ services and future observability integrations.
 
 TIMESTAMP = "timestamp"
 LEVEL = "level"
-LOGGER = "logger"
 MESSAGE = "message"
+EXCEPTION = "exception"
 EVENT = "event"
 
 # Envelope/correlation fields.
@@ -31,10 +31,6 @@ OUTCOME = "outcome"
 ERROR_CATEGORY = "error_category"
 STAGE = "stage"
 CONCERN = "concern"
-
-# Future tracing compatibility fields.
-OTEL_TRACE_ID = "otel_trace_id"
-OTEL_SPAN_ID = "otel_span_id"
 
 # Common process-level fields.
 PROCESS_NAME = "process_name"

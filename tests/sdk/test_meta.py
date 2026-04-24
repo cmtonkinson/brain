@@ -25,7 +25,7 @@ def test_build_envelope_meta_respects_overrides() -> None:
 
     timestamp = datetime(2026, 2, 26, 15, 0, 0)
     meta = build_envelope_meta(
-        source="agent",
+        source="assistant",
         principal="core",
         trace_id="trace-123",
         parent_id="parent-456",

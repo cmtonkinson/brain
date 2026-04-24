@@ -7,13 +7,14 @@ from lib.core.boot import (
     BootError,
     BootHookContract,
     BootHookExecutionError,
+    BootModuleSpec,
     BootReadinessTimeoutError,
     BootResult,
-    CoreBootSettings,
     discover_boot_modules,
     load_boot_hooks,
     run_boot_hooks,
 )
+from lib.core.health import ComponentHealthResult, CoreHealthResult
 from lib.core.migrations import (
     MigrationExecutionError,
     MigrationRunResult,
@@ -29,9 +30,11 @@ __all__ = [
     "BootError",
     "BootHookContract",
     "BootHookExecutionError",
+    "BootModuleSpec",
     "BootReadinessTimeoutError",
     "BootResult",
-    "CoreBootSettings",
+    "ComponentHealthResult",
+    "CoreHealthResult",
     "CoreStartupResult",
     "MigrationExecutionError",
     "MigrationRunResult",

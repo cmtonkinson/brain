@@ -1,12 +1,15 @@
-"""Validation and normalization helpers for envelope metadata."""
+"""Validation and normalization helpers for envelope metadata and requests."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from .meta import EnvelopeKind, EnvelopeMeta
+from lib.shared.errors import ErrorDetail, codes, validation_error
+from .meta import EnvelopeKind, EnvelopeMeta, _normalize_utc
 
 
 class _ValidatedEnvelopeMeta(BaseModel):
@@ -42,22 +45,14 @@ def validate_meta(meta: EnvelopeMeta) -> None:
 
 
 def normalize_meta(meta: EnvelopeMeta) -> EnvelopeMeta:
-    """Return a copy of metadata with UTC-normalized timestamp."""
-    timestamp = meta.timestamp
-    if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=UTC)
-    else:
-        timestamp = timestamp.astimezone(UTC)
+    """Return a copy of metadata with UTC-normalized timestamp.
 
-    if timestamp is meta.timestamp:
+    Returns the same object when the timestamp is already UTC to avoid
+    unnecessary allocation on the hot path.
+    """
+    if meta.timestamp.tzinfo is UTC:
         return meta
-
-    return meta.model_copy(update={"timestamp": timestamp})
-
-
-def utc_now() -> datetime:
-    """Return current UTC timestamp."""
-    return datetime.now(UTC)
+    return meta.model_copy(update={"timestamp": _normalize_utc(meta.timestamp)})
 
 
 def _map_meta_validation_error(error: ValidationError) -> str:
@@ -73,3 +68,31 @@ def _map_meta_validation_error(error: ValidationError) -> str:
     if field_name == "kind":
         return "metadata.kind must be specified"
     return str(first_error.get("msg", "invalid metadata"))
+
+
+def validate_service_request(
+    *,
+    meta: EnvelopeMeta,
+    model: type[BaseModel],
+    payload: Mapping[str, Any],
+) -> tuple[BaseModel | None, list[ErrorDetail]]:
+    """Validate envelope metadata and one Pydantic request payload.
+
+    Returns ``(validated_model, [])`` on success, or ``(None, errors)`` on
+    failure.  All Pydantic validation errors are surfaced — not just the first.
+    """
+    try:
+        validate_meta(meta)
+        request = model.model_validate(payload)
+    except ValidationError as exc:
+        errors: list[ErrorDetail] = []
+        for err in exc.errors():
+            field = ".".join(str(part) for part in err.get("loc", ()))
+            field_label = field if field else "payload"
+            message = f"{field_label}: {err.get('msg', 'invalid value')}"
+            errors.append(validation_error(message, code=codes.INVALID_ARGUMENT))
+        return None, errors
+    except ValueError as exc:
+        return None, [validation_error(str(exc), code=codes.INVALID_ARGUMENT)]
+
+    return request, []

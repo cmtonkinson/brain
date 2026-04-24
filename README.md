@@ -19,7 +19,7 @@ know it's safe(r) to use._
 ## Motivation
 I wanted a Siri that didn't suck; an actual Jarvis; an assistant with access to
 my files, calendar, messages, meeting transcripts, and the web, with the
-capability to answer questions, surface reminders when pertinent, and
+op to answer questions, surface reminders when pertinent, and
 continuously learn from all of it.
 
 My original desire was simply for a system to help organize information and keep
@@ -51,7 +51,7 @@ _Conceptually_, Brain has three primary domains:
    information. At its simplest, this could be a single (if very large) file.
 2. A **reasoning engine**: an LLM used to interpret context, propose actions,
    explain decisions, and interact with you conversationally.
-3. **Capabilities**: governed operations that interact with the real world
+3. **Ops**: governed operations that interact with the real world
    (files, calendars, messaging, etc.) via native APIs or MCP Servers.
 
 _Operationally_, the system takes advantage of Docker for process isolation. In
@@ -64,14 +64,14 @@ need to run directly on your host system:
   want MCP Servers with host-level access (e.g. EventKit on macOS)_
 
 All other services are run with Docker Compose:
-- Brain Agent, built with [PydanticAI]
+- Brain Assistant, built with [PydanticAI]
 - Brain Core, which houses all runtime _State_, _Action_, and _Control_ services
 - Brain MCP Adapter sidecar, connecting to configured MCP servers
 - Secure messaging thanks to [Signal]
 - Durable working state and application logs are kept in [Postgres]
 - Caching and queueing are handled by [Valkey]
 - Vector search for semantic embeddings is powered by [Qdrant]
-- Object Authority blob bytes are stored in [SeaweedFS]
+- Object blob bytes are stored in [SeaweedFS]
 
 Host port assignments (non-standard range to avoid conflicts):
 
@@ -93,7 +93,7 @@ secrets, environment variables, and startup checks.
 ------------------------------------------------------------------------
 ## Architecture
 The most useful way to understand the system structure is the Boundaries &
-Responsibilities diagram — a conceptual map of _Layers_, _Systems_, _Services_,
+Responsibilities diagram — a conceptual map of _Tiers_, _Systems_, _Services_,
 and _Resources_. It is not a deployment or data flow diagram.
 
 See the full [Boundaries &
@@ -107,7 +107,7 @@ Recommended reading order:
 1. **[Manifesto](docs/manifesto.md)** &mdash; Design philosophy, first
    principles, and architectural invariants.
 2. **[Boundaries & Responsibilities](docs/boundaries-and-responsibilities.md)**
-   &mdash; Layer model, system model, service catalog, and shared
+   &mdash; Tier model, system model, service catalog, and shared
    infrastructure.
 3. **[Conventions](docs/conventions.md)** &mdash; APIs, envelopes, principals,
    error taxonomy, SDKs, policy enforcement, and Pydantic contract rules.

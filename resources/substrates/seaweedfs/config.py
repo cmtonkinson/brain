@@ -5,8 +5,8 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from lib.shared.config import CoreRuntimeSettings, resolve_component_settings
+from lib.shared.blob_validation import normalize_extension
 from resources.substrates.seaweedfs.component import RESOURCE_COMPONENT_ID
-from resources.substrates.seaweedfs.validation import normalize_extension
 
 
 class SeaweedFSSubstrateSettings(BaseModel):
@@ -17,8 +17,8 @@ class SeaweedFSSubstrateSettings(BaseModel):
     endpoint_url: str = "http://seaweedfs:8333"
     bucket: str = "brain-oas"
     region: str = "us-east-1"
-    access_key_id: str = "replace-me"
-    secret_access_key: str = "replace-me"
+    access_key_id: str
+    secret_access_key: str
     key_prefix: str = "objects"
     request_timeout_seconds: float = Field(default=10.0, gt=0)
     default_extension: str = "blob"

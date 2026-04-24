@@ -1,0 +1,85 @@
+execution:
+  discovery_roots:
+    - ops
+  always_on_op_ids: []
+  op_search_top_k: 10
+
+language:
+  document_embedding:
+    provider: ollama
+    model: mxbai-embed-large
+    dimensions: 1024
+  op_embedding:
+    provider: ollama
+    model: mxbai-embed-large
+    dimensions: 1024
+  quick:
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+  standard:
+    provider: anthropic
+    model: claude-sonnet-4-6-20251001
+  deep:
+    provider: anthropic
+    model: claude-opus-4-7
+
+relay:
+  inbound:
+    queue_name: signal_inbound
+    console_queue_name: console_inbound
+    console_response_queue_name: console_outbound
+    callback_register_max_retries: 8
+    callback_register_retry_delay_seconds: 2.0
+  outbound:
+    default_channel: signal
+    conversational_channels:
+      - signal
+      - console
+    max_message_chars: 4000
+    dedupe_window_seconds: 120
+    rate_limit_window_seconds: 60
+    rate_limit_max_per_window: 20
+    batch_summary_max_items: 5
+
+llm:
+  timeout_seconds: 30.0
+  max_retries: 2
+  retry_attempts: 2
+  retry_initial_delay_seconds: 0.5
+  retry_max_delay_seconds: 2.0
+  retry_backoff_multiplier: 2.0
+  retry_jitter_ratio: 0.2
+  providers:
+    ollama:
+      api_base: http://host.docker.internal:11434
+      timeout_seconds: null
+      max_retries: null
+      options: {}
+    voyage:
+      api_base: https://api.voyageai.com
+      timeout_seconds: null
+      max_retries: null
+      options:
+        output_dimension: 2048
+    anthropic:
+      api_base: https://api.anthropic.com
+      timeout_seconds: null
+      max_retries: null
+      options:
+        max_tokens: 1024
+
+mcp:
+  base_url: http://brain-mcp:8763
+  timeout_seconds: 10.0
+
+signal:
+  base_url: http://signal-api:8080
+  health_timeout_seconds: 0.5
+  receive_connect_timeout_seconds: 10.0
+  receive_heartbeat_seconds: 30.0
+  send_timeout_seconds: 30.0
+  max_retries: 2
+  failure_backoff_initial_seconds: 1.0
+  failure_backoff_max_seconds: 30.0
+  failure_backoff_multiplier: 2.0
+  failure_backoff_jitter_ratio: 0.2

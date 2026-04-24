@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from lib.shared.component_loader import import_registered_component_modules
 from lib.shared.config import CoreRuntimeSettings, load_core_runtime_settings
-from lib.shared.ids.constants import ULID_DOMAIN_NAME
+from lib.shared.ids import ULID_DOMAIN_NAME
 from lib.shared.manifest import ServiceManifest, get_registry
 from resources.substrates.postgres.config import resolve_postgres_settings
 from resources.substrates.postgres.engine import create_postgres_engine
@@ -74,6 +74,8 @@ def bootstrap_service_schemas(
 def _provision_service_schema(*, connection: Any, service: ServiceManifest) -> None:
     """Create one service schema and bootstrap schema-local shared primitives."""
     schema = service.schema_name
+    # schema is derived from a registry-validated component ID (^[a-z][a-z0-9_]{1,62}$),
+    # so f-string interpolation here is safe — no user-controlled input reaches this path.
     connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
     connection.execute(
         text(

@@ -4,29 +4,29 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
+import functools
 import hashlib
 import hmac
 from urllib.parse import quote, urlsplit
 
 import httpx
 
+from lib.shared.blob_validation import normalize_extension
 from resources.substrates.seaweedfs.config import SeaweedFSSubstrateSettings
 from resources.substrates.seaweedfs.substrate import (
     BlobHealthStatus,
     BlobStat,
     BlobSubstrate,
 )
-from resources.substrates.seaweedfs.validation import normalize_extension
 
 _HEX = frozenset("0123456789abcdef")
 _DIGEST_HEX_LENGTH = 64
-_FANOUT_FIRST_CHARS = 2
-_FANOUT_SECOND_CHARS = 4
+_FANOUT_CHARS = 2
 _DEFAULT_CONTENT_TYPE = "application/octet-stream"
 
 
 class SeaweedFSBlobSubstrate(BlobSubstrate):
-    """Persist and retrieve OAS blobs in a SeaweedFS S3 bucket."""
+    """Persist and retrieve Object blobs in a SeaweedFS S3 bucket."""
 
     def __init__(
         self,
@@ -60,8 +60,8 @@ class SeaweedFSBlobSubstrate(BlobSubstrate):
         ext = normalize_extension(value=extension)
         filename = f"{digest}.{ext}"
         suffix = (
-            f"{digest[:_FANOUT_FIRST_CHARS]}/"
-            f"{digest[_FANOUT_FIRST_CHARS:_FANOUT_SECOND_CHARS]}/"
+            f"{digest[:_FANOUT_CHARS]}/"
+            f"{digest[_FANOUT_CHARS : _FANOUT_CHARS * 2]}/"
             f"{filename}"
         )
         if self._settings.key_prefix == "":
@@ -134,7 +134,7 @@ class SeaweedFSBlobSubstrate(BlobSubstrate):
         url = self._object_url(key=key)
         response = self._client.delete(url, headers=self._headers("DELETE", url))
         if response.status_code == httpx.codes.NOT_FOUND:
-            return False
+            return True
         response.raise_for_status()
         return True
 
@@ -173,6 +173,7 @@ class SeaweedFSBlobSubstrate(BlobSubstrate):
             "X-Amz-Content-Sha256": payload_hash,
             "X-Amz-Date": amz_date,
         }
+        # extra headers (e.g. Content-Type, Content-Length) intentionally unsigned
         if extra is not None:
             headers.update(extra)
 
@@ -229,11 +230,11 @@ def _normalize_digest_hex(value: str) -> str:
     return normalized
 
 
-def _int_header(headers: httpx.Headers, name: str) -> int:
-    """Parse one integer response header, returning zero when absent."""
+def _int_header(headers: httpx.Headers, name: str) -> int | None:
+    """Parse one integer response header, returning None when absent."""
     raw = headers.get(name)
     if raw is None or raw.strip() == "":
-        return 0
+        return None
     return int(raw)
 
 
@@ -251,13 +252,14 @@ def _canonical_uri(url: str) -> str:
     return quote(path, safe="/~")
 
 
+@functools.lru_cache(maxsize=8)
 def _signing_key(
     *,
     secret_access_key: str,
     datestamp: str,
     region: str,
 ) -> bytes:
-    """Return one AWS Signature V4 signing key."""
+    """Return one AWS Signature V4 signing key, cached per calendar day."""
     date_key = _sign(f"AWS4{secret_access_key}".encode("utf-8"), datestamp)
     region_key = _sign(date_key, region)
     service_key = _sign(region_key, "s3")

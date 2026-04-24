@@ -18,7 +18,16 @@ from lib.dashboard.models.workspace import (
     LayoutNode,
     WorkspaceState,
 )
-from lib.dashboard.panes import LogPane, PolicyPane, TracePane, TurnPane
+from lib.dashboard.panes import (
+    HostPane,
+    LLMPane,
+    LogPane,
+    PolicyPane,
+    TracePane,
+    TurnPane,
+)
+from lib.dashboard.panes.host import HostDataSource
+from lib.dashboard.panes.llm import LLMUsageDataSource
 from lib.dashboard.panes.empty_picker import EmptyPicker
 
 
@@ -49,6 +58,8 @@ class DashboardDataSources:
         turn_source: TurnDataSource | None = None,
         trace_source: TraceDataSource | None = None,
         policy_source: PolicyDataSource | None = None,
+        host_source: "HostDataSource | None" = None,
+        llm_usage_source: "LLMUsageDataSource | None" = None,
     ) -> None:
         self.log_buffer: LogBuffer = (
             log_buffer if log_buffer is not None else LogBuffer()
@@ -56,6 +67,8 @@ class DashboardDataSources:
         self.turn_source: TurnDataSource | None = turn_source
         self.trace_source: TraceDataSource | None = trace_source
         self.policy_source: PolicyDataSource | None = policy_source
+        self.host_source: "HostDataSource | None" = host_source
+        self.llm_usage_source: "LLMUsageDataSource | None" = llm_usage_source
 
 
 class WorkspaceManager:
@@ -94,7 +107,7 @@ class WorkspaceManager:
             return self._find_node(pane_id, left) or self._find_node(pane_id, right)
         return None
 
-    def _leaves(self, node: LayoutNode | None = None) -> list[LayoutNode]:
+    def leaves(self, node: LayoutNode | None = None) -> list[LayoutNode]:
         """Return all leaf LayoutNodes in tree order (left-to-right DFS)."""
         n = node if node is not None else self._state.root
         if n is None:
@@ -104,8 +117,8 @@ class WorkspaceManager:
         result: list[LayoutNode] = []
         if n.children:
             left, right = n.children
-            result.extend(self._leaves(left))
-            result.extend(self._leaves(right))
+            result.extend(self.leaves(left))
+            result.extend(self.leaves(right))
         return result
 
     def _replace_node(
@@ -126,7 +139,7 @@ class WorkspaceManager:
     ) -> tuple[dict[str, bool], dict[str, Literal["follow", "frozen"]]]:
         """Ensure per-pane follow and temporal state exists for every leaf."""
         pane_ids = [
-            leaf.pane_id for leaf in self._leaves(root) if leaf.pane_id is not None
+            leaf.pane_id for leaf in self.leaves(root) if leaf.pane_id is not None
         ]
         return (
             {
@@ -198,11 +211,11 @@ class WorkspaceManager:
         focused_id = self._state.focused_pane_id
         if focused_id is None:
             return
-        leaves = self._leaves()
+        leaves = self.leaves()
         if len(leaves) <= 1:
             return
         new_root = self._remove_node(self._state.root, focused_id)
-        remaining = self._leaves(new_root)
+        remaining = self.leaves(new_root)
         new_focus = remaining[0].pane_id if remaining else None
         pane_context_follow, pane_temporal_mode = self._scaffold_pane_state(new_root)
         new_maximized = (
@@ -228,7 +241,7 @@ class WorkspaceManager:
 
     def focus_next(self) -> None:
         """Sequential focus: advance to next leaf in tree order."""
-        leaves = self._leaves()
+        leaves = self.leaves()
         if not leaves:
             return
         ids = [leaf.pane_id for leaf in leaves]
@@ -242,7 +255,7 @@ class WorkspaceManager:
 
     def focus_previous(self) -> None:
         """Sequential focus: reverse direction."""
-        leaves = self._leaves()
+        leaves = self.leaves()
         if not leaves:
             return
         ids = [leaf.pane_id for leaf in leaves]
@@ -309,7 +322,7 @@ class WorkspaceManager:
         """Return the amount of interval overlap between two normalized ranges."""
         return max(0.0, min(end_a, end_b) - max(start_a, start_b))
 
-    def _focus_direction(
+    def focus_direction(
         self, direction: Literal["left", "right", "up", "down"]
     ) -> None:
         """Move focus to the nearest visible pane in the requested direction."""
@@ -325,7 +338,7 @@ class WorkspaceManager:
         best_id: str | None = None
         best_score: tuple[float, float, int] | None = None
 
-        for order, leaf in enumerate(self._leaves()):
+        for order, leaf in enumerate(self.leaves()):
             pane_id = leaf.pane_id
             if pane_id == focused_id:
                 continue
@@ -453,6 +466,18 @@ class Workspace(Widget):
                 classes=css_classes,
                 id=content_id,
             )
+        if view_id == "host":
+            return HostPane(
+                host_source=self._data_sources.host_source,
+                classes=css_classes,
+                id=content_id,
+            )
+        if view_id == "llm":
+            return LLMPane(
+                usage_source=self._data_sources.llm_usage_source,
+                classes=css_classes,
+                id=content_id,
+            )
         return EmptyPicker(is_sole=False, classes=css_classes, id=content_id)
 
     def _render_leaf(self, node: LayoutNode) -> Widget:
@@ -465,7 +490,7 @@ class Workspace(Widget):
             c for c in ["pane-leaf", focused_class, maximized_class] if c
         )
 
-        leaves = self.manager._leaves()
+        leaves = self.manager.leaves()
         is_sole = len(leaves) <= 1
 
         if node.view_id is not None:
@@ -477,7 +502,7 @@ class Workspace(Widget):
             id=f"pane-content-{node.pane_id}",
         )
 
-    def _render_node(self, node: LayoutNode | None):  # type: ignore[return]
+    def _render_node(self, node: LayoutNode | None) -> ComposeResult:
         """Recursively render split tree into Textual containers."""
         if node is None:
             return
@@ -499,6 +524,7 @@ class Workspace(Widget):
     def _sync_footer(self) -> None:
         """Push current workspace state into the footer widget when mounted."""
         try:
+            # Deferred import avoids circular dependency: workspace → widgets → workspace
             from lib.dashboard.widgets.keymap_footer import KeymapFooter
 
             footer = self.app.query_one(KeymapFooter)
@@ -559,19 +585,19 @@ class Workspace(Widget):
         self._refresh()
 
     def focus_left(self) -> None:
-        self.manager._focus_direction("left")
+        self.manager.focus_direction("left")
         self._refresh()
 
     def focus_right(self) -> None:
-        self.manager._focus_direction("right")
+        self.manager.focus_direction("right")
         self._refresh()
 
     def focus_up(self) -> None:
-        self.manager._focus_direction("up")
+        self.manager.focus_direction("up")
         self._refresh()
 
     def focus_down(self) -> None:
-        self.manager._focus_direction("down")
+        self.manager.focus_direction("down")
         self._refresh()
 
     def load_view(self, pane_id: str, view_id: str) -> None:

@@ -13,6 +13,8 @@ VIEW_CHOICES = [
     ("2", "turn", "Turn"),
     ("3", "policy", "Policy"),
     ("4", "log", "Log"),
+    ("5", "host", "Host"),
+    ("6", "llm", "LLM"),
 ]
 
 

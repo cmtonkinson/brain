@@ -23,7 +23,7 @@ exists to make startup behavior explicit, deterministic, and reviewable.
    - This step must finish before component instantiation.
 
 4. **Instantiate components from registry graph**
-   - Build L0 _Resources_ and L1 _Services_ via per-component builders.
+   - Build T1 _Resources_ and T2 _Services_ via per-component builders.
    - Resolve dependencies using registry-declared relationships.
    - Fail hard on unresolved dependency graphs.
 
@@ -31,13 +31,13 @@ exists to make startup behavior explicit, deterministic, and reviewable.
    - Phase A: global readiness gate (all boot hooks must report ready).
    - Phase B: execute `boot()` in DAG/topological dependency order.
 
-6. **Load capabilities**
-   - Discover and register capability lib.
-   - Perform capability validation after boot so boot-established runtime state is available.
+6. **Load ops**
+   - Discover and register op lib.
+   - Perform op validation after boot so boot-established runtime state is available.
 
 7. **Run `after_boot(...)` lifecycle hooks**
    - Execute optional component-level `after_boot` hooks.
-   - Run after global boot/capability startup work and before serving HTTP.
+   - Run after global boot/op startup work and before serving HTTP.
    - Fail hard if any `after_boot` hook raises.
 
 8. **Start HTTP runtime**
@@ -52,7 +52,7 @@ exists to make startup behavior explicit, deterministic, and reviewable.
 ## Why This Order
 - **Migrations before instantiation** prevents constructors from touching missing tables.
 - **Global readiness before any boot action** prevents partial boot side effects.
-- **Capabilities after boot** allows dependencies like MCP and boot-generated runtime state to be available before capability discovery/validation.
+- **Ops after boot** allows dependencies like MCP and boot-generated runtime state to be available before op discovery/validation.
 - **after_boot before HTTP** ensures post-boot initialization completes before external traffic is accepted.
 - **HTTP last** ensures external traffic is accepted only after startup is complete.
 

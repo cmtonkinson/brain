@@ -7,8 +7,6 @@ from typing import TYPE_CHECKING
 from .base import BasePollingDataSource, DataSource
 
 if TYPE_CHECKING:
-    from .docker import DockerDataSource
-    from .files import FileDataSource
     from .health import HealthAggregator, HealthConfig
     from .logs import DockerLogSource, FileLogSource, LogBuffer, LogDataSource
     from .postgres import BasePostgresDataSource, PostgresConnectionConfig
@@ -17,9 +15,7 @@ if TYPE_CHECKING:
 __all__ = [
     "BasePollingDataSource",
     "DataSource",
-    "DockerDataSource",
     "DockerLogSource",
-    "FileDataSource",
     "FileLogSource",
     "HealthAggregator",
     "HealthConfig",
@@ -37,14 +33,6 @@ def __getattr__(name: str) -> object:
         from . import health as _health  # noqa: PLC0415
 
         return getattr(_health, name)
-    if name == "DockerDataSource":
-        from .docker import DockerDataSource  # noqa: PLC0415
-
-        return DockerDataSource
-    if name == "FileDataSource":
-        from .files import FileDataSource  # noqa: PLC0415
-
-        return FileDataSource
     if name in ("DockerLogSource", "FileLogSource", "LogBuffer", "LogDataSource"):
         from . import logs as _logs  # noqa: PLC0415
 

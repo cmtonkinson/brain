@@ -166,8 +166,8 @@ def test_http_client_logs_operation_metadata() -> None:
     logger.setLevel(logging.DEBUG)
     try:
         client.get_json(
-            "/switchboard/poll_operator_instruction",
-            log_operation="switchboard.poll_operator_instruction",
+            "/relay/poll_operator_instruction",
+            log_operation="relay.poll_operator_instruction",
         )
     finally:
         logger.removeHandler(capture_handler)
@@ -181,9 +181,9 @@ def test_http_client_logs_operation_metadata() -> None:
         for record in records
         if record.getMessage() == "HTTP client request completed"
     )
-    assert completed.service == "switchboard"
-    assert completed.operation == "switchboard.poll_operator_instruction"
-    assert completed.endpoint == "/switchboard/poll_operator_instruction"
+    assert completed.service == "relay"
+    assert completed.operation == "relay.poll_operator_instruction"
+    assert completed.endpoint == "/relay/poll_operator_instruction"
     assert completed.status_code == 200
 
 

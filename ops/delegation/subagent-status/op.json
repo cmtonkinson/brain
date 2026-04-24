@@ -1,0 +1,68 @@
+{
+  "op_id": "subagent-status",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Read the current status projection for one subagent invocation.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "invocation_id": {
+        "type": "string",
+        "description": "The ULID identifier of the invocation."
+      }
+    },
+    "required": [
+      "invocation_id"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "invocation_id": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "cancel_reason": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "tokens_in": {
+        "type": "integer"
+      },
+      "tokens_out": {
+        "type": "integer"
+      },
+      "turn_count": {
+        "type": "integer"
+      },
+      "started_at": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "completed_at": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "invocation_id",
+      "status",
+      "tokens_in",
+      "tokens_out",
+      "turn_count"
+    ]
+  },
+  "call_target": "service_delegation.get_status",
+  "effect": "read",
+  "approval": "never"
+}

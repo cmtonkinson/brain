@@ -1,0 +1,22 @@
+{
+  "op_id": "cache-set-value",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Set one component-scoped cache value.",
+  "enabled": true,
+  "input_schema": {
+    "component_id": "string | The canonical component id namespace for the cache key.",
+    "key": "string | The cache key within the component namespace.",
+    "value": "object | The JSON-serializable value to persist.",
+    "ttl_seconds": "integer | optional | null | Optional TTL override in seconds; null uses the service default."
+  },
+  "output_schema": {
+    "component_id": "string | The canonical component id namespace for the cache key.",
+    "key": "string | The cache key within the component namespace.",
+    "value": "object | The JSON value that was persisted.",
+    "ttl_seconds": "integer | null | The effective TTL applied to the key; null means the key does not expire."
+  },
+  "call_target": "service_cache.set_value",
+  "effect": "write",
+  "approval": "never"
+}

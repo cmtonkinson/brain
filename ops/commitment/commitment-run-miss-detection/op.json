@@ -1,0 +1,58 @@
+{
+  "op_id": "commitment-run-miss-detection",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Run commitment miss detection for one commitment or all due commitments.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "commitment_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "One commitment id to check; omitted scans all due commitments."
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "checked_count": {
+        "type": "integer",
+        "description": "Number of due open commitments examined."
+      },
+      "missed_count": {
+        "type": "integer",
+        "description": "Number of commitments transitioned to MISSED."
+      },
+      "notified_count": {
+        "type": "integer",
+        "description": "Number of missed notifications delivered."
+      },
+      "commitment_ids": {
+        "type": "array",
+        "description": "Commitment ids transitioned during this run.",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "checked_count",
+      "missed_count",
+      "notified_count",
+      "commitment_ids"
+    ],
+    "additionalProperties": false
+  },
+  "call_target": "service_commitment.run_miss_detection",
+  "effect": "execute",
+  "approval": "never"
+}

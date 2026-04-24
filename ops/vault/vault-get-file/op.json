@@ -1,0 +1,22 @@
+{
+  "op_id": "vault-get-file",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Read one markdown file by path.",
+  "simple_output_path": ".content",
+  "enabled": true,
+  "input_schema": {
+    "file_path": "string | The full path of the file to read."
+  },
+  "output_schema": {
+    "path": "string | The full path of the file.",
+    "content": "string | The content of the file.",
+    "size_bytes": "integer | The size of the file in bytes.",
+    "created_at": "date-time|null|optional | The timestamp when the file was created.",
+    "updated_at": "date-time|null|optional | The timestamp when the file was last updated.",
+    "revision": "string | The revision identifier for the file."
+  },
+  "call_target": "service_vault.get_file",
+  "effect": "read",
+  "approval": "never"
+}

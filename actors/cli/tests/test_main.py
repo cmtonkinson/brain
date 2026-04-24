@@ -10,8 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from types import SimpleNamespace
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 from typer.testing import CliRunner
@@ -31,10 +30,10 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
     module = ModuleType("lib.sdk")
     module.calls = []
 
-    class DomainError(Exception):
+    class BrainDomainError(Exception):
         """Fake domain-level typed error."""
 
-    class TransportError(Exception):
+    class BrainTransportError(Exception):
         """Fake transport-level typed error."""
 
     class BrainSdkClient:
@@ -83,15 +82,15 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
         return {
             "ready": False,
             "services": {
-                "service_attention_router": {"ready": True, "detail": "ok"},
-                "service_vault_authority": {"ready": False, "detail": "obsidian down"},
+                "service_relay": {"ready": True, "detail": "ok"},
+                "service_vault": {"ready": False, "detail": "obsidian down"},
             },
             "resources": {
                 "substrate_obsidian": {"ready": False, "detail": "connection refused"}
             },
         }
 
-    def describe_capabilities(
+    def describe_ops(
         *,
         client: BrainSdkClient,
         principal: str,
@@ -101,7 +100,7 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
     ) -> tuple[dict[str, Any], ...]:
         module.calls.append(
             (
-                "describe_capabilities",
+                "describe_ops",
                 client.host,
                 client.port,
                 principal,
@@ -112,7 +111,7 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
         )
         return (
             {
-                "capability_id": "vault-get-file",
+                "op_id": "vault-get-file",
                 "summary": "Read one vault file.",
                 "simple_output_path": ".content",
                 "input_schema": {
@@ -125,7 +124,7 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
                 },
             },
             {
-                "capability_id": "podcast-update",
+                "op_id": "podcast-update",
                 "summary": "Update one podcast record.",
                 "input_schema": {
                     "type": "object",
@@ -138,10 +137,10 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
             },
         )
 
-    def describe_capability(
+    def describe_op(
         *,
         client: BrainSdkClient,
-        capability_id: str,
+        op_id: str,
         principal: str,
         source: str,
         trace_id: str | None = None,
@@ -149,10 +148,10 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
     ) -> dict[str, Any]:
         module.calls.append(
             (
-                "describe_capability",
+                "describe_op",
                 client.host,
                 client.port,
-                capability_id,
+                op_id,
                 principal,
                 source,
                 trace_id,
@@ -161,26 +160,26 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
         )
         return next(
             item
-            for item in describe_capabilities(
+            for item in describe_ops(
                 client=client,
                 principal=principal,
                 source=source,
                 trace_id=trace_id,
                 parent_id=parent_id,
             )
-            if item["capability_id"] == capability_id
+            if item["op_id"] == op_id
         )
 
-    class CapabilityInvokeResult:
+    class OpInvokeResult:
         """Fake invoke result carrying a decoded output payload."""
 
         def __init__(self, output: Any) -> None:
             self.output = output
 
-    def invoke_capability(
+    def invoke_op(
         *,
         client: BrainSdkClient,
-        capability_id: str,
+        op_id: str,
         input_payload: dict[str, Any] | None = None,
         actor: str = "",
         channel: str = "",
@@ -189,13 +188,13 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
         trace_id: str | None = None,
         parent_id: str | None = None,
         **_: Any,
-    ) -> CapabilityInvokeResult:
+    ) -> OpInvokeResult:
         module.calls.append(
             (
-                "invoke_capability",
+                "invoke_op",
                 client.host,
                 client.port,
-                capability_id,
+                op_id,
                 input_payload,
                 actor,
                 channel,
@@ -206,20 +205,20 @@ def _install_fake_sdk(monkeypatch: Any) -> ModuleType:
             )
         )
         output = {
-            "capability_id": capability_id,
+            "op_id": op_id,
             "input_payload": input_payload or {},
         }
-        if capability_id == "vault-get-file":
+        if op_id == "vault-get-file":
             output["content"] = "file body"
-        return CapabilityInvokeResult(output)
+        return OpInvokeResult(output)
 
     module.BrainSdkClient = BrainSdkClient
-    module.DomainError = DomainError
-    module.TransportError = TransportError
+    module.BrainDomainError = BrainDomainError
+    module.BrainTransportError = BrainTransportError
     module.core_health = core_health
-    module.describe_capabilities = describe_capabilities
-    module.describe_capability = describe_capability
-    module.invoke_capability = invoke_capability
+    module.describe_ops = describe_ops
+    module.describe_op = describe_op
+    module.invoke_op = invoke_op
 
     config_module = ModuleType("lib.sdk.config")
     config_module.resolve_timeout_seconds = lambda value=None: (
@@ -279,10 +278,10 @@ def test_cli_parses_domain_action_and_executes(monkeypatch: Any) -> None:
 
     assert result.exit_code == 0
     assert "Services:" in result.stdout
-    assert "Attention Router: ✅ healthy" in result.stdout
-    assert "Vault Authority: ⚠️ degraded" in result.stdout
+    assert "Relay: ✅ healthy" in result.stdout
+    assert "Vault: ⚠️ degraded" in result.stdout
     assert "Resources:" in result.stdout
-    assert sdk.calls[0][0] == "describe_capabilities"
+    assert sdk.calls[0][0] == "describe_ops"
     assert sdk.calls[1][0] == "core_health"
 
 
@@ -293,7 +292,7 @@ def test_domain_error_maps_to_exit_code_3(monkeypatch: Any) -> None:
     runner = CliRunner()
 
     def fail_domain(*, client: Any, **_: Any) -> Any:
-        raise sdk.DomainError("domain failed")
+        raise sdk.BrainDomainError("domain failed")
 
     monkeypatch.setattr(cli_module, "core_health", fail_domain)
     result = runner.invoke(app, [*_base_args(), "health", "core"])
@@ -309,7 +308,7 @@ def test_transport_error_maps_to_exit_code_4(monkeypatch: Any) -> None:
     runner = CliRunner()
 
     def fail_transport(*, client: Any, **_: Any) -> Any:
-        raise sdk.TransportError("transport failed")
+        raise sdk.BrainTransportError("transport failed")
 
     monkeypatch.setattr(cli_module, "core_health", fail_transport)
     result = runner.invoke(app, [*_base_args(), "health", "core"])
@@ -330,15 +329,15 @@ def test_typer_usage_errors_are_unchanged(monkeypatch: Any) -> None:
     assert "No such command" in result.stderr or "Missing command" in result.stderr
 
 
-def test_capability_command_path_splits_first_hyphen(monkeypatch: Any) -> None:
-    """Capability ids map to CLI command groups by first-hyphen split."""
+def test_op_command_path_splits_first_hyphen(monkeypatch: Any) -> None:
+    """Op ids map to CLI command groups by first-hyphen split."""
     _, _, cli_module = _load_cli_app(monkeypatch)
 
-    assert cli_module._capability_command_path("vault-get-file") == (
+    assert cli_module._op_command_path("vault-get-file") == (
         "vault",
         "get-file",
     )
-    assert cli_module._capability_command_path("podcast-update") == (
+    assert cli_module._op_command_path("podcast-update") == (
         "podcast",
         "update",
     )
@@ -449,7 +448,7 @@ def test_render_core_health_degraded(monkeypatch: Any) -> None:
 def test_humanize_component_name(monkeypatch: Any) -> None:
     """Prefixes are stripped and names are title-cased."""
     m = _get_render_helpers(monkeypatch)
-    assert m._humanize_component_name("service_attention_router") == "Attention Router"
+    assert m._humanize_component_name("service_relay") == "Relay"
     assert m._humanize_component_name("resource_vault") == "Vault"
     assert m._humanize_component_name("substrate_obsidian") == "Obsidian"
     assert m._humanize_component_name("adapter_llm") == "Llm"
@@ -467,7 +466,7 @@ def test_json_output_for_domain_error(monkeypatch: Any) -> None:
     runner = CliRunner()
 
     def fail_domain(*, client: Any, **_: Any) -> Any:
-        raise sdk.DomainError("json domain error")
+        raise sdk.BrainDomainError("json domain error")
 
     monkeypatch.setattr(cli_module, "core_health", fail_domain)
     result = runner.invoke(app, [*_base_args(), "--json", "health", "core"])
@@ -477,12 +476,12 @@ def test_json_output_for_domain_error(monkeypatch: Any) -> None:
     assert error_payload["error"] == "json domain error"
 
 
-def test_capability_list_shows_command_paths(monkeypatch: Any) -> None:
-    """Capability list should expose the resolved CLI command form."""
+def test_op_list_shows_command_paths(monkeypatch: Any) -> None:
+    """Op list should expose the resolved CLI command form."""
     app, _, _ = _load_cli_app(monkeypatch)
     runner = CliRunner()
 
-    result = runner.invoke(app, [*_base_args(), "capability", "list"])
+    result = runner.invoke(app, [*_base_args(), "op", "list"])
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
@@ -490,25 +489,25 @@ def test_capability_list_shows_command_paths(monkeypatch: Any) -> None:
     assert payload[1]["command"] == "podcast update"
 
 
-def test_capability_describe_calls_sdk(monkeypatch: Any) -> None:
-    """Capability describe should call the CES SDK describe wrapper."""
+def test_op_describe_calls_sdk(monkeypatch: Any) -> None:
+    """Op describe should call the Execution SDK describe wrapper."""
     app, sdk, _ = _load_cli_app(monkeypatch)
     runner = CliRunner()
 
     result = runner.invoke(
         app,
-        [*_base_args(), "--json", "capability", "describe", "vault-get-file"],
+        [*_base_args(), "--json", "op", "describe", "vault-get-file"],
     )
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert payload["capability_id"] == "vault-get-file"
-    call = next(c for c in sdk.calls if c[0] == "describe_capability")
+    assert payload["op_id"] == "vault-get-file"
+    call = next(c for c in sdk.calls if c[0] == "describe_op")
     assert call[3] == "vault-get-file"
 
 
-def test_service_command_invokes_capability_with_parsed_flags(monkeypatch: Any) -> None:
-    """Known service command should resolve and invoke the matching capability."""
+def test_service_command_invokes_op_with_parsed_flags(monkeypatch: Any) -> None:
+    """Known service command should resolve and invoke the matching op."""
     app, sdk, _ = _load_cli_app(monkeypatch)
     runner = CliRunner()
 
@@ -527,12 +526,12 @@ def test_service_command_invokes_capability_with_parsed_flags(monkeypatch: Any) 
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert payload["capability_id"] == "vault-get-file"
+    assert payload["op_id"] == "vault-get-file"
     assert payload["input_payload"] == {
         "file_path": "notes/today.md",
         "include_metadata": True,
     }
-    call = next(c for c in sdk.calls if c[0] == "invoke_capability")
+    call = next(c for c in sdk.calls if c[0] == "invoke_op")
     assert call[3] == "vault-get-file"
     assert call[4] == {
         "file_path": "notes/today.md",
@@ -540,7 +539,7 @@ def test_service_command_invokes_capability_with_parsed_flags(monkeypatch: Any) 
     }
 
 
-def test_generated_help_lists_live_capability_commands(monkeypatch: Any) -> None:
+def test_generated_help_lists_live_op_commands(monkeypatch: Any) -> None:
     """Service-group help should list commands discovered from the live catalog."""
     app, _, _ = _load_cli_app(monkeypatch)
     runner = CliRunner()
@@ -548,12 +547,12 @@ def test_generated_help_lists_live_capability_commands(monkeypatch: Any) -> None
     result = runner.invoke(app, [*_base_args(), "vault", "--help"])
 
     assert result.exit_code == 0
-    assert "Capability Metadata: live Core connection" in result.stdout
+    assert "Op Metadata: live Core connection" in result.stdout
     assert "get-file" in result.stdout
 
 
 def test_generated_help_lists_command_options(monkeypatch: Any) -> None:
-    """Capability-command help should expose generated options despite style changes."""
+    """Op-command help should expose generated options despite style changes."""
     app, _, _ = _load_cli_app(monkeypatch)
     runner = CliRunner()
 
@@ -583,7 +582,7 @@ def test_json_pretty_outputs_indented_json(monkeypatch: Any) -> None:
     )
 
     assert result.exit_code == 0
-    assert '"capability_id": "vault-get-file"' in result.stdout
+    assert '"op_id": "vault-get-file"' in result.stdout
     assert "\n  " in result.stdout
 
 
@@ -608,7 +607,7 @@ def test_simple_output_uses_configured_projection(monkeypatch: Any) -> None:
     assert result.stdout.strip() == "file body"
 
 
-def test_capability_invoke_supports_unknown_prefix_capability(monkeypatch: Any) -> None:
+def test_op_invoke_supports_unknown_prefix_op(monkeypatch: Any) -> None:
     """Unknown prefixes stay on the generic invoke path instead of being split."""
     app, sdk, _ = _load_cli_app(monkeypatch)
     runner = CliRunner()
@@ -618,7 +617,7 @@ def test_capability_invoke_supports_unknown_prefix_capability(monkeypatch: Any) 
         [
             *_base_args(),
             "--json",
-            "capability",
+            "op",
             "invoke",
             "podcast-update",
             "--feed-url",
@@ -630,12 +629,12 @@ def test_capability_invoke_supports_unknown_prefix_capability(monkeypatch: Any) 
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert payload["capability_id"] == "podcast-update"
+    assert payload["op_id"] == "podcast-update"
     assert payload["input_payload"] == {
         "feed_url": "https://example.com/feed.xml",
         "limit": 3,
     }
-    call = next(c for c in sdk.calls if c[0] == "invoke_capability")
+    call = next(c for c in sdk.calls if c[0] == "invoke_op")
     assert call[3] == "podcast-update"
 
 
@@ -663,25 +662,15 @@ def test_trace_and_parent_ids_propagated(monkeypatch: Any) -> None:
     assert call[7] == "parent-xyz"
 
 
-def test_startup_capabilities_cached_on_context(monkeypatch: Any) -> None:
-    """CLI startup should cache the published CES capability list on config."""
+def test_startup_ops_cached_on_context(monkeypatch: Any, tmp_path: Path) -> None:
+    """CLI startup loads the published op list from live Core into the catalog."""
     _, _, cli_module = _load_cli_app(monkeypatch)
-    cfg = cli_module.CliConfig(
-        host="127.0.0.1",
-        port=8898,
-        principal="operator",
-        source="cli",
-        timeout=1.5,
-        as_json=False,
-        trace_id=None,
-        parent_id=None,
-        capabilities=(),
-    )
 
-    capabilities = cli_module._load_capabilities(cfg)
+    catalog = cli_module._load_op_catalog(tmp_path / "cli-ops.json")
 
-    assert len(capabilities) == 2
-    assert capabilities[0]["capability_id"] == "vault-get-file"
+    assert catalog.source == "live"
+    assert len(catalog.ops) == 2
+    assert catalog.ops[0]["op_id"] == "vault-get-file"
 
 
 def test_build_app_uses_cached_catalog_when_core_unavailable(
@@ -689,11 +678,11 @@ def test_build_app_uses_cached_catalog_when_core_unavailable(
 ) -> None:
     """Cached catalog should back generated help when live Core is unavailable."""
     _, sdk_module, cli_module = _load_cli_app(monkeypatch)
-    cli_module._write_capability_cache(
-        tmp_path / "cli-capabilities.json",
-        capabilities=(
+    cli_module._write_op_cache(
+        tmp_path / "cli-ops.json",
+        ops=(
             {
-                "capability_id": "vault-list-directory",
+                "op_id": "vault-list-directory",
                 "summary": "List directory entries.",
                 "input_schema": {
                     "type": "object",
@@ -710,14 +699,14 @@ def test_build_app_uses_cached_catalog_when_core_unavailable(
     )
 
     def fail_transport(*, client: Any, **_: Any) -> Any:
-        raise sdk_module.TransportError("core down")
+        raise sdk_module.BrainTransportError("core down")
 
-    monkeypatch.setattr(cli_module, "describe_capabilities", fail_transport)
-    app = cli_module.build_app(tmp_path / "cli-capabilities.json")
+    monkeypatch.setattr(cli_module, "describe_ops", fail_transport)
+    app = cli_module.build_app(tmp_path / "cli-ops.json")
     runner = CliRunner()
 
     result = runner.invoke(app, [*_base_args(), "vault", "--help"])
 
     assert result.exit_code == 0
-    assert "Capability Metadata: cached catalog" in result.stdout
+    assert "Op Metadata: cached catalog" in result.stdout
     assert "list-directory" in result.stdout

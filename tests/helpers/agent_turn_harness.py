@@ -1,4 +1,4 @@
-"""Reusable in-process harness for one Brain Agent turn over mock Core HTTP."""
+"""Reusable in-process harness for one Brain Assistant turn over mock Core HTTP."""
 
 from __future__ import annotations
 
@@ -10,16 +10,16 @@ from typing import Any
 
 import httpx
 
-from actors.agent import main as agent_main
+from actors.assistant import main as agent_main
 from lib.sdk import (
     BrainClient,
     BrainSdkConfig,
-    CapabilityDescriptor,
-    CapabilitySearchHit,
+    OpDescriptor,
+    OpSearchHit,
     LmsToolChatResult,
     MemoryContextBlock,
     MemoryDialogueTurn,
-    SwitchboardOperatorInstruction,
+    RelayOperatorInstruction,
     ToolSystemHint,
 )
 from lib.shared.http.client import HttpClient
@@ -40,15 +40,13 @@ class AgentTurnScenario:
     """Configurable input/output scenario for one in-process agent turn."""
 
     session_id: str = field(default_factory=generate_ulid_str)
-    capabilities: tuple[CapabilityDescriptor, ...] = ()
-    always_on_capabilities: tuple[CapabilityDescriptor, ...] = ()
+    ops: tuple[OpDescriptor, ...] = ()
+    always_on_ops: tuple[OpDescriptor, ...] = ()
     tool_system_hints: tuple[ToolSystemHint, ...] = ()
-    search_results: tuple[CapabilitySearchHit, ...] = ()
-    described_capabilities: dict[str, CapabilityDescriptor] = field(
-        default_factory=dict
-    )
-    instruction: SwitchboardOperatorInstruction = field(
-        default_factory=lambda: SwitchboardOperatorInstruction(
+    search_results: tuple[OpSearchHit, ...] = ()
+    described_ops: dict[str, OpDescriptor] = field(default_factory=dict)
+    instruction: RelayOperatorInstruction = field(
+        default_factory=lambda: RelayOperatorInstruction(
             sender_e164="+12025550100",
             message_text="hello",
             timestamp_ms=1,
@@ -85,12 +83,10 @@ class AgentTurnScenario:
         )
     )
     chat_results: tuple[LmsToolChatResult, ...] = ()
-    capability_invoke_outputs: dict[str, dict[str, Any] | None] = field(
-        default_factory=lambda: {"attention-notify": {"decision": "sent"}}
+    op_invoke_outputs: dict[str, dict[str, Any] | None] = field(
+        default_factory=lambda: {"relay-notify": {"decision": "sent"}}
     )
-    capability_invoke_errors: dict[str, list[dict[str, Any]]] = field(
-        default_factory=dict
-    )
+    op_invoke_errors: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,57 +120,55 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                     "errors": [],
                 },
             )
-        if path == "/capabilities/describe":
+        if path == "/ops/describe":
             return _json_response(
                 request,
                 {
-                    "capabilities": [
+                    "ops": [
                         {
-                            "capability_id": item.capability_id,
+                            "op_id": item.op_id,
                             "kind": item.kind,
                             "version": item.version,
                             "summary": item.summary,
                             "input_schema": item.input_schema,
                             "output_schema": item.output_schema,
-                            "autonomy": item.autonomy,
-                            "requires_approval": item.requires_approval,
-                            "side_effects": list(item.side_effects),
-                            "required_capabilities": list(item.required_capabilities),
+                            "effect": item.effect,
+                            "approval": item.approval,
+                            "required_ops": list(item.required_ops),
                         }
-                        for item in scenario.capabilities
+                        for item in scenario.ops
                     ],
                     "errors": [],
                 },
             )
-        if path == "/capabilities/always-on":
+        if path == "/ops/always-on":
             return _json_response(
                 request,
                 {
-                    "capabilities": [
+                    "ops": [
                         {
-                            "capability_id": item.capability_id,
+                            "op_id": item.op_id,
                             "kind": item.kind,
                             "version": item.version,
                             "summary": item.summary,
                             "input_schema": item.input_schema,
                             "output_schema": item.output_schema,
-                            "autonomy": item.autonomy,
-                            "requires_approval": item.requires_approval,
-                            "side_effects": list(item.side_effects),
-                            "required_capabilities": list(item.required_capabilities),
+                            "effect": item.effect,
+                            "approval": item.approval,
+                            "required_ops": list(item.required_ops),
                         }
-                        for item in scenario.always_on_capabilities
+                        for item in scenario.always_on_ops
                     ],
                     "errors": [],
                 },
             )
-        if path == "/capabilities/search":
+        if path == "/ops/search":
             return _json_response(
                 request,
                 {
                     "results": [
                         {
-                            "capability_id": item.capability_id,
+                            "op_id": item.op_id,
                             "required_params": list(item.required_params),
                             "summary": item.summary,
                         }
@@ -183,7 +177,7 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                     "errors": [],
                 },
             )
-        if path == "/capabilities/tool-system-hints":
+        if path == "/ops/tool-system-hints":
             return _json_response(
                 request,
                 {
@@ -201,28 +195,25 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
                     "errors": [],
                 },
             )
-        if path == "/capabilities/describe-one":
-            capability_id = str(body.get("capability_id", "")).strip()
-            descriptor = scenario.described_capabilities.get(capability_id)
+        if path == "/ops/describe-one":
+            op_id = str(body.get("op_id", "")).strip()
+            descriptor = scenario.described_ops.get(op_id)
             return _json_response(
                 request,
                 {
-                    "capability": (
+                    "op": (
                         None
                         if descriptor is None
                         else {
-                            "capability_id": descriptor.capability_id,
+                            "op_id": descriptor.op_id,
                             "kind": descriptor.kind,
                             "version": descriptor.version,
                             "summary": descriptor.summary,
                             "input_schema": descriptor.input_schema,
                             "output_schema": descriptor.output_schema,
-                            "autonomy": descriptor.autonomy,
-                            "requires_approval": descriptor.requires_approval,
-                            "side_effects": list(descriptor.side_effects),
-                            "required_capabilities": list(
-                                descriptor.required_capabilities
-                            ),
+                            "effect": descriptor.effect,
+                            "approval": descriptor.approval,
+                            "required_ops": list(descriptor.required_ops),
                         }
                     ),
                     "errors": [],
@@ -373,10 +364,10 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
             )
         if path == "/memory/record_response":
             return _json_response(request, {"payload": True, "errors": []})
-        if path == "/capabilities/invoke":
-            capability_id = str(body.get("capability_id", "")).strip()
-            output = scenario.capability_invoke_outputs.get(capability_id)
-            errors = scenario.capability_invoke_errors.get(capability_id, [])
+        if path == "/ops/invoke":
+            op_id = str(body.get("op_id", "")).strip()
+            output = scenario.op_invoke_outputs.get(op_id)
+            errors = scenario.op_invoke_errors.get(op_id, [])
             return _json_response(
                 request,
                 {
@@ -396,7 +387,7 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
     transport = httpx.MockTransport(_response_for)
     http = HttpClient(base_url="http://brain-core", transport=transport)
     client = BrainClient(
-        config=BrainSdkConfig(source="agent", principal="operator"),
+        config=BrainSdkConfig(source="assistant", principal="operator"),
         http=http,
     )
     settings = SimpleNamespace(
@@ -405,9 +396,9 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
             personality="default",
             operator_profile="Refer to me as 'boss'",
             system_prompt_append="",
-            source="agent",
+            source="assistant",
             principal="operator",
-            capability_discovery_deny_list=(),
+            op_discovery_deny_list=(),
             tool_return_compress_threshold=4000,
             tool_return_max_chars=8000,
             tool_loop_tier2_hop_threshold=3,

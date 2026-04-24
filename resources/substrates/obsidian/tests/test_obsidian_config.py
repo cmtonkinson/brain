@@ -29,10 +29,10 @@ def test_resolve_obsidian_substrate_settings_component_override(tmp_path: Path) 
         core_config_path=tmp_path / "core.yaml",
         resources_config_path=tmp_path / "resources.yaml",
         environ={
-            "BRAIN_RESOURCES_SUBSTRATE__OBSIDIAN__BASE_URL": "http://localhost:9999",
-            "BRAIN_RESOURCES_SUBSTRATE__OBSIDIAN__API_KEY": "token",
-            "BRAIN_RESOURCES_SUBSTRATE__OBSIDIAN__TIMEOUT_SECONDS": "3.0",
-            "BRAIN_RESOURCES_SUBSTRATE__OBSIDIAN__MAX_RETRIES": "1",
+            "BRAIN_OBSIDIAN__BASE_URL": "http://localhost:9999",
+            "BRAIN_OBSIDIAN__API_KEY": "token",
+            "BRAIN_OBSIDIAN__TIMEOUT_SECONDS": "3.0",
+            "BRAIN_OBSIDIAN__MAX_RETRIES": "1",
         },
     )
 

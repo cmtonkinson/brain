@@ -42,12 +42,10 @@ def build_envelope_meta(
 
 
 def _new_id() -> str:
-    """Return one compact random identifier for envelope metadata."""
     return generate_ulid_str()
 
 
 def _normalize_utc(value: datetime) -> datetime:
-    """Normalize naive/aware datetimes to UTC."""
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)

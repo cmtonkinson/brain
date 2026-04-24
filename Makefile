@@ -14,9 +14,9 @@ HTTP_API_DOC    := docs/http-api.md
 HTTP_API_GEN    := scripts/generate_http_api_docs.py
 HTTP_API_META   := docs/meta/http-routes.yaml
 HTTP_API_SRC    := $(shell (printf '%s\n' lib/core/health_api.py; find services -type f -path 'services/*/*/api.py' | sort))
-CAPABILITY_DOC  := docs/capabilities.md
-CAPABILITY_GEN  := scripts/generate_capability_docs.py
-CAPABILITY_SRC  := $(shell find capabilities -type f | sort)
+OP_DOC          := docs/ops.md
+OP_GEN          := scripts/generate_op_docs.py
+OP_SRC          := $(shell find ops -type f | sort)
 APP_COMPOSE_FILES := --file docker-compose.yaml
 STACK_COMPOSE_FILES := --file docker-compose.yaml --file docker-compose.observability.yaml
 APP_SERVICES     := \
@@ -28,9 +28,9 @@ APP_SERVICES     := \
 	seaweedfs-oas-bucket-init \
 	brain-core \
 	signal-api \
-	brain-agent
+	brain-assistant
 APP_PRIVATE_SERVICES := \
-	brain-agent \
+	brain-assistant \
 	brain-core \
 	brain-mcp \
 	qdrant \
@@ -138,7 +138,12 @@ check:
 format:
 	$(PY) -m ruff format .
 
+ifneq (,$(and $(filter test,$(MAKECMDGOALS)),$(filter docs,$(MAKECMDGOALS))))
+test:
+	@:
+else
 test: check test-only
+endif
 
 test-only:
 	$(call run_gate,$(if $(filter 1,$(INTEGRATION)),Pytest (unit + integration),Pytest (unit)),$(PYTEST_INTEGRATION_ENV) $(PY) -m pytest --quiet tests resources services actors)
@@ -167,12 +172,17 @@ smoke: check smoke-only
 
 smoke-only:
 	$(call run_gate,Pytest Smoke,$(PY) -m pytest --quiet \
-		actors/agent/tests/test_agent_turn_harness.py \
-		tests/integration/test_attention_notify_api_smoke.py \
+		actors/assistant/tests/test_agent_turn_harness.py \
+		tests/integration/test_relay_outbound_notify_api_smoke.py \
 		resources/adapters/signal/tests/test_signal_adapter_wire_integration.py \
 		tests/integration/test_agent_e2e_smoke.py)
 
-docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(HTTP_API_DOC) $(CAPABILITY_DOC) $(DIAGRAM_PNGS)
+ifneq (,$(and $(filter test,$(MAKECMDGOALS)),$(filter docs,$(MAKECMDGOALS))))
+docs:
+	$(call run_gate,Documentation Conventions,$(PY) scripts/check_documentation_conventions.py --check)
+else
+docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(HTTP_API_DOC) $(OP_DOC) $(DIAGRAM_PNGS)
+endif
 
 $(GLOSSARY_DOC): $(GLOSSARY_SRC) $(GLOSSARY_GEN)
 	$(PY) $(GLOSSARY_GEN)
@@ -183,8 +193,8 @@ $(SERVICE_API_DOC): $(SERVICE_API_SRC) $(SERVICE_API_GEN)
 $(HTTP_API_DOC): $(HTTP_API_SRC) $(HTTP_API_GEN) $(HTTP_API_META)
 	$(PY) $(HTTP_API_GEN)
 
-$(CAPABILITY_DOC): $(CAPABILITY_SRC) $(CAPABILITY_GEN)
-	$(PY) $(CAPABILITY_GEN)
+$(OP_DOC): $(OP_SRC) $(OP_GEN)
+	$(PY) $(OP_GEN)
 
 $(DIAGRAM_PNGS) &: $(DIAGRAM_SRC) $(DIAGRAM_GEN)
 	$(DIAGRAM_GEN) $(DIAGRAM_SRC)
@@ -221,4 +231,4 @@ stack-down:
 	docker compose $(STACK_COMPOSE_FILES) down
 
 outline:
-	@tree -d -I __pycache__ -I tests -I data -I migrations lib resources services actors
+	@tree -d -I __pycache__ -I tests -I data -I migrations actors lib resources services

@@ -1,0 +1,27 @@
+{
+  "op_id": "ingestion-advance",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Advance one ingestion from a named stage through the remaining pipeline.",
+  "enabled": true,
+  "input_schema": {
+    "ingestion_id": "string | The ingestion identifier to advance.",
+    "from_stage": "string | The first stage to consider: store, extract, normalize, or anchor.",
+    "force_target": "boolean | optional | Re-run the requested target stage even if its latest run succeeded."
+  },
+  "output_schema": {
+    "id": "string | The ingestion identifier.",
+    "status": "string | The current ingestion lifecycle status.",
+    "source_type": "string | The original source type.",
+    "source_uri": "string | null | The original source URI, if any.",
+    "source_actor": "string | null | The originating actor, if any.",
+    "capture_time": "string | The timezone-aware capture timestamp.",
+    "mime_type": "string | null | The source MIME type, if any.",
+    "last_error": "string | null | The most recent ingestion error, if any.",
+    "created_at": "string | The record creation timestamp.",
+    "updated_at": "string | The record update timestamp."
+  },
+  "call_target": "service_ingestion.advance_ingestion",
+  "effect": "execute",
+  "approval": "never"
+}

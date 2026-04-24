@@ -1,80 +1,43 @@
-logging:
-  level: INFO
-  file_capture_enabled: false
-  file_capture_level: VERBOSE
-  file_capture_directory: logs
-  json_output: true
-  process_name: agent
-  environment: dev
-
-core:
-  host: 127.0.0.1
-  port: 8898
-  timeout_seconds: 30.0
-
 cli:
   principal: operator
   source: cli
 
-agent:
+assistant:
   principal: operator
-  source: agent
+  source: assistant
   session_start_mode: existing
   personality: default
   operator_profile: "Refer to me as 'boss'"
   system_prompt_append: ""
-  capability_discovery_deny_list:
-    - attention-notify
+  op_discovery_deny_list:
+    - relay-notify
   environment_context:
-    - capability_id: current-datetime
+    - op_id: current-datetime
       input_payload: {}
-  # Example EventKit context entries:
-  # environment_context:
-  #   - capability_id: current-datetime
-  #     input_payload: {}
-  #   - capability_id: eventkit--list-reminders
-  #     input_payload: {}
-  #   - capability_id: eventkit--list-calendar-events
-  #     input_payload:
-  #       start_date:
-  #         resolve: local_datetime_boundary
-  #         boundary: start_of_day
-  #         day_offset: 0
-  #       end_date:
-  #         resolve: local_datetime_boundary
-  #         boundary: end_of_day
-  #         day_offset: 1
   tool_return_compress_threshold: 4000
   tool_return_max_chars: 8000
   tool_loop_tier2_hop_threshold: 3
 
+console:
+  principal: operator
+  source: console
+  poll_timeout_seconds: 30.0
+  poll_error_backoff_seconds: 1.0
+  input_max_lines: 10
+  editor: vim
+
 worker:
   principal: operator
   source: worker
+  channel: worker
   max_workers: 4
   poll_interval_seconds: 2.0
 
-observability:
-  enabled: false
-  otlp:
-    endpoint: http://otel-collector:4318
-    headers: {}
-  traces:
-    enabled: true
-    sample_ratio: 1.0
-  metrics:
-    enabled: true
-  llm:
-    enabled: true
-    backend: langfuse
-    capture_content: true
-  public_api:
-    otel:
-      meter_name: brain.public_api
-      tracer_name: brain.public_api
-      metric_public_api_calls_total: brain_public_api_calls_total
-      metric_public_api_duration_ms: brain_public_api_duration_ms
-      metric_public_api_errors_total: brain_public_api_errors_total
-      metric_instrumentation_failures_total: brain_public_api_instrumentation_failures_total
-      metric_qdrant_ops_total: brain_qdrant_ops_total
-      metric_qdrant_op_duration_ms: brain_qdrant_op_duration_ms
+subagent:
+  principal: subagent
+  source: subagent
+  max_workers: 1
+  poll_interval_seconds: 2.0
+  default_personality: subagent
+  default_max_turns: 8
+  default_budget_tokens: 200000

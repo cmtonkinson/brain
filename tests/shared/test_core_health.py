@@ -10,12 +10,12 @@ from pydantic import BaseModel, ConfigDict
 from lib.core import health as health_module
 from lib.shared.config import (
     CoreHealthSettings,
+    CoreComponentSettings,
     CoreRuntimeSettings,
     CoreSettings,
     ResourcesSettings,
 )
-from lib.shared.envelope import EnvelopeMeta, failure, new_meta, success
-from lib.shared.envelope.meta import EnvelopeKind
+from lib.shared.envelope import EnvelopeKind, EnvelopeMeta, failure, new_meta, success
 from lib.shared.errors import dependency_error
 
 
@@ -76,7 +76,9 @@ def _settings(max_timeout_seconds: float = 1.0) -> CoreRuntimeSettings:
     """Build a minimal CoreRuntimeSettings for health evaluation tests."""
     return CoreRuntimeSettings(
         core=CoreSettings(
-            health=CoreHealthSettings(max_timeout_seconds=max_timeout_seconds)
+            core=CoreComponentSettings(
+                health=CoreHealthSettings(max_timeout_seconds=max_timeout_seconds)
+            )
         ),
         resources=ResourcesSettings(),
     )

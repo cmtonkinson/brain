@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict
+
 from lib.dashboard.data_sources.postgres import (
     BasePostgresDataSource,
     PostgresConnectionConfig,
@@ -68,11 +70,10 @@ def _build_trace_tree(envelopes: list[TraceEnvelope]) -> tuple[TraceTreeNode, ..
     return tuple(build_node(root_id, depth=0) for root_id in root_ids)
 
 
-class TraceSnapshot:
-    __slots__ = ("traces",)
+class TraceSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
-    def __init__(self, traces: list[TraceTreeView]) -> None:
-        self.traces = traces
+    traces: tuple[TraceTreeView, ...] = ()
 
 
 class TraceDataSource(BasePostgresDataSource[TraceSnapshot]):
@@ -89,7 +90,7 @@ class TraceDataSource(BasePostgresDataSource[TraceSnapshot]):
             cur.execute(
                 """
                 SELECT trace_id, envelope_id, parent_id, source, principal, operation, outcome_kind, duration_ms, created_at
-                FROM service_language_model.call_audits
+                FROM service_language.call_audits
                 ORDER BY created_at DESC
                 LIMIT %s
                 """,
@@ -99,8 +100,8 @@ class TraceDataSource(BasePostgresDataSource[TraceSnapshot]):
 
             cur.execute(
                 """
-                SELECT trace_id, envelope_id, parent_id, source, actor, capability_id, allowed, created_at
-                FROM service_capability_engine.invocation_audits
+                SELECT trace_id, envelope_id, parent_id, source, actor, op_id, allowed, created_at
+                FROM service_execution.invocation_audits
                 ORDER BY created_at DESC
                 LIMIT %s
                 """,
@@ -145,7 +146,7 @@ class TraceDataSource(BasePostgresDataSource[TraceSnapshot]):
                 parent_id,
                 source,
                 actor,
-                capability_id,
+                op_id,
                 allowed,
                 created_at,
             ) = row
@@ -154,7 +155,7 @@ class TraceDataSource(BasePostgresDataSource[TraceSnapshot]):
                     "envelope_id": envelope_id,
                     "parent_id": parent_id,
                     "component": source,
-                    "operation": capability_id,
+                    "operation": op_id,
                     "status": "OK" if allowed else "DENIED",
                     "source": source,
                     "principal": actor,
@@ -171,7 +172,7 @@ class TraceDataSource(BasePostgresDataSource[TraceSnapshot]):
             trace_latest, key=lambda trace_id: trace_latest[trace_id], reverse=True
         )[:_TRACE_LIMIT]
 
-        trees: list[TraceTreeView] = []
+        trees = []
         for trace_id in recent_traces:
             roots = _build_trace_tree(envelopes[trace_id])
             selected_node_id = None
@@ -190,4 +191,4 @@ class TraceDataSource(BasePostgresDataSource[TraceSnapshot]):
                 )
             )
 
-        return TraceSnapshot(traces=trees)
+        return TraceSnapshot(traces=tuple(trees))

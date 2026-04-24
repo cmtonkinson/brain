@@ -21,7 +21,7 @@ def test_qdrant_config_rejects_invalid_distance_metric() -> None:
 
 def test_qdrant_config_rejects_missing_required_fields() -> None:
     """Qdrant config should reject empty url/collection and nonpositive timeout."""
-    with pytest.raises(ValidationError, match="qdrant.url is required"):
+    with pytest.raises(ValidationError, match="at least 1 character"):
         QdrantConfig(
             url="",
             timeout_seconds=5.0,
@@ -29,7 +29,7 @@ def test_qdrant_config_rejects_missing_required_fields() -> None:
             distance_metric="cosine",
         )
 
-    with pytest.raises(ValidationError, match="qdrant.timeout_seconds must be > 0"):
+    with pytest.raises(ValidationError, match="greater than 0"):
         QdrantConfig(
             url="http://qdrant:6333",
             timeout_seconds=0.0,
@@ -37,7 +37,7 @@ def test_qdrant_config_rejects_missing_required_fields() -> None:
             distance_metric="cosine",
         )
 
-    with pytest.raises(ValidationError, match="qdrant.collection_name is required"):
+    with pytest.raises(ValidationError, match="at least 1 character"):
         QdrantConfig(
             url="http://qdrant:6333",
             timeout_seconds=5.0,

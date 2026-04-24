@@ -1,14 +1,14 @@
 # Signal Adapter
-Action _Adapter_ _Resource_ that integrates `signal-cli-rest-api` for Switchboard inbound message intake.
+Action _Adapter_ _Resource_ that integrates `signal-cli-rest-api` for Relay inbound message intake.
 
 ------------------------------------------------------------------------
 ## What This Component Is
-`resources/adapters/signal/` implements Layer 0 Signal integration:
+`resources/adapters/signal/` implements Tier 1 Signal integration:
 - `component.py`: `ResourceManifest` registration (`adapter_signal`)
 - `adapter.py`: protocol, DTOs, and adapter error taxonomy
 - `signal_adapter.py`: concrete websocket receive + in-process callback forwarding implementation (`SignalRestApiAdapter`)
 - `config.py`: adapter settings model and resolver
-- `boot.py`: readiness hook that probes Signal container `/v1/health`
+- `boot.py`: no-op readiness hook (adapter is always locally ready)
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
@@ -17,29 +17,28 @@ This _Resource_ is shared infrastructure (`owner_service_id=None`) in
 
 Boundary rules:
 - Adapter owns Signal transport mapping and retry/backoff behavior.
-- Adapter does not apply Switchboard ingress policy decisions.
-- Adapter does not normalize event payloads into Switchboard domain models.
+- Adapter does not apply Relay inbound ingress policy decisions.
+- Adapter does not normalize event payloads into Relay inbound domain models.
 - Adapter does not perform dedupe logic.
 
 ------------------------------------------------------------------------
 ## Interactions
 Primary interactions:
-- Receives registration input from Switchboard:
+- Receives registration input from Relay inbound:
   - in-process callback method
   - receive identity (from adapter config)
 - Talks to Signal runtime:
-  - `GET /v1/health`
   - WebSocket `/v1/receive/{receive_e164}`
-- Forwards each received message as an in-process callback invocation to Switchboard.
-- Sends outbound messages for Attention Router over `POST /v2/send`.
+- Forwards each received message as an in-process callback invocation to Relay inbound.
+- Sends outbound messages for Relay outbound over `POST /v2/send`.
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
-1. Switchboard calls `register_callback(callback)`.
+1. Relay inbound calls `register_callback(callback)`.
 2. Adapter stores registration in memory and ensures receive worker is running.
 3. Worker opens Signal runtime receive websocket for inbound messages.
 4. Adapter wraps each received item as `{"data": <message>}`.
-5. Adapter invokes the configured Switchboard callback directly.
+5. Adapter invokes the configured Relay inbound callback directly.
 6. On forwarding/receive dependency failure, adapter retains pending payloads and retries using exponential backoff with jitter.
 
 ------------------------------------------------------------------------
@@ -56,7 +55,7 @@ Behavioral semantics:
 
 ------------------------------------------------------------------------
 ## Configuration Surface
-Adapter settings are sourced from `resources.adapter.signal`:
+Adapter settings are sourced from ` signal`:
 - `base_url`
 - `receive_e164`
 - `receive_connect_timeout_seconds`
@@ -82,8 +81,8 @@ Primary tests:
 - `resources/adapters/signal/tests/test_signal_adapter.py`
 
 Cross-component boundary tests:
-- `services/action/switchboard/tests/test_switchboard_service.py`
-- `services/action/switchboard/tests/test_switchboard_boot.py`
+- `services/effect/relay/_inbound/tests/test_inbound_service.py`
+- `services/effect/relay/_inbound/tests/test_inbound_boot.py`
 
 Project-wide validation:
 ```bash
@@ -93,7 +92,7 @@ make test
 ------------------------------------------------------------------------
 ## Contributor Notes
 - Keep adapter contract transport-focused and implementation-agnostic.
-- Keep Switchboard policy/normalization logic out of adapter internals.
+- Keep Relay inbound policy/normalization logic out of adapter internals.
 - Preserve in-memory callback registration behavior unless requirements change.
 
 

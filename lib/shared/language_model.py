@@ -6,6 +6,8 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
+from lib.shared.op_classification import OpApproval
+
 
 class _ContentPartModel(BaseModel):
     """Base model for one canonical chat content part."""
@@ -33,21 +35,21 @@ class CachePointContentPart(_ContentPartModel):
 
 
 class FocusContentPart(_ContentPartModel):
-    """One focus-context segment assembled from MAS."""
+    """One focus-context segment assembled from Recall."""
 
     kind: Literal["focus"] = "focus"
     text: str
 
 
 class ConversationSummaryContentPart(_ContentPartModel):
-    """One recent-conversation summary segment assembled from MAS."""
+    """One recent-conversation summary segment assembled from Recall."""
 
     kind: Literal["conversation_summary"] = "conversation_summary"
     text: str
 
 
 class DialogueTurnContentPart(_ContentPartModel):
-    """One dialogue turn segment assembled from MAS history."""
+    """One dialogue turn segment assembled from Recall history."""
 
     kind: Literal["dialogue_turn"] = "dialogue_turn"
     role: str
@@ -56,7 +58,7 @@ class DialogueTurnContentPart(_ContentPartModel):
 
 
 class ReferenceSnippetContentPart(_ContentPartModel):
-    """One reference snippet segment assembled from MAS."""
+    """One reference snippet segment assembled from Recall."""
 
     kind: Literal["reference_snippet"] = "reference_snippet"
     text: str
@@ -119,13 +121,13 @@ class InferenceSystem(_InferenceModel):
 
 
 class InferenceReferenceSnippet(_InferenceModel):
-    """One MAS-provided reference snippet in the inference context."""
+    """One Recall-provided reference snippet in the inference context."""
 
     text: str
 
 
 class InferenceMemoryTurn(_InferenceModel):
-    """One ordered MAS-provided recent turn in the inference context."""
+    """One ordered Recall-provided recent turn in the inference context."""
 
     role: Literal["user", "assistant"]
     text: str
@@ -133,7 +135,7 @@ class InferenceMemoryTurn(_InferenceModel):
 
 
 class InferenceMemoryContext(_InferenceModel):
-    """The MAS-owned slice of the canonical inference request."""
+    """The Recall-owned slice of the canonical inference request."""
 
     current_focus: str | None
     recent_conversation_summary: str
@@ -142,15 +144,15 @@ class InferenceMemoryContext(_InferenceModel):
 
 
 class InferenceEnvironmentItem(_InferenceModel):
-    """One capability-backed transient environment context item."""
+    """One op-backed transient environment context item."""
 
-    capability_id: str
+    op_id: str
     tag_name: str
     output: object
 
 
 class InferenceEnvironmentContext(_InferenceModel):
-    """Transient, non-durable context assembled from configured Capabilities."""
+    """Transient, non-durable context assembled from configured Ops."""
 
     items: tuple[InferenceEnvironmentItem, ...] = ()
 
@@ -179,7 +181,7 @@ class InferenceToolExecutionHints(_InferenceModel):
     """Agent/runtime hints associated with one callable tool."""
 
     sequential: bool = False
-    requires_approval: bool | None = None
+    approval: OpApproval | None = None
 
 
 class InferenceToolDefinition(_InferenceModel):

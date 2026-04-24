@@ -1,20 +1,20 @@
 services:
   brain-core:
     environment:
-      BRAIN_CORE_OBSERVABILITY__ENABLED: "true"
-      BRAIN_CORE_OBSERVABILITY__OTLP__ENDPOINT: http://otel-collector:4318
-      BRAIN_CORE_LOGGING__FILE_CAPTURE_ENABLED: "true"
-      BRAIN_CORE_LOGGING__FILE_CAPTURE_DIRECTORY: /app/logs
+      BRAIN_OBSERVABILITY__ENABLED: "true"
+      BRAIN_OBSERVABILITY__OTLP__ENDPOINT: http://otel-collector:4318
+      BRAIN_LOGGING__FILE_CAPTURE_ENABLED: "true"
+      BRAIN_LOGGING__FILE_CAPTURE_DIRECTORY: /app/logs
     depends_on:
       otel-collector:
         condition: service_started
 
-  brain-agent:
+  brain-assistant:
     environment:
-      BRAIN_ACTORS_OBSERVABILITY__ENABLED: "true"
-      BRAIN_ACTORS_OBSERVABILITY__OTLP__ENDPOINT: http://otel-collector:4318
-      BRAIN_ACTORS_LOGGING__FILE_CAPTURE_ENABLED: "true"
-      BRAIN_ACTORS_LOGGING__FILE_CAPTURE_DIRECTORY: /app/logs
+      BRAIN_OBSERVABILITY__ENABLED: "true"
+      BRAIN_OBSERVABILITY__OTLP__ENDPOINT: http://otel-collector:4318
+      BRAIN_LOGGING__FILE_CAPTURE_ENABLED: "true"
+      BRAIN_LOGGING__FILE_CAPTURE_DIRECTORY: /app/logs
     depends_on:
       otel-collector:
         condition: service_started
@@ -47,7 +47,7 @@ services:
       - --web.enable-lifecycle
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
-      - ./data/prometheus:/prometheus
+      - brain-prometheus:/prometheus
     ports:
       - "${PROMETHEUS_PORT_BIND:-127.0.0.1:9090:9090}"
     depends_on:
@@ -61,7 +61,7 @@ services:
     command: ["-config.file=/etc/loki/loki.yaml"]
     volumes:
       - ./config/loki.yaml:/etc/loki/loki.yaml:ro
-      - ./data/loki:/loki
+      - brain-loki:/loki
     ports:
       - "${LOKI_PORT_BIND:-127.0.0.1:3100:3100}"
 
@@ -74,7 +74,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-replace-me}
       GF_USERS_DEFAULT_THEME: dark
     volumes:
-      - ./data/grafana:/var/lib/grafana
+      - brain-grafana:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
       - "${GRAFANA_PORT_BIND:-127.0.0.1:3001:3000}"
@@ -105,15 +105,15 @@ services:
       REDIS_TLS_ENABLED: "false"
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
-      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${SEAWEEDFS_S3_ACCESS_KEY_ID:-replace-me}
-      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${SEAWEEDFS_S3_SECRET_ACCESS_KEY:-replace-me}
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${BRAIN_SEAWEEDFS__ACCESS_KEY_ID:-replace-me}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY:-replace-me}
       LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://seaweedfs:8333
       LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
       LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
       LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
-      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${SEAWEEDFS_S3_ACCESS_KEY_ID:-replace-me}
-      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${SEAWEEDFS_S3_SECRET_ACCESS_KEY:-replace-me}
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${BRAIN_SEAWEEDFS__ACCESS_KEY_ID:-replace-me}
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY:-replace-me}
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: ${LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT:-http://localhost:8333}
       LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
       LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
@@ -123,8 +123,8 @@ services:
       LANGFUSE_S3_BATCH_EXPORT_REGION: us-east-1
       LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: http://seaweedfs:8333
       LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: ${LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT:-http://localhost:8333}
-      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: ${SEAWEEDFS_S3_ACCESS_KEY_ID:-replace-me}
-      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: ${SEAWEEDFS_S3_SECRET_ACCESS_KEY:-replace-me}
+      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: ${BRAIN_SEAWEEDFS__ACCESS_KEY_ID:-replace-me}
+      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: ${BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY:-replace-me}
       LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: "true"
       LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-}
       LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-}
@@ -185,8 +185,8 @@ services:
       CLICKHOUSE_UID: ${LANGFUSE_CLICKHOUSE_UID:-101}
       CLICKHOUSE_GID: ${LANGFUSE_CLICKHOUSE_GID:-101}
     volumes:
-      - ./data/clickhouse/data:/var/lib/clickhouse
-      - ./data/clickhouse/logs:/var/log/clickhouse-server
+      - brain-clickhouse-data:/var/lib/clickhouse
+      - brain-clickhouse-logs:/var/log/clickhouse-server
     command:
       - sh
       - -ec
@@ -203,8 +203,8 @@ services:
       CLICKHOUSE_USER: ${LANGFUSE_CLICKHOUSE_USER:-clickhouse}
       CLICKHOUSE_PASSWORD: ${LANGFUSE_CLICKHOUSE_PASSWORD:-replace-me}
     volumes:
-      - ./data/clickhouse/data:/var/lib/clickhouse
-      - ./data/clickhouse/logs:/var/log/clickhouse-server
+      - brain-clickhouse-data:/var/lib/clickhouse
+      - brain-clickhouse-logs:/var/log/clickhouse-server
     ports:
       - "${LANGFUSE_CLICKHOUSE_HTTP_PORT_BIND:-127.0.0.1:8123:8123}"
       - "${LANGFUSE_CLICKHOUSE_NATIVE_PORT_BIND:-127.0.0.1:9000:9000}"
@@ -222,8 +222,8 @@ services:
     image: amazon/aws-cli:2.32.17
     restart: "no"
     environment:
-      AWS_ACCESS_KEY_ID: ${SEAWEEDFS_S3_ACCESS_KEY_ID:-replace-me}
-      AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_S3_SECRET_ACCESS_KEY:-replace-me}
+      AWS_ACCESS_KEY_ID: ${BRAIN_SEAWEEDFS__ACCESS_KEY_ID:-replace-me}
+      AWS_SECRET_ACCESS_KEY: ${BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY:-replace-me}
       AWS_DEFAULT_REGION: us-east-1
     entrypoint: ["/bin/sh", "-ec"]
     command:
@@ -232,3 +232,10 @@ services:
     depends_on:
       seaweedfs:
         condition: service_healthy
+
+volumes:
+  brain-prometheus:
+  brain-loki:
+  brain-grafana:
+  brain-clickhouse-data:
+  brain-clickhouse-logs:

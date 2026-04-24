@@ -5,4 +5,5 @@ bootstrap, and SQLAlchemy domain references so all schema-aware code relies on
 one canonical naming source.
 """
 
+ULID_BYTES_LENGTH = 16
 ULID_DOMAIN_NAME = "ulid_bin"

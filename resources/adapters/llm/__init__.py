@@ -2,11 +2,11 @@
 
 from resources.adapters.llm.adapter import (
     AdapterChatResult,
-    AdapterChatMessage,
     AdapterChatToolCall,
     AdapterChatToolDefinition,
     AdapterDependencyError,
     AdapterEmbeddingResult,
+    AdapterError,
     AdapterHealthResult,
     AdapterInternalError,
     AdapterProviderCallAudit,
@@ -23,11 +23,11 @@ from resources.adapters.llm.llm_adapter import HttpLlmAdapter
 
 __all__ = [
     "AdapterChatResult",
-    "AdapterChatMessage",
     "AdapterChatToolCall",
     "AdapterChatToolDefinition",
     "AdapterDependencyError",
     "AdapterEmbeddingResult",
+    "AdapterError",
     "AdapterHealthResult",
     "AdapterInternalError",
     "AdapterProviderCallAudit",

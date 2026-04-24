@@ -14,17 +14,19 @@ from textual.widget import Widget
 from textual.widgets import Static, TextArea
 
 
+_INPUT_FIELD_ID = "input-field"
+_INPUT_HINT_ID = "input-hint"
+
+
 class ExpandingTextArea(TextArea):
-    """TextArea that grows vertically as content is typed (up to MAX_LINES).
+    """TextArea that grows vertically as content is typed, up to a configurable line cap.
 
-    ``enter`` submits; ``shift+enter`` inserts a newline.
+    ``enter`` submits; ``alt+enter`` inserts a newline.
     """
-
-    MAX_LINES = 10
 
     BINDINGS = [
         Binding("enter", "submit_text", "Send", show=False, priority=True),
-        Binding("meta+enter", "newline", "New line", show=False, priority=True),
+        Binding("alt+enter", "newline", "New line", show=False, priority=True),
     ]
 
     class Submitted(Message):
@@ -34,6 +36,10 @@ class ExpandingTextArea(TextArea):
             super().__init__()
             self.text = text
 
+    def __init__(self, *args: object, max_lines: int = 10, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self._max_lines = max_lines
+
     def on_mount(self) -> None:
         self._update_height()
 
@@ -42,7 +48,7 @@ class ExpandingTextArea(TextArea):
 
     def _update_height(self) -> None:
         lines = self.wrapped_document.height
-        self.styles.height = max(1, min(lines, self.MAX_LINES))
+        self.styles.height = max(1, min(lines, self._max_lines))
 
     def action_submit_text(self) -> None:
         """Submit current content and clear the field."""
@@ -59,8 +65,9 @@ class ExpandingTextArea(TextArea):
 class MessageInput(Widget, can_focus=False):
     """Expanding multi-line input with enter-to-send and ctrl+g for $EDITOR.
 
-    ``editor`` is the executable to launch (default: ``vim``). Callers should
-    pass ``ConsoleConfig.editor`` so the configured value is honoured.
+    ``editor`` is the executable to launch (default: ``vim``).
+    ``input_max_lines`` caps the visible height of the text area (default: ``10``).
+    Callers should pass ``ConsoleConfig`` values so configured preferences are honoured.
     """
 
     DEFAULT_CSS = """
@@ -97,16 +104,25 @@ class MessageInput(Widget, can_focus=False):
             super().__init__()
             self.text = text
 
-    def __init__(self, *args: object, editor: str = "vim", **kwargs: object) -> None:
+    def __init__(
+        self,
+        *args: object,
+        editor: str = "vim",
+        input_max_lines: int = 10,
+        **kwargs: object,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self._editor = editor
+        self._input_max_lines = input_max_lines
 
     def compose(self) -> ComposeResult:
         """Build the input area."""
-        yield ExpandingTextArea(id="input-field", soft_wrap=True)
+        yield ExpandingTextArea(
+            id=_INPUT_FIELD_ID, soft_wrap=True, max_lines=self._input_max_lines
+        )
         yield Static(
             r"\[enter] send  \[alt+enter] newline  \[ctrl+g] $EDITOR  \[ctrl+l] clear",
-            id="input-hint",
+            id=_INPUT_HINT_ID,
         )
 
     @on(ExpandingTextArea.Submitted)
@@ -115,9 +131,13 @@ class MessageInput(Widget, can_focus=False):
     ) -> None:
         self.post_message(self.Submitted(event.text))
 
+    def focus_input(self) -> None:
+        """Focus the inner text area."""
+        self.query_one(f"#{_INPUT_FIELD_ID}", ExpandingTextArea).focus()
+
     def action_clear_input(self) -> None:
         """Clear the input field."""
-        self.query_one("#input-field", ExpandingTextArea).clear()
+        self.query_one(f"#{_INPUT_FIELD_ID}", ExpandingTextArea).clear()
 
     def action_open_editor(self) -> None:
         """Spawn $EDITOR with a temp file; load contents into input buffer on exit."""
@@ -138,10 +158,10 @@ class MessageInput(Widget, can_focus=False):
                     severity="warning",
                 )
                 return
-            with open(tmp_path) as f:
+            with open(tmp_path, encoding="utf-8") as f:
                 text = f.read().rstrip("\n")
             if text:
-                field = self.query_one("#input-field", ExpandingTextArea)
+                field = self.query_one(f"#{_INPUT_FIELD_ID}", ExpandingTextArea)
                 field.load_text(text)
                 field.move_cursor(field.document.end)
                 field.focus()

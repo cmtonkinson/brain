@@ -23,7 +23,10 @@ _LOGGER = get_logger(__name__)
 
 _HEARTBEAT_FILE_ENV = "BRAIN_WORKER_HEARTBEAT_FILE"
 _HEARTBEAT_PATH = Path("/run/brain/worker-heartbeat")
-_WORKER_CHANNEL = "worker"
+# Saturation backpressure: how long to wait before re-checking the pool when all
+# workers are busy. Shorter than poll_interval so a slot freeing up is noticed
+# quickly without spinning.
+_SATURATION_BACKOFF_SECONDS = 0.25
 
 _RUNNING = True
 _SHUTDOWN_EVENT = threading.Event()
@@ -50,6 +53,7 @@ def _handle_signal(sig: int, frame: object) -> None:  # noqa: ARG001
 
 
 def _resolve_heartbeat_path() -> Path:
+    """Return the heartbeat file path used by container health checks."""
     value = os.getenv(_HEARTBEAT_FILE_ENV, "").strip()
     return Path(value) if value else _HEARTBEAT_PATH
 
@@ -76,22 +80,22 @@ def _get_thread_client(config: BrainSdkConfig) -> BrainClient:
 # ---------------------------------------------------------------------------
 
 
-def _run_execution(*, client: BrainClient, claim: JobClaimResult) -> None:
+def _run_execution(*, client: BrainClient, claim: JobClaimResult, channel: str) -> None:
     """Execute one claimed job and report the result back to the Job Service."""
     execution_id = claim.execution_id
     _LOGGER.info(
-        "Executing job: execution_id=%s capability_id=%s attempt=%d/%d",
+        "Executing job: execution_id=%s op_id=%s attempt=%d/%d",
         execution_id,
-        claim.capability_id,
+        claim.op_id,
         claim.attempt_number,
         claim.max_attempts,
     )
     try:
-        client.invoke_capability(
-            capability_id=claim.capability_id,
+        client.invoke_op(
+            op_id=claim.op_id,
             input_payload=claim.input_payload,
             actor=claim.actor,
-            channel=_WORKER_CHANNEL,
+            channel=channel,
             invocation_id=claim.trace_id,
             parent_invocation_id=claim.parent_envelope_id,
         )
@@ -165,15 +169,10 @@ def _safe_fail(
         )
 
 
-def _dispatch(*, config: BrainSdkConfig, claim: JobClaimResult) -> None:
-    """Resolve the calling thread's BrainClient and execute one claimed job.
-
-    This is the function submitted to the ThreadPoolExecutor. It owns the
-    thread-local client lifecycle so that _run_execution remains injectable
-    and testable without a live SDK connection.
-    """
+def _dispatch(*, config: BrainSdkConfig, claim: JobClaimResult, channel: str) -> None:
+    """Resolve the calling thread's BrainClient and execute one claimed job."""
     client = _get_thread_client(config)
-    _run_execution(client=client, claim=claim)
+    _run_execution(client=client, claim=claim, channel=channel)
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +182,7 @@ def _dispatch(*, config: BrainSdkConfig, claim: JobClaimResult) -> None:
 
 def _main() -> None:
     settings = load_actor_settings()
+    process_name = settings.logging.process_name or "worker"
 
     configure_logging(
         level=str(settings.logging.level),
@@ -190,7 +190,7 @@ def _main() -> None:
         file_capture_level=str(settings.logging.file_capture_level),
         file_capture_directory=settings.logging.file_capture_directory,
         json_output=bool(settings.logging.json_output),
-        process_name=str(settings.logging.process_name),
+        process_name=process_name,
         environment=str(settings.logging.environment),
     )
 
@@ -200,6 +200,7 @@ def _main() -> None:
     worker_cfg = settings.worker
     max_workers: int = worker_cfg.max_workers
     poll_interval: float = worker_cfg.poll_interval_seconds
+    channel: str = worker_cfg.channel
 
     sdk_config = BrainSdkConfig(
         host=settings.core.host,
@@ -244,7 +245,7 @@ def _main() -> None:
 
                 # Back off when pool is saturated.
                 if len(pending) >= max_workers:
-                    _SHUTDOWN_EVENT.wait(timeout=0.25)
+                    _SHUTDOWN_EVENT.wait(timeout=_SATURATION_BACKOFF_SECONDS)
                     continue
 
                 # Claim next queued execution.
@@ -265,12 +266,12 @@ def _main() -> None:
                     continue
 
                 _LOGGER.info(
-                    "Dispatching execution to pool: execution_id=%s capability_id=%s",
+                    "Dispatching execution to pool: execution_id=%s op_id=%s",
                     claim.execution_id,
-                    claim.capability_id,
+                    claim.op_id,
                 )
                 future: Future[None] = pool.submit(
-                    _dispatch, config=sdk_config, claim=claim
+                    _dispatch, config=sdk_config, claim=claim, channel=channel
                 )
                 pending.append(future)
 

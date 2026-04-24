@@ -45,24 +45,14 @@ def new_meta(
 ) -> EnvelopeMeta:
     """Build ``EnvelopeMeta`` with safe defaults for IDs and timestamp."""
     return EnvelopeMeta(
-        envelope_id=envelope_id or _new_id(),
-        trace_id=trace_id or _new_id(),
+        envelope_id=envelope_id or generate_ulid_str(),
+        trace_id=trace_id or generate_ulid_str(),
         parent_id=parent_id,
-        timestamp=_utc_now() if timestamp is None else _normalize_utc(timestamp),
+        timestamp=datetime.now(UTC) if timestamp is None else _normalize_utc(timestamp),
         kind=kind,
         source=source,
         principal=principal,
     )
-
-
-def _new_id() -> str:
-    """Return a compact random identifier."""
-    return generate_ulid_str()
-
-
-def _utc_now() -> datetime:
-    """Return current UTC timestamp."""
-    return datetime.now(UTC)
 
 
 def _normalize_utc(value: datetime) -> datetime:

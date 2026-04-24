@@ -14,7 +14,6 @@ def validation_error(
     code: str = codes.VALIDATION_ERROR,
     metadata: Mapping[str, str] | None = None,
 ) -> ErrorDetail:
-    """Create a validation-category error."""
     return ErrorDetail(
         code=code,
         message=message,
@@ -30,7 +29,6 @@ def not_found_error(
     code: str = codes.NOT_FOUND,
     metadata: Mapping[str, str] | None = None,
 ) -> ErrorDetail:
-    """Create a not-found-category error."""
     return ErrorDetail(
         code=code,
         message=message,
@@ -46,7 +44,6 @@ def conflict_error(
     code: str = codes.CONFLICT,
     metadata: Mapping[str, str] | None = None,
 ) -> ErrorDetail:
-    """Create a conflict-category error."""
     return ErrorDetail(
         code=code,
         message=message,
@@ -62,7 +59,6 @@ def policy_error(
     code: str = codes.POLICY_VIOLATION,
     metadata: Mapping[str, str] | None = None,
 ) -> ErrorDetail:
-    """Create a policy-category error."""
     return ErrorDetail(
         code=code,
         message=message,
@@ -79,7 +75,6 @@ def dependency_error(
     retryable: bool = True,
     metadata: Mapping[str, str] | None = None,
 ) -> ErrorDetail:
-    """Create a dependency-category error."""
     return ErrorDetail(
         code=code,
         message=message,
@@ -95,7 +90,6 @@ def internal_error(
     code: str = codes.INTERNAL_ERROR,
     metadata: Mapping[str, str] | None = None,
 ) -> ErrorDetail:
-    """Create an internal-category error."""
     return ErrorDetail(
         code=code,
         message=message,
@@ -106,7 +100,6 @@ def internal_error(
 
 
 def _meta(metadata: Mapping[str, str] | None) -> dict[str, str]:
-    """Normalize optional metadata into a mutable plain dict."""
     if metadata is None:
         return {}
     return dict(metadata)

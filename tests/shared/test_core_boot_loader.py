@@ -64,6 +64,34 @@ def test_discover_boot_modules_only_includes_present_specs(
     )
 
 
+def test_load_boot_hooks_treats_missing_dependencies_as_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A boot module without a dependencies attribute should load with no dependencies."""
+
+    module = ModuleType("services.a.boot")
+    # no `dependencies` attribute at all
+    module.is_ready = lambda _ctx: True
+    module.boot = lambda _ctx: None
+
+    monkeypatch.setattr(
+        "lib.core.boot.loader.discover_boot_modules",
+        lambda: (
+            BootModuleSpec(component_id="service_a", module_name="services.a.boot"),
+        ),
+    )
+    monkeypatch.setattr(
+        "lib.core.boot.loader.import_component_modules",
+        lambda _: tuple(),
+    )
+    monkeypatch.setitem(sys.modules, "services.a.boot", module)
+
+    hooks = load_boot_hooks()
+
+    assert len(hooks) == 1
+    assert hooks[0].dependencies == tuple()
+
+
 def test_load_boot_hooks_rejects_invalid_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

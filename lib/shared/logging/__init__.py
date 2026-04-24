@@ -14,7 +14,7 @@ from .public_api import (
     PublicApiMetricsConcern,
     PublicApiTracingConcern,
     public_api_instrumented,
-    public_api_logged,
+    register_public_api_concern,
 )
 
 __all__ = [
@@ -31,5 +31,5 @@ __all__ = [
     "PublicApiMetricsConcern",
     "PublicApiTracingConcern",
     "public_api_instrumented",
-    "public_api_logged",
+    "register_public_api_concern",
 ]

@@ -18,7 +18,6 @@ from lib.shared.config import load_core_settings
 from . import fields
 from .context import log_context
 
-_QDRANT_COMPONENT_ID = "substrate_qdrant"
 _DEFAULT_METER_NAME = "brain.public_api"
 _DEFAULT_TRACER_NAME = "brain.public_api"
 _DEFAULT_METRIC_PUBLIC_API_CALLS_TOTAL = "brain_public_api_calls_total"
@@ -27,8 +26,6 @@ _DEFAULT_METRIC_PUBLIC_API_ERRORS_TOTAL = "brain_public_api_errors_total"
 _DEFAULT_METRIC_INSTRUMENTATION_FAILURES_TOTAL = (
     "brain_public_api_instrumentation_failures_total"
 )
-_DEFAULT_METRIC_QDRANT_OPS_TOTAL = "brain_qdrant_ops_total"
-_DEFAULT_METRIC_QDRANT_OP_DURATION_MS = "brain_qdrant_op_duration_ms"
 
 
 @dataclass(frozen=True)
@@ -99,7 +96,7 @@ class PublicApiLoggingConcern:
                     context.duration_ms,
                 )
             else:
-                first_error = context.errors[0] if len(context.errors) > 0 else ""
+                first_error = context.errors[0] if context.errors else ""
                 self._logger.warning(
                     "Public API completion: %s.%s failed in %.3fms: %s",
                     context.invocation.component_id,
@@ -221,18 +218,13 @@ class PublicApiMetricsConcern:
         public_api_calls_total: _CounterLike,
         public_api_duration_ms: _HistogramLike,
         public_api_errors_total: _CounterLike,
-        qdrant_ops_total: _CounterLike,
-        qdrant_op_duration_ms: _HistogramLike,
     ) -> None:
         self._public_api_calls_total = public_api_calls_total
         self._public_api_duration_ms = public_api_duration_ms
         self._public_api_errors_total = public_api_errors_total
-        self._qdrant_ops_total = qdrant_ops_total
-        self._qdrant_op_duration_ms = qdrant_op_duration_ms
 
     def on_invocation(self, context: InvocationContext) -> None:
         """No-op at invocation; metrics are emitted on completion."""
-        del context
 
     def on_completion(self, context: CompletionContext) -> None:
         """Emit counters/histograms for completed invocation outcomes."""
@@ -244,22 +236,6 @@ class PublicApiMetricsConcern:
         }
         self._public_api_calls_total.add(1, attributes=attrs)
         self._public_api_duration_ms.record(context.duration_ms, attributes=attrs)
-
-        if context.invocation.component_id == _QDRANT_COMPONENT_ID:
-            self._qdrant_ops_total.add(
-                1,
-                attributes={
-                    fields.API_NAME: context.invocation.api_name,
-                    fields.OUTCOME: outcome,
-                },
-            )
-            self._qdrant_op_duration_ms.record(
-                context.duration_ms,
-                attributes={
-                    fields.API_NAME: context.invocation.api_name,
-                    fields.OUTCOME: outcome,
-                },
-            )
 
         if context.success:
             return
@@ -274,6 +250,21 @@ class PublicApiMetricsConcern:
                     fields.ERROR_CATEGORY: category,
                 },
             )
+
+
+_PublicApiConcernFactory = Callable[[], "PublicApiInstrumentationConcern | None"]
+_REGISTERED_CONCERN_FACTORIES: list[_PublicApiConcernFactory] = []
+
+
+def register_public_api_concern(factory: _PublicApiConcernFactory) -> None:
+    """Register one default concern factory invoked lazily by the decorator.
+
+    Components that need component-specific instrumentation register a factory
+    here from their boot or component module. The factory returns ``None`` when
+    its dependencies (e.g. OTel) are not available.
+    """
+    _REGISTERED_CONCERN_FACTORIES.append(factory)
+    _resolved_registered_concerns.cache_clear()
 
 
 def public_api_instrumented(
@@ -295,6 +286,7 @@ def public_api_instrumented(
     default_metrics_concern = _default_public_api_metrics_concern()
     if default_metrics_concern is not None:
         resolved_concerns = (*resolved_concerns, default_metrics_concern)
+    resolved_concerns = (*resolved_concerns, *_resolved_registered_concerns())
     if logger is not None:
         resolved_concerns = (PublicApiLoggingConcern(logger=logger), *resolved_concerns)
     if len(resolved_concerns) == 0:
@@ -361,23 +353,6 @@ def public_api_instrumented(
         return wrapper
 
     return decorator
-
-
-def public_api_logged(
-    *,
-    logger: Any,
-    component_id: str,
-    api_name: str | None = None,
-    id_fields: tuple[str, ...] = (),
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """Backwards-compatible logging-only wrapper over instrumentation decorator."""
-    return public_api_instrumented(
-        logger=logger,
-        component_id=component_id,
-        api_name=api_name,
-        id_fields=id_fields,
-        concerns=(),
-    )
 
 
 def _attr_or_none(obj: object | None, name: str) -> str | None:
@@ -504,7 +479,7 @@ def _log_concern_failure(
     exc: Exception,
     invocation: InvocationContext,
 ) -> None:
-    """Best-effort warning log for instrumentation concern hook failures."""
+    """Best-effort warning log and metric emit for concern hook failures."""
     if logger is None:
         return
     with log_context(
@@ -557,9 +532,18 @@ def _default_public_api_metrics_concern() -> PublicApiMetricsConcern | None:
         public_api_calls_total=instruments.public_api_calls_total,
         public_api_duration_ms=instruments.public_api_duration_ms,
         public_api_errors_total=instruments.public_api_errors_total,
-        qdrant_ops_total=instruments.qdrant_ops_total,
-        qdrant_op_duration_ms=instruments.qdrant_op_duration_ms,
     )
+
+
+@lru_cache(maxsize=1)
+def _resolved_registered_concerns() -> tuple[PublicApiInstrumentationConcern, ...]:
+    """Materialize concerns from registered factories, dropping ``None`` results."""
+    resolved: list[PublicApiInstrumentationConcern] = []
+    for factory in _REGISTERED_CONCERN_FACTORIES:
+        concern = factory()
+        if concern is not None:
+            resolved.append(concern)
+    return tuple(resolved)
 
 
 @dataclass(frozen=True)
@@ -570,8 +554,6 @@ class _OtelInstruments:
     public_api_duration_ms: _HistogramLike
     public_api_errors_total: _CounterLike
     instrumentation_failures_total: _CounterLike
-    qdrant_ops_total: _CounterLike
-    qdrant_op_duration_ms: _HistogramLike
 
 
 @dataclass(frozen=True)
@@ -584,8 +566,6 @@ class _PublicApiOtelNames:
     metric_public_api_duration_ms: str
     metric_public_api_errors_total: str
     metric_instrumentation_failures_total: str
-    metric_qdrant_ops_total: str
-    metric_qdrant_op_duration_ms: str
 
 
 @lru_cache(maxsize=1)
@@ -615,16 +595,6 @@ def _public_api_otel_names() -> _PublicApiOtelNames:
             otel,
             "metric_instrumentation_failures_total",
             _DEFAULT_METRIC_INSTRUMENTATION_FAILURES_TOTAL,
-        ),
-        metric_qdrant_ops_total=_configured_name(
-            otel,
-            "metric_qdrant_ops_total",
-            _DEFAULT_METRIC_QDRANT_OPS_TOTAL,
-        ),
-        metric_qdrant_op_duration_ms=_configured_name(
-            otel,
-            "metric_qdrant_op_duration_ms",
-            _DEFAULT_METRIC_QDRANT_OP_DURATION_MS,
         ),
     )
 
@@ -667,16 +637,6 @@ def _default_otel_instruments() -> _OtelInstruments | None:
             name=names.metric_instrumentation_failures_total,
             description="Count of instrumentation concern failures.",
             unit="1",
-        ),
-        qdrant_ops_total=meter.create_counter(
-            name=names.metric_qdrant_ops_total,
-            description="Count of Qdrant substrate operations by outcome.",
-            unit="1",
-        ),
-        qdrant_op_duration_ms=meter.create_histogram(
-            name=names.metric_qdrant_op_duration_ms,
-            description="Qdrant substrate operation latency in milliseconds.",
-            unit="ms",
         ),
     )
 

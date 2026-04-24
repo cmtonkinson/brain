@@ -1,4 +1,4 @@
-"""Generate Markdown docs for L1 public Python service interfaces.
+"""Generate Markdown docs for Tier 2 public Python service interfaces.
 
 The generator parses ``services/*/*/service.py`` files via AST and emits a
 single deterministic Markdown file describing abstract public API surfaces.
@@ -20,8 +20,8 @@ HR = "------------------------------------------------------------------------"
 DOC_GENERATED_NOTE = (
     "_This document is generated from `services/*/*/service.py`. Do not edit by hand._"
 )
-DOC_EMPTY_MESSAGE = "No L1 service interfaces were found."
-CHECK_OUT_OF_DATE_MESSAGE = "L1 API docs are out of date. Run: make docs"
+DOC_EMPTY_MESSAGE = "No Tier 2 service interfaces were found."
+CHECK_OUT_OF_DATE_MESSAGE = "Tier 2 API docs are out of date. Run: make docs"
 
 _ENTITY_MODIFIERS = frozenset({"active", "default", "current", "all"})
 _VERB_GROUPS: dict[str, tuple[int, int]] = {
@@ -50,7 +50,7 @@ class MethodDoc:
 
 @dataclass(frozen=True)
 class ServiceDoc:
-    """One documented L1 public service interface class."""
+    """One documented Tier 2 public service interface class."""
 
     class_name: str
     module_path: str
@@ -292,7 +292,7 @@ def main() -> int:
         if existing != markdown:
             print(CHECK_OUT_OF_DATE_MESSAGE, file=sys.stderr)
             return 1
-        print(f"L1 API docs are up to date: {output_path}")
+        print(f"Tier 2 API docs are up to date: {output_path}")
         return 0
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

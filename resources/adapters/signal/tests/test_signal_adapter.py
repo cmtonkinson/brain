@@ -28,9 +28,6 @@ class _FakeSignalClient:
         self.posts: list[tuple[str, object]] = []
         self.response_payload: object = {}
 
-    def get(self, _url: str, **_kwargs):
-        return object()
-
     def post(self, url: str, **kwargs):
         if self.raise_send is not None:
             raise self.raise_send
@@ -41,6 +38,7 @@ class _FakeSignalClient:
 def _adapter() -> SignalRestApiAdapter:
     adapter = SignalRestApiAdapter(
         settings=SignalAdapterSettings(
+            receive_e164="+13333333333",
             receive_connect_timeout_seconds=2.0,
             receive_heartbeat_seconds=5.0,
             failure_backoff_initial_seconds=1.0,
@@ -215,6 +213,7 @@ def test_settings_require_heartbeat_to_exceed_connect_timeout() -> None:
     """Signal adapter config should fail fast on invalid websocket timing."""
     with pytest.raises(ValueError, match="receive_heartbeat_seconds"):
         SignalAdapterSettings(
+            receive_e164="+13333333333",
             receive_connect_timeout_seconds=10.0,
             receive_heartbeat_seconds=10.0,
         )

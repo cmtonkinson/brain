@@ -37,7 +37,7 @@ Primary interactions with the rest of the system:
 - service implementations map DB exceptions through
   `normalize_postgres_error(...)` before returning envelope errors.
 
-Current usage includes the Embedding Authority _Service_ data runtime and
+Current usage includes the Embedding _Service_ data runtime and
 repository paths.
 
 ------------------------------------------------------------------------

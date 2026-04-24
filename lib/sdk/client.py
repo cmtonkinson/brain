@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 from lib.sdk.calls import (
-    CapabilityDescriptor,
-    CapabilityInvokeResult,
-    CapabilitySearchHit,
+    DelegationCancelOutcome,
+    DelegationClaim,
+    DelegationResult,
+    DelegationStarted,
+    DelegationStatusView,
+    DelegationTurnDecision,
+    DynamicOpClassification,
+    OpDescriptor,
+    OpInvokeResult,
+    OpSearchHit,
     ConsoleEnqueueResult,
     ConsoleResponseMessage,
     CoreHealthResult,
@@ -16,20 +23,30 @@ from lib.sdk.calls import (
     MemorySessionRef,
     MemoryTurnContext,
     MemoryTurnRecord,
-    SwitchboardOperatorInstruction,
+    RelayOperatorInstruction,
     ToolSystemHint,
-    call_capabilities_describe,
-    call_capabilities_list_always_on,
-    call_capabilities_search,
-    call_capabilities_tool_system_hints,
-    call_capability_describe,
-    call_capability_invoke,
+    call_delegation_cancel,
+    call_delegation_claim_invocation,
+    call_delegation_finalize_invocation,
+    call_delegation_invoke,
+    call_delegation_invoke_and_wait,
+    call_delegation_record_turn,
+    call_delegation_status,
+    call_delegation_wait,
+    call_ops_classify_dynamic,
+    call_ops_describe,
+    call_ops_list_always_on,
+    call_ops_list_dynamic_classifications,
+    call_ops_search,
+    call_ops_tool_system_hints,
+    call_op_describe,
+    call_op_invoke,
     call_core_health,
     call_job_claim_execution,
     call_job_complete_execution,
     call_job_fail_execution,
-    call_lms_chat,
-    call_lms_chat_with_tools,
+    call_language_chat,
+    call_language_chat_with_tools,
     call_memory_assemble_context,
     call_memory_assemble_snapshot,
     call_memory_compact_dialogue,
@@ -40,9 +57,9 @@ from lib.sdk.calls import (
     call_memory_record_outbound_delivery,
     call_memory_record_response,
     call_slash_lookup,
-    call_switchboard_enqueue_console,
-    call_switchboard_poll_console_response,
-    call_switchboard_poll_operator_instruction,
+    call_relay_enqueue_console,
+    call_relay_poll_console_response,
+    call_relay_poll_operator_instruction,
 )
 from lib.sdk.config import (
     BrainSdkConfig,
@@ -64,22 +81,20 @@ class BrainClient:
         config: BrainSdkConfig | None = None,
         http: HttpClient | None = None,
     ) -> None:
-        """Create one SDK client with injected HttpClient or config-built client."""
+        """Accept an optional HttpClient for testing; build one from config otherwise."""
         self._config = BrainSdkConfig() if config is None else config
         self._owns_http = http is None
         self._http = http if http is not None else self._new_http_client()
 
     def close(self) -> None:
-        """Close underlying HTTP client when owned."""
+        """Release the underlying HTTP client only when this instance owns it."""
         if self._owns_http:
             self._http.close()
 
     def __enter__(self) -> BrainClient:
-        """Enter context manager scope."""
         return self
 
     def __exit__(self, *_: object) -> None:
-        """Exit context manager scope and close client resources."""
         self.close()
 
     def core_health(self, *, meta: MetaOverrides | None = None) -> CoreHealthResult:
@@ -90,35 +105,35 @@ class BrainClient:
             timeout_seconds=self._config.timeout_seconds,
         )
 
-    def describe_capabilities(
+    def describe_ops(
         self, *, meta: MetaOverrides | None = None
-    ) -> tuple[CapabilityDescriptor, ...]:
-        """Return all active Capability descriptors."""
-        return call_capabilities_describe(
+    ) -> tuple[OpDescriptor, ...]:
+        """Return all active Op descriptors."""
+        return call_ops_describe(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
         )
 
-    def list_always_on_capabilities(
+    def list_always_on_ops(
         self, *, meta: MetaOverrides | None = None
-    ) -> tuple[CapabilityDescriptor, ...]:
-        """Return full descriptors for configured always-on capabilities."""
-        return call_capabilities_list_always_on(
+    ) -> tuple[OpDescriptor, ...]:
+        """Return full descriptors for configured always-on ops."""
+        return call_ops_list_always_on(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
         )
 
-    def search_capabilities(
+    def search_ops(
         self,
         *,
         query: str,
         limit: int | None = None,
         meta: MetaOverrides | None = None,
-    ) -> tuple[CapabilitySearchHit, ...]:
-        """Search the CES capability catalog."""
-        return call_capabilities_search(
+    ) -> tuple[OpSearchHit, ...]:
+        """Search the Execution op catalog."""
+        return call_ops_search(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
@@ -130,24 +145,52 @@ class BrainClient:
         self, *, meta: MetaOverrides | None = None
     ) -> tuple[ToolSystemHint, ...]:
         """Return compact orientation hints for systems reachable through tools."""
-        return call_capabilities_tool_system_hints(
+        return call_ops_tool_system_hints(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
         )
 
-    def describe_capability(
+    def classify_dynamic_op(
         self,
         *,
-        capability_id: str,
+        op_id: str,
+        effect: str | None = None,
+        approval: str | None = None,
         meta: MetaOverrides | None = None,
-    ) -> CapabilityDescriptor:
-        """Return one full capability descriptor by id."""
-        return call_capability_describe(
+    ) -> DynamicOpClassification:
+        """Persist operator-supplied classification for a dynamic op."""
+        return call_ops_classify_dynamic(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
-            capability_id=capability_id,
+            op_id=op_id,
+            effect=effect,
+            approval=approval,
+        )
+
+    def list_dynamic_op_classifications(
+        self, *, meta: MetaOverrides | None = None
+    ) -> tuple[DynamicOpClassification, ...]:
+        """Return all observed dynamic op classification rows."""
+        return call_ops_list_dynamic_classifications(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+        )
+
+    def describe_op(
+        self,
+        *,
+        op_id: str,
+        meta: MetaOverrides | None = None,
+    ) -> OpDescriptor:
+        """Return one full op descriptor by id."""
+        return call_op_describe(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            op_id=op_id,
         )
 
     def resolve_slash_command(
@@ -155,8 +198,8 @@ class BrainClient:
         *,
         name: str,
         meta: MetaOverrides | None = None,
-    ) -> CapabilityDescriptor | None:
-        """Return the capability descriptor bound to a slash command name or alias."""
+    ) -> OpDescriptor | None:
+        """Return the op descriptor bound to a slash command name or alias."""
         return call_slash_lookup(
             http=self._http,
             metadata=self._meta(meta),
@@ -164,10 +207,10 @@ class BrainClient:
             name=name,
         )
 
-    def invoke_capability(
+    def invoke_op(
         self,
         *,
-        capability_id: str,
+        op_id: str,
         input_payload: dict[str, object] | None = None,
         actor: str = "",
         channel: str = "",
@@ -178,13 +221,13 @@ class BrainClient:
         reply_to_proposal_token: str = "",
         reaction_to_proposal_token: str = "",
         meta: MetaOverrides | None = None,
-    ) -> CapabilityInvokeResult:
-        """Invoke one Capability via the CES route surface."""
-        return call_capability_invoke(
+    ) -> OpInvokeResult:
+        """Invoke one Op via the Execution route surface."""
+        return call_op_invoke(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
-            capability_id=capability_id,
+            op_id=op_id,
             input_payload=input_payload,
             actor=actor,
             channel=channel,
@@ -196,7 +239,7 @@ class BrainClient:
             reaction_to_proposal_token=reaction_to_proposal_token,
         )
 
-    def lms_chat(
+    def language_chat(
         self,
         *,
         system_prompt: str = "",
@@ -205,8 +248,8 @@ class BrainClient:
         timeout_seconds: float | None = None,
         meta: MetaOverrides | None = None,
     ) -> LmsChatResult:
-        """Execute one direct LMS chat request."""
-        return call_lms_chat(
+        """Execute one direct Language chat request."""
+        return call_language_chat(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=(
@@ -219,15 +262,15 @@ class BrainClient:
             profile=profile,
         )
 
-    def lms_chat_with_tools(
+    def language_chat_with_tools(
         self,
         *,
         inference_request: InferenceRequest,
         timeout_seconds: float | None = None,
         meta: MetaOverrides | None = None,
     ) -> LmsToolChatResult:
-        """Execute one tool-capable LMS chat request."""
-        return call_lms_chat_with_tools(
+        """Execute one tool-capable Language chat request."""
+        return call_language_chat_with_tools(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=(
@@ -243,10 +286,10 @@ class BrainClient:
         *,
         session_id: str,
         message: str,
-        instruction: SwitchboardOperatorInstruction | None = None,
+        instruction: RelayOperatorInstruction | None = None,
         meta: MetaOverrides | None = None,
     ) -> MemoryTurnContext:
-        """Resolve active MAS session, record inbound turn, and return context."""
+        """Resolve active Recall session, record inbound turn, and return context."""
         return call_memory_assemble_context(
             http=self._http,
             metadata=self._meta(meta),
@@ -261,7 +304,7 @@ class BrainClient:
         *,
         session_id: str,
         message: str,
-        instruction: SwitchboardOperatorInstruction | None = None,
+        instruction: RelayOperatorInstruction | None = None,
         meta: MetaOverrides | None = None,
     ) -> MemoryTurnRecord:
         """Persist one inbound turn and return the recorded turn payload."""
@@ -281,7 +324,7 @@ class BrainClient:
         exclude_latest: bool = True,
         meta: MetaOverrides | None = None,
     ) -> MemoryContextBlock:
-        """Return the historical MAS snapshot for one session."""
+        """Return the historical Recall snapshot for one session."""
         return call_memory_assemble_snapshot(
             http=self._http,
             metadata=self._meta(meta),
@@ -295,7 +338,7 @@ class BrainClient:
         *,
         meta: MetaOverrides | None = None,
     ) -> MemorySessionRef:
-        """Create one MAS session and return the new session identifier."""
+        """Create one Recall session and return the new session identifier."""
         return call_memory_create_session(
             http=self._http,
             metadata=self._meta(meta),
@@ -307,7 +350,7 @@ class BrainClient:
         *,
         meta: MetaOverrides | None = None,
     ) -> MemorySessionRef:
-        """Return the latest MAS session id or create one when none exist."""
+        """Return the latest Recall session id or create one when none exist."""
         return call_memory_get_latest_or_create_session(
             http=self._http,
             metadata=self._meta(meta),
@@ -339,7 +382,7 @@ class BrainClient:
         reasoning_level: str,
         meta: MetaOverrides | None = None,
     ) -> bool:
-        """Append one outbound MAS response turn."""
+        """Append one outbound Recall response turn."""
         return call_memory_record_response(
             http=self._http,
             metadata=self._meta(meta),
@@ -394,28 +437,28 @@ class BrainClient:
             delivered=delivered,
         )
 
-    def switchboard_poll_operator_instruction(
+    def relay_poll_operator_instruction(
         self,
         *,
         wait_timeout_seconds: float = 0.0,
         meta: MetaOverrides | None = None,
-    ) -> SwitchboardOperatorInstruction | None:
-        """Poll Switchboard for the next queued operator instruction."""
-        return call_switchboard_poll_operator_instruction(
+    ) -> RelayOperatorInstruction | None:
+        """Poll Relay inbound for the next queued operator instruction."""
+        return call_relay_poll_operator_instruction(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
             wait_timeout_seconds=wait_timeout_seconds,
         )
 
-    def switchboard_enqueue_console(
+    def relay_enqueue_console(
         self,
         *,
         message_text: str,
         meta: MetaOverrides | None = None,
     ) -> ConsoleEnqueueResult:
-        """Submit one console operator message to Switchboard."""
-        return call_switchboard_enqueue_console(
+        """Submit one console operator message to Relay inbound."""
+        return call_relay_enqueue_console(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
@@ -470,22 +513,189 @@ class BrainClient:
             is_retryable=is_retryable,
         )
 
-    def switchboard_poll_console_response(
+    def relay_poll_console_response(
         self,
         *,
         wait_timeout_seconds: float = 0.0,
         meta: MetaOverrides | None = None,
     ) -> ConsoleResponseMessage | None:
-        """Poll Switchboard for the next queued console response."""
-        return call_switchboard_poll_console_response(
+        """Poll Relay inbound for the next queued console response."""
+        return call_relay_poll_console_response(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
             wait_timeout_seconds=wait_timeout_seconds,
         )
 
+    def delegation_invoke(
+        self,
+        *,
+        prompt: str,
+        context_text: str | None = None,
+        context_object_refs: tuple[str, ...] = (),
+        personality_id: str = "subagent",
+        tool_allowlist: tuple[str, ...] | None = None,
+        max_turns: int = 8,
+        budget_tokens: int | None = None,
+        max_wallclock_seconds: int | None = None,
+        parent_invocation_id: str | None = None,
+        meta: MetaOverrides | None = None,
+    ) -> DelegationStarted:
+        """Queue one delegated invocation and return its identifier."""
+        return call_delegation_invoke(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            prompt=prompt,
+            context_text=context_text,
+            context_object_refs=context_object_refs,
+            personality_id=personality_id,
+            tool_allowlist=tool_allowlist,
+            max_turns=max_turns,
+            budget_tokens=budget_tokens,
+            max_wallclock_seconds=max_wallclock_seconds,
+            parent_invocation_id=parent_invocation_id,
+        )
+
+    def delegation_invoke_and_wait(
+        self,
+        *,
+        prompt: str,
+        context_text: str | None = None,
+        context_object_refs: tuple[str, ...] = (),
+        personality_id: str = "subagent",
+        tool_allowlist: tuple[str, ...] | None = None,
+        max_turns: int = 8,
+        budget_tokens: int | None = None,
+        max_wallclock_seconds: int | None = None,
+        parent_invocation_id: str | None = None,
+        wait_timeout_seconds: float | None = None,
+        timeout_seconds: float | None = None,
+        meta: MetaOverrides | None = None,
+    ) -> DelegationResult:
+        """Queue one delegated invocation and block until terminal state."""
+        return call_delegation_invoke_and_wait(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=(
+                self._config.timeout_seconds
+                if timeout_seconds is None
+                else timeout_seconds
+            ),
+            prompt=prompt,
+            context_text=context_text,
+            context_object_refs=context_object_refs,
+            personality_id=personality_id,
+            tool_allowlist=tool_allowlist,
+            max_turns=max_turns,
+            budget_tokens=budget_tokens,
+            max_wallclock_seconds=max_wallclock_seconds,
+            parent_invocation_id=parent_invocation_id,
+            wait_timeout_seconds=wait_timeout_seconds,
+        )
+
+    def delegation_wait(
+        self,
+        *,
+        invocation_id: str,
+        wait_timeout_seconds: float | None = None,
+        timeout_seconds: float | None = None,
+        meta: MetaOverrides | None = None,
+    ) -> DelegationResult:
+        """Block until the named invocation reaches terminal state."""
+        return call_delegation_wait(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=(
+                self._config.timeout_seconds
+                if timeout_seconds is None
+                else timeout_seconds
+            ),
+            invocation_id=invocation_id,
+            wait_timeout_seconds=wait_timeout_seconds,
+        )
+
+    def delegation_status(
+        self,
+        *,
+        invocation_id: str,
+        meta: MetaOverrides | None = None,
+    ) -> DelegationStatusView:
+        """Return the current status projection for one invocation."""
+        return call_delegation_status(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            invocation_id=invocation_id,
+        )
+
+    def delegation_cancel(
+        self,
+        *,
+        invocation_id: str,
+        reason: str = "manual",
+        meta: MetaOverrides | None = None,
+    ) -> DelegationCancelOutcome:
+        """Request cancellation of one queued or running invocation."""
+        return call_delegation_cancel(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            invocation_id=invocation_id,
+            reason=reason,
+        )
+
+    def delegation_claim_invocation(
+        self,
+        *,
+        claimed_by: str = "subagent",
+        meta: MetaOverrides | None = None,
+    ) -> DelegationClaim | None:
+        """Claim the oldest queued invocation for the Subagent Actor."""
+        return call_delegation_claim_invocation(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            claimed_by=claimed_by,
+        )
+
+    def delegation_record_turn(
+        self,
+        *,
+        invocation_id: str,
+        meta: MetaOverrides | None = None,
+    ) -> DelegationTurnDecision:
+        """Bump turn count for one invocation; budget is re-evaluated on the server."""
+        return call_delegation_record_turn(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            invocation_id=invocation_id,
+        )
+
+    def delegation_finalize_invocation(
+        self,
+        *,
+        invocation_id: str,
+        status: str,
+        final_response: str | None = None,
+        transcript_ref: str | None = None,
+        cancel_reason: str | None = None,
+        meta: MetaOverrides | None = None,
+    ) -> DelegationResult:
+        """Apply a terminal status transition for one invocation."""
+        return call_delegation_finalize_invocation(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            invocation_id=invocation_id,
+            status=status,
+            final_response=final_response,
+            transcript_ref=transcript_ref,
+            cancel_reason=cancel_reason,
+        )
+
     def _meta(self, overrides: MetaOverrides | None) -> dict[str, object]:
-        """Build one request metadata dict for an outbound call."""
         value = MetaOverrides() if overrides is None else overrides
         return build_envelope_meta(
             source=self._config.source if value.source is None else value.source,
@@ -499,7 +709,6 @@ class BrainClient:
         )
 
     def _new_http_client(self) -> HttpClient:
-        """Create one HttpClient over TCP from SDK runtime configuration."""
         return HttpClient(
             base_url=f"http://{self._config.host}:{self._config.port}",
             timeout_seconds=self._config.timeout_seconds,
@@ -511,10 +720,10 @@ class BrainSdkClient(BrainClient):
 
     def __init__(
         self,
+        *,
         host: str | None = None,
         port: int | None = None,
         timeout: float | None = None,
-        *,
         timeout_seconds: float | None = None,
         source: str = "cli",
         principal: str = "operator",

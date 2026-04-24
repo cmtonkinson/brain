@@ -17,8 +17,8 @@ RESOURCE_COMPONENT_ID = ComponentId("adapter_signal")
 MANIFEST = register_component(
     ResourceManifest(
         id=RESOURCE_COMPONENT_ID,
-        layer=0,
-        system="action",
+        tier=1,
+        plane="effect",
         kind="adapter",
         module_roots=frozenset({ModuleRoot("resources.adapters.signal")}),
         owner_service_id=None,

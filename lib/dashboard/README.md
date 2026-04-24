@@ -24,7 +24,7 @@ Launcher:
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
-Dashboard isn't "in" the _Layer_/_Service_ architecture; it's not an _Actor_,
+Dashboard isn't "in" the _Tier_/_Service_ architecture; it's not an _Actor_,
 _Service_, or _Substrate_. It is an out-of-band local utility with privileged
 read-only access to operational state. Dashboard:
 - Does not participate in Brain runtime orchestration

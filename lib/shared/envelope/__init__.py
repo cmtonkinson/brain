@@ -4,7 +4,7 @@ from .builders import empty, failure, success, with_error
 from .envelope import Envelope
 from .meta import EnvelopeKind, EnvelopeMeta, new_meta
 from .payload import Payload
-from .validate import normalize_meta, utc_now, validate_meta
+from .validate import normalize_meta, validate_meta, validate_service_request
 
 __all__ = [
     "Envelope",
@@ -16,7 +16,7 @@ __all__ = [
     "new_meta",
     "normalize_meta",
     "success",
-    "utc_now",
     "validate_meta",
+    "validate_service_request",
     "with_error",
 ]

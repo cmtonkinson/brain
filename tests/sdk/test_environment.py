@@ -18,25 +18,25 @@ class _FakeClient:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
-    def invoke_capability(self, **kwargs: object) -> object:
+    def invoke_op(self, **kwargs: object) -> object:
         self.calls.append(kwargs)
-        if kwargs["capability_id"] == "broken-capability":
+        if kwargs["op_id"] == "broken-op":
             raise BrainDependencyError(
                 message="dependency down",
-                operation="capabilities.invoke",
+                operation="ops.invoke",
             )
         return SimpleNamespace(output={"value": kwargs["input_payload"]})
 
 
-def test_assemble_environment_context_invokes_configured_capabilities() -> None:
-    """Environment context assembly should preserve ordered capability outputs."""
+def test_assemble_environment_context_invokes_configured_ops() -> None:
+    """Environment context assembly should preserve ordered op outputs."""
     client = _FakeClient()
 
     context, diagnostics = assemble_environment_context(
         client=client,
         entries=(
             {
-                "capability_id": "demo-context",
+                "op_id": "demo-context",
                 "input_payload": {"scope": "today"},
             },
         ),
@@ -46,25 +46,25 @@ def test_assemble_environment_context_invokes_configured_capabilities() -> None:
 
     assert diagnostics == ()
     assert len(context.items) == 1
-    assert context.items[0].capability_id == "demo-context"
+    assert context.items[0].op_id == "demo-context"
     assert context.items[0].tag_name == "demo-context"
     assert context.items[0].output == {"value": {"scope": "today"}}
     assert client.calls[0]["actor"] == "operator"
     assert client.calls[0]["channel"] == "signal"
 
 
-def test_assemble_environment_context_omits_failed_capabilities() -> None:
-    """Failed environment capabilities should be omitted with diagnostics."""
+def test_assemble_environment_context_omits_failed_ops() -> None:
+    """Failed environment ops should be omitted with diagnostics."""
     context, diagnostics = assemble_environment_context(
         client=_FakeClient(),
-        entries=("broken-capability", "current-datetime"),
+        entries=("broken-op", "current-datetime"),
         actor="operator",
         channel="signal",
     )
 
-    assert [item.capability_id for item in context.items] == ["current-datetime"]
+    assert [item.op_id for item in context.items] == ["current-datetime"]
     assert len(diagnostics) == 1
-    assert diagnostics[0].capability_id == "broken-capability"
+    assert diagnostics[0].op_id == "broken-op"
     assert diagnostics[0].error_type == "BrainDependencyError"
 
 
@@ -76,7 +76,7 @@ def test_assemble_environment_context_resolves_local_datetime_boundaries() -> No
         client=client,
         entries=(
             {
-                "capability_id": "eventkit--list-calendar-events",
+                "op_id": "eventkit--list-calendar-events",
                 "input_payload": {
                     "start_date": {
                         "resolve": "local_datetime_boundary",
@@ -112,7 +112,7 @@ def test_assemble_environment_context_reports_invalid_dynamic_value_specs() -> N
         client=_FakeClient(),
         entries=(
             {
-                "capability_id": "eventkit--list-calendar-events",
+                "op_id": "eventkit--list-calendar-events",
                 "input_payload": {
                     "start_date": {
                         "resolve": "unknown",
@@ -128,7 +128,7 @@ def test_assemble_environment_context_reports_invalid_dynamic_value_specs() -> N
 
     assert context.items == ()
     assert len(diagnostics) == 1
-    assert diagnostics[0].capability_id == "eventkit--list-calendar-events"
+    assert diagnostics[0].op_id == "eventkit--list-calendar-events"
     assert diagnostics[0].error_type == "EnvironmentContextResolutionError"
 
 
@@ -140,7 +140,7 @@ def test_assemble_environment_context_resolves_nested_payload_values() -> None:
         client=client,
         entries=(
             {
-                "capability_id": "eventkit--list-calendar-events",
+                "op_id": "eventkit--list-calendar-events",
                 "input_payload": {
                     "window": {
                         "start": {
@@ -196,7 +196,7 @@ def test_assemble_environment_context_omits_only_bad_resolver_entry() -> None:
         client=client,
         entries=(
             {
-                "capability_id": "bad-context",
+                "op_id": "bad-context",
                 "input_payload": {
                     "start_date": {
                         "resolve": "local_datetime_boundary",
@@ -205,7 +205,7 @@ def test_assemble_environment_context_omits_only_bad_resolver_entry() -> None:
                 },
             },
             {
-                "capability_id": "good-context",
+                "op_id": "good-context",
                 "input_payload": {"static": "ok"},
             },
         ),
@@ -215,10 +215,10 @@ def test_assemble_environment_context_omits_only_bad_resolver_entry() -> None:
         reference_now=datetime(2026, 4, 23, 15, 30, tzinfo=UTC),
     )
 
-    assert [item.capability_id for item in context.items] == ["good-context"]
-    assert [call["capability_id"] for call in client.calls] == ["good-context"]
+    assert [item.op_id for item in context.items] == ["good-context"]
+    assert [call["op_id"] for call in client.calls] == ["good-context"]
     assert len(diagnostics) == 1
-    assert diagnostics[0].capability_id == "bad-context"
+    assert diagnostics[0].op_id == "bad-context"
     assert diagnostics[0].error_type == "EnvironmentContextResolutionError"
 
 
@@ -232,7 +232,7 @@ def test_assemble_environment_context_rejects_naive_reference_now() -> None:
             client=_FakeClient(),
             entries=(
                 {
-                    "capability_id": "eventkit--list-calendar-events",
+                    "op_id": "eventkit--list-calendar-events",
                     "input_payload": {
                         "start_date": {
                             "resolve": "local_datetime_boundary",
@@ -275,7 +275,7 @@ def test_assemble_environment_context_uses_timezone_offset_for_target_day(
         client=client,
         entries=(
             {
-                "capability_id": "eventkit--list-calendar-events",
+                "op_id": "eventkit--list-calendar-events",
                 "input_payload": {
                     "start_date": {
                         "resolve": "local_datetime_boundary",
