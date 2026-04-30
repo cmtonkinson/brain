@@ -3,7 +3,7 @@ terms:
   - term: Effect Plane
     definition: "The Plane responsible for external consequences: comprises Services and Adapter Resources responsible for external I/O."
   - term: Actor
-    definition: "A client of the Brain Core SDK, such as the Agent, CLI, or Worker."
+    definition: "A client of the Brain Core SDK, such as the Assistant, CLI, Console, Subagent, or Worker."
   - term: Adapter
     definition: "A Resource which governs interaction with the outside world such as an MCP Server, messaging platform, web API, etc."
   - term: Brain Core SDK
@@ -17,7 +17,7 @@ terms:
   - term: Delegation
     definition: "The Reason-plane Service that owns the lifecycle of subagent invocations: queue, claim, status, transcripts, budget ledger, and cancel."
   - term: Subagent
-    definition: "A focused, headless agentic loop spawned by Delegation to accomplish one task. Distinct from the conversational Agent: runs under its own Principal and Channel, with a narrowed tool allowlist and per-invocation budgets."
+    definition: "A focused, headless agentic loop spawned by Delegation to accomplish one task. Distinct from the conversational Assistant: runs under its own Principal and Channel, with a narrowed tool allowlist and per-invocation budgets."
   - term: Envelope
     definition: "The structured message wrapper used for all cross-Tier and cross-Service communication, consisting of metadata, payload, and errors."
   - term: Tier
@@ -26,7 +26,7 @@ terms:
     definition: "An Op implementing arbitrary/custom Python code."
   - term: MCP Op
     definition: "An Op which wraps a single MCP tool call, scoped by the name of the MCP server as configured."
-    note: "The MCP spec does not enforce useful schema definitions over tool output format, which can be limiting for automation. Brain provides a mechanism to manually define these, however (see XXX)."
+    note: "The MCP spec does not enforce useful schema definitions over tool output format, which can be limiting for automation. Brain provides a mechanism to manually define these via per-server JSON files at `ops/mcp-overrides/<server_id>.json`; see [Op Design](../op-design.md)."
   - term: Manifest
     definition: "The self-registration declaration that each Component exports to join the global registry at import time."
   - term: Native Op

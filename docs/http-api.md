@@ -276,13 +276,13 @@ _Response: `_SessionResponse`_
 _Summary: Force-summarize all visible turns and advance dialogue frontier._
 
 
-`POST /memory/create_session` &mdash; create one new Recall session for the agent  
+`POST /memory/create_session` &mdash; create one new Recall session for the Assistant  
 _Handler: `create_session`_
 _Response: `_CreateSessionResponse`_
 _Summary: Create one Recall session and return only the session identifier._
 
 
-`POST /memory/get_latest_or_create_session` &mdash; return the latest Recall session id or create one for the agent  
+`POST /memory/get_latest_or_create_session` &mdash; return the latest Recall session id or create one for the Assistant  
 _Handler: `get_latest_or_create_session`_
 _Response: `_CreateSessionResponse`_
 _Summary: Return the latest Recall session id or create one when none exist._

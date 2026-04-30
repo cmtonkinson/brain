@@ -10,8 +10,8 @@
 /ops/tool-system-hints: return compact orientation hints for systems reachable through tools
 /lms/chat: direct access to model inference without Execution/Policy overhead
 /lms/chat-with-tools: direct access to tool-capable model inference without Execution/Policy overhead
-/memory/create_session: create one new Recall session for the agent
-/memory/get_latest_or_create_session: return the latest Recall session id or create one for the agent
+/memory/create_session: create one new Recall session for the Assistant
+/memory/get_latest_or_create_session: return the latest Recall session id or create one for the Assistant
 /memory/assemble_context: assemble Recall context for one inbound turn
 /memory/assemble_snapshot: return the stable historical Recall snapshot without the live inbound turn
 /memory/record_inbound_turn: persist one inbound Recall turn before prompt assembly
@@ -21,7 +21,7 @@
 /memory/record_response: persist one outbound Recall response turn
 /relay/enqueue_console_message: accept and enqueue one inbound console operator message
 /relay/poll_console_response: dequeue the next queued Brain response for the console channel
-/relay/poll_operator_instruction: dequeue the next queued operator instruction for the agent
+/relay/poll_operator_instruction: dequeue the next queued operator instruction for the Assistant
 /ingestion/submit: validate and submit one ingestion attempt; runs store stage inline
 /ingestion/get: read one ingestion record by id
 /ingestion/status: return current status snapshot for one ingestion

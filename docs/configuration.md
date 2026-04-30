@@ -170,10 +170,6 @@ Examples of canonical paths:
 - `signal.base_url`
 - `llm.providers.anthropic.api_key`
 
-These roots replace the old wrapper-style paths such as nested `service.*`,
-`substrate.*`, and `adapter.*`. The canonical config tree contains only direct
-component roots.
-
 ------------------------------------------------------------------------
 ## Actors
 Actor-specific settings live under their direct actor roots:

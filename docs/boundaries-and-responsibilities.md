@@ -15,9 +15,8 @@ Invariant: No _Component_ within a given _Tier_ may depend on something from a
 higher level.
 
 ### Tier 3: Actors
-_Actors_ are external clients of _Tier_ 2 _Services_. The Agent process
-itself, along with Workers, and any CLI tooling, are by definition
-_Tier_ 3.
+_Actors_ are external clients of _Tier_ 2 _Services_. The Assistant, Subagent,
+Worker, Console, and CLI processes are by definition _Tier_ 3.
 
 The only means for T3/_Actors_ to interact with the system are with the _Brain
 Core SDK_, which exposes a published subset of _Tier_ 2 _Service_ APIs through
@@ -151,7 +150,7 @@ _Services_ to achieve higher-order functionality.
   call site tests)
 
 #### Recall
-- Owns Agent recall & context management over Embedding/Vault/Object results
+- Owns Assistant recall & context management over Embedding/Vault/Object results
 - No dedicated Substrate; composes State Plane data into context windows
 
 #### Utility
@@ -218,7 +217,7 @@ _Service_ may access PostgreSQL directly, but for its own schema only.
 ### Migrations
 Each _Service_ maintains an isolated Alembic environment (its own `.ini`,
 `env.py`, `versions/`, etc.). A wrapper utility runs migrations in a consistent
-order (_State_, then _Action_, then _Control_). This isn't strictly necessary
+order (_State_, then _Effect_, then _Reason_). This isn't strictly necessary
 given cross-_Service_ FKs are disallowed, however does provide deterministic
 bootstrapping.
 
@@ -233,7 +232,7 @@ registered _Service_:
 4. Run Alembic migrations in _Plane_-order (`state` -> `effect` -> `reason`).
 
 ### Contributor Checklist (New Service)
-1. Add `services/<system>/<service>/component.py` with `ServiceManifest`.
+1. Add `services/<plane>/<service>/component.py` with `ServiceManifest`.
 2. Keep schema identity derived from `ComponentId`.
 3. Use shared ULID PK helpers that target `<schema>.ulid_bin`.
 4. Keep migrations in that _Service's_ own Alembic environment only.

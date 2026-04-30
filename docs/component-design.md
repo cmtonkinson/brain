@@ -11,7 +11,7 @@ self-register by calling `register_component()` from
 ## Component Rules (Global)
 ### Required semantics
 - Every _Component_ has a globally unique `ComponentId`.
-- Every _Component_ declares `layer`, `system`, and one or more `module_roots`.
+- Every _Component_ declares `tier`, `plane`, and one or more `module_roots`.
 - Every T1 _Resource_ and T2 _Service_ exports a `health()` contract.
 - `ComponentId` is schema-safe (`^[a-z][a-z0-9_]{1,62}$`).
 - Registration is global and process-local via `register_component(...)`.
@@ -41,7 +41,8 @@ surface.
 - Declared via `ResourceManifest`.
 - Required:
   - `id: ComponentId`
-  - `layer = 0`
+  - `tier = 1`
+  - `plane in {"state", "effect"}`
   - `kind in {"substrate", "adapter"}`
   - `module_roots`
 - Optional:
@@ -68,8 +69,8 @@ An T2 _Service_ is Brain business logic with authoritative public contracts.
 ### Model
 Declared via `ServiceManifest`. Required:
   - `id: ComponentId`
-  - `layer = 1`
-  - `system in {"state", "action", "control"}`
+  - `tier = 2`
+  - `plane in {"state", "effect", "reason"}`
   - `module_roots`
   - `public_api_roots`
   - `owns_resources: FrozenSet[ComponentId]`
@@ -138,7 +139,7 @@ hooks succeed.
   error.
 
 ### Contract
-- Signature: `after_boot(*, settings: BrainSettings, components: Mapping[str, object]) -> None`
+- Signature: `after_boot(*, settings: CoreRuntimeSettings, components: Mapping[str, object]) -> None`
 - `settings` is fully resolved typed runtime configuration.
 - `components` is the instantiated component map keyed by `ComponentId`.
 

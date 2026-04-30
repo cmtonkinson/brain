@@ -1,7 +1,7 @@
 # Development Guide
 This document covers how to set up, build, test, and contribute to Brain.
 
-> Check the [Glossary](glossary.md) for key terms such as _Tier_, _System_, _Resource_,
+> Check the [Glossary](glossary.md) for key terms such as _Tier_, _Plane_, _Resource_,
 > _Service_, et cetera.
 
 ------------------------------------------------------------------------
@@ -52,22 +52,30 @@ This document covers how to set up, build, test, and contribute to Brain.
 5. Start Brain Core. It bootstraps schemas and runs migrations automatically
    during startup.
 
-`deprecated/` is not part of this runtime path and remains reference-only.
-
 ------------------------------------------------------------------------
 ## Make Targets
 | Target | Description |
 |---|---|
 | `make all` | Full pipeline: deps, clean, unit + integration tests, docs |
 | `make deps` | Install Python dependencies with `uv sync` |
+| `make deps-upgrade` | Update locked dependencies (set `PACKAGE=<name>` to scope) |
+| `make switch-python` | Pin a Python version (`VERSION=<x.y.z>`) for the venv |
 | `make clean` | Remove generated code and Python cache files |
 | `make check` | Run linting and format checks (ruff) |
 | `make format` | Auto-format code (ruff) |
 | `make test` | Run lint checks, then pytest across `tests/`, `resources/`, `services/`, and `actors/` |
-| `make docs` | Regenerate glossary, service-api docs, and diagrams |
+| `make test integration` | Same as `make test`, plus integration suite |
+| `make test-all` | Lint + pytest + smoke + e2e + docker smoke |
+| `make smoke` | Lint + smoke pytest selection |
+| `make smoke-e2e` | Run the agent end-to-end smoke harness |
+| `make smoke-docker` | Run the docker turn smoke harness |
+| `make docs` | Regenerate glossary, service-api, http-api, op catalog, and diagrams |
 | `make outline` | Print the top-level project directory outline |
-| `make up` | Start Docker Compose services (detached) |
-| `make down` | Stop Docker Compose services |
+| `make up` / `make app-up` | Start application Compose services (detached) |
+| `make down` / `make stack-down` | Stop the full stack (app + observability) |
+| `make o11y-up` / `make o11y-down` | Start/stop the observability overlay alongside shared infra |
+| `make stack-up` | Start the full stack (app + observability) |
+| `make ps` | Show full-stack Compose process state |
 
 ------------------------------------------------------------------------
 ## Optional Observability Stack
@@ -76,8 +84,9 @@ Brain can run with a local observability overlay:
 docker compose -f docker-compose.yaml -f docker-compose.observability.yaml up --build
 ```
 
-The overlay enables process-level OTel export for Core and Agent, starts an OTel
-Collector, runs self-hosted Langfuse, adds Langfuse's required ClickHouse, and
+The overlay enables process-level OTel export for `brain-core` and
+`brain-assistant`, starts an OTel Collector, runs self-hosted Langfuse,
+adds Langfuse's required ClickHouse, and
 uses the base SeaweedFS service as its S3-compatible blob store. It reuses the
 base Postgres and Valkey services; Langfuse data is stored in a dedicated
 Postgres database and in dedicated SeaweedFS bucket/prefixes, not in Brain
@@ -98,7 +107,7 @@ This runs `make check` first, then executes pytest.
 Tests are discovered in four locations:
 - `tests/` -- shared and cross-cutting tests
 - `actors/` -- _Actor_-level tests in `actors/<actor>/tests`
-- `services/` -- _Service_-level tests in `services/<system>/<service>/tests/`
+- `services/` -- _Service_-level tests in `services/<plane>/<service>/tests/`
 - `resources/` -- _Resource_-level tests in `resources/<kind>/<resource>/tests`
 
 ------------------------------------------------------------------------
@@ -109,7 +118,7 @@ smoke sidecars because that masks the image's installed dependencies.
 
 ------------------------------------------------------------------------
 ## Adding a New Service
-1. Create `services/<system>/<service>/` with an `__init__.py`.
+1. Create `services/<plane>/<service>/` with an `__init__.py`.
 2. Add a `component.py` exporting a `ServiceManifest` via
    `register_component()` (see [Component Design](component-design.md)).
 3. Implement the _Public API_ in `service.py`.
@@ -122,7 +131,7 @@ smoke sidecars because that masks the image's installed dependencies.
    - Keep runtime settings and typed service contracts aligned with the
      Pydantic usage rules in [Conventions](conventions.md).
 5. Start Brain Core to bootstrap your schema and run migrations.
-6. Add tests in `services/<system>/<service>/tests/`.
+6. Add tests in `services/<plane>/<service>/tests/`.
 
 ------------------------------------------------------------------------
 ## Adding a New Resource
@@ -152,7 +161,7 @@ make format   # auto-format
 ------------------------------------------------------------------------
 ## Database Bootstrapping
 Brain Core bootstraps schemas, creates the `ulid_bin` domain, and runs Alembic
-migrations in _System_-order (_State_ -> _Action_ -> _Control_) during startup.
+migrations in _Plane_-order (_State_ -> _Effect_ -> _Reason_) during startup.
 See the Shared Infrastructure section of
 [Boundaries & Responsibilities](boundaries-and-responsibilities.md) for details.
 

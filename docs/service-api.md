@@ -353,7 +353,7 @@ _Persist one outbound candidate turn and return the recorded row._
 _Record delivery status for one outbound turn._
 
 `record_response(*, meta: EnvelopeMeta, session_id: str, content: str, model: str, provider: str, token_count: int, reasoning_level: str) -> Envelope[bool]`  
-_Backward-compatible wrapper for outbound candidate recording._
+_Persist one outbound response turn and mark it delivered._
 
 `get_session(*, meta: EnvelopeMeta, session_id: str) -> Envelope[SessionRecord]`  
 _Read one Recall session by id._

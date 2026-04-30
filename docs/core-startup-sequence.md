@@ -19,7 +19,7 @@ exists to make startup behavior explicit, deterministic, and reviewable.
 
 3. **Run schema bootstrap + migrations**
    - Provision service schemas/primitives.
-   - Execute service migrations in system order.
+   - Execute service migrations in _Plane_ order (state -> effect -> reason).
    - This step must finish before component instantiation.
 
 4. **Instantiate components from registry graph**
@@ -32,7 +32,7 @@ exists to make startup behavior explicit, deterministic, and reviewable.
    - Phase B: execute `boot()` in DAG/topological dependency order.
 
 6. **Load ops**
-   - Discover and register op lib.
+   - Discover and register op packages.
    - Perform op validation after boot so boot-established runtime state is available.
 
 7. **Run `after_boot(...)` lifecycle hooks**

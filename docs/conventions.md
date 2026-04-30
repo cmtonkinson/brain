@@ -1,9 +1,9 @@
 # Conventions
 This document defines how _Components_ communicate, behave, and enforce rules
-within Brain. For the structural model of _Tiers_, _Systems_, and boundaries,
+within Brain. For the structural model of _Tiers_, _Planes_, and boundaries,
 see [Boundaries & Responsibilities](boundaries-and-responsibilities.md).
 
-> Check the [Glossary](glossary.md) for key terms such as _Tier_, _System_, _Resource_,
+> Check the [Glossary](glossary.md) for key terms such as _Tier_, _Plane_, _Resource_,
 > _Service_, et cetera.
 
 ------------------------------------------------------------------------
@@ -23,8 +23,8 @@ internal East-West traffic among _Services_ uses the in-process Python _Public
 API_ exclusively.
 
 The _Brain Core SDK_ is therefore a thin HTTP client layered on top of the
-published subset of _Service_ _Public APIs_. It currently talks to Brain Core
-over a Unix domain socket and only exposes a limited subset of operations.
+published subset of _Service_ _Public APIs_, and only exposes a limited subset
+of operations.
 
 The _Public API_ and published HTTP surface are not required to be one-to-one.
 A _Service_ may expose _Public API_ methods that are internal-only and therefore
@@ -88,7 +88,7 @@ endpoint.
 - `parent_id`: _optional_ ULID
 - `timestamp`: _required_ int64
 - `kind`: _required_ string (one of `command`, `event`, `result`, `stream`)
-- `source`: _required_ string (e.g. `cli`, `agent`, `inbound`, `job`)
+- `source`: _required_ string (e.g. `cli`, `assistant`, `inbound`, `job`)
 - `principal`: _required_ string (e.g. `operator`, `commitment`, `core`)
 
 _Envelope_ subclasses may append their own metadata. For clarity, `source` is
@@ -98,18 +98,18 @@ _Components_ are required to propagate `principal` unchanged across calls.
 
 **Illustrative (non-literal) example:**
 The _Operator_ requests a reminder in 1 hour. A message is passed from the
-Relay inbound to the Agent like:
+Relay inbound to the Assistant like:
   - `source = "inbound"`
   - `principal = "operator"`
-which results in a message from the Agent to the Scheduler like:
-  - `source = "agent"`
+which results in a message from the Assistant to the Scheduler like:
+  - `source = "assistant"`
   - `principal = "operator"`
 
-An hour later, the schedule fires and the Job invokes the Agent like:
+An hour later, the schedule fires and the Job invokes the Assistant like:
   - `source = "job"`
   - `principal = "operator"`
-which results in a message from the Agent to the Relay like:
-  - `source = "agent"`
+which results in a message from the Assistant to the Relay like:
+  - `source = "assistant"`
   - `principal = "operator"`
 
 ### Tracing
@@ -141,7 +141,7 @@ The _Principal_ is "who the system treats as accountable" for a given request.
 **`operator`** - All "personal assistant" work should ultimately roll up to the
 _Operator_.
 
-**`<service>`** (e.g. `inbound`, `ctlc`) - This represents a _Tier_ 2
+**`<service>`** (e.g. `relay`, `commitment`, `job`) - This represents a _Tier_ 2
 _Service_ acting autonomously. This is used when _Services_ initiate work
 without an immediate upstream request (think scheduled jobs, inbound interrupt,
 etc.)

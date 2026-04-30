@@ -96,7 +96,7 @@ class RecallService(ABC):
         token_count: int,
         reasoning_level: str,
     ) -> Envelope[bool]:
-        """Backward-compatible wrapper for outbound candidate recording."""
+        """Persist one outbound response turn and mark it delivered."""
 
     @abstractmethod
     def update_focus(

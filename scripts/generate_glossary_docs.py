@@ -29,9 +29,21 @@ class GlossaryTerm:
 
 
 def _title_case_term(term: str) -> str:
-    """Return normalized title-cased display text for a glossary term."""
+    """Return normalized title-cased display text for a glossary term.
+
+    All-uppercase tokens (e.g. acronyms like ``SDK``, ``MCP``, ``API``) keep
+    their original casing rather than being collapsed to ``Sdk``.
+    """
     parts = term.split()
-    return " ".join(part[:1].upper() + part[1:].lower() for part in parts if part)
+    rendered: list[str] = []
+    for part in parts:
+        if not part:
+            continue
+        if part.isupper():
+            rendered.append(part)
+        else:
+            rendered.append(part[:1].upper() + part[1:].lower())
+    return " ".join(rendered)
 
 
 def _normalize_definition_terms(*, definition: str, known_terms: list[str]) -> str:

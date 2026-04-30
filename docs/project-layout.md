@@ -10,8 +10,8 @@ conceptual model described in
 ## Top-Level Directories
 | Directory    | Purpose                                            |
 |--------------|----------------------------------------------------|
-| `actors/`    | T3 _Actor_ processes: `agent/`, `cli/`,            |
-|              | `console/`, `worker/`                              |
+| `actors/`    | T3 _Actor_ processes: `assistant/`, `cli/`,        |
+|              | `console/`, `subagent/`, `worker/`                 |
 | `bin/`       | Convenience launcher scripts for local development |
 | `config/`    | Configuration samples and observability templates  |
 | `data/`      | Docker-mounted persistent volumes                  |
@@ -42,6 +42,7 @@ services/
     relay/                      # combined inbound + outbound + approval
   reason/                       # Reason Plane (no resource ownership)
     commitment/
+    delegation/
     ingestion/
     job/
     policy/
@@ -60,10 +61,14 @@ Each _Service_ directory contains a `component.py` with its
 | `implementation.py` | Internal business logic                       |
 | `interfaces.py`     | Abstract interfaces / protocols               |
 | `domain.py`         | Domain models and value objects               |
+| `config.py`         | Service-scoped Pydantic settings model        |
+| `boot.py`           | Service boot/runtime wiring                   |
+| `validation.py`     | Input validation helpers                      |
 | `api.py`            | FastAPI route registrar for SDK-facing routes |
 | `data/`             | `schema.py`, `repository.py`, `runtime.py`    |
 | `migrations/`       | Alembic env and version scripts               |
 | `tests/`            | _Component_-level tests                       |
+| `README.md`         | Service-local notes for contributors          |
 
 ------------------------------------------------------------------------
 ## Resources
@@ -96,10 +101,13 @@ Shared code lives in `lib/`:
 |              | logging, config, observability, embeddings.     |
 |              | See [Conventions](conventions.md).              |
 | `core/`      | Brain Core runtime (T2 _Service_ orchestration) |
+| `agent/`     | Inference loop, tool model, turn state, and     |
+|              | recovery primitives shared by agent _Actors_    |
 | `sdk/`       | _Brain Core SDK_ for T3 _Actors_ (thin HTTP     |
-|              | client over the Core Unix socket)               |
+|              | client over the Core HTTP API)                  |
 | `dashboard/` | Terminal dashboard utilities                    |
 
+------------------------------------------------------------------------
 ## Configuration
 Runtime configuration is loaded by scanning top-level `*.yaml` files in
 `~/.config/brain/` non-recursively. Matching sample groupings are provided

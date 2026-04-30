@@ -427,7 +427,7 @@ class DefaultRecallService(RecallService):
         token_count: int,
         reasoning_level: str,
     ) -> Envelope[bool]:
-        """Backward-compatible wrapper for outbound candidate recording."""
+        """Persist one outbound response turn and mark it delivered."""
         candidate = self.record_outbound_candidate(
             meta=meta,
             session_id=session_id,
