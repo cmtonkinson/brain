@@ -18,11 +18,11 @@ Phased implementation plan and current development status.
 * ~~Requires scheduled/background jobs, policy engine, ingestion pipeline~~
 
 ------------------------------------------------------------------------
-## Phase 3: (⚠️ in progress) Refactor
+## Phase 3: (✅ done) ~Refactor~
 * ~~Define clean subsystem boundaries & responsibilities~~
-* ~~Refactor codebase along clean boundaries with crisp public APIs~~
+* ~~Refactor codebase along crisp boundaries with public APIs~~
 * ~~Extensive testing for enforcement of new semantics~~
-* Review all documentation to ensure truth & alignment with actual system
+* ~~Review all documentation to ensure truth & alignment with actual system~~
 
 ------------------------------------------------------------------------
 ## Phase 4: Voice + telephony + SMS (unstarted)
