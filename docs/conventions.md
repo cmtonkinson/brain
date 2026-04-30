@@ -1,34 +1,34 @@
 # Conventions
-This document defines how _Components_ communicate, behave, and enforce rules
-within Brain. For the structural model of _Tiers_, _Planes_, and boundaries,
+This document defines how *Components* communicate, behave, and enforce rules
+within Brain. For the structural model of *Tiers*, *Planes*, and boundaries,
 see [Boundaries & Responsibilities](boundaries-and-responsibilities.md).
 
-> Check the [Glossary](glossary.md) for key terms such as _Tier_, _Plane_, _Resource_,
-> _Service_, et cetera.
+> Check the [Glossary](glossary.md) for key terms such as *Tier*, *Plane*, *Resource*,
+> *Service*, et cetera.
 
 ------------------------------------------------------------------------
 ## APIs
 TL;DR &mdash; `services/*/*/component.py` exports a list of interfaces which are
-the canonical surface area for a given _Service_.
+the canonical surface area for a given *Service*.
 
-Each _Service_ must define a _Public API_. These _Public APIs_:
-- Are the canonical and authoritative (Python) interface to the _Service_
-- Are the sole permitted surface for other _Component_ callers
-- Define method signatures using envelope-like request/response messages
+Each *Service* must define a *Public API*. These *Public APIs*:
+* Are the canonical and authoritative (Python) interface to the *Service*
+* Are the sole permitted surface for other *Component* callers
+* Define method signatures using envelope-like request/response messages
 
 ### Published HTTP Surface
-The _Public APIs_ are canonical. T3 access is provided by a small published HTTP
+The *Public APIs* are canonical. T3 access is provided by a small published HTTP
 surface implemented in `api.py` modules as FastAPI route registrars, while
-internal East-West traffic among _Services_ uses the in-process Python _Public
+internal East-West traffic among *Services* uses the in-process Python _Public
 API_ exclusively.
 
-The _Brain Core SDK_ is therefore a thin HTTP client layered on top of the
-published subset of _Service_ _Public APIs_, and only exposes a limited subset
+The *Brain Core SDK* is therefore a thin HTTP client layered on top of the
+published subset of *Service* *Public APIs*, and only exposes a limited subset
 of operations.
 
-The _Public API_ and published HTTP surface are not required to be one-to-one.
-A _Service_ may expose _Public API_ methods that are internal-only and therefore
-not published on the _Brain Core SDK_.
+The *Public API* and published HTTP surface are not required to be one-to-one.
+A *Service* may expose *Public API* methods that are internal-only and therefore
+not published on the *Brain Core SDK*.
 
 ------------------------------------------------------------------------
 ## Pydantic Contracts
@@ -36,39 +36,39 @@ Pydantic is the canonical contract system for configuration and typed data
 exchange in Brain.
 
 ### Scope
-- Use `BaseSettings`/`pydantic-settings` for runtime configuration models.
-- Use `BaseModel` for cross-_Service_ and cross-_Tier_ boundary contracts.
-- Use `BaseModel` for shared structured error and envelope primitives.
+* Use `BaseSettings`/`pydantic-settings` for runtime configuration models.
+* Use `BaseModel` for cross-*Service* and cross-*Tier* boundary contracts.
+* Use `BaseModel` for shared structured error and envelope primitives.
 
 ### Required model defaults
-- Set `extra="forbid"` unless there is a concrete, documented reason not to.
-- Set `frozen=True` unless the model is explicitly stateful and mutable by
+* Set `extra="forbid"` unless there is a concrete, documented reason not to.
+* Set `frozen=True` unless the model is explicitly stateful and mutable by
   design.
 
 ### Validation boundaries
-- Validate at ingress boundaries using `model_validate(...)`.
-- Treat validated models as authoritative inside domain logic; avoid re-validating
+* Validate at ingress boundaries using `model_validate(...)`.
+* Treat validated models as authoritative inside domain logic; avoid re-validating
   ad hoc dictionaries throughout call chains.
-- Prefer explicit validation failures with stable error messages over silent
+* Prefer explicit validation failures with stable error messages over silent
   coercion paths.
 
 ### Serialization boundaries
-- Use `model_dump(mode="python")` for in-process structured handoff where a
+* Use `model_dump(mode="python")` for in-process structured handoff where a
   plain mapping is required.
-- Keep transport adapters explicit about mapping to/from wire types.
+* Keep transport adapters explicit about mapping to/from wire types.
 
 ### Contract shape rule
-- Do not maintain parallel contract shapes for the same boundary (for example:
+* Do not maintain parallel contract shapes for the same boundary (for example:
   dataclass + dict + Pydantic for one message type). One boundary contract,
   one canonical typed model.
 
 ------------------------------------------------------------------------
 ## Envelopes
-All cross-_Tier_ and cross-_Service_ communication must use _Envelopes_. An
-_Envelope_ consists of:
-- Metadata
-- Payload
-- Errors
+All cross-*Tier* and cross-*Service* communication must use *Envelopes*. An
+*Envelope* consists of:
+* Metadata
+* Payload
+* Errors
 
 ### Transport API Typing Note
 Published HTTP routes should generally use operation-specific request/response
@@ -77,50 +77,50 @@ where applicable), rather than a single polymorphic wire envelope for every
 endpoint.
 
 ### Envelope Kinds
-**Command Envelope:** Generated by T3 for _Op_ invocation.
+**Command Envelope:** Generated by T3 for *Op* invocation.
 **Event Envelope:** Generated by T2 upon external or system-triggered activity.
-**Result Envelope:** Used for responses to other _Enveloped_ messages.
+**Result Envelope:** Used for responses to other *Enveloped* messages.
 **Stream Envelope:** \[TODO\]/reserved - future real-time streaming support.
 
 ### Metadata (Structured)
-- `envelope_id`: _required_ ULID
-- `trace_id`: _required_ ULID
-- `parent_id`: _optional_ ULID
-- `timestamp`: _required_ int64
-- `kind`: _required_ string (one of `command`, `event`, `result`, `stream`)
-- `source`: _required_ string (e.g. `cli`, `assistant`, `inbound`, `job`)
-- `principal`: _required_ string (e.g. `operator`, `commitment`, `core`)
+* `envelope_id`: *required* ULID
+* `trace_id`: *required* ULID
+* `parent_id`: *optional* ULID
+* `timestamp`: *required* int64
+* `kind`: *required* string (one of `command`, `event`, `result`, `stream`)
+* `source`: *required* string (e.g. `cli`, `assistant`, `inbound`, `job`)
+* `principal`: *required* string (e.g. `operator`, `commitment`, `core`)
 
-_Envelope_ subclasses may append their own metadata. For clarity, `source` is
-the immediate emitting _Component_ for _"this" specific Envelope_, whereas
+*Envelope* subclasses may append their own metadata. For clarity, `source` is
+the immediate emitting *Component* for *"this" specific Envelope*, whereas
 `principal` is the accountable identity (effective authority) for the request.
-_Components_ are required to propagate `principal` unchanged across calls.
+*Components* are required to propagate `principal` unchanged across calls.
 
 **Illustrative (non-literal) example:**
-The _Operator_ requests a reminder in 1 hour. A message is passed from the
+The *Operator* requests a reminder in 1 hour. A message is passed from the
 Relay inbound to the Assistant like:
-  - `source = "inbound"`
-  - `principal = "operator"`
+  * `source = "inbound"`
+  * `principal = "operator"`
 which results in a message from the Assistant to the Scheduler like:
-  - `source = "assistant"`
-  - `principal = "operator"`
+  * `source = "assistant"`
+  * `principal = "operator"`
 
 An hour later, the schedule fires and the Job invokes the Assistant like:
-  - `source = "job"`
-  - `principal = "operator"`
+  * `source = "job"`
+  * `principal = "operator"`
 which results in a message from the Assistant to the Relay like:
-  - `source = "assistant"`
-  - `principal = "operator"`
+  * `source = "assistant"`
+  * `principal = "operator"`
 
 ### Tracing
 A `trace_id` scopes a single execution episode. In the example above, the first
-two _Envelopes_ share the same `trace_id`. The third and fourth share a new
+two *Envelopes* share the same `trace_id`. The third and fourth share a new
 `trace_id` (distinct from the first two), and the third sets `parent_id` to the
-`envelope_id` of the scheduling _Envelope_ from the prior _Trace_.
+`envelope_id` of the scheduling *Envelope* from the prior *Trace*.
 
 This keeps each execution episode independently observable while preserving
-cross-_Trace_ causality for long-term lineage and analysis. This provides for a
-DAG of _Envelopes_ across time, with _Trace_ segments as execution partitions.
+cross-*Trace* causality for long-term lineage and analysis. This provides for a
+DAG of *Envelopes* across time, with *Trace* segments as execution partitions.
 
 ### Payload
 Domain-specific content.
@@ -130,19 +130,19 @@ Domain-specific content.
 > &mdash; Dwight K. Schrute
 
 ### Errors
-Most usually Errors will be present in a Result _Envelope_, but are not invalid
-in any _Envelope_. Errors are a collection of structured objects representing
+Most usually Errors will be present in a Result *Envelope*, but are not invalid
+in any *Envelope*. Errors are a collection of structured objects representing
 some failure mode/state.
 
 ------------------------------------------------------------------------
 ## Principal Identity Model
-The _Principal_ is "who the system treats as accountable" for a given request.
+The *Principal* is "who the system treats as accountable" for a given request.
 
 **`operator`** - All "personal assistant" work should ultimately roll up to the
-_Operator_.
+*Operator*.
 
-**`<service>`** (e.g. `relay`, `commitment`, `job`) - This represents a _Tier_ 2
-_Service_ acting autonomously. This is used when _Services_ initiate work
+**`<service>`** (e.g. `relay`, `commitment`, `job`) - This represents a *Tier* 2
+*Service* acting autonomously. This is used when *Services* initiate work
 without an immediate upstream request (think scheduled jobs, inbound interrupt,
 etc.)
 
@@ -152,33 +152,33 @@ behavior which are explicitly system-meta in nature.
 ------------------------------------------------------------------------
 ## SDKs
 ### Brain SDK
-The _Brain Core SDK_ is the public interface for T3 _Actors_ of Brain Core
-using the published HTTP surface. All T3 _Actors_ must be built on the _Brain
+The *Brain Core SDK* is the public interface for T3 *Actors* of Brain Core
+using the published HTTP surface. All T3 *Actors* must be built on the _Brain
 Core SDK_.
 
 The SDK contains no business logic; it simply exists as an access layer across
-process boundaries to the published subset of T2 _Service_ _Public APIs_.
+process boundaries to the published subset of T2 *Service* *Public APIs*.
 
 ------------------------------------------------------------------------
 ## Error Taxonomy
 Errors must be categorized as:
-- terminal
-- retriable
+* terminal
+* retriable
 
 Errors may carry optional category fields such as:
-- conflict
-- dependency
-- not_found
-- policy
-- validation
+* conflict
+* dependency
+* not_found
+* policy
+* validation
 
 Policy violations are, by definition, terminal, and should not be retried.
 
 ### Transport vs Domain Failure Mapping
-To avoid ambiguity at _Service_ boundaries:
-- **Domain failures** (validation, conflict, not_found, policy) are returned as
+To avoid ambiguity at *Service* boundaries:
+* **Domain failures** (validation, conflict, not_found, policy) are returned as
   typed structured errors in the envelope-like response.
-- **Transport/infrastructure failures** (dependency unavailable, internal
+* **Transport/infrastructure failures** (dependency unavailable, internal
   runtime faults) are surfaced as transport failures at the HTTP boundary.
 
 This keeps domain behavior explicit and machine-readable while preserving normal
@@ -186,8 +186,8 @@ transport semantics for network/runtime outages.
 
 ------------------------------------------------------------------------
 ## Policy Enforcement Rule
-All _Op_ invocations MUST pass through Execution `invoke()`. _Ops_ must not
-directly call other _Ops_ by importing implementations. Policy Service
+All *Op* invocations MUST pass through Execution `invoke()`. *Ops* must not
+directly call other *Ops* by importing implementations. Policy Service
 evaluation is mandatory and recursive.
 
 ### Invocation Lineage and Audit Fields
@@ -195,24 +195,24 @@ Execution and Policy Service must persist structured lineage and policy
 audit metadata for every invocation (allowed or denied).
 
 Required lineage fields:
-- `envelope_id`
-- `trace_id`
-- `parent_id`
-- `invocation_id`
-- `parent_invocation_id`
-- `source`
-- `actor`
-- `channel`
+* `envelope_id`
+* `trace_id`
+* `parent_id`
+* `invocation_id`
+* `parent_invocation_id`
+* `source`
+* `actor`
+* `channel`
 
 Required policy/audit fields:
-- `op_id`
-- `op_version`
-- `policy_decision_id`
-- `policy_regime_id`
-- `allowed` (bool)
-- `reason_codes[]`
-- `obligations[]`
-- `approval proposal token` when approval is required
+* `op_id`
+* `op_version`
+* `policy_decision_id`
+* `policy_regime_id`
+* `allowed` (bool)
+* `reason_codes[]`
+* `obligations[]`
+* `approval proposal token` when approval is required
 
 Nested op calls must mint a new `envelope_id`, set `parent_id` to the
 parent envelope, and route through Execution public invoke API so the
@@ -222,30 +222,30 @@ same policy and audit contract is enforced recursively.
 Policy Service -> Relay approval notifications must be token-only.
 
 Required outbound notification fields:
-- `proposal_token`
-- `op_id`
-- `op_version`
-- `summary`
-- `actor`
-- `channel`
-- `trace_id`
-- `invocation_id`
-- `expires_at`
+* `proposal_token`
+* `op_id`
+* `op_version`
+* `summary`
+* `actor`
+* `channel`
+* `trace_id`
+* `invocation_id`
+* `expires_at`
 
 Relay -> Policy Service correlation payloads must include actor and
 channel plus one of the deterministic correlators:
-- `approval_token`
-- `reply_to_proposal_token`
-- `reaction_to_proposal_token`
+* `approval_token`
+* `reply_to_proposal_token`
+* `reaction_to_proposal_token`
 
 `message_text` may be included for immediate next-turn correlation and
 disambiguation fallback.
 
 ------------------------------------------------------------------------
 ## Process Assumptions
-- T3 _Actors_ are process-and-network isolated
-- T2 _Services_ are process-local, but restricted to _Public APIs_
-- T1 _Substrates_ and _Adapters_ are non-local
+* T3 *Actors* are process-and-network isolated
+* T2 *Services* are process-local, but restricted to *Public APIs*
+* T1 *Substrates* and *Adapters* are non-local
 
 
 ------------------------------------------------------------------------

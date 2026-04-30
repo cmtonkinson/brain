@@ -2,8 +2,8 @@
 This document describes Brain's optional local observability stack: what it
 runs, how components connect, and which `.env` values must be set before use.
 
-> Check the [Glossary](glossary.md) for key terms such as _Component_,
-> _Substrate_, _Trace_, and _Resource_.
+> Check the [Glossary](glossary.md) for key terms such as *Component*,
+> *Substrate*, *Trace*, and *Resource*.
 
 ------------------------------------------------------------------------
 ## Stack
@@ -14,18 +14,18 @@ docker compose -f docker-compose.yaml -f docker-compose.observability.yaml up --
 ```
 
 The base stack provides the shared `seaweedfs` service. The overlay adds:
-- `otel-collector`: receives Brain OTLP over HTTP and forwards traces to
+* `otel-collector`: receives Brain OTLP over HTTP and forwards traces to
   Langfuse, exposes Brain metrics for Prometheus, and forwards Brain file logs
   to Loki.
-- `prometheus`: scrapes the OTel Collector Prometheus exporter for Brain
+* `prometheus`: scrapes the OTel Collector Prometheus exporter for Brain
   metrics.
-- `loki`: stores Brain structured logs exported through the OTel Collector.
-- `grafana`: UI with Prometheus and Loki datasources provisioned.
-- `langfuse-web`: web UI and API at `http://localhost:3000`.
-- `langfuse-worker`: background ingestion and processing.
-- `clickhouse`: Langfuse event analytics storage.
-- `seaweedfs-bucket-init`: creates the `langfuse` bucket.
-- `langfuse-postgres-init`: creates the dedicated `langfuse` Postgres user and
+* `loki`: stores Brain structured logs exported through the OTel Collector.
+* `grafana`: UI with Prometheus and Loki datasources provisioned.
+* `langfuse-web`: web UI and API at `http://localhost:3000`.
+* `langfuse-worker`: background ingestion and processing.
+* `clickhouse`: Langfuse event analytics storage.
+* `seaweedfs-bucket-init`: creates the `langfuse` bucket.
+* `langfuse-postgres-init`: creates the dedicated `langfuse` Postgres user and
   database in the existing `postgres` service.
 
 Brain's existing Postgres, Valkey, and SeaweedFS services are reused. Langfuse
@@ -37,15 +37,15 @@ data.
 ## Storage
 All service data is stored in Docker named volumes for performance (avoids
 macOS VirtioFS overhead on write-heavy workloads):
-- `brain-postgres` — Postgres data (Brain + Langfuse databases)
-- `brain-valkey` — Valkey append-only file
-- `brain-qdrant` — Qdrant vector storage
-- `brain-seaweedfs` — SeaweedFS blob data
-- `brain-prometheus` — Prometheus TSDB
-- `brain-loki` — Loki chunk storage
-- `brain-grafana` — Grafana dashboards and state
-- `brain-clickhouse-data` — ClickHouse data
-- `brain-clickhouse-logs` — ClickHouse logs
+* `brain-postgres` — Postgres data (Brain + Langfuse databases)
+* `brain-valkey` — Valkey append-only file
+* `brain-qdrant` — Qdrant vector storage
+* `brain-seaweedfs` — SeaweedFS blob data
+* `brain-prometheus` — Prometheus TSDB
+* `brain-loki` — Loki chunk storage
+* `brain-grafana` — Grafana dashboards and state
+* `brain-clickhouse-data` — ClickHouse data
+* `brain-clickhouse-logs` — ClickHouse logs
 
 `clickhouse-data-init` prepares the ClickHouse volume directories and sets
 ownership to the UID/GID used by the ClickHouse container. Override
@@ -137,12 +137,12 @@ the Langfuse UI or reset the Langfuse database.
 ## SeaweedFS Notes
 Langfuse requires S3-compatible blob storage. Brain uses SeaweedFS instead of
 MinIO for this surface. Langfuse is configured with path-style S3 addressing:
-- `LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=http://seaweedfs:8333`
-- `LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE=true`
-- `LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT=http://localhost:8333`
-- `LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE=true`
-- `LANGFUSE_S3_BATCH_EXPORT_ENDPOINT=http://seaweedfs:8333`
-- `LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE=true`
+* `LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=http://seaweedfs:8333`
+* `LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE=true`
+* `LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT=http://localhost:8333`
+* `LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE=true`
+* `LANGFUSE_S3_BATCH_EXPORT_ENDPOINT=http://seaweedfs:8333`
+* `LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE=true`
 
 The base compose stack starts SeaweedFS S3 without credential enforcement. The
 SeaweedFS access key and secret are still supplied to Langfuse and bucket-init
@@ -162,18 +162,18 @@ docker compose -f docker-compose.yaml -f docker-compose.observability.yaml up --
 ```
 
 Expected first-boot behavior:
-- `langfuse-postgres-init` exits successfully after creating the `langfuse`
+* `langfuse-postgres-init` exits successfully after creating the `langfuse`
   role/database if missing.
-- `clickhouse-data-init` exits successfully after creating and owning the
+* `clickhouse-data-init` exits successfully after creating and owning the
   ClickHouse volume directories.
-- `seaweedfs-bucket-init` exits successfully after creating the `langfuse`
+* `seaweedfs-bucket-init` exits successfully after creating the `langfuse`
   bucket if missing.
-- `brain-core` and `brain-assistant` set observability enabled via compose
+* `brain-core` and `brain-assistant` set observability enabled via compose
   environment overrides and write structured file logs under `./logs/` for
   collector ingestion.
-- The Grafana UI is reachable at `http://localhost:3001` with Prometheus and
+* The Grafana UI is reachable at `http://localhost:3001` with Prometheus and
   Loki datasources provisioned.
-- The Langfuse UI is reachable at `http://localhost:3000`.
+* The Langfuse UI is reachable at `http://localhost:3000`.
 
 To verify trace flow, send one Brain turn through the console or Signal path and
 then inspect the Langfuse project for OTel traces with `brain.trace_id` span

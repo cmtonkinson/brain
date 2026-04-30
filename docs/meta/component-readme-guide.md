@@ -5,9 +5,9 @@ Brain.
 ------------------------------------------------------------------------
 ## Scope
 This guide applies to:
-- `services/<system>/<service>/README.md`
-- `resources/<kind>/<resource>/README.md`
-- `actors/<actor>/README.md`
+* `services/<system>/<service>/README.md`
+* `resources/<kind>/<resource>/README.md`
+* `actors/<actor>/README.md`
 
 Use this document as the source of truth for component README structure and
 content expectations.
@@ -15,10 +15,10 @@ content expectations.
 ------------------------------------------------------------------------
 ## Goals
 Each component README should help a reviewer or contributor quickly answer:
-- What is this _Component_?
-- What does it own?
-- How does it interact with the rest of Brain?
-- Where are the key code paths, tests, and configuration surfaces?
+* What is this *Component*?
+* What does it own?
+* How does it interact with the rest of Brain?
+* Where are the key code paths, tests, and configuration surfaces?
 
 ------------------------------------------------------------------------
 ## Required Structure
@@ -34,31 +34,31 @@ Every component README should include these sections in this order:
 
 ------------------------------------------------------------------------
 ## Content Rules
-- Keep it breadth-first and concise.
-- Prefer links to canonical global docs over restating global doctrine.
-- Describe current behavior only.
-- Do not include migration narratives or compatibility notes.
-- Use concrete paths and module names so contributors can jump directly to code.
+* Keep it breadth-first and concise.
+* Prefer links to canonical global docs over restating global doctrine.
+* Describe current behavior only.
+* Do not include migration narratives or compatibility notes.
+* Use concrete paths and module names so contributors can jump directly to code.
 
 ------------------------------------------------------------------------
 ## Type-Specific Emphasis
 ### Service READMEs
 Emphasize:
-- Public API surface (`service.py`, `api.py`)
-- owned _Resource_ components
-- cross-service dependencies
+* Public API surface (`service.py`, `api.py`)
+* owned *Resource* components
+* cross-service dependencies
 
 ### Resource READMEs
 Emphasize:
-- owning _Service_ component(s)
-- side-effect boundaries
-- substrate/adapter contract and health/error behavior
+* owning *Service* component(s)
+* side-effect boundaries
+* substrate/adapter contract and health/error behavior
 
 ### Actor READMEs
 Emphasize:
-- entrypoints and runtime triggers
-- Brain SDK usage and external integration boundaries
-- policy and control flow handoff to T2 services
+* entrypoints and runtime triggers
+* Brain SDK usage and external integration boundaries
+* policy and control flow handoff to T2 services
 
 ------------------------------------------------------------------------
 ## Minimal Authoring Template

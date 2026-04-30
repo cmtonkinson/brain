@@ -13,7 +13,7 @@ DOC_NAME = "Op Catalog"
 DOC_TITLE = f"# {DOC_NAME}"
 HR = "------------------------------------------------------------------------"
 DOC_GENERATED_NOTE = (
-    "_This document is generated from `ops/**/op.json`. Do not edit by hand._"
+    "*This document is generated from `ops/**/op.json`. Do not edit by hand.*"
 )
 DOC_EMPTY_MESSAGE = "No enabled ops were found."
 CHECK_OUT_OF_DATE_MESSAGE = "Op docs are out of date. Run: make docs"
@@ -165,7 +165,7 @@ def _pipeline_mapping_suffix(step: dict[str, Any]) -> str:
         f"{consumer} <- {producer}"
         for consumer, producer in sorted(input_mapping.items())
     )
-    return f" _({pairs})_"
+    return f" *({pairs})*"
 
 
 def _render_schema_block(title: str, schema: dict[str, Any] | None) -> list[str]:
@@ -217,7 +217,7 @@ def _render_field_line(
     if "default" in schema:
         meta.append(f"default={schema['default']!r}")
 
-    line = f"- `{name}` _({', '.join(meta)})_"
+    line = f"* `{name}` *({', '.join(meta)})*"
     description = _description(schema)
     if description:
         line += f" {description}"
@@ -226,7 +226,7 @@ def _render_field_line(
 
 def _render_value_line(schema: dict[str, Any]) -> str:
     """Render one non-object schema as a single descriptive bullet."""
-    line = f"- `{_schema_label(schema)}`"
+    line = f"* `{_schema_label(schema)}`"
     description = _description(schema)
     if description:
         line += f": {description}"

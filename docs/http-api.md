@@ -1,315 +1,315 @@
 # HTTP API
-_This document is generated from `lib/core/health_api.py` and `services/*/*/api.py`, with route intent from `docs/meta/http-routes.yaml`. Do not edit by hand._
+*This document is generated from `lib/core/health_api.py` and `services/*/*/api.py`, with route intent from `docs/meta/http-routes.yaml`. Do not edit by hand.*
 
 ------------------------------------------------------------------------
 ## `lib/core/health_api.py`
 `GET /health` &mdash; full-system diagnostic health check  
-_Handler: `health`_
-_Response: `CoreHealthResult`_
+*Handler: `health`*
+*Response: `CoreHealthResult`*
 
 ------------------------------------------------------------------------
 ## `services/effect/execution/api.py`
 `POST /ops/always-on` &mdash; return full descriptors for the configured always-on ops  
-_Handler: `list_always_on_ops`_
-_Response: `_DescribeResponse`_
+*Handler: `list_always_on_ops`*
+*Response: `_DescribeResponse`*
 
 
 `POST /ops/describe` &mdash; enumerate all active ops  
-_Handler: `describe_ops`_
-_Response: `_DescribeResponse`_
+*Handler: `describe_ops`*
+*Response: `_DescribeResponse`*
 
 
 `POST /ops/describe-one` &mdash; return one full Op descriptor by op_id  
-_Handler: `describe_op`_
-_Response: `_DescribeOneResponse`_
+*Handler: `describe_op`*
+*Response: `_DescribeOneResponse`*
 
 
 `POST /ops/dynamic/classifications` &mdash; list observed dynamic ops and persisted classifications  
-_Handler: `list_dynamic_op_classifications`_
-_Response: `_DynamicOpClassificationListResponse`_
+*Handler: `list_dynamic_op_classifications`*
+*Response: `_DynamicOpClassificationListResponse`*
 
 
 `POST /ops/dynamic/classify` &mdash; persist one operator-supplied dynamic op classification  
-_Handler: `classify_dynamic_op`_
-_Response: `_DynamicOpClassificationListResponse`_
+*Handler: `classify_dynamic_op`*
+*Response: `_DynamicOpClassificationListResponse`*
 
 
 `POST /ops/invoke` &mdash; execute tool calls  
-_Handler: `invoke_op`_
-_Response: `_InvokeResponse`_
+*Handler: `invoke_op`*
+*Response: `_InvokeResponse`*
 
 
 `POST /ops/search` &mdash; semantically search the enabled Op catalog and return compact matches  
-_Handler: `search_ops`_
-_Response: `_SearchResponse`_
+*Handler: `search_ops`*
+*Response: `_SearchResponse`*
 
 
 `POST /ops/slash-lookup` &mdash; resolve one op descriptor by slash command name or alias  
-_Handler: `slash_lookup`_
-_Response: `_SlashLookupResponse`_
+*Handler: `slash_lookup`*
+*Response: `_SlashLookupResponse`*
 
 
 `POST /ops/tool-system-hints` &mdash; return compact orientation hints for systems reachable through tools  
-_Handler: `list_tool_system_hints`_
-_Response: `_ToolSystemHintsResponse`_
+*Handler: `list_tool_system_hints`*
+*Response: `_ToolSystemHintsResponse`*
 
 ------------------------------------------------------------------------
 ## `services/effect/language/api.py`
 `POST /lms/chat` &mdash; direct access to model inference without Execution/Policy overhead  
-_Handler: `language_chat`_
-_Response: `_ChatResponse`_
+*Handler: `language_chat`*
+*Response: `_ChatResponse`*
 
 
 `POST /lms/chat-with-tools` &mdash; direct access to tool-capable model inference without Execution/Policy overhead  
-_Handler: `language_chat_with_tools`_
-_Response: `_ChatWithToolsResponse`_
+*Handler: `language_chat_with_tools`*
+*Response: `_ChatWithToolsResponse`*
 
 ------------------------------------------------------------------------
 ## `services/reason/commitment/api.py`
 `POST /commitment/create` &mdash; create a commitment directly or persist a creation proposal  
-_Handler: `create_commitment`_
+*Handler: `create_commitment`*
 
 
 `POST /commitment/extract-candidates` &mdash; extract zero or more commitment candidate signals from arbitrary text  
-_Handler: `extract_commitment_candidates`_
+*Handler: `extract_commitment_candidates`*
 
 
 `POST /commitment/get` &mdash; read one commitment by id  
-_Handler: `get_commitment`_
+*Handler: `get_commitment`*
 
 
 `POST /commitment/health` &mdash; return Commitment Service readiness status  
-_Handler: `health`_
+*Handler: `health`*
 
 
 `POST /commitment/history` &mdash; return one commitment plus its progress and transition history  
-_Handler: `get_history`_
+*Handler: `get_history`*
 
 
 `POST /commitment/list` &mdash; list commitments with optional state filter and cursor pagination  
-_Handler: `list_commitments`_
+*Handler: `list_commitments`*
 
 
 `POST /commitment/progress` &mdash; record one progress event for a commitment  
-_Handler: `record_progress`_
+*Handler: `record_progress`*
 
 
 `POST /commitment/review-items` &mdash; list review items for one persisted review run  
-_Handler: `get_review_items`_
+*Handler: `get_review_items`*
 
 
 `POST /commitment/review-run` &mdash; read one persisted commitment review run by id  
-_Handler: `get_review_run`_
+*Handler: `get_review_run`*
 
 
 `POST /commitment/transition` &mdash; apply one commitment state transition or persist a transition proposal  
-_Handler: `transition_commitment`_
+*Handler: `transition_commitment`*
 
 
 `POST /commitment/update` &mdash; update one commitment without changing lifecycle state  
-_Handler: `update_commitment`_
+*Handler: `update_commitment`*
 
 ------------------------------------------------------------------------
 ## `services/reason/delegation/api.py`
 `POST /delegation/cancel` &mdash; request cancellation of one queued or running subagent invocation  
-_Handler: `cancel`_
-_Response: `_CancelResponse`_
-_Summary: Request cancellation of a queued or running invocation._
+*Handler: `cancel`*
+*Response: `_CancelResponse`*
+*Summary: Request cancellation of a queued or running invocation.*
 
 
 `POST /delegation/claim` &mdash; atomically claim the next queued subagent invocation for the Subagent Actor  
-_Handler: `claim`_
-_Response: `_ClaimResponse`_
-_Summary: Claim the oldest queued invocation for a Subagent Actor._
+*Handler: `claim`*
+*Response: `_ClaimResponse`*
+*Summary: Claim the oldest queued invocation for a Subagent Actor.*
 
 
 `POST /delegation/finalize` &mdash; apply terminal status to one subagent invocation  
-_Handler: `finalize`_
-_Response: `_ResultResponse`_
-_Summary: Apply terminal status to one invocation row._
+*Handler: `finalize`*
+*Response: `_ResultResponse`*
+*Summary: Apply terminal status to one invocation row.*
 
 
 `POST /delegation/invoke` &mdash; queue one delegated subagent invocation  
-_Handler: `invoke`_
-_Response: `_StartedResponse`_
-_Summary: Queue one delegated invocation and return its identifier._
+*Handler: `invoke`*
+*Response: `_StartedResponse`*
+*Summary: Queue one delegated invocation and return its identifier.*
 
 
 `POST /delegation/invoke-and-wait` &mdash; queue one delegated subagent invocation and block until terminal state  
-_Handler: `invoke_and_wait`_
-_Response: `_ResultResponse`_
-_Summary: Queue one delegated invocation and block until terminal state._
+*Handler: `invoke_and_wait`*
+*Response: `_ResultResponse`*
+*Summary: Queue one delegated invocation and block until terminal state.*
 
 
 `POST /delegation/record-turn` &mdash; increment per-turn counters and return whether to keep running  
-_Handler: `record_turn`_
-_Response: `_TurnDecisionResponse`_
-_Summary: Bump turn count and re-evaluate budget for one invocation._
+*Handler: `record_turn`*
+*Response: `_TurnDecisionResponse`*
+*Summary: Bump turn count and re-evaluate budget for one invocation.*
 
 
 `POST /delegation/status` &mdash; return current status projection for one subagent invocation  
-_Handler: `get_status`_
-_Response: `_StatusResponse`_
-_Summary: Return the current status projection for one invocation._
+*Handler: `get_status`*
+*Response: `_StatusResponse`*
+*Summary: Return the current status projection for one invocation.*
 
 
 `POST /delegation/wait` &mdash; block until a previously queued subagent invocation reaches terminal state  
-_Handler: `wait`_
-_Response: `_ResultResponse`_
-_Summary: Block until a previously queued invocation reaches terminal state._
+*Handler: `wait`*
+*Response: `_ResultResponse`*
+*Summary: Block until a previously queued invocation reaches terminal state.*
 
 ------------------------------------------------------------------------
 ## `services/reason/ingestion/api.py`
 `POST /ingestion/get` &mdash; read one ingestion record by id  
-_Handler: `get_ingestion`_
+*Handler: `get_ingestion`*
 
 
 `POST /ingestion/health` &mdash; return Ingestion Service readiness status  
-_Handler: `health`_
+*Handler: `health`*
 
 
 `POST /ingestion/list` &mdash; list ingestions with optional status filter and cursor pagination  
-_Handler: `list_ingestions`_
+*Handler: `list_ingestions`*
 
 
 `POST /ingestion/replay` &mdash; replay an ingestion from the named stage forward  
-_Handler: `replay_ingestion`_
+*Handler: `replay_ingestion`*
 
 
 `POST /ingestion/results` &mdash; return stage-ordered artifact outcomes for one ingestion  
-_Handler: `get_ingestion_results`_
+*Handler: `get_ingestion_results`*
 
 
 `POST /ingestion/retry-stage` &mdash; retry one named stage for an existing ingestion  
-_Handler: `retry_ingestion_stage`_
+*Handler: `retry_ingestion_stage`*
 
 
 `POST /ingestion/status` &mdash; return current status snapshot for one ingestion  
-_Handler: `get_ingestion_status`_
+*Handler: `get_ingestion_status`*
 
 
 `POST /ingestion/submit` &mdash; validate and submit one ingestion attempt; runs store stage inline  
-_Handler: `submit_ingestion`_
+*Handler: `submit_ingestion`*
 
 ------------------------------------------------------------------------
 ## `services/reason/job/api.py`
 `POST /jobs/audits/list` &mdash; list audit entries for one job with cursor pagination  
-_Handler: `list_job_audits`_
+*Handler: `list_job_audits`*
 
 
 `POST /jobs/cancel` &mdash; cancel a job and clear its next_run  
-_Handler: `cancel_job`_
+*Handler: `cancel_job`*
 
 
 `POST /jobs/create` &mdash; create a job intent, job record, and initial audit entry  
-_Handler: `create_job`_
+*Handler: `create_job`*
 
 
 `POST /jobs/executions/claim` &mdash; atomically claim the next queued execution for a Worker Actor  
-_Handler: `claim_next_execution`_
+*Handler: `claim_next_execution`*
 
 
 `POST /jobs/executions/complete` &mdash; report a successful execution result from a Worker Actor  
-_Handler: `complete_execution`_
+*Handler: `complete_execution`*
 
 
 `POST /jobs/executions/fail` &mdash; report a failed execution result from a Worker Actor  
-_Handler: `fail_execution`_
+*Handler: `fail_execution`*
 
 
 `POST /jobs/executions/get` &mdash; read one job execution by id  
-_Handler: `get_execution`_
+*Handler: `get_execution`*
 
 
 `POST /jobs/executions/list` &mdash; list executions for one job with cursor pagination  
-_Handler: `list_executions`_
+*Handler: `list_executions`*
 
 
 `POST /jobs/get` &mdash; read one job by id  
-_Handler: `get_job`_
+*Handler: `get_job`*
 
 
 `POST /jobs/health` &mdash; return Job Service and provider health state  
-_Handler: `health`_
+*Handler: `health`*
 
 
 `POST /jobs/list` &mdash; list jobs with optional filters and cursor pagination  
-_Handler: `list_jobs`_
+*Handler: `list_jobs`*
 
 
 `POST /jobs/pause` &mdash; transition a job from active to paused  
-_Handler: `pause_job`_
+*Handler: `pause_job`*
 
 
 `POST /jobs/predicate-evaluations/list` &mdash; list predicate evaluation records for one job  
-_Handler: `list_predicate_evaluations`_
+*Handler: `list_predicate_evaluations`*
 
 
 `POST /jobs/resume` &mdash; transition a job from paused to active and recompute next_run  
-_Handler: `resume_job`_
+*Handler: `resume_job`*
 
 
 `POST /jobs/run-now` &mdash; immediately queue an execution for an active or paused job  
-_Handler: `run_job_now`_
+*Handler: `run_job_now`*
 
 
 `POST /jobs/update` &mdash; update mutable fields on an existing job  
-_Handler: `update_job`_
+*Handler: `update_job`*
 
 ------------------------------------------------------------------------
 ## `services/reason/recall/api.py`
 `POST /memory/assemble_context` &mdash; assemble Recall context for one inbound turn  
-_Handler: `assemble_context`_
-_Response: `_AssembleContextResponse`_
-_Summary: Append one inbound message and return the assembled Recall context block._
+*Handler: `assemble_context`*
+*Response: `_AssembleContextResponse`*
+*Summary: Append one inbound message and return the assembled Recall context block.*
 
 
 `POST /memory/assemble_snapshot` &mdash; return the stable historical Recall snapshot without the live inbound turn  
-_Handler: `assemble_snapshot`_
-_Response: `_AssembleSnapshotResponse`_
-_Summary: Return the historical Recall context snapshot without the live turn._
+*Handler: `assemble_snapshot`*
+*Response: `_AssembleSnapshotResponse`*
+*Summary: Return the historical Recall context snapshot without the live turn.*
 
 
 `POST /memory/compact_dialogue` &mdash; force-summarize all visible turns and advance dialogue frontier  
-_Handler: `compact_dialogue`_
-_Response: `_SessionResponse`_
-_Summary: Force-summarize all visible turns and advance dialogue frontier._
+*Handler: `compact_dialogue`*
+*Response: `_SessionResponse`*
+*Summary: Force-summarize all visible turns and advance dialogue frontier.*
 
 
 `POST /memory/create_session` &mdash; create one new Recall session for the Assistant  
-_Handler: `create_session`_
-_Response: `_CreateSessionResponse`_
-_Summary: Create one Recall session and return only the session identifier._
+*Handler: `create_session`*
+*Response: `_CreateSessionResponse`*
+*Summary: Create one Recall session and return only the session identifier.*
 
 
 `POST /memory/get_latest_or_create_session` &mdash; return the latest Recall session id or create one for the Assistant  
-_Handler: `get_latest_or_create_session`_
-_Response: `_CreateSessionResponse`_
-_Summary: Return the latest Recall session id or create one when none exist._
+*Handler: `get_latest_or_create_session`*
+*Response: `_CreateSessionResponse`*
+*Summary: Return the latest Recall session id or create one when none exist.*
 
 
 `POST /memory/record_inbound_turn` &mdash; persist one inbound Recall turn before prompt assembly  
-_Handler: `record_inbound_turn`_
-_Response: `_TurnResponse`_
-_Summary: Persist one inbound turn and return the authoritative turn record._
+*Handler: `record_inbound_turn`*
+*Response: `_TurnResponse`*
+*Summary: Persist one inbound turn and return the authoritative turn record.*
 
 
 `POST /memory/record_outbound_candidate` &mdash; persist one outbound Recall candidate turn before delivery  
-_Handler: `record_outbound_candidate`_
-_Response: `_TurnResponse`_
-_Summary: Persist one outbound candidate turn and return the authoritative row._
+*Handler: `record_outbound_candidate`*
+*Response: `_TurnResponse`*
+*Summary: Persist one outbound candidate turn and return the authoritative row.*
 
 
 `POST /memory/record_outbound_delivery` &mdash; persist the final delivery state for one outbound Recall turn  
-_Handler: `record_outbound_delivery`_
-_Response: `_BoolResponse`_
-_Summary: Persist one outbound delivery result._
+*Handler: `record_outbound_delivery`*
+*Response: `_BoolResponse`*
+*Summary: Persist one outbound delivery result.*
 
 
 `POST /memory/record_response` &mdash; persist one outbound Recall response turn  
-_Handler: `record_response`_
-_Response: `_BoolResponse`_
-_Summary: Append one outbound response turn with response metadata._
+*Handler: `record_response`*
+*Response: `_BoolResponse`*
+*Summary: Append one outbound response turn with response metadata.*
 
 
 ------------------------------------------------------------------------

@@ -3,14 +3,14 @@ This document maps the repository's directory structure to the
 conceptual model described in
 [Boundaries & Responsibilities](boundaries-and-responsibilities.md).
 
-> Check the [Glossary](glossary.md) for key terms such as _Tier_,
-> _Plane_, _Resource_, _Service_, et cetera.
+> Check the [Glossary](glossary.md) for key terms such as *Tier*,
+> *Plane*, *Resource*, *Service*, et cetera.
 
 ------------------------------------------------------------------------
 ## Top-Level Directories
 | Directory    | Purpose                                            |
 |--------------|----------------------------------------------------|
-| `actors/`    | T3 _Actor_ processes: `assistant/`, `cli/`,        |
+| `actors/`    | T3 *Actor* processes: `assistant/`, `cli/`,        |
 |              | `console/`, `subagent/`, `worker/`                 |
 | `bin/`       | Convenience launcher scripts for local development |
 | `config/`    | Configuration samples and observability templates  |
@@ -19,16 +19,16 @@ conceptual model described in
 | `img/`       | Diagrams and images referenced by docs and README  |
 | `lib/`       | Shared Python packages (see below)                 |
 | `logs/`      | Runtime log output                                 |
-| `ops/`       | _Op_ packages (see [Op Design](op-design.md))      |
-| `resources/` | T1 _Resource_ implementations                      |
+| `ops/`       | *Op* packages (see [Op Design](op-design.md))      |
+| `resources/` | T1 *Resource* implementations                      |
 | `scripts/`   | Build, generation, and smoke-test scripts          |
-| `services/`  | T2 _Service_ implementations                       |
+| `services/`  | T2 *Service* implementations                       |
 | `tests/`     | Cross-cutting and shared test infrastructure       |
 
 ------------------------------------------------------------------------
 ## Services
-_Services_ follow the convention `services/<system>/<service>/`.
-The three _Planes_ map directly to subdirectories:
+*Services* follow the convention `services/<system>/<service>/`.
+The three *Planes* map directly to subdirectories:
 ```
 services/
   state/                        # State Plane (substrate-owners)
@@ -50,14 +50,14 @@ services/
     utility/
 ```
 
-Each _Service_ directory contains a `component.py` with its
-`ServiceManifest` registration. A fully built-out _Service_
+Each *Service* directory contains a `component.py` with its
+`ServiceManifest` registration. A fully built-out *Service*
 (e.g. `embedding/`) includes:
 
 | File/Dir            | Role                                          |
 |---------------------|-----------------------------------------------|
 | `component.py`      | `ServiceManifest` declaration & registration  |
-| `service.py`        | _Public API_ class (canonical interface)      |
+| `service.py`        | *Public API* class (canonical interface)      |
 | `implementation.py` | Internal business logic                       |
 | `interfaces.py`     | Abstract interfaces / protocols               |
 | `domain.py`         | Domain models and value objects               |
@@ -67,12 +67,12 @@ Each _Service_ directory contains a `component.py` with its
 | `api.py`            | FastAPI route registrar for SDK-facing routes |
 | `data/`             | `schema.py`, `repository.py`, `runtime.py`    |
 | `migrations/`       | Alembic env and version scripts               |
-| `tests/`            | _Component_-level tests                       |
+| `tests/`            | *Component*-level tests                       |
 | `README.md`         | Service-local notes for contributors          |
 
 ------------------------------------------------------------------------
 ## Resources
-_Resources_ follow the convention `resources/<kind>/<resource>/`:
+*Resources* follow the convention `resources/<kind>/<resource>/`:
 ```
 resources/
   adapters/                     # Adapter Resources (external I/O)
@@ -87,7 +87,7 @@ resources/
     valkey/                     # Cache and queue backend
 ```
 
-Each _Resource_ exports a `MANIFEST` via `component.py` with a
+Each *Resource* exports a `MANIFEST` via `component.py` with a
 `ResourceManifest`.
 
 ------------------------------------------------------------------------
@@ -96,14 +96,14 @@ Shared code lives in `lib/`:
 
 | Package      | Purpose                                         |
 |--------------|-------------------------------------------------|
-| `shared/`    | Cross-cutting utilities: _Component_ registry,  |
+| `shared/`    | Cross-cutting utilities: *Component* registry,  |
 |              | envelope, errors, HTTP wrappers, ULID helpers,  |
 |              | logging, config, observability, embeddings.     |
 |              | See [Conventions](conventions.md).              |
-| `core/`      | Brain Core runtime (T2 _Service_ orchestration) |
+| `core/`      | Brain Core runtime (T2 *Service* orchestration) |
 | `agent/`     | Inference loop, tool model, turn state, and     |
-|              | recovery primitives shared by agent _Actors_    |
-| `sdk/`       | _Brain Core SDK_ for T3 _Actors_ (thin HTTP     |
+|              | recovery primitives shared by agent *Actors*    |
+| `sdk/`       | *Brain Core SDK* for T3 *Actors* (thin HTTP     |
 |              | client over the Core HTTP API)                  |
 | `dashboard/` | Terminal dashboard utilities                    |
 
@@ -117,12 +117,12 @@ and [Conventions](conventions.md) for Pydantic contract rules.
 
 ------------------------------------------------------------------------
 ## Tests
-- `tests/` contains shared test infrastructure and cross-cutting
+* `tests/` contains shared test infrastructure and cross-cutting
   tests.
-- _Component_-level tests live alongside their _Service_ in
+* *Component*-level tests live alongside their *Service* in
   `services/<system>/<service>/tests/`.
-- _Resource_-level tests live alongside their _Resource_.
-- Run all tests with `make test` (see [Development
+* *Resource*-level tests live alongside their *Resource*.
+* Run all tests with `make test` (see [Development
   Guide](development-guide.md)).
 
 

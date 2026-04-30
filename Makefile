@@ -83,7 +83,7 @@ ifeq ($(INTEGRATION),1)
 PYTEST_INTEGRATION_ENV := BRAIN_RUN_INTEGRATION_REAL=1
 endif
 
-.PHONY: all deps deps-upgrade switch-python clean check format test test-only test-all docs up down ps app-up app-down app-down-all o11y-up o11y-down stack-up stack-down integration outline smoke smoke-only smoke-e2e smoke-docker
+.PHONY: all deps deps-upgrade switch-python clean check format test test-only test-all docs docs-check up down ps app-up app-down app-down-all o11y-up o11y-down stack-up stack-down integration outline smoke smoke-only smoke-e2e smoke-docker
 
 define run_gate
 	@set +e; \
@@ -138,17 +138,20 @@ check:
 format:
 	$(PY) -m ruff format .
 
+docs-check:
+	$(call run_gate,Documentation Conventions,$(PY) scripts/check_documentation_conventions.py --check)
+
 ifneq (,$(and $(filter test,$(MAKECMDGOALS)),$(filter docs,$(MAKECMDGOALS))))
 test:
 	@:
 else
-test: check test-only
+test: docs-check check test-only
 endif
 
 test-only:
 	$(call run_gate,$(if $(filter 1,$(INTEGRATION)),Pytest (unit + integration),Pytest (unit)),$(PYTEST_INTEGRATION_ENV) $(PY) -m pytest --quiet tests resources services actors)
 
-test-all: check
+test-all: docs-check check
 	$(MAKE) test-only integration
 	$(MAKE) smoke-only
 	$(MAKE) smoke-e2e
@@ -168,7 +171,7 @@ smoke-e2e:
 smoke-docker:
 	$(call run_gate,Smoke Docker,$(PY) scripts/smoke_docker_turn.py)
 
-smoke: check smoke-only
+smoke: docs-check check smoke-only
 
 smoke-only:
 	$(call run_gate,Pytest Smoke,$(PY) -m pytest --quiet \
@@ -178,8 +181,7 @@ smoke-only:
 		tests/integration/test_agent_e2e_smoke.py)
 
 ifneq (,$(and $(filter test,$(MAKECMDGOALS)),$(filter docs,$(MAKECMDGOALS))))
-docs:
-	$(call run_gate,Documentation Conventions,$(PY) scripts/check_documentation_conventions.py --check)
+docs: docs-check
 else
 docs: $(GLOSSARY_DOC) $(SERVICE_API_DOC) $(HTTP_API_DOC) $(OP_DOC) $(DIAGRAM_PNGS)
 endif

@@ -32,8 +32,8 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 H2_RE = re.compile(r"^##\s+.+")
 DASH_ONLY_RE = re.compile(r"^-+$")
 END_RE = re.compile(r"^_End of (.+)_$")
-STAR_BULLET_RE = re.compile(r"^\s*\*\s+")
-SINGLE_ASTERISK_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+?)\*(?!\*)")
+DASH_BULLET_RE = re.compile(r"^\s*-\s+")
+UNDERSCORE_ITALIC_RE = re.compile(r"(?<![A-Za-z0-9_])_([^_\n]+?)_(?![A-Za-z0-9_])")
 REFERENCE_LINK_DEF_RE = re.compile(r"^\[([^\]]+)\]:\s+(\S+)")
 INLINE_LINK_RE = re.compile(r"(?<!!)(\[[^\]]+\])\(([^)]+)\)")
 
@@ -339,30 +339,31 @@ def _validate_file(*, repo_root: Path, file_path: Path) -> tuple[Violation, ...]
                     )
                 )
 
-        if STAR_BULLET_RE.match(line):
+        if DASH_BULLET_RE.match(line):
             violations.append(
                 Violation(
                     path=rel_path,
                     line=idx,
                     rule="unordered-list-marker",
-                    message="Use '-' for unordered list items, not '*'.",
+                    message="Use '*' for unordered list items, not '-'.",
                 )
             )
 
         line_without_code = _strip_inline_code(line)
-        for match in SINGLE_ASTERISK_ITALIC_RE.finditer(line_without_code):
-            inner = match.group(1)
-            if not re.search(r"[A-Za-z0-9]", inner):
-                continue
-            violations.append(
-                Violation(
-                    path=rel_path,
-                    line=idx,
-                    rule="italic-underscore-style",
-                    message="Use underscores for italics, not single-asterisk emphasis.",
+        if END_RE.match(stripped) is None:
+            for match in UNDERSCORE_ITALIC_RE.finditer(line_without_code):
+                inner = match.group(1)
+                if not re.search(r"[A-Za-z0-9]", inner):
+                    continue
+                violations.append(
+                    Violation(
+                        path=rel_path,
+                        line=idx,
+                        rule="italic-asterisk-style",
+                        message="Use asterisks for italics, not underscore emphasis.",
+                    )
                 )
-            )
-            break
+                break
 
         reference_match = REFERENCE_LINK_DEF_RE.match(stripped)
         if reference_match is not None:

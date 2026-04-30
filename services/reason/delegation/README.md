@@ -2,14 +2,14 @@
 Reason-system T2 service that owns the lifecycle of subagent invocations.
 ------------------------------------------------------------------------
 ## Responsibilities
-- Persist and query the `delegation.invocation` row family.
-- Atomically claim the oldest queued invocation for a Subagent Actor (uses
+* Persist and query the `delegation.invocation` row family.
+* Atomically claim the oldest queued invocation for a Subagent Actor (uses
   `SELECT ... FOR UPDATE SKIP LOCKED`).
-- Track per-turn token deltas and turn counts; enforce per-invocation budget
+* Track per-turn token deltas and turn counts; enforce per-invocation budget
   ceilings (`max_turns`, `budget_tokens`).
-- Reap wallclock-exceeded running invocations via a daemon sweeper.
-- Cascade cancel from a parent invocation to all transitive children.
-- Block in-process callers via `invoke_and_wait` / `wait` until terminal state.
+* Reap wallclock-exceeded running invocations via a daemon sweeper.
+* Cascade cancel from a parent invocation to all transitive children.
+* Block in-process callers via `invoke_and_wait` / `wait` until terminal state.
 ------------------------------------------------------------------------
 ## Public API
 | Method | Purpose |

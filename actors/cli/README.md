@@ -6,14 +6,14 @@ T3 Actor that exposes Brain Core operations as a Typer command-line interface.
 `actors/cli/main.py` is the Phase-1 Brain CLI, implemented with Typer.
 
 Core module roles:
-- `main.py`: entrypoint, Typer app, all command definitions, and rendering helpers
+* `main.py`: entrypoint, Typer app, all command definitions, and rendering helpers
 
 Sub-command groups:
-- `health core` — reports Brain Core readiness across services and resources
-- `lms chat` — submits a prompt to the Language Service
-- `vault get` — retrieves a single vault file by path
-- `vault list` — lists entries under a vault directory path
-- `vault search` — searches vault entries by query string
+* `health core` — reports Brain Core readiness across services and resources
+* `lms chat` — submits a prompt to the Language Service
+* `vault get` — retrieves a single vault file by path
+* `vault list` — lists entries under a vault directory path
+* `vault search` — searches vault entries by query string
 
 Global options (`--socket`, `--timeout`, `--principal`, `--source`,
 `--json`, `--trace-id`, `--parent-id`) are parsed by the `main()` callback and
@@ -21,21 +21,21 @@ stored in a `CliConfig` dataclass on the Typer context object.
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
-CLI Actor is a Tier 3 Actor. It owns no _Resource_ or _Service_ components.
+CLI Actor is a Tier 3 Actor. It owns no *Resource* or *Service* components.
 
 Boundary rules:
-- All Brain Core access is through `BrainSdkClient` (`lib/sdk`).
-- No direct HTTP calls or database access.
-- The external boundary is stdin/stdout/stderr and process exit codes.
+* All Brain Core access is through `BrainSdkClient` (`lib/sdk`).
+* No direct HTTP calls or database access.
+* The external boundary is stdin/stdout/stderr and process exit codes.
 
 ------------------------------------------------------------------------
 ## Interactions
 Primary interactions:
-- `BrainSdkClient` is constructed per command with envelope metadata
+* `BrainSdkClient` is constructed per command with envelope metadata
   (`principal`, `source`, `trace_id`, `parent_id`) forwarded on each SDK call.
-- `lib/sdk` exports `core_health`, `language_chat`, `vault_get`,
+* `lib/sdk` exports `core_health`, `language_chat`, `vault_get`,
   `vault_list`, `vault_search`, `BrainDomainError`, `BrainTransportError`.
-- `lib/sdk/config.py` provides `resolve_target` and
+* `lib/sdk/config.py` provides `resolve_target` and
   `resolve_timeout_seconds` for default option resolution.
 
 ------------------------------------------------------------------------
@@ -52,11 +52,11 @@ Primary interactions:
 
 ------------------------------------------------------------------------
 ## Failure Modes and Error Semantics
-- `BrainDomainError` raised by SDK → exit code 3, message written to stderr.
-- `BrainTransportError` raised by SDK → exit code 4, message written to stderr.
-- Typer validation/usage errors → exit code 2 (Typer default behavior).
-- No retry logic; errors surface immediately.
-- `--json` flag wraps error messages in `{"error": "..."}` JSON on stderr.
+* `BrainDomainError` raised by SDK → exit code 3, message written to stderr.
+* `BrainTransportError` raised by SDK → exit code 4, message written to stderr.
+* Typer validation/usage errors → exit code 2 (Typer default behavior).
+* No retry logic; errors surface immediately.
+* `--json` flag wraps error messages in `{"error": "..."}` JSON on stderr.
 
 ------------------------------------------------------------------------
 ## Configuration Surface
@@ -91,12 +91,12 @@ make test
 
 ------------------------------------------------------------------------
 ## Contributor Notes
-- Keep all Brain Core access through `sdk`; do not call Core directly.
-- Keep rendering logic in `_render_human`, `_looks_like_*`, and `_render_*`
+* Keep all Brain Core access through `sdk`; do not call Core directly.
+* Keep rendering logic in `_render_human`, `_looks_like_*`, and `_render_*`
   helpers; do not inline rendering in command callbacks.
-- Use `_run_command` for all SDK call dispatch; do not open `BrainSdkClient`
+* Use `_run_command` for all SDK call dispatch; do not open `BrainSdkClient`
   outside of it.
-- Add tests for any new commands: at minimum one CliRunner test verifying
+* Add tests for any new commands: at minimum one CliRunner test verifying
   argument forwarding and one rendering-helper unit test.
 
 

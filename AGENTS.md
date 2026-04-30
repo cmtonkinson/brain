@@ -5,10 +5,9 @@ Additional instructions for working in this specific project:
 * @docs/*.md
 * `python -m pytest ...` for targeted verification
 * `ruff [format]` for linting / style enforcement
-* `gmake test docs` for Markdown style verification (<1s)
-* `gmake test` for unit tests (takes ~10)
-* `gmake test integration` for unit+integration tests (~20s)
-* `gmake test-all` for full suite (~2m)
+* `gmake test` for comprehensive basic checks - docs, lint, unit (takes ~12)
+* `gmake test integration` for unit+integration tests (~40s)
+* `gmake test-all` for full suite, incl. e2e smoke tests (~2m)
 * This is a new, unpublished, unsupported project. The author is the only
   contributor, and isn't even a user yet. As such, when making changes:
     * Never keep old naming, docs, functionality, specs, or expectations as

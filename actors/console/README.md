@@ -77,8 +77,8 @@ visible in Console history and vice versa.
 ------------------------------------------------------------------------
 ## Architecture Notes
 The console uses two Cache queues:
-- `console_inbound` — operator messages waiting for the Agent
-- `console_outbound` — Brain responses waiting for the TUI
+* `console_inbound` — operator messages waiting for the Agent
+* `console_outbound` — Brain responses waiting for the TUI
 
 Queue names are configured in `config/core.yaml` under
 `service.inbound.console_queue_name` and

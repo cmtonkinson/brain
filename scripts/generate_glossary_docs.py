@@ -15,7 +15,7 @@ HR = "------------------------------------------------------------------------"
 DEFAULT_INPUT = "docs/meta/glossary.yaml"
 DEFAULT_OUTPUT = "docs/glossary.md"
 GENERATED_NOTE = (
-    "_This document is generated from `docs/meta/glossary.yaml`. Do not edit by hand._"
+    "*This document is generated from `docs/meta/glossary.yaml`. Do not edit by hand.*"
 )
 
 
@@ -77,9 +77,9 @@ def _normalize_definition_terms(*, definition: str, known_terms: list[str]) -> s
             right_char = normalized[end] if end < len(normalized) else ""
 
             # If already italicized, just enforce title casing.
-            if left_char == "_" and right_char == "_":
+            if left_char == "*" and right_char == "*":
                 return _dt
-            return f"_{_dt}_"
+            return f"*{_dt}*"
 
         normalized = pattern.sub(_replace, normalized)
 
@@ -159,9 +159,9 @@ def _render_markdown(*, title: str, terms: list[GlossaryTerm]) -> str:
     """Render glossary markdown in deterministic bullet format."""
     lines = [f"# {DOC_NAME}", GENERATED_NOTE, "", HR, "## Terms"]
     for item in terms:
-        line = f"- **{item.term} &mdash;** {item.definition}"
+        line = f"* **{item.term} &mdash;** {item.definition}"
         if item.note is not None:
-            line += f"\n  _(Note: {item.note})_"
+            line += f"\n  *(Note: {item.note})*"
         lines.append(line)
     lines.append("")
     lines.append("")

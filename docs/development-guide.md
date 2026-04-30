@@ -1,15 +1,15 @@
 # Development Guide
 This document covers how to set up, build, test, and contribute to Brain.
 
-> Check the [Glossary](glossary.md) for key terms such as _Tier_, _Plane_, _Resource_,
-> _Service_, et cetera.
+> Check the [Glossary](glossary.md) for key terms such as *Tier*, *Plane*, *Resource*,
+> *Service*, et cetera.
 
 ------------------------------------------------------------------------
 ## Prerequisites
-- **Python 3.14**
-- **Docker** and **Docker Compose** (for Postgres, Qdrant, and other services)
-- **Ollama** (recommended for embedding, optional for inference)
-- **Obsidian** with the Local REST API plugin
+* **Python 3.14**
+* **Docker** and **Docker Compose** (for Postgres, Qdrant, and other services)
+* **Ollama** (recommended for embedding, optional for inference)
+* **Obsidian** with the Local REST API plugin
 
 ------------------------------------------------------------------------
 ## Environment Setup
@@ -105,10 +105,10 @@ make test integration # unit & integration
 This runs `make check` first, then executes pytest.
 
 Tests are discovered in four locations:
-- `tests/` -- shared and cross-cutting tests
-- `actors/` -- _Actor_-level tests in `actors/<actor>/tests`
-- `services/` -- _Service_-level tests in `services/<plane>/<service>/tests/`
-- `resources/` -- _Resource_-level tests in `resources/<kind>/<resource>/tests`
+* `tests/` -- shared and cross-cutting tests
+* `actors/` -- *Actor*-level tests in `actors/<actor>/tests`
+* `services/` -- *Service*-level tests in `services/<plane>/<service>/tests/`
+* `resources/` -- *Resource*-level tests in `resources/<kind>/<resource>/tests`
 
 ------------------------------------------------------------------------
 ## Docker Build Notes
@@ -121,14 +121,14 @@ smoke sidecars because that masks the image's installed dependencies.
 1. Create `services/<plane>/<service>/` with an `__init__.py`.
 2. Add a `component.py` exporting a `ServiceManifest` via
    `register_component()` (see [Component Design](component-design.md)).
-3. Implement the _Public API_ in `service.py`.
-4. For database-backed _Services_:
-   - Schema name is derived from the `ComponentId`.
-   - Use shared ULID PK helpers targeting `<schema>.ulid_bin`.
-   - Create an Alembic environment under `migrations/`.
-   - See the Shared Infrastructure section of
+3. Implement the *Public API* in `service.py`.
+4. For database-backed *Services*:
+   * Schema name is derived from the `ComponentId`.
+   * Use shared ULID PK helpers targeting `<schema>.ulid_bin`.
+   * Create an Alembic environment under `migrations/`.
+   * See the Shared Infrastructure section of
      [Boundaries & Responsibilities](boundaries-and-responsibilities.md).
-   - Keep runtime settings and typed service contracts aligned with the
+   * Keep runtime settings and typed service contracts aligned with the
      Pydantic usage rules in [Conventions](conventions.md).
 5. Start Brain Core to bootstrap your schema and run migrations.
 6. Add tests in `services/<plane>/<service>/tests/`.
@@ -139,7 +139,7 @@ smoke sidecars because that masks the image's installed dependencies.
    `adapters/`).
 2. Add a `component.py` exporting a `ResourceManifest` via
    `register_component()`.
-3. Set `owner_service_id` to the T2 _Service_ that owns this _Resource_.
+3. Set `owner_service_id` to the T2 *Service* that owns this *Resource*.
 4. See [Component Design](component-design.md) for full registration details.
 
 ------------------------------------------------------------------------
@@ -161,7 +161,7 @@ make format   # auto-format
 ------------------------------------------------------------------------
 ## Database Bootstrapping
 Brain Core bootstraps schemas, creates the `ulid_bin` domain, and runs Alembic
-migrations in _Plane_-order (_State_ -> _Effect_ -> _Reason_) during startup.
+migrations in *Plane*-order (*State* -> *Effect* -> *Reason*) during startup.
 See the Shared Infrastructure section of
 [Boundaries & Responsibilities](boundaries-and-responsibilities.md) for details.
 

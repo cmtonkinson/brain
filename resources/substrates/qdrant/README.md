@@ -1,40 +1,40 @@
 # Qdrant Substrate
-Vector-search _Substrate_ _Resource_ used by the Embedding _Service_ for derived semantic index storage and retrieval.
+Vector-search *Substrate* *Resource* used by the Embedding *Service* for derived semantic index storage and retrieval.
 
 ------------------------------------------------------------------------
 ## What This Component Is
 `resources/substrates/qdrant/` provides the concrete Qdrant integration used by
 Brain:
-- manifest registration (`component.py`)
-- immutable runtime config model (`config.py`)
-- substrate protocol plus typed point/search DTOs (`substrate.py`)
-- qdrant-client construction (`client.py`)
-- concrete substrate implementation (`qdrant_substrate.py`)
+* manifest registration (`component.py`)
+* immutable runtime config model (`config.py`)
+* substrate protocol plus typed point/search DTOs (`substrate.py`)
+* qdrant-client construction (`client.py`)
+* concrete substrate implementation (`qdrant_substrate.py`)
 
 The package exports `QdrantConfig`, `QdrantSubstrate`, `RetrievedPoint`,
 `SearchPoint`, `QdrantClientSubstrate`, and `MANIFEST`.
 
 ------------------------------------------------------------------------
 ## Boundary and Ownership
-This _Resource_ is owned by `service_embedding` via
+This *Resource* is owned by `service_embedding` via
 `owner_service_id` in `resources/substrates/qdrant/component.py`.
 
 It is a Tier 1 substrate focused on vector index operations only. It does not
 own embedding domain invariants, spec lifecycle, or request validation; those
-remain in the Embedding _Service_.
+remain in the Embedding *Service*.
 
 ------------------------------------------------------------------------
 ## Interactions
 Primary system interactions:
-- Embedding constructs per-spec substrates via `QdrantEmbeddingBackend` in
+* Embedding constructs per-spec substrates via `QdrantEmbeddingBackend` in
   `services/state/embedding/qdrant_backend.py`.
-- `QdrantEmbeddingBackend` builds `QdrantConfig` and instantiates
+* `QdrantEmbeddingBackend` builds `QdrantConfig` and instantiates
   `QdrantClientSubstrate` per `spec_id` (one collection per embedding spec).
-- Embedding uses substrate calls to:
-  - ensure collections exist and match dimensions
-  - upsert/delete chunk vectors
-  - run filtered semantic search (`source_id` filter when provided)
-- substrate operations are instrumented via
+* Embedding uses substrate calls to:
+  * ensure collections exist and match dimensions
+  * upsert/delete chunk vectors
+  * run filtered semantic search (`source_id` filter when provided)
+* substrate operations are instrumented via
   `lib.shared.logging.public_api_instrumented`.
 
 ------------------------------------------------------------------------
@@ -51,40 +51,40 @@ Primary system interactions:
 
 ------------------------------------------------------------------------
 ## Failure Modes and Error Semantics
-- invalid substrate configuration fails fast through `QdrantConfig` model
+* invalid substrate configuration fails fast through `QdrantConfig` model
   validation (`extra="forbid"`, required fields, supported distance metric).
-- collection-missing reads/searches are non-throwing and return `None`/empty
+* collection-missing reads/searches are non-throwing and return `None`/empty
   results, which keeps derived-index behavior explicit and predictable.
-- delete against a missing collection returns `False` and does not issue a
+* delete against a missing collection returns `False` and does not issue a
   delete request.
-- collection dimension mismatch is raised by Embedding backend as a `ValueError` when
+* collection dimension mismatch is raised by Embedding backend as a `ValueError` when
   an existing collection does not match the required embedding dimensions.
-- transport/runtime failures from qdrant-client bubble to Embedding, which maps them
+* transport/runtime failures from qdrant-client bubble to Embedding, which maps them
   to service-level structured dependency errors.
 
 ------------------------------------------------------------------------
 ## Configuration Surface
 Substrate-level runtime fields (from `QdrantConfig`):
-- `url`
-- `timeout_seconds`
-- `collection_name`
-- `distance_metric`
+* `url`
+* `timeout_seconds`
+* `collection_name`
+* `distance_metric`
 
 Substrate component settings (`QdrantSettings`) are sourced from:
-- `components.substrate.qdrant.url`
-- `components.substrate.qdrant.request_timeout_seconds`
-- `components.substrate.qdrant.distance_metric`
+* `components.substrate.qdrant.url`
+* `components.substrate.qdrant.request_timeout_seconds`
+* `components.substrate.qdrant.distance_metric`
 
 See `docs/configuration.md` for canonical key definitions and overrides.
 
 ------------------------------------------------------------------------
 ## Testing and Validation
 Component tests:
-- `resources/substrates/qdrant/tests/test_config.py`
-- `resources/substrates/qdrant/tests/test_qdrant_substrate.py`
+* `resources/substrates/qdrant/tests/test_config.py`
+* `resources/substrates/qdrant/tests/test_qdrant_substrate.py`
 
 Related integration/behavior coverage:
-- `services/state/embedding/tests/test_qdrant_backend.py`
+* `services/state/embedding/tests/test_qdrant_backend.py`
 
 Project-wide validation command:
 ```bash
@@ -93,12 +93,12 @@ make test
 
 ------------------------------------------------------------------------
 ## Contributor Notes
-- Keep this component focused on direct Qdrant substrate operations.
-- Keep DTO/config models in Pydantic and aligned with contract rules in
+* Keep this component focused on direct Qdrant substrate operations.
+* Keep DTO/config models in Pydantic and aligned with contract rules in
   `docs/conventions.md`.
-- Do not add service-domain policy or orchestration logic here.
-- Maintain operation instrumentation on public substrate methods.
-- If substrate API shape changes, update this README and Embedding backend callsites
+* Do not add service-domain policy or orchestration logic here.
+* Maintain operation instrumentation on public substrate methods.
+* If substrate API shape changes, update this README and Embedding backend callsites
   together.
 
 

@@ -1,10 +1,10 @@
 # Brain Assistant
 The Brain Assistant is the long-lived T3 actor process that:
-- long-polls Relay inbound for inbound operator instructions
-- uses Recall to assemble per-turn context
-- uses the Brain SDK as its only access path into Core
-- executes Ops as model tools
-- records finalized responses back into Recall
+* long-polls Relay inbound for inbound operator instructions
+* uses Recall to assemble per-turn context
+* uses the Brain SDK as its only access path into Core
+* executes Ops as model tools
+* records finalized responses back into Recall
 
 ------------------------------------------------------------------------
 ## Turn Execution Model
@@ -16,36 +16,36 @@ The Agent sends the new inbound message to `memory/assemble_context`.
 
 Recall appends that inbound turn to the session and returns the authoritative
 session context block:
-- focus
-- recent conversation summary
-- recent dialogue turns
-- reference snippets
+* focus
+* recent conversation summary
+* recent dialogue turns
+* reference snippets
 
 This is the durable cross-turn conversational state.
 
 ### 2. Turn-local orchestration state
 The Agent assembles the canonical inference request for Language. That request is
 provider-agnostic and contains:
-- system blocks (assistant persona, operator profile, instructions)
-- Recall-owned `memory_context`
-- current operator message
-- available tools
-- ordered intra-turn live events (assistant text, tool calls, tool results)
-- controls and cache hints
+* system blocks (assistant persona, operator profile, instructions)
+* Recall-owned `memory_context`
+* current operator message
+* available tools
+* ordered intra-turn live events (assistant text, tool calls, tool results)
+* controls and cache hints
 
 Within that single turn, the model may:
-- request one or more tool calls
-- receive tool results
-- request additional tool calls
-- eventually return a final response
+* request one or more tool calls
+* receive tool results
+* request additional tool calls
+* eventually return a final response
 
 That back-and-forth is temporary. It exists only for the duration of the
 current turn and is not the same thing as the long-lived conversation history
 stored by Recall.
 
 In other words:
-- Recall owns durable cross-turn memory
-- the Agent runtime owns the full inference request assembly and the ephemeral
+* Recall owns durable cross-turn memory
+* the Agent runtime owns the full inference request assembly and the ephemeral
   intra-turn tool loop
 
 ### Turn Finalization
@@ -114,10 +114,10 @@ $$
 This comes directly from Anthropic's 5-minute pricing: each candidate
 cachepoint pays a `0.25x` write premium up front and saves `0.90x` of base
 input cost on each future reuse. In practice this means:
-- keep `CP0` always
-- only place `CP1`-`CP3` when the uncached delta is large enough and another
+* keep `CP0` always
+* only place `CP1`-`CP3` when the uncached delta is large enough and another
   identical follow-up hop is likely
-- when the request would exceed Anthropic's 4-point limit, retain `CP0` and the
+* when the request would exceed Anthropic's 4-point limit, retain `CP0` and the
   highest-value recent rolling points, dropping older lower-value ones first
 
 **Tool array stability is a prerequisite for `CP0`.** If the active tool set
@@ -144,10 +144,10 @@ tool boundary, not inside the LLM loop, and applies to every `ToolReturnPart`
 before that result can be sent back to the primary model.
 
 The normalization boundary has exactly three outcomes:
-- `pass_through` — the raw tool result is already small enough to keep
-- `compress` — a secondary Haiku call rewrites the raw result to the minimum
+* `pass_through` — the raw tool result is already small enough to keep
+* `compress` — a secondary Haiku call rewrites the raw result to the minimum
   display-safe content needed for the stated intent
-- `truncate` — the raw result is clipped to a hard ceiling when compression is
+* `truncate` — the raw result is clipped to a hard ceiling when compression is
   not applicable
 
 This means the primary model never sees an unbounded raw tool payload once the
@@ -156,10 +156,10 @@ normalized display content; the full raw result is not allowed to accumulate
 across intra-turn hops.
 
 Haiku compression calls are stateless by default. Each receives only:
-- tool name
-- call mode
-- response detail / intent
-- raw tool output
+* tool name
+* call mode
+* response detail / intent
+* raw tool output
 
 They do not share Sonnet's context window, cannot call tools themselves, and
 cannot invalidate Sonnet's prompt-cache prefix with unrelated conversational
@@ -167,9 +167,9 @@ state.
 
 **Call mode tagging.** Tool definitions include an optional `call_mode`
 parameter (`"decide"` or `"explore"`) that Sonnet populates at call time:
-- `decide` — Sonnet knows what it is looking for; Haiku can compress
+* `decide` — Sonnet knows what it is looking for; Haiku can compress
   aggressively against the stated intent.
-- `explore` — Sonnet is orienting; large results truncate to the hard ceiling
+* `explore` — Sonnet is orienting; large results truncate to the hard ceiling
   without LLM compression since downstream relevance is not yet known.
 
 An optional `response_detail` parameter lets Sonnet state its specific intent,
@@ -177,40 +177,40 @@ giving Haiku precise guidance on what to preserve during compression.
 
 The runtime, not the model, decides which normalization path applies. The
 decision is based on:
-- tool name
-- raw result size
-- `call_mode`
-- `response_detail`
-- the configured compression and truncation thresholds
+* tool name
+* raw result size
+* `call_mode`
+* `response_detail`
+* the configured compression and truncation thresholds
 
 ### History processor
 Both caching and compression concerns are applied in a PydanticAI
 `history_processors` function registered on the `Agent` at construction time.
 This function runs before every intra-turn LLM request and is responsible for:
-- placing `CachePoint` markers (`CP0` through `CP3`)
-- normalizing every `ToolReturnPart` through the mandatory
+* placing `CachePoint` markers (`CP0` through `CP3`)
+* normalizing every `ToolReturnPart` through the mandatory
   `pass_through` / `compress` / `truncate` boundary
-- ensuring only normalized display content is returned to the primary model
+* ensuring only normalized display content is returned to the primary model
 
 ### Tool return audit logging
 Every normalized tool result produces one structured agent log record. The
 record includes:
-- `tool_name`
-- `tool_call_id`
-- `tool_input`
-- `raw_output`
-- `display_output`
-- `normalization_kind`
-- `raw_char_count`
-- `final_char_count`
-- `compressed_by_model`
-- `compressed_by_provider`
+* `tool_name`
+* `tool_call_id`
+* `tool_input`
+* `raw_output`
+* `display_output`
+* `normalization_kind`
+* `raw_char_count`
+* `final_char_count`
+* `compressed_by_model`
+* `compressed_by_provider`
 
 This makes the full tool-return path inspectable after the fact:
-- what the primary model asked for
-- what the tool actually returned
-- how the runtime transformed that result before reuse
-- which secondary model performed compression when compression occurred
+* what the primary model asked for
+* what the tool actually returned
+* how the runtime transformed that result before reuse
+* which secondary model performed compression when compression occurred
 
 
 ------------------------------------------------------------------------

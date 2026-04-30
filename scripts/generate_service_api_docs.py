@@ -18,7 +18,7 @@ DOC_NAME = "Service API"
 DOC_TITLE = f"# {DOC_NAME}"
 HR = "------------------------------------------------------------------------"
 DOC_GENERATED_NOTE = (
-    "_This document is generated from `services/*/*/service.py`. Do not edit by hand._"
+    "*This document is generated from `services/*/*/service.py`. Do not edit by hand.*"
 )
 DOC_EMPTY_MESSAGE = "No Tier 2 service interfaces were found."
 CHECK_OUT_OF_DATE_MESSAGE = "Tier 2 API docs are out of date. Run: make docs"
@@ -242,13 +242,13 @@ def _render_markdown(services: list[ServiceDoc]) -> str:
         for service in services:
             lines.append(HR)
             lines.append(f"## `{service.class_name}`")
-            lines.append(f"- Module: `{service.module_path}`")
+            lines.append(f"* Module: `{service.module_path}`")
             if service.summary:
-                lines.append(f"- Summary: {service.summary}")
+                lines.append(f"* Summary: {service.summary}")
             lines.append("")
             for method in service.methods:
                 lines.append(f"`{method.signature}`  ")
-                lines.append(f"_{method.summary}_")
+                lines.append(f"*{method.summary}*")
                 lines.append("")
 
     while lines and lines[-1] == "":

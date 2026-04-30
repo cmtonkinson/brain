@@ -81,9 +81,9 @@ Worker Actor is a Tier 3 Actor. It owns no Service or Resource
 components.
 
 Boundary rules:
-- All Brain Core access is through `BrainClient` (`lib/sdk`).
-- No direct HTTP calls or database access.
-- The external boundary is the Job Service queue and the heartbeat file.
+* All Brain Core access is through `BrainClient` (`lib/sdk`).
+* No direct HTTP calls or database access.
+* The external boundary is the Job Service queue and the heartbeat file.
 
 ------------------------------------------------------------------------
 ## Testing
@@ -95,11 +95,11 @@ that records calls and can raise configured errors. No live Core
 connection is required.
 
 Coverage:
-- Success path: `invoke_op` then `job_complete_execution` called.
-- All four failure categories with correct `is_retryable` mapping.
-- `_safe_fail` swallowing secondary errors from `job_fail_execution`.
-- `_resolve_heartbeat_path` env var resolution (default, override, blank).
-- `_write_heartbeat` creating nested directories and touching the file.
+* Success path: `invoke_op` then `job_complete_execution` called.
+* All four failure categories with correct `is_retryable` mapping.
+* `_safe_fail` swallowing secondary errors from `job_fail_execution`.
+* `_resolve_heartbeat_path` env var resolution (default, override, blank).
+* `_write_heartbeat` creating nested directories and touching the file.
 
 Run the worker tests:
 ```bash

@@ -25,9 +25,9 @@ DOC_NAME = "HTTP API"
 DOC_TITLE = f"# {DOC_NAME}"
 HR = "------------------------------------------------------------------------"
 DOC_GENERATED_NOTE = (
-    "_This document is generated from `lib/core/health_api.py` and "
+    "*This document is generated from `lib/core/health_api.py` and "
     "`services/*/*/api.py`, with route intent from `docs/meta/http-routes.yaml`. "
-    "Do not edit by hand._"
+    "Do not edit by hand.*"
 )
 DOC_EMPTY_MESSAGE = "No Core HTTP routes were found."
 CHECK_OUT_OF_DATE_MESSAGE = "HTTP API docs are out of date. Run: make docs"
@@ -244,11 +244,11 @@ def _render_markdown(
                 lines.append(
                     f"`{route.method} {route.path}` &mdash; {metadata[route.path].why}  "
                 )
-                lines.append(f"_Handler: `{route.handler_name}`_")
+                lines.append(f"*Handler: `{route.handler_name}`*")
                 if route.response_model:
-                    lines.append(f"_Response: `{route.response_model}`_")
+                    lines.append(f"*Response: `{route.response_model}`*")
                 if route.summary:
-                    lines.append(f"_Summary: {route.summary}_")
+                    lines.append(f"*Summary: {route.summary}*")
                 lines.append("")
 
     while lines and lines[-1] == "":
