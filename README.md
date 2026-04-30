@@ -1,11 +1,14 @@
 # Brain
-An exocortex for attention, memory, and action. This is a local-first AI system
-grounded in data sovereignty and durable knowledge; cognitive infrastructure
-that prioritizes context, directs intent deliberately, and closes loops.
+Brain is a local, private, personal assistant. It pays attention to your stuff,
+turns it into durable memory, and takes (or proposes) bounded action on your
+behalf.
 
-***NOTE:** This project is in active/experimental development and extremely
-unstable. Don't @ me, bro. When it gets a non-Cthullian version number, you'll
-know it's safe(r) to use.*
+More academically, it's an exocortex for attention, memory, and action:
+Cognitive infrastructure that prioritizes context, directs intent deliberately,
+and closes loops.
+
+***NOTE:** This project is still in active development and somewhat unstable.
+Don't @ me, bro.*
 
 ![Status: alpha](https://img.shields.io/badge/Pre--Alpha-orange?style=flat)
 ![CI](https://github.com/cmtonkinson/brain/actions/workflows/tests.yaml/badge.svg?branch=main)
@@ -18,12 +21,13 @@ know it's safe(r) to use.*
 ------------------------------------------------------------------------
 ## Motivation
 I wanted a Siri that didn't suck; a real Jarvis. A local-first,
-privacy respecting, security forward, Personal Virtual Assistant (PVA).
+privacy respecting, security forward, personal virtual assistant.
 
-My initial use case was to manage commitments: to look across
-messages, email, meetings, and calendars, and not just build up a todo list, but
-to actually capture the essence, impact, effort, and timeline of obligations and
-then support and facilitate timely action towards them. Think:
+My initial use case was to manage commitments: to look across messages, email,
+meetings, and calendars, and not just build up a todo list, but to actually
+capture the essence, impact, effort, and timeline of obligations and then
+support and facilitate timely action towards them, but without abusing my
+limited attention span. Think:
 
 > Hey boss, I know we have that project meeting next Thursday but I don't think
 > we've prepped yet - tomorrow looks pretty open so I've put a 90 minute focus
@@ -53,10 +57,9 @@ an ideal world every process would be containerized, but for various reasons
 (security, usability, performance) there are a limited number of services that
 need to run directly on your host system:
 * [Obsidian] with the [Local REST API] plugin &mdash; *required*
-* [Ollama] &mdash; *recommended* for embedding, *optional* for inference want
-  MCP Servers with host-level access (e.g. EventKit on macOS)*
+* [Ollama] &mdash; *recommended* for embedding, *optional* for inference
 
-All other services are run with Docker Compose:
+All other services are run in isolation with Docker Compose:
 * Brain Assistant, built with [PydanticAI]
 * Brain Core, which houses all runtime *State*, *Effect*, and *Reason*
   Components
@@ -68,30 +71,30 @@ All other services are run with Docker Compose:
 * Vector search for semantic embeddings is powered by [Qdrant]
 * Object blobs are stored in [SeaweedFS]
 
-Host port assignments (non-standard range to avoid conflicts):
-
-| Port | Service          | Protocol |
-|------|------------------|----------|
-| 8760 | Postgres         | TCP      |
-| 8761 | Valkey           | TCP      |
-| 8762 | Qdrant           | HTTP     |
-| 8333 | SeaweedFS S3 API | HTTP     |
-| 8898 | Brain Core       | HTTP     |
-
 There is also an optional OpenTelemetry-based observability stack in
 `docker-compose.observability.yaml`. It routes Brain traces through an OTel
-Collector to self-hosted [Langfuse], backed by [ClickHouse] and the existing
-[Postgres], [Valkey], and [SeaweedFS] services. See
-[Observability](docs/observability.md) for connection details, required secrets,
-environment variables, and startup checks.
+Collector to self-hosted [Langfuse] (backed by [ClickHouse]) and [Grafana]
+([Prometheus], [Loki], [cAdvisor]) as well as the existing [Postgres], [Valkey],
+and [SeaweedFS] services. See [Observability](docs/observability.md) for
+connection details, required secrets, environment variables, and startup checks.
 
 ------------------------------------------------------------------------
 ## Architecture
 The most useful way to understand the system structure is the Boundaries &
-Responsibilities diagram — a conceptual map of _Tiers_, _Systems_, _Actors_,
+Responsibilities diagram — a conceptual map of _Tiers_, _Planes_, _Actors_,
 _Services_, and _Resources_. It is not a deployment or data flow diagram and it
 does not describe the full scope of the project, but it does a good job at
 visualizing how I think about control flow, cohesion, and decoupling.
+
+### Planes
+* **State**: owns data
+* **Effect**: owns action
+* **Reason**: owns coordination
+
+### Tiers
+* **3 (Actors)**: operator interaction surface
+* **2 (Services)**: internal business logic
+* **1 (Resources)**: integrations with outside world
 
 See the full [Boundaries &
 Responsibilities](docs/boundaries-and-responsibilities.md) document for details.
@@ -107,14 +110,8 @@ Responsibilities](docs/boundaries-and-responsibilities.md) document for details.
 - [Project Layout](docs/project-layout.md) &mdash; Directory structure mapped to
   the conceptual model.
 - [Glossary](docs/glossary.md) &mdash; Term definitions (generated from YAML).
-- [Conventions](docs/conventions.md) &mdash; APIs, envelopes, principals, error
-  taxonomy, SDKs, policy enforcement, and Pydantic contract rules.
-- [Component Design](docs/component-design.md) &mdash; Component registration,
-  manifests, and implementation patterns.
 - [Configuration Reference](docs/configuration.md) &mdash; Config file schema,
   environment variable overrides, and per-section key reference.
-- [Observability](docs/observability.md) &mdash; Optional OTel, Langfuse, and
-  SeaweedFS stack setup.
 - [Service API Reference](docs/service-api.md) &mdash; Public API surface
   (generated from code).
 - [Development Guide](docs/development-guide.md) &mdash; Setup, make targets,
@@ -143,7 +140,6 @@ environment setup, and how to build/test.
 [Loki]: https://grafana.com/oss/loki/
 [Obsidian]: https://obsidian.md
 [Ollama]: https://ollama.com
-[OpenClaw]: https://github.com/openclaw/openclaw
 [OpenClaw]: https://github.com/openclaw/openclaw
 [Postgres]: https://www.postgresql.org
 [Prometheus]: https://prometheus.io
