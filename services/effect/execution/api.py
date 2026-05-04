@@ -9,6 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
+from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.envelope import EnvelopeKind, EnvelopeMeta, new_meta
 from lib.shared.errors import ErrorDetail
 from lib.shared.http.server import read_json_body
@@ -176,6 +177,8 @@ class _InvokeRequest(BaseModel):
     approval_token: str = ""
     reply_to_proposal_token: str = ""
     reaction_to_proposal_token: str = ""
+    message_text: str = ""
+    slash_authenticity: SlashAuthenticityProof | None = None
 
 
 class _InvokeResponse(BaseModel):
@@ -376,6 +379,8 @@ def register_routes(*, router: APIRouter, service: ExecutionService) -> None:
             approval_token=req.approval_token,
             reply_to_proposal_token=req.reply_to_proposal_token,
             reaction_to_proposal_token=req.reaction_to_proposal_token,
+            message_text=req.message_text,
+            slash_authenticity=req.slash_authenticity,
         )
         result = await run_in_threadpool(
             service.invoke_op,

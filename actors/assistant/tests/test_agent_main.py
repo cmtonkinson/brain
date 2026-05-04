@@ -44,11 +44,10 @@ from lib.shared.language_model import (
     OperatorMessageContentPart,
     ReferenceSnippetContentPart,
 )
+from lib.agent import history
 from lib.sdk import (
     BrainDependencyError,
     BrainInternalError,
-    BrainNotFoundError,
-    BrainPolicyError,
     BrainTransportError,
     OpDescriptor,
     OpSearchHit,
@@ -308,9 +307,8 @@ def test_load_prompt_file_reads_compressor_user_template_from_disk() -> None:
 
 def test_render_prompt_template_replaces_named_placeholders() -> None:
     """Prompt renderer should replace each named placeholder verbatim."""
-    from actors.assistant import main
 
-    rendered = main._render_prompt_template(
+    rendered = history.render_prompt_template(
         "Tool: {{tool_name}}\nRaw output:\n{{raw_output}}",
         tool_name="vault-search-files",
         raw_output='{"items":[]}',
@@ -321,13 +319,12 @@ def test_render_prompt_template_replaces_named_placeholders() -> None:
 
 def test_render_prompt_template_raises_for_unresolved_placeholders() -> None:
     """Prompt renderer should fail when a placeholder remains unresolved."""
-    from actors.assistant import main
 
     try:
-        main._render_prompt_template("Tool: {{tool_name}}\nMode: {{call_mode}}")
+        history.render_prompt_template("Tool: {{tool_name}}\nMode: {{call_mode}}")
         assert False, "expected unresolved placeholder validation"
     except ValueError as exc:
-        assert "call_mode" in str(exc)
+        assert "unresolved" in str(exc).lower()
 
 
 def test_load_agent_context_properties_reads_json_from_disk() -> None:
@@ -665,7 +662,6 @@ def test_build_inference_request_assigns_cache_marker_to_tool_result_batch() -> 
 
 def test_history_processor_adds_rolling_cachepoint_for_high_value_growth() -> None:
     """Large exploratory tool-result growth should earn a rolling cachepoint."""
-    from actors.assistant import main
     from pydantic_ai.messages import (
         CachePoint,
         ModelRequest,
@@ -675,12 +671,14 @@ def test_history_processor_adds_rolling_cachepoint_for_high_value_growth() -> No
         UserPromptPart,
     )
 
-    processor = main._build_history_processor(
+    processor = history.build_history_processor(
         client=object(),  # type: ignore[arg-type]
         timeout_seconds=None,
         compress_threshold=10_000,
         max_chars=20_000,
         tier2_hop_threshold=1,
+        compress_system_prompt="compress",
+        compress_user_template="{{tool_name}} {{call_mode}} {{intent}} {{raw_output}}",
     )
     messages = [
         ModelRequest(parts=[UserPromptPart(content=["hello", CachePoint()])]),
@@ -717,7 +715,6 @@ def test_history_processor_adds_rolling_cachepoint_for_high_value_growth() -> No
 
 def test_history_processor_skips_rolling_cachepoint_for_low_value_growth() -> None:
     """Small decisive successful results should not pay the rolling-cache premium."""
-    from actors.assistant import main
     from pydantic_ai.messages import (
         CachePoint,
         ModelRequest,
@@ -727,12 +724,14 @@ def test_history_processor_skips_rolling_cachepoint_for_low_value_growth() -> No
         UserPromptPart,
     )
 
-    processor = main._build_history_processor(
+    processor = history.build_history_processor(
         client=object(),  # type: ignore[arg-type]
         timeout_seconds=None,
         compress_threshold=10_000,
         max_chars=20_000,
         tier2_hop_threshold=1,
+        compress_system_prompt="compress",
+        compress_user_template="{{tool_name}} {{call_mode}} {{intent}} {{raw_output}}",
     )
     messages = [
         ModelRequest(parts=[UserPromptPart(content=["hello", CachePoint()])]),
@@ -924,14 +923,17 @@ def test_build_inference_request_extracts_environment_context() -> None:
 
 def test_normalize_tool_return_passes_through_small_results_and_logs() -> None:
     """Small tool returns should bypass compression but still emit audit metadata."""
-    from actors.assistant import main
 
     debug = MagicMock()
-    original_debug = main._LOGGER.debug
-    main._LOGGER.debug = debug
+    import lib.agent.history as _history_mod
+
+    original_log = _history_mod._LOGGER.debug
+    _history_mod._LOGGER.debug = debug
     try:
         normalized = asyncio.run(
-            main._normalize_tool_return(
+            history.normalize_tool_return(
+                compress_system_prompt="compress",
+                compress_user_template="{{tool_name}} {{call_mode}} {{intent}} {{raw_output}}",
                 client=object(),  # type: ignore[arg-type]
                 tool_name="vault-get-file",
                 tool_call_id="call-1",
@@ -942,9 +944,9 @@ def test_normalize_tool_return_passes_through_small_results_and_logs() -> None:
             )
         )
     finally:
-        main._LOGGER.debug = original_debug
+        _history_mod._LOGGER.debug = original_log
 
-    assert normalized == main._NormalizedToolReturn(
+    assert normalized == history.NormalizedToolReturn(
         content="hello",
         normalization_kind="pass_through",
         raw_content="hello",
@@ -968,27 +970,30 @@ def test_normalize_tool_return_passes_through_small_results_and_logs() -> None:
 
 def test_normalize_tool_return_compresses_decide_mode_results() -> None:
     """Large decide-mode tool returns should be compressed before reuse."""
-    from actors.assistant import main
 
     async def _fake_compress_tool_return(**kwargs):
         assert kwargs["tool_name"] == "vault-search-files"
         assert kwargs["call_mode"] == "decide"
         assert kwargs["response_detail"] == "Find Claire's birthday."
         assert kwargs["raw_content"] == "x" * 40
-        return main._CompressedToolReturn(
+        return history.CompressedToolReturn(
             content="compressed birthday",
             model="claude-haiku-4-5-20251001",
             provider="anthropic",
         )
 
     debug = MagicMock()
-    original_compress = main._compress_tool_return
-    original_debug = main._LOGGER.debug
-    main._compress_tool_return = _fake_compress_tool_return  # type: ignore[assignment]
-    main._LOGGER.debug = debug
+    import lib.agent.history as _history_mod
+
+    original_compress = _history_mod.compress_tool_return
+    original_debug = _history_mod._LOGGER.debug
+    _history_mod.compress_tool_return = _fake_compress_tool_return  # type: ignore[assignment]
+    _history_mod._LOGGER.debug = debug
     try:
         normalized = asyncio.run(
-            main._normalize_tool_return(
+            history.normalize_tool_return(
+                compress_system_prompt="compress",
+                compress_user_template="{{tool_name}} {{call_mode}} {{intent}} {{raw_output}}",
                 client=object(),  # type: ignore[arg-type]
                 tool_name="vault-search-files",
                 tool_call_id="call-2",
@@ -1003,10 +1008,10 @@ def test_normalize_tool_return_compresses_decide_mode_results() -> None:
             )
         )
     finally:
-        main._compress_tool_return = original_compress  # type: ignore[assignment]
-        main._LOGGER.debug = original_debug
+        _history_mod.compress_tool_return = original_compress  # type: ignore[assignment]
+        _history_mod._LOGGER.debug = original_debug
 
-    assert normalized == main._NormalizedToolReturn(
+    assert normalized == history.NormalizedToolReturn(
         content="compressed birthday",
         normalization_kind="compress",
         raw_content="x" * 40,
@@ -1024,14 +1029,17 @@ def test_normalize_tool_return_compresses_decide_mode_results() -> None:
 
 def test_normalize_tool_return_truncates_large_explore_results() -> None:
     """Large explore-mode tool returns should truncate without LLM compression."""
-    from actors.assistant import main
 
     debug = MagicMock()
-    original_debug = main._LOGGER.debug
-    main._LOGGER.debug = debug
+    import lib.agent.history as _history_mod
+
+    original_debug = _history_mod._LOGGER.debug
+    _history_mod._LOGGER.debug = debug
     try:
         normalized = asyncio.run(
-            main._normalize_tool_return(
+            history.normalize_tool_return(
+                compress_system_prompt="compress",
+                compress_user_template="{{tool_name}} {{call_mode}} {{intent}} {{raw_output}}",
                 client=object(),  # type: ignore[arg-type]
                 tool_name="vault-list-files",
                 tool_call_id="call-3",
@@ -1042,9 +1050,9 @@ def test_normalize_tool_return_truncates_large_explore_results() -> None:
             )
         )
     finally:
-        main._LOGGER.debug = original_debug
+        _history_mod._LOGGER.debug = original_debug
 
-    assert normalized == main._NormalizedToolReturn(
+    assert normalized == history.NormalizedToolReturn(
         content="abcdefgh\n[truncated]",
         normalization_kind="truncate",
         raw_content="abcdefghijklmnopqrstuvwxyz",
@@ -1057,7 +1065,6 @@ def test_normalize_tool_return_truncates_large_explore_results() -> None:
 
 def test_compress_tool_return_uses_file_backed_user_template() -> None:
     """Compression call should render the editable prompt template into Language input."""
-    from actors.assistant import main
 
     class _FakeClient:
         def __init__(self) -> None:
@@ -1089,25 +1096,27 @@ def test_compress_tool_return_uses_file_backed_user_template() -> None:
 
     client = _FakeClient()
     result = asyncio.run(
-        main._compress_tool_return(
+        history.compress_tool_return(
             client=client,  # type: ignore[arg-type]
             tool_name="vault-search-files",
             call_mode="decide",
             response_detail="Find Claire's birthday.",
             raw_content='{"items":[]}',
             max_chars=400,
+            compress_system_prompt="compress",
+            compress_user_template="{{tool_name}} {{call_mode}} {{intent}} {{raw_output}}",
         )
     )
 
-    assert result == main._CompressedToolReturn(
+    assert result == history.CompressedToolReturn(
         content="compressed result",
         model="claude-haiku-4-5-20251001",
         provider="anthropic",
     )
     assert client.profile == "quick"
-    assert client.system_prompt == main._COMPRESS_SYSTEM_PROMPT
-    assert client.prompt == main._render_prompt_template(
-        main._COMPRESS_USER_PROMPT_TEMPLATE,
+    assert client.system_prompt == "compress"
+    assert client.prompt == history.render_prompt_template(
+        "{{tool_name}} {{call_mode}} {{intent}} {{raw_output}}",
         tool_name="vault-search-files",
         call_mode="decide",
         intent="Find Claire's birthday.",
@@ -1249,353 +1258,21 @@ def test_create_runtime_uses_configured_tier2_hop_threshold() -> None:
 
         return _processor
 
+    import lib.agent.history as _history_mod
+
     settings = _actor_settings_stub()
     settings.agent.tool_loop_tier2_hop_threshold = 5
-    original = main._build_history_processor
-    main._build_history_processor = _fake_build_history_processor  # type: ignore[assignment]
+    original = _history_mod.build_history_processor
+    _history_mod.build_history_processor = _fake_build_history_processor  # type: ignore[assignment]
     try:
         main._create_runtime(
             client=_FakeClient(),
             settings=settings,
         )
     finally:
-        main._build_history_processor = original  # type: ignore[assignment]
+        _history_mod.build_history_processor = original  # type: ignore[assignment]
 
     assert captured["tier2_hop_threshold"] == 5
-
-
-def test_build_op_tools_invokes_sdk_client() -> None:
-    """Op tool wrappers should route tool calls through Brain SDK only."""
-    from actors.assistant import main
-
-    class _FakeClient:
-        def __init__(self) -> None:
-            self.calls: list[tuple[str, dict[str, object], str, str, str, str]] = []
-
-        def invoke_op(
-            self,
-            *,
-            op_id: str,
-            input_payload: dict[str, object],
-            actor: str,
-            channel: str,
-            reply_to_proposal_token: str = "",
-            reaction_to_proposal_token: str = "",
-        ):
-            self.calls.append(
-                (
-                    op_id,
-                    input_payload,
-                    actor,
-                    channel,
-                    reply_to_proposal_token,
-                    reaction_to_proposal_token,
-                )
-            )
-            return type("InvokeResult", (), {"output": {"ok": True}})()
-
-    client = _FakeClient()
-    turn_state = main._TurnState(actor="operator", channel="signal")
-    tools = main._build_op_tools(
-        client=client,  # type: ignore[arg-type]
-        ops=(
-            OpDescriptor(
-                op_id="demo-tool",
-                kind="native",
-                version="1.0.0",
-                summary="Do the thing.",
-                input_schema={"value": "string"},
-                output_schema={"ok": "boolean"},
-                effect="read",
-                approval="never",
-                required_ops=(),
-            ),
-        ),
-        turn_state=turn_state,
-    )
-
-    result = tools[0].function(value="x")
-
-    assert result == {"ok": True}
-    assert client.calls == [("demo-tool", {"value": "x"}, "operator", "signal", "", "")]
-
-
-def test_build_op_tools_uses_descriptor_input_schema() -> None:
-    """Op tool wrappers should advertise the Execution input schema directly."""
-    from actors.assistant import main
-
-    class _FakeClient:
-        def invoke_op(
-            self,
-            *,
-            op_id: str,
-            input_payload: dict[str, object],
-            actor: str,
-            channel: str,
-            reply_to_proposal_token: str = "",
-            reaction_to_proposal_token: str = "",
-        ):
-            del (
-                op_id,
-                input_payload,
-                actor,
-                channel,
-                reply_to_proposal_token,
-                reaction_to_proposal_token,
-            )
-            return type("InvokeResult", (), {"output": {"ok": True}})()
-
-    tools = main._build_op_tools(
-        client=_FakeClient(),  # type: ignore[arg-type]
-        ops=(
-            OpDescriptor(
-                op_id="vault-get-file",
-                kind="native",
-                version="1.0.0",
-                summary="Read one markdown file by path.",
-                input_schema={
-                    "type": "object",
-                    "properties": {"file_path": {"type": "string"}},
-                    "required": ["file_path"],
-                    "additionalProperties": False,
-                },
-                output_schema={"type": "object"},
-                effect="read",
-                approval="never",
-                required_ops=(),
-            ),
-        ),
-        turn_state=main._TurnState(actor="operator", channel="signal"),
-    )
-
-    assert tools[0].tool_def.parameters_json_schema == {
-        "type": "object",
-        "properties": {"file_path": {"type": "string"}},
-        "required": ["file_path"],
-        "additionalProperties": False,
-    }
-
-
-def test_build_op_tools_returns_policy_denial_payload() -> None:
-    """Approval-gated denials should return tool data instead of aborting the turn."""
-    from actors.assistant import main
-
-    class _FakeClient:
-        def invoke_op(
-            self,
-            *,
-            op_id: str,
-            input_payload: dict[str, object],
-            actor: str,
-            channel: str,
-            reply_to_proposal_token: str = "",
-            reaction_to_proposal_token: str = "",
-        ):
-            del (
-                op_id,
-                input_payload,
-                actor,
-                channel,
-                reply_to_proposal_token,
-                reaction_to_proposal_token,
-            )
-            raise BrainPolicyError(
-                message=("ops.invoke domain failure: policy denied op invocation"),
-                operation="ops.invoke",
-                details=(
-                    SdkErrorDetail(
-                        code="permission_denied",
-                        message="policy denied op invocation",
-                        category="policy",
-                        metadata={
-                            "proposal_token": "tok-123",
-                            "reason_codes": "approval_required",
-                        },
-                    ),
-                ),
-            )
-
-    tools = main._build_op_tools(
-        client=_FakeClient(),  # type: ignore[arg-type]
-        ops=(
-            OpDescriptor(
-                op_id="vault-move-path",
-                kind="native",
-                version="1.0.0",
-                summary="Move one file or directory path.",
-                input_schema={"type": "object"},
-                output_schema={"type": "object"},
-                effect="read",
-                approval="always",
-                required_ops=(),
-            ),
-        ),
-        turn_state=main._TurnState(actor="operator", channel="signal"),
-    )
-
-    result = tools[0].function(
-        source_path="notes/old.md",
-        target_path="notes/new.md",
-    )
-
-    assert result == {
-        "error": "policy_denied",
-        "message": ("ops.invoke domain failure: policy denied op invocation"),
-        "op_id": "vault-move-path",
-        "approval": "always",
-        "proposal_token": "tok-123",
-        "proposal_expires_at": "",
-        "reason_codes": ["approval_required"],
-    }
-
-
-def test_build_op_tools_returns_not_found_payload() -> None:
-    """Not-found domain failures should be returned as structured tool data."""
-    from actors.assistant import main
-
-    class _FakeClient:
-        def invoke_op(
-            self,
-            *,
-            op_id: str,
-            input_payload: dict[str, object],
-            actor: str,
-            channel: str,
-            reply_to_proposal_token: str = "",
-            reaction_to_proposal_token: str = "",
-        ):
-            del (
-                op_id,
-                input_payload,
-                actor,
-                channel,
-                reply_to_proposal_token,
-                reaction_to_proposal_token,
-            )
-            raise BrainNotFoundError(
-                message="ops.invoke domain failure: Not Found",
-                operation="ops.invoke",
-                details=(
-                    SdkErrorDetail(
-                        code="NOT_FOUND",
-                        message="Not Found",
-                        category="not_found",
-                        metadata={"path": "notes/missing.md"},
-                    ),
-                ),
-            )
-
-    tools = main._build_op_tools(
-        client=_FakeClient(),  # type: ignore[arg-type]
-        ops=(
-            OpDescriptor(
-                op_id="vault-rename-path",
-                kind="native",
-                version="1.0.0",
-                summary="Rename one vault path.",
-                input_schema={"type": "object"},
-                output_schema={"type": "object"},
-                effect="read",
-                approval="never",
-                required_ops=(),
-            ),
-        ),
-        turn_state=main._TurnState(actor="operator", channel="signal"),
-    )
-
-    result = tools[0].function(
-        source_path="notes/missing.md",
-        target_path="notes/new.md",
-    )
-
-    assert result == {
-        "error": "not_found",
-        "message": "ops.invoke domain failure: Not Found",
-        "op_id": "vault-rename-path",
-        "details": [
-            {
-                "code": "NOT_FOUND",
-                "message": "Not Found",
-                "category": "not_found",
-                "retryable": False,
-                "metadata": {"path": "notes/missing.md"},
-            }
-        ],
-    }
-
-
-def test_build_op_tools_returns_internal_error_payload() -> None:
-    """Internal domain failures should be returned as structured tool data."""
-    from actors.assistant import main
-
-    class _FakeClient:
-        def invoke_op(
-            self,
-            *,
-            op_id: str,
-            input_payload: dict[str, object],
-            actor: str,
-            channel: str,
-            reply_to_proposal_token: str = "",
-            reaction_to_proposal_token: str = "",
-        ):
-            del (
-                op_id,
-                input_payload,
-                actor,
-                channel,
-                reply_to_proposal_token,
-                reaction_to_proposal_token,
-            )
-            raise BrainInternalError(
-                message="ops.invoke domain failure: internal fault",
-                operation="ops.invoke",
-                details=(
-                    SdkErrorDetail(
-                        code="INTERNAL",
-                        message="internal fault",
-                        category="internal",
-                    ),
-                ),
-            )
-
-    tools = main._build_op_tools(
-        client=_FakeClient(),  # type: ignore[arg-type]
-        ops=(
-            OpDescriptor(
-                op_id="vault-rename-path",
-                kind="native",
-                version="1.0.0",
-                summary="Rename one vault path.",
-                input_schema={"type": "object"},
-                output_schema={"type": "object"},
-                effect="read",
-                approval="never",
-                required_ops=(),
-            ),
-        ),
-        turn_state=main._TurnState(actor="operator", channel="signal"),
-    )
-
-    result = tools[0].function(
-        source_path="notes/old.md",
-        target_path="notes/new.md",
-    )
-
-    assert result == {
-        "error": "internal_error",
-        "message": "ops.invoke domain failure: internal fault",
-        "op_id": "vault-rename-path",
-        "details": [
-            {
-                "code": "INTERNAL",
-                "message": "internal fault",
-                "category": "internal",
-                "retryable": False,
-                "metadata": {},
-            }
-        ],
-    }
 
 
 def test_instruction_context_message_uses_reaction_approval_when_text_missing() -> None:
@@ -1619,259 +1296,6 @@ def test_instruction_context_message_uses_reaction_approval_when_text_missing() 
         )
         == "[signal reaction approval:approve emoji:👍]"
     )
-
-
-def test_build_op_tools_remembers_pending_invocation_with_expiry() -> None:
-    """Approval denials should populate the short-lived pending invocation store."""
-    from actors.assistant import main
-
-    class _FakeClient:
-        def invoke_op(
-            self,
-            *,
-            op_id: str,
-            input_payload: dict[str, object],
-            actor: str,
-            channel: str,
-            reply_to_proposal_token: str = "",
-            reaction_to_proposal_token: str = "",
-        ):
-            del (
-                op_id,
-                input_payload,
-                actor,
-                channel,
-                reply_to_proposal_token,
-                reaction_to_proposal_token,
-            )
-            raise BrainPolicyError(
-                message=("ops.invoke domain failure: policy denied op invocation"),
-                operation="ops.invoke",
-                details=(
-                    SdkErrorDetail(
-                        code="permission_denied",
-                        message="policy denied op invocation",
-                        category="policy",
-                        metadata={
-                            "proposal_token": "tok-expiring",
-                            "reason_codes": "approval_required",
-                            "expires_at": "2099-03-13T14:15:16Z",
-                        },
-                    ),
-                ),
-            )
-
-    turn_state = main._TurnState(actor="operator", channel="signal")
-    tools = main._build_op_tools(
-        client=_FakeClient(),  # type: ignore[arg-type]
-        ops=(
-            OpDescriptor(
-                op_id="vault-move-path",
-                kind="native",
-                version="1.0.0",
-                summary="Move one file or directory path.",
-                input_schema={"type": "object"},
-                output_schema={"type": "object"},
-                effect="read",
-                approval="always",
-                required_ops=(),
-            ),
-        ),
-        turn_state=turn_state,
-    )
-
-    result = tools[0].function(
-        source_path="notes/old.md",
-        target_path="notes/new.md",
-    )
-
-    assert result["proposal_expires_at"] == "2099-03-13T14:15:16+00:00"
-    assert turn_state.pending_invocations["tok-expiring"] == main._PendingInvocation(
-        proposal_token="tok-expiring",
-        op_id="vault-move-path",
-        input_payload={
-            "source_path": "notes/old.md",
-            "target_path": "notes/new.md",
-        },
-        actor="operator",
-        channel="signal",
-        approval="always",
-        reason_codes=("approval_required",),
-        created_at=turn_state.pending_invocations["tok-expiring"].created_at,
-        expires_at=datetime(2099, 3, 13, 14, 15, 16, tzinfo=UTC),
-    )
-
-
-def test_build_op_tools_forwards_matching_proposal_correlators() -> None:
-    """Retries should forward correlators only when they match stored blocked work."""
-    from actors.assistant import main
-
-    class _FakeClient:
-        def __init__(self) -> None:
-            self.reply_to_proposal_token = ""
-            self.reaction_to_proposal_token = ""
-
-        def invoke_op(
-            self,
-            *,
-            op_id: str,
-            input_payload: dict[str, object],
-            actor: str,
-            channel: str,
-            reply_to_proposal_token: str = "",
-            reaction_to_proposal_token: str = "",
-        ):
-            del op_id, input_payload, actor, channel
-            self.reply_to_proposal_token = reply_to_proposal_token
-            self.reaction_to_proposal_token = reaction_to_proposal_token
-            return type("InvokeResult", (), {"output": {"ok": True}})()
-
-    client = _FakeClient()
-    turn_state = main._TurnState(
-        actor="operator",
-        channel="signal",
-        reply_to_proposal_token="tok-quote",
-        reaction_to_proposal_token="tok-react",
-        pending_invocations={
-            "tok-quote": main._PendingInvocation(
-                proposal_token="tok-quote",
-                op_id="vault-move-path",
-                input_payload={
-                    "source_path": "notes/old.md",
-                    "target_path": "notes/new.md",
-                },
-                actor="operator",
-                channel="signal",
-                approval="always",
-                reason_codes=("approval_required",),
-                created_at=datetime(2026, 3, 12, 12, 0, 0, tzinfo=UTC),
-            ),
-            "tok-react": main._PendingInvocation(
-                proposal_token="tok-react",
-                op_id="vault-move-path",
-                input_payload={
-                    "source_path": "notes/old.md",
-                    "target_path": "notes/new.md",
-                },
-                actor="operator",
-                channel="signal",
-                approval="always",
-                reason_codes=("approval_required",),
-                created_at=datetime(2026, 3, 12, 12, 0, 1, tzinfo=UTC),
-            ),
-        },
-    )
-    tools = main._build_op_tools(
-        client=client,  # type: ignore[arg-type]
-        ops=(
-            OpDescriptor(
-                op_id="vault-move-path",
-                kind="native",
-                version="1.0.0",
-                summary="Move one file or directory path.",
-                input_schema={"type": "object"},
-                output_schema={"type": "object"},
-                effect="read",
-                approval="always",
-                required_ops=(),
-            ),
-        ),
-        turn_state=turn_state,
-    )
-
-    tools[0].function(
-        source_path="notes/old.md",
-        target_path="notes/new.md",
-    )
-
-    assert client.reply_to_proposal_token == "tok-quote"
-    assert client.reaction_to_proposal_token == "tok-react"
-
-
-def test_build_op_tools_does_not_forward_mismatched_proposal_correlators() -> None:
-    """Correlators should be withheld when the retry does not match stored blocked work."""
-    from actors.assistant import main
-
-    class _FakeClient:
-        def __init__(self) -> None:
-            self.reply_to_proposal_token = ""
-            self.reaction_to_proposal_token = ""
-
-        def invoke_op(
-            self,
-            *,
-            op_id: str,
-            input_payload: dict[str, object],
-            actor: str,
-            channel: str,
-            reply_to_proposal_token: str = "",
-            reaction_to_proposal_token: str = "",
-        ):
-            del op_id, input_payload, actor, channel
-            self.reply_to_proposal_token = reply_to_proposal_token
-            self.reaction_to_proposal_token = reaction_to_proposal_token
-            return type("InvokeResult", (), {"output": {"ok": True}})()
-
-    client = _FakeClient()
-    turn_state = main._TurnState(
-        actor="operator",
-        channel="signal",
-        reply_to_proposal_token="tok-quote",
-        reaction_to_proposal_token="tok-react",
-        pending_invocations={
-            "tok-quote": main._PendingInvocation(
-                proposal_token="tok-quote",
-                op_id="vault-move-path",
-                input_payload={
-                    "source_path": "notes/old.md",
-                    "target_path": "notes/new.md",
-                },
-                actor="operator",
-                channel="signal",
-                approval="always",
-                reason_codes=("approval_required",),
-                created_at=datetime(2026, 3, 12, 12, 0, 0, tzinfo=UTC),
-            ),
-            "tok-react": main._PendingInvocation(
-                proposal_token="tok-react",
-                op_id="vault-move-path",
-                input_payload={
-                    "source_path": "notes/old.md",
-                    "target_path": "notes/new.md",
-                },
-                actor="operator",
-                channel="signal",
-                approval="always",
-                reason_codes=("approval_required",),
-                created_at=datetime(2026, 3, 12, 12, 0, 1, tzinfo=UTC),
-            ),
-        },
-    )
-    tools = main._build_op_tools(
-        client=client,  # type: ignore[arg-type]
-        ops=(
-            OpDescriptor(
-                op_id="vault-move-path",
-                kind="native",
-                version="1.0.0",
-                summary="Move one file or directory path.",
-                input_schema={"type": "object"},
-                output_schema={"type": "object"},
-                effect="read",
-                approval="always",
-                required_ops=(),
-            ),
-        ),
-        turn_state=turn_state,
-    )
-
-    tools[0].function(
-        source_path="notes/other.md",
-        target_path="notes/new.md",
-    )
-
-    assert client.reply_to_proposal_token == ""
-    assert client.reaction_to_proposal_token == ""
 
 
 def test_turn_state_prunes_expired_pending_invocations() -> None:
@@ -2365,7 +1789,7 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
                     "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
                     "model": "test-model",
                     "provider": "unit",
-                    "token_count": main._estimate_token_count("assistant reply"),
+                    "token_count": history.estimate_token_count("assistant reply"),
                     "reasoning_level": "standard",
                 },
             },
@@ -2618,7 +2042,7 @@ def test_process_instruction_handles_language_throttle_gracefully(monkeypatch) -
                     "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
                     "model": "brain-sdk-lms",
                     "provider": "brain-sdk",
-                    "token_count": main._estimate_token_count(
+                    "token_count": history.estimate_token_count(
                         main._LMS_THROTTLE_RESPONSE
                     ),
                     "reasoning_level": "standard",
@@ -2755,7 +2179,7 @@ def test_process_instruction_handles_language_timeout_gracefully(monkeypatch) ->
                     "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
                     "model": "brain-sdk-lms",
                     "provider": "brain-sdk",
-                    "token_count": main._estimate_token_count(
+                    "token_count": history.estimate_token_count(
                         main._LMS_TIMEOUT_RESPONSE
                     ),
                     "reasoning_level": "standard",
@@ -2888,7 +2312,7 @@ def test_process_instruction_handles_language_internal_error_gracefully() -> Non
                     "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
                     "model": "brain-sdk-lms",
                     "provider": "brain-sdk",
-                    "token_count": main._estimate_token_count(
+                    "token_count": history.estimate_token_count(
                         main._LMS_GENERIC_ERROR_RESPONSE
                     ),
                     "reasoning_level": "standard",
@@ -3027,7 +2451,7 @@ def test_process_instruction_handles_retryable_internal_error_with_generic_fallb
                     "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
                     "model": "brain-sdk-lms",
                     "provider": "brain-sdk",
-                    "token_count": main._estimate_token_count(
+                    "token_count": history.estimate_token_count(
                         main._LMS_GENERIC_ERROR_RESPONSE
                     ),
                     "reasoning_level": "standard",
@@ -3160,7 +2584,7 @@ def test_process_instruction_handles_language_transport_5xx_gracefully(
                     "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
                     "model": "brain-sdk-lms",
                     "provider": "brain-sdk",
-                    "token_count": main._estimate_token_count(
+                    "token_count": history.estimate_token_count(
                         main._LMS_GENERIC_ERROR_RESPONSE
                     ),
                     "reasoning_level": "standard",
@@ -3259,7 +2683,8 @@ def test_create_runtime_reuses_existing_session_and_registers_tools() -> None:
     assert client.created == 0
     assert runtime.session_id == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
     assert isinstance(runtime.model, AgentToolModel)
-    assert len(runtime.agent._function_toolset.tools) == 3
+    assert "search_tools" in runtime.turn_state.active_tool_names
+    assert "get_tool_info" in runtime.turn_state.active_tool_names
     assert "relay-notify" not in runtime.turn_state.active_tool_names
     assert runtime.agent.instrument is None
 
@@ -3546,7 +2971,6 @@ def test_create_runtime_aborts_when_new_session_creation_fails() -> None:
 def test_runtime_discovery_tools_do_not_activate_ops_for_prepare_tools() -> None:
     """Discovery should not mutate the callable tool set within the current turn."""
     from actors.assistant import main
-    from pydantic_ai.tools import ToolDefinition
 
     class _FakeClient:
         def search_ops(
@@ -3583,16 +3007,17 @@ def test_runtime_discovery_tools_do_not_activate_ops_for_prepare_tools() -> None
 
     turn_state = main._TurnState(always_on_op_ids=frozenset({"vault-search-files"}))
     turn_state.reset_active_tools()
-    runtime_tools = main._build_runtime_tools(
-        client=_FakeClient(),  # type: ignore[arg-type]
+
+    from lib.agent.toolset import _build_discovery_tools
+
+    discovery_tools = _build_discovery_tools(
+        client=_FakeClient(),
         turn_state=turn_state,
     )
 
-    discover_result = runtime_tools[0].function(
+    discover_result = discovery_tools[0].function(
         query="find vault read tools",
         limit=5,
-        call_mode="explore",
-        response_detail="Find relevant read tools before selecting one.",
     )
     assert discover_result == [
         {
@@ -3602,23 +3027,8 @@ def test_runtime_discovery_tools_do_not_activate_ops_for_prepare_tools() -> None
         }
     ]
     assert "vault-get-file" not in turn_state.active_tool_names
-
-    prepare_tools = main._build_prepare_tools(turn_state=turn_state)
-    prepared = asyncio.run(
-        prepare_tools(
-            None,
-            [
-                ToolDefinition(name="vault-search-files"),
-                ToolDefinition(name="vault-get-file"),
-                ToolDefinition(name="relay-notify"),
-                ToolDefinition(name=main._SEARCH_TOOLS_TOOL_NAME),
-            ],
-        )
-    )
-    assert [item.name for item in prepared] == [
-        "vault-search-files",
-        main._SEARCH_TOOLS_TOOL_NAME,
-    ]
+    assert "vault-search-files" in turn_state.active_tool_names
+    assert "search_tools" in turn_state.active_tool_names
 
 
 def test_allow_parallel_tool_calls_is_disabled_after_search_tool_result() -> None:
@@ -3747,16 +3157,17 @@ def test_runtime_discovery_tools_filter_denied_ops() -> None:
         denied_op_ids=frozenset({"relay-notify"}),
     )
     turn_state.reset_active_tools()
-    runtime_tools = main._build_runtime_tools(
-        client=_FakeClient(),  # type: ignore[arg-type]
+
+    from lib.agent.toolset import _build_discovery_tools
+
+    discovery_tools = _build_discovery_tools(
+        client=_FakeClient(),
         turn_state=turn_state,
     )
 
-    discover_result = runtime_tools[0].function(
+    discover_result = discovery_tools[0].function(
         query="send signal message",
         limit=5,
-        call_mode="explore",
-        response_detail="Check whether a messaging op is available.",
     )
     assert discover_result == [
         {
@@ -3767,10 +3178,8 @@ def test_runtime_discovery_tools_filter_denied_ops() -> None:
     ]
     assert "relay-notify" not in turn_state.active_tool_names
 
-    describe_result = runtime_tools[1].function(
+    describe_result = discovery_tools[1].function(
         tool_id="relay-notify",
-        call_mode="decide",
-        response_detail="Inspect whether this op can be used right now.",
     )
     assert describe_result == {
         "tool_id": "relay-notify",
@@ -3787,9 +3196,8 @@ def test_runtime_discovery_tools_filter_denied_ops() -> None:
 
 def test_rolling_cache_expected_reuses_returns_zero_for_empty_returns() -> None:
     """No tool returns means no continuation probability to compute."""
-    from actors.assistant import main
 
-    result = main._rolling_cache_expected_reuses(
+    result = history.rolling_cache_expected_reuses(
         tool_returns=[],
         call_args_by_id={},
         hop_count=1,
@@ -3800,7 +3208,6 @@ def test_rolling_cache_expected_reuses_returns_zero_for_empty_returns() -> None:
 
 def test_rolling_cache_expected_reuses_is_high_for_all_explore_calls() -> None:
     """All-explore tool returns should produce a higher expected-reuse estimate."""
-    from actors.assistant import main
     from pydantic_ai.messages import ToolReturnPart
 
     returns = [
@@ -3809,7 +3216,7 @@ def test_rolling_cache_expected_reuses_is_high_for_all_explore_calls() -> None:
         ),
         ToolReturnPart(tool_name="vault-search", content="more...", tool_call_id="c2"),
     ]
-    high_explore = main._rolling_cache_expected_reuses(
+    high_explore = history.rolling_cache_expected_reuses(
         tool_returns=returns,
         call_args_by_id={
             "c1": {"call_mode": "explore"},
@@ -3817,7 +3224,7 @@ def test_rolling_cache_expected_reuses_is_high_for_all_explore_calls() -> None:
         },
         hop_count=1,
     )
-    low_explore = main._rolling_cache_expected_reuses(
+    low_explore = history.rolling_cache_expected_reuses(
         tool_returns=returns,
         call_args_by_id={"c1": {"call_mode": "decide"}, "c2": {"call_mode": "decide"}},
         hop_count=1,
@@ -3828,7 +3235,6 @@ def test_rolling_cache_expected_reuses_is_high_for_all_explore_calls() -> None:
 
 def test_rolling_cache_expected_reuses_is_lower_for_decisive_successes() -> None:
     """Decisive-mode successes should reduce expected reuses via negative weight."""
-    from actors.assistant import main
     from pydantic_ai.messages import ToolReturnPart
 
     returns = [
@@ -3836,12 +3242,12 @@ def test_rolling_cache_expected_reuses_is_lower_for_decisive_successes() -> None
             tool_name="vault-get-file", content="file content", tool_call_id="c1"
         ),
     ]
-    neutral = main._rolling_cache_expected_reuses(
+    neutral = history.rolling_cache_expected_reuses(
         tool_returns=returns,
         call_args_by_id={"c1": {"call_mode": "explore"}},
         hop_count=1,
     )
-    decisive = main._rolling_cache_expected_reuses(
+    decisive = history.rolling_cache_expected_reuses(
         tool_returns=returns,
         call_args_by_id={"c1": {"call_mode": "decide"}},
         hop_count=1,
@@ -3852,7 +3258,6 @@ def test_rolling_cache_expected_reuses_is_lower_for_decisive_successes() -> None
 
 def test_rolling_cache_expected_reuses_applies_hop_decay_past_threshold() -> None:
     """Hop count > 3 should lower continuation probability via decay factor."""
-    from actors.assistant import main
     from pydantic_ai.messages import ToolReturnPart
 
     returns = [
@@ -3860,12 +3265,12 @@ def test_rolling_cache_expected_reuses_applies_hop_decay_past_threshold() -> Non
     ]
     args = {"c1": {"call_mode": "explore"}}
 
-    at_threshold = main._rolling_cache_expected_reuses(
+    at_threshold = history.rolling_cache_expected_reuses(
         tool_returns=returns,
         call_args_by_id=args,
         hop_count=3,
     )
-    beyond_threshold = main._rolling_cache_expected_reuses(
+    beyond_threshold = history.rolling_cache_expected_reuses(
         tool_returns=returns,
         call_args_by_id=args,
         hop_count=6,
@@ -3876,7 +3281,6 @@ def test_rolling_cache_expected_reuses_applies_hop_decay_past_threshold() -> Non
 
 def test_rolling_cache_expected_reuses_clamps_to_min_probability() -> None:
     """Probability floor prevents expected reuses from collapsing to zero."""
-    from actors.assistant import main
     from pydantic_ai.messages import ToolReturnPart
 
     # Decisive success applies -0.30 weight; with base 0.20 this would go negative
@@ -3888,7 +3292,7 @@ def test_rolling_cache_expected_reuses_clamps_to_min_probability() -> None:
             tool_call_id="c1",
         ),
     ]
-    result = main._rolling_cache_expected_reuses(
+    result = history.rolling_cache_expected_reuses(
         tool_returns=returns,
         call_args_by_id={"c1": {"call_mode": "decide"}},
         hop_count=20,  # heavy hop decay too
@@ -3907,7 +3311,6 @@ def test_rolling_cache_expected_reuses_clamps_to_min_probability() -> None:
 
 def test_rolling_cachepoint_score_positive_for_large_explore_growth() -> None:
     """Large token growth from exploratory calls should produce a positive score."""
-    from actors.assistant import main
     from pydantic_ai.messages import (
         ModelRequest,
         ModelResponse,
@@ -3944,7 +3347,7 @@ def test_rolling_cachepoint_score_positive_for_large_explore_growth() -> None:
         )
     ]
 
-    score = main._rolling_cachepoint_score(
+    score = history.rolling_cachepoint_score(
         tool_returns=tool_returns,
         call_args_by_id={tool_call_id: {"call_mode": "explore"}},
         hop_count=1,
@@ -3956,7 +3359,6 @@ def test_rolling_cachepoint_score_positive_for_large_explore_growth() -> None:
 
 def test_rolling_cachepoint_score_non_positive_for_tiny_decisive_success() -> None:
     """Tiny decisive successes are not worth caching: score should be non-positive."""
-    from actors.assistant import main
     from pydantic_ai.messages import (
         ModelRequest,
         ModelResponse,
@@ -3993,7 +3395,7 @@ def test_rolling_cachepoint_score_non_positive_for_tiny_decisive_success() -> No
         )
     ]
 
-    score = main._rolling_cachepoint_score(
+    score = history.rolling_cachepoint_score(
         tool_returns=tool_returns,
         call_args_by_id={tool_call_id: {"call_mode": "decide"}},
         hop_count=1,

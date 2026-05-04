@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
+from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.http.server import read_json_body
 from services.effect.relay._inbound.domain import (
     ConsoleEnqueueResult,
@@ -30,6 +31,7 @@ class _EnqueueConsoleMessageRequest(RequestMeta):
     """Inbound body for console message enqueue requests."""
 
     message_text: str
+    slash_authenticity: SlashAuthenticityProof | None = None
 
 
 class _PollOperatorInstructionResponse(BaseModel):
@@ -90,6 +92,7 @@ def register_routes(*, router: APIRouter, service: RelayInboundService) -> None:
             service.enqueue_console_message,
             meta=meta,
             message_text=req.message_text,
+            slash_authenticity=req.slash_authenticity,
         )
         payload = None if result.payload is None else result.payload.value
         return _EnqueueConsoleMessageResponse(

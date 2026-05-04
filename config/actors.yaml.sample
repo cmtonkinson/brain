@@ -17,6 +17,7 @@ assistant:
   tool_return_compress_threshold: 4000
   tool_return_max_chars: 8000
   tool_loop_tier2_hop_threshold: 3
+  surface_intermediate_text: false
 
 console:
   principal: operator
@@ -24,6 +25,7 @@ console:
   poll_timeout_seconds: 30.0
   poll_error_backoff_seconds: 1.0
   input_max_lines: 10
+  input_history_size: 1000
   editor: vim
 
 worker:

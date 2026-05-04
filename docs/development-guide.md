@@ -10,6 +10,7 @@ This document covers how to set up, build, test, and contribute to Brain.
 * **Docker** and **Docker Compose** (for Postgres, Qdrant, and other services)
 * **Ollama** (recommended for embedding, optional for inference)
 * **Obsidian** with the Local REST API plugin
+* **[drawio]** and **[d2]** (only required to regenerate diagrams; see [Diagrams](#diagrams))
 
 ------------------------------------------------------------------------
 ## Environment Setup
@@ -26,30 +27,42 @@ This document covers how to set up, build, test, and contribute to Brain.
    This runs Docker Compose, which starts Postgres, Qdrant, `signal-api`, and
    any other containerized services defined in `docker-compose.yaml`.
 
-3. If migrating existing signal-cli account state, copy it into `./data/signal-cli`:
+3. If migrating existing signal-cli account state, copy it into the XDG
+   state directory:
    ```
-   mkdir -p ./data/signal-cli
-   cp -R /path/to/existing/signal-cli/. ./data/signal-cli/
+   mkdir -p ~/.local/state/brain/signal-cli
+   cp -R /path/to/existing/signal-cli/. ~/.local/state/brain/signal-cli/
    ```
    Copy, do not move, until webhook ingress and account state are verified in
    this deployment.
 
-4. Copy and edit the configuration sample:
-   ```
+4. Copy the configuration samples and fill in `secrets.yaml`:
+   ```sh
    mkdir -p ~/.config/brain
-   cp config/shared.yaml.sample ~/.config/brain/shared.yaml
-   cp config/state.yaml.sample ~/.config/brain/state.yaml
-   cp config/effect.yaml.sample ~/.config/brain/effect.yaml
-   cp config/reason.yaml.sample ~/.config/brain/reason.yaml
-   cp config/actors.yaml.sample ~/.config/brain/actors.yaml
-   cp config/secrets.yaml.sample ~/.config/brain/secrets.yaml
+   for f in config/*.yaml.sample; do
+     cp "$f" ~/.config/brain/"$(basename "$f" .sample)"
+   done
    ```
    The samples are recommended groupings only. Brain scans the config directory
    non-recursively and deep-merges top-level `*.yaml` files in lexical order,
    so you may combine or split files however you prefer. See the
    [Configuration Reference](configuration.md) for all available keys.
 
-5. Start Brain Core. It bootstraps schemas and runs migrations automatically
+5. (For Software Service work) Copy the Compose override sample and edit
+   in your repository bind mounts:
+   ```sh
+   cp docker-compose.override.yaml.sample docker-compose.override.yaml
+   ```
+   The override is gitignored. Each entry binds a host directory under
+   `/mount/software/<group>` inside brain-core; the operator registers
+   workspaces with paths relative to that root. `make up` automatically
+   merges the override when present, and rebuilds
+   `brain/coding-runtime:base` when its source files change. Per-
+   workspace customization layers are built lazily by Brain Core when
+   the operator drops a script under
+   `~/.config/brain/coding_images/<workspace>.sh`.
+
+6. Start Brain Core. It bootstraps schemas and runs migrations automatically
    during startup.
 
 ------------------------------------------------------------------------
@@ -60,6 +73,10 @@ This document covers how to set up, build, test, and contribute to Brain.
 | `make deps` | Install Python dependencies with `uv sync` |
 | `make deps-upgrade` | Update locked dependencies (set `PACKAGE=<name>` to scope) |
 | `make switch-python` | Pin a Python version (`VERSION=<x.y.z>`) for the venv |
+| `make install` | Run the interactive install wizard (`RECONFIGURE=1` to re-walk it) |
+| `make upgrade` | Apply pending host-side upgrades; see [Upgrades](upgrades.md) |
+| `make upgrade-dryrun` | List pending upgrades without applying them |
+| `make new-upgrade` | Scaffold a new upgrade dir (`NAME=<snake_case_slug>`) |
 | `make clean` | Remove generated code and Python cache files |
 | `make check` | Run linting and format checks (ruff) |
 | `make format` | Auto-format code (ruff) |
@@ -76,6 +93,7 @@ This document covers how to set up, build, test, and contribute to Brain.
 | `make o11y-up` / `make o11y-down` | Start/stop the observability overlay alongside shared infra |
 | `make stack-up` | Start the full stack (app + observability) |
 | `make ps` | Show full-stack Compose process state |
+| `make coding-runtime-images` | Build `brain/coding-runtime:base` explicitly (rare; `make up` handles it) |
 
 ------------------------------------------------------------------------
 ## Optional Observability Stack
@@ -159,6 +177,20 @@ make format   # auto-format
 ```
 
 ------------------------------------------------------------------------
+## Diagrams
+Diagram sources live in `img/`. Two toolchains are in use:
+* **D2** for the C4 *Context*, *Container*, and *Deployment* diagrams
+  (`img/c4-context.d2`, `img/c4-container.d2`, `img/c4-deployment.d2`).
+  Install via `brew install d2`.
+* **drawio** for the *Boundaries & Responsibilities* diagram, authored as a
+  page in `img/diagrams.drawio`. Install the [drawio] desktop app; the
+  `drawio` CLI is shipped inside it.
+
+`make docs` regenerates the PNGs whose source has changed; it invokes
+`d2` directly for the D2 sources and `img/export-diagrams.sh` for the drawio
+pages. Either toolchain can be skipped if its sources are untouched.
+
+------------------------------------------------------------------------
 ## Database Bootstrapping
 Brain Core bootstraps schemas, creates the `ulid_bin` domain, and runs Alembic
 migrations in *Plane*-order (*State* -> *Effect* -> *Reason*) during startup.
@@ -167,6 +199,8 @@ See the Shared Infrastructure section of
 
 
 [Ruff]: https://docs.astral.sh/ruff/
+[d2]: https://d2lang.com/
+[drawio]: https://www.drawio.com/
 
 
 ------------------------------------------------------------------------

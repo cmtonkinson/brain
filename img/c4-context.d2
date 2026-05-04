@@ -1,0 +1,115 @@
+# System Context diagram for Brain
+# Source for img/c4-context.png; rendered via `d2` (see Makefile target).
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    pad: 16
+  }
+}
+
+direction: down
+
+title: "System Context diagram for Brain" {
+  near: top-center
+  shape: text
+  style: {
+    font-size: 32
+    bold: true
+  }
+}
+
+classes: {
+  person: {
+    shape: person
+    style: {
+      fill: "#08427b"
+      font-color: "#ffffff"
+      stroke: "#073b6f"
+      font-size: 18
+    }
+  }
+  system: {
+    style: {
+      fill: "#1168bd"
+      font-color: "#ffffff"
+      stroke: "#0e5aa7"
+      border-radius: 8
+      font-size: 18
+    }
+  }
+  ext: {
+    style: {
+      fill: "#999999"
+      font-color: "#ffffff"
+      stroke: "#7a7a7a"
+      border-radius: 8
+      font-size: 18
+    }
+  }
+  rel: {
+    style: {
+      stroke: "#444444"
+      font-color: "#222222"
+      font-size: 14
+    }
+  }
+}
+
+operator: "Operator\n[Person]\n\nThe person Brain works on behalf of." { class: person }
+
+brain: "Brain\n[Software System]\n\nLocal, private, personal assistant: durable memory,\ngoverned action, conversational interface." { class: system }
+
+signal: "Signal\n[Software System: External]\n\nEnd-to-end encrypted messaging service." { class: ext }
+
+obsidian: "Obsidian + Local REST API\n[Software System: External]\n\nOperator's Personal Knowledge Base." { class: ext }
+
+ollama: "Ollama\n[Software System: External]\n\nLocal LLM runtime; embeddings + optional inference." { class: ext }
+
+llm-cloud: "Cloud LLM Providers\n[Software System: External]\n\nAnthropic, Voyage, etc." { class: ext }
+
+mcp-servers: "MCP Servers\n[Software System: External]\n\nThird-party tools over the Model Context Protocol." { class: ext }
+
+host-gateway: "Host MCP Gateway\n[Software System: External]\n\nCompanion project bridging localhost APIs over MCP." { class: ext }
+
+git-repos: "Operator's Git Repositories\n[Software System: External]\n\nAllowlisted local repos on the host that\nBrain runs coding tasks against." { class: ext }
+
+docker-host: "Host Docker Engine\n[Software System: External]\n\nSpawns the per-task containers that\nrun coding-agent CLIs." { class: ext }
+
+operator -> brain: "Sends messages to and reviews proposals from" { class: rel }
+operator -> signal: "Chats with" { class: rel }
+operator -> obsidian: "Reads and edits notes in" { class: rel }
+
+brain -> signal: "Sends and receives messages via" { class: rel }
+brain -> obsidian: "Reads and writes vault via\nLocal REST API (JSON/HTTPS)" { class: rel }
+brain -> ollama: "Embeds and infers using\n(JSON/HTTP)" { class: rel }
+brain -> llm-cloud: "Calls inference and embeddings using\n(JSON/HTTPS)" { class: rel }
+brain -> mcp-servers: "Invokes tools using MCP" { class: rel }
+brain -> host-gateway: "Reaches host APIs through MCP (HTTP)" { class: rel }
+brain -> git-repos: "Stages worktrees and commits in" { class: rel }
+brain -> docker-host: "Spawns per-task coding containers via\n(Docker socket)" { class: rel }
+operator -> git-repos: "Owns and reviews" { class: rel }
+
+key: "Key" {
+  near: bottom-left
+  shape: rectangle
+  grid-rows: 3
+  grid-columns: 2
+  vertical-gap: 16
+  horizontal-gap: 24
+  style: {
+    fill: "#f5f5f5"
+    stroke: "#999999"
+    font-size: 16
+    bold: true
+  }
+
+  k-person-icon: "" { class: person; width: 60; height: 80 }
+  k-person-label: "Person" { shape: text; style.font-size: 16; style.bold: false }
+
+  k-system-icon: "" { class: system; width: 100; height: 50 }
+  k-system-label: "Software System (in scope)" { shape: text; style.font-size: 16; style.bold: false }
+
+  k-ext-icon: "" { class: ext; width: 100; height: 50 }
+  k-ext-label: "External Software System" { shape: text; style.font-size: 16; style.bold: false }
+}

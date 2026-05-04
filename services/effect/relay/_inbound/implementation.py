@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shlex
 import time
 from typing import Any
 
@@ -12,6 +13,7 @@ from pydantic import BaseModel, ValidationError
 
 from lib.sdk.client import BrainClient
 from lib.shared.approval import normalize_approval_intent
+from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.config import ApprovalResponseSettings
 from lib.shared.envelope import (
     Envelope,
@@ -31,6 +33,7 @@ from lib.shared.errors import (
     validation_error,
 )
 from lib.shared.logging import get_logger, public_api_instrumented
+from resources.adapters.console.adapter import ConsoleAdapter
 from resources.adapters.signal import (
     SignalAdapter,
     SignalInboundCallbackResult,
@@ -85,13 +88,55 @@ def _parse_slash_command(message_text: str) -> tuple[str, str] | None:
 def _parse_slash_args(
     args_text: str, input_schema: dict[str, Any] | None
 ) -> dict[str, Any]:
-    """Parse '--key value' named args from slash command argument text."""
+    """Parse named slash-command arguments into a typed input payload.
+
+    Accepted shapes:
+
+    * ``--key value`` and ``--key=value`` (with or without ``=``)
+    * ``--key "value with spaces"`` and ``--key='quoted'`` (single or double
+      quotes; surrounding quotes are stripped)
+    * ``--flag`` with no following value (boolean true)
+
+    Values are coerced against ``input_schema`` so a literal like ``"1800"``
+    arrives at the call target as ``int(1800)`` for an integer-typed field.
+    A coercion failure leaves the raw string in place; downstream validation
+    will surface a useful error.
+
+    When no ``--`` flags are present, falls back to the
+    single-string-property positional shortcut.
+    """
     if not args_text.strip():
         return {}
+    try:
+        tokens = shlex.split(args_text)
+    except ValueError:
+        # Unbalanced quotes; leave raw text alone and let the positional
+        # shortcut deal with it.
+        tokens = []
+
+    properties = _properties_of(input_schema)
     result: dict[str, Any] = {}
-    for m in _NAMED_ARG_RE.finditer(args_text):
-        key = m.group(1).replace("-", "_")
-        result[key] = m.group(2) if m.group(2) is not None else True
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if not token.startswith("--"):
+            i += 1
+            continue
+        body = token[2:]
+        if "=" in body:
+            raw_key, raw_value = body.split("=", 1)
+            value: Any = raw_value
+        else:
+            raw_key = body
+            if i + 1 < len(tokens) and not tokens[i + 1].startswith("--"):
+                value = tokens[i + 1]
+                i += 1
+            else:
+                value = True
+        key = raw_key.replace("-", "_")
+        result[key] = _coerce_to_schema(value, properties.get(key))
+        i += 1
+
     if result:
         return result
     positional_field = _single_string_input_field(input_schema)
@@ -100,27 +145,103 @@ def _parse_slash_args(
     return result
 
 
+def _properties_of(input_schema: dict[str, Any] | None) -> dict[str, Any]:
+    """Return the ``properties`` dict from a canonical JSON Schema, or empty."""
+    if not isinstance(input_schema, dict):
+        return {}
+    properties = input_schema.get("properties")
+    return properties if isinstance(properties, dict) else {}
+
+
+def _coerce_to_schema(value: Any, field_schema: Any) -> Any:
+    """Coerce one parsed slash value to the type declared in its schema."""
+    if value is True or value is False or value is None:
+        return value
+    if not isinstance(field_schema, dict):
+        return value
+    schema_type = field_schema.get("type")
+    if isinstance(value, str):
+        if schema_type == "integer" or (
+            isinstance(schema_type, list) and "integer" in schema_type
+        ):
+            try:
+                return int(value)
+            except ValueError:
+                return value
+        if schema_type == "number" or (
+            isinstance(schema_type, list) and "number" in schema_type
+        ):
+            try:
+                return float(value)
+            except ValueError:
+                return value
+        if schema_type == "boolean" or (
+            isinstance(schema_type, list) and "boolean" in schema_type
+        ):
+            lower = value.lower()
+            if lower in {"true", "1", "yes"}:
+                return True
+            if lower in {"false", "0", "no"}:
+                return False
+            return value
+    return value
+
+
 def _single_string_input_field(input_schema: dict[str, Any] | None) -> str | None:
-    """Return the only string field for positional slash args, when unambiguous."""
+    """Return the unambiguous string field for positional slash args.
+
+    Two patterns qualify:
+    * exactly one required property of string type (siblings may be optional);
+    * no required properties and exactly one string-typed property overall.
+
+    Returns ``None`` when the candidate is ambiguous or no property is a
+    string type.
+    """
     if not isinstance(input_schema, dict):
         return None
     properties = input_schema.get("properties")
-    if not isinstance(properties, dict) or len(properties) != 1:
+    if not isinstance(properties, dict) or not properties:
         return None
-    field_name, schema = next(iter(properties.items()))
-    if not isinstance(field_name, str) or not isinstance(schema, dict):
+    required = input_schema.get("required") or []
+    if not isinstance(required, list):
         return None
+
+    candidate: str | None = None
+    if len(required) == 1:
+        if isinstance(required[0], str):
+            candidate = required[0]
+    elif len(required) == 0:
+        string_props = [
+            name
+            for name, prop in properties.items()
+            if isinstance(name, str) and _has_string_type(prop)
+        ]
+        if len(string_props) == 1:
+            candidate = string_props[0]
+
+    if candidate is None:
+        return None
+    schema = properties.get(candidate)
+    if not isinstance(schema, dict) or not _has_string_type(schema):
+        return None
+    return candidate
+
+
+def _has_string_type(schema: Any) -> bool:
+    """Return True when one JSON Schema fragment admits the string type."""
+    if not isinstance(schema, dict):
+        return False
     schema_type = schema.get("type")
     if schema_type == "string":
-        return field_name
+        return True
     if isinstance(schema_type, list) and "string" in schema_type:
-        return field_name
+        return True
     any_of = schema.get("anyOf")
     if isinstance(any_of, list) and any(
         isinstance(item, dict) and item.get("type") == "string" for item in any_of
     ):
-        return field_name
-    return None
+        return True
+    return False
 
 
 def _render_slash_output(output: Any, simple_output_path: str | None) -> str:
@@ -152,6 +273,7 @@ class DefaultRelayInboundService(RelayInboundService):
         identity: RelayInboundIdentitySettings,
         adapter: SignalAdapter,
         cache_service: CacheService,
+        console_adapter: ConsoleAdapter | None = None,
         outbound_service: RelayOutboundService | None = None,
         recall_service: RecallService | None = None,
         approval_response_settings: ApprovalResponseSettings | None = None,
@@ -160,6 +282,7 @@ class DefaultRelayInboundService(RelayInboundService):
         self._settings = settings
         self._identity = identity
         self._adapter = adapter
+        self._console_adapter = console_adapter
         self._cache_service = cache_service
         self._outbound_service = outbound_service
         self._recall_service = recall_service
@@ -174,6 +297,27 @@ class DefaultRelayInboundService(RelayInboundService):
             default_dial_code=identity.default_dial_code,
         )
 
+    def _mint_signal_slash_proof(
+        self, command_text: str
+    ) -> SlashAuthenticityProof | None:
+        """Ask the Signal Adapter to mint a proof for an operator-channel slash command.
+
+        Returns ``None`` when the secret is unavailable; the slash dispatch
+        falls through to the standard approval gate, which will deny the
+        invocation rather than silently bypassing the gate.
+        """
+        try:
+            return self._adapter.mint_slash_authenticity_proof(
+                channel="signal",
+                message_text=command_text,
+            )
+        except SignalAdapterDependencyError:
+            _LOGGER.warning(
+                "signal adapter could not mint slash authenticity proof; "
+                "slash command will be denied by the approval gate"
+            )
+            return None
+
     def _handle_slash_command(
         self,
         *,
@@ -182,6 +326,7 @@ class DefaultRelayInboundService(RelayInboundService):
         args_text: str,
         source: str,
         instruction: NormalizedOperatorMessage | None = None,
+        slash_authenticity: SlashAuthenticityProof | None = None,
     ) -> Envelope[ConsoleEnqueueResult]:
         """Resolve and invoke one slash command inline; route output via ARS."""
         command_text = f"/{command_name}"
@@ -193,6 +338,12 @@ class DefaultRelayInboundService(RelayInboundService):
                 message_text=command_text,
                 timestamp_ms=int(time.time() * 1000),
             )
+
+        # Signal-channel slash commands are minted by the Signal Adapter at
+        # dispatch time; Console-channel proofs arrive on the inbound payload.
+        # Relay never holds the secret.
+        if slash_authenticity is None and source == "signal":
+            slash_authenticity = self._mint_signal_slash_proof(command_text)
 
         if self._brain_client is None:
             output = f"/{command_name}: slash commands not available (brain_client not configured)."
@@ -208,6 +359,8 @@ class DefaultRelayInboundService(RelayInboundService):
                         input_payload=input_payload,
                         actor="operator",
                         channel=source,
+                        message_text=command_text,
+                        slash_authenticity=slash_authenticity,
                     )
                     output = _render_slash_output(
                         result.output, descriptor.simple_output_path
@@ -467,6 +620,7 @@ class DefaultRelayInboundService(RelayInboundService):
         *,
         meta: EnvelopeMeta,
         message_text: str,
+        slash_authenticity: SlashAuthenticityProof | None = None,
     ) -> Envelope[ConsoleEnqueueResult]:
         """Normalize and enqueue one inbound console operator message."""
         request, errors = self._validate_request(
@@ -486,6 +640,7 @@ class DefaultRelayInboundService(RelayInboundService):
                 command_name=command_name,
                 args_text=args_text,
                 source="console",
+                slash_authenticity=slash_authenticity,
             )
 
         message = NormalizedOperatorMessage(

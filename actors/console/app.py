@@ -7,6 +7,7 @@ import time
 import threading
 from datetime import UTC, datetime
 
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container
@@ -72,6 +73,7 @@ class ConsoleApp(App[None]):
                 id=_ID_INPUT,
                 editor=self._config.editor,
                 input_max_lines=self._config.input_max_lines,
+                input_history_size=self._config.input_history_size,
             ),
             id="root",
         )
@@ -162,6 +164,16 @@ class ConsoleApp(App[None]):
                 if not self._polling:
                     break
                 time.sleep(self._config.poll_error_backoff_seconds)
+
+    def on_click(self, event: events.Click) -> None:
+        """Return focus to the input on any bare click that bubbles to the app.
+
+        A click that lands on an interactive child (the input's text area) is
+        handled by that child first; this handler still fires for unhandled
+        clicks on bubbles, header, rules, and empty space, restoring focus to
+        the input so the operator can immediately type.
+        """
+        self.query_one(f"#{_ID_INPUT}", MessageInput).focus_input()
 
     def on_brain_response(self, event: BrainResponse) -> None:
         """Append a Brain bubble when a response arrives."""

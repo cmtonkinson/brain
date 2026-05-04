@@ -1,7 +1,14 @@
 # Secrets
 .env
 
+# Operator-specific Docker Compose overrides (workspace bind mounts, etc.).
+# Compose merges this with docker-compose.yaml automatically when present.
+docker-compose.override.yaml
+
 # General files
 /data/
 /logs/
 .omx/
+
+# Make sentinels for image builds.
+resources/adapters/coding/runtime/.built

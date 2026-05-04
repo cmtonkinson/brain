@@ -36,7 +36,10 @@ class _FakeRelayInboundService(RelayInboundService):
     def ingest_signal_message(self, *, meta, raw_body_json: str):
         raise NotImplementedError
 
-    def enqueue_console_message(self, *, meta, message_text: str):
+    def enqueue_console_message(
+        self, *, meta, message_text: str, slash_authenticity=None
+    ):
+        del slash_authenticity
         self.enqueue_calls.append(message_text)
         return self.enqueue_result
 

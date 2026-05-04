@@ -77,6 +77,20 @@ returns True for a recoverable failure.
 """
 
 
+OperatorIntermediateTextNotifier = Callable[..., Awaitable[None]]
+"""Callback signature for surfacing intermediate model text to the operator.
+
+Caller supplies an async function with at minimum the keyword arguments
+``client``, ``turn_state``, ``session_id``, ``text``, and
+``reasoning_level``. ``AgentToolModel`` invokes it via ``await
+operator_intermediate_text_notifier(...)`` whenever a successful model
+response carries both non-empty text *and* one or more valid tool calls,
+so the operator can see the model's commentary as the turn unfolds. The
+callback owns channel selection and any presentation formatting; the
+model passes the raw model-emitted text.
+"""
+
+
 class AgentToolModel(Model):
     """PydanticAI model backed by the SDK tool-capable Language endpoint.
 
@@ -104,6 +118,8 @@ class AgentToolModel(Model):
         discovery_tool_names: frozenset[str] = frozenset(),
         operator_recovery_notifier: OperatorRecoveryNotifier | None = None,
         recovery_notice_message: str = "",
+        operator_intermediate_text_notifier: OperatorIntermediateTextNotifier
+        | None = None,
     ) -> None:
         super().__init__(profile=ModelProfile(supports_tools=True))
         self._client = client
@@ -119,6 +135,7 @@ class AgentToolModel(Model):
         self._discovery_tool_names = discovery_tool_names
         self._operator_recovery_notifier = operator_recovery_notifier
         self._recovery_notice_message = recovery_notice_message
+        self._operator_intermediate_text_notifier = operator_intermediate_text_notifier
         self.last_result: LmsToolChatResult | None = None
         self._last_used_profile_name = profile_name
 
@@ -235,7 +252,7 @@ class AgentToolModel(Model):
                                             f"{', '.join(invalid_tool_names)}"
                                         ),
                                         category="internal",
-                                        retryable=True,
+                                        retryable=False,
                                         metadata={
                                             "tool_names": ",".join(invalid_tool_names)
                                         },
@@ -243,13 +260,28 @@ class AgentToolModel(Model):
                                 ),
                             )
                         parts: list[TextPart | ToolCallPart] = []
-                        if result.text is not None and result.text.strip() != "":
-                            parts.append(TextPart(result.text.strip()))
+                        intermediate_text = (
+                            result.text.strip() if result.text is not None else ""
+                        )
+                        if intermediate_text != "":
+                            parts.append(TextPart(intermediate_text))
                         parts.extend(
                             to_model_tool_call(item) for item in valid_tool_calls
                         )
                         if len(parts) == 0:
                             parts.append(TextPart(_EMPTY_RESPONSE_FALLBACK))
+                        if (
+                            intermediate_text != ""
+                            and len(valid_tool_calls) > 0
+                            and self._operator_intermediate_text_notifier is not None
+                        ):
+                            await self._operator_intermediate_text_notifier(
+                                client=self._client,
+                                turn_state=self._turn_state,
+                                session_id=self._session_id,
+                                text=intermediate_text,
+                                reasoning_level=self.profile_name,
+                            )
                         self._last_used_profile_name = self.profile_name
                         set_current_span_attributes(
                             {
@@ -384,4 +416,9 @@ def call_with_optional_meta(
     return func(**filtered_kwargs)
 
 
-__all__ = ["AgentToolModel", "OperatorRecoveryNotifier", "call_with_optional_meta"]
+__all__ = [
+    "AgentToolModel",
+    "OperatorIntermediateTextNotifier",
+    "OperatorRecoveryNotifier",
+    "call_with_optional_meta",
+]

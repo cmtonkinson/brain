@@ -17,8 +17,19 @@ HTTP_API_SRC    := $(shell (printf '%s\n' lib/core/health_api.py; find services 
 OP_DOC          := docs/ops.md
 OP_GEN          := scripts/generate_op_docs.py
 OP_SRC          := $(shell find ops -type f | sort)
-APP_COMPOSE_FILES := --file docker-compose.yaml
-STACK_COMPOSE_FILES := --file docker-compose.yaml --file docker-compose.observability.yaml
+# Include docker-compose.override.yaml only when present. Compose auto-merges
+# `docker-compose.override.yaml` only when invoked with no explicit `--file`;
+# the moment we pass `--file docker-compose.yaml` it stops doing so. We have
+# to splice it back in explicitly or operator-side mounts (e.g. Software
+# Service workspace binds) silently disappear from `make up`.
+OVERRIDE_COMPOSE_FILES := $(if $(wildcard docker-compose.override.yaml),--file docker-compose.override.yaml,)
+# Opt-in services (today: signal-api) are gated behind Compose profiles. The
+# helper reads ~/.config/brain/secrets.yaml — written by the install wizard
+# — and emits `--profile <name>` flags for any feature the operator
+# enabled. Empty output when nothing's enabled.
+COMPOSE_PROFILES := $(shell ./bin/compose-profiles 2>/dev/null)
+APP_COMPOSE_FILES := --file docker-compose.yaml $(OVERRIDE_COMPOSE_FILES) $(COMPOSE_PROFILES)
+STACK_COMPOSE_FILES := --file docker-compose.yaml --file docker-compose.observability.yaml $(OVERRIDE_COMPOSE_FILES) $(COMPOSE_PROFILES)
 APP_SERVICES     := \
 	valkey \
 	brain-mcp \
@@ -51,13 +62,17 @@ O11Y_SERVICES   := \
 	clickhouse \
 	seaweedfs-bucket-init
 O11Y_UP_SERVICES := $(O11Y_SHARED_SERVICES) $(O11Y_SERVICES)
-DIAGRAM_SRC     := img/diagrams.drawio
-DIAGRAM_GEN     := img/export-diagrams.sh
-DIAGRAM_PNGS    := \
-	img/c4-context.png \
-	img/c4-container.png \
-	img/c4-component.png \
+DRAWIO_DIAGRAM_SRC  := img/diagrams.drawio
+DRAWIO_DIAGRAM_GEN  := img/export-diagrams.sh
+DRAWIO_DIAGRAM_PNGS := \
 	img/boundaries-and-responsibilities.png
+D2                  := d2
+D2_DIAGRAM_SRCS     := \
+	img/c4-context.d2 \
+	img/c4-container.d2 \
+	img/c4-deployment.d2
+D2_DIAGRAM_PNGS     := $(D2_DIAGRAM_SRCS:.d2=.png)
+DIAGRAM_PNGS        := $(DRAWIO_DIAGRAM_PNGS) $(D2_DIAGRAM_PNGS)
 INTEGRATION     ?= 0
 GATE_WIDTH      ?= 72
 
@@ -83,7 +98,12 @@ ifeq ($(INTEGRATION),1)
 PYTEST_INTEGRATION_ENV := BRAIN_RUN_INTEGRATION_REAL=1
 endif
 
-.PHONY: all deps deps-upgrade switch-python clean check format test test-only test-all docs docs-check up down ps app-up app-down app-down-all o11y-up o11y-down stack-up stack-down integration outline smoke smoke-only smoke-e2e smoke-docker
+CODING_RUNTIME_DIR := resources/adapters/coding/runtime
+CODING_RUNTIME_TAG_PREFIX := brain/coding-runtime
+CODING_RUNTIME_SENTINEL := $(CODING_RUNTIME_DIR)/.built
+CODING_RUNTIME_SOURCES := $(CODING_RUNTIME_DIR)/Dockerfile.base $(wildcard $(CODING_RUNTIME_DIR)/*.sh)
+
+.PHONY: all deps deps-upgrade switch-python install signal-setup upgrade upgrade-dryrun new-upgrade clean check format test test-only test-all docs docs-check up down ps app-up app-down app-down-all o11y-up o11y-down stack-up stack-down integration outline smoke smoke-only smoke-e2e smoke-docker coding-runtime-images
 
 define run_gate
 	@set +e; \
@@ -126,6 +146,25 @@ switch-python:
 		exit 1; \
 	fi
 	./bin/use-python "$${VERSION}"
+
+install:
+	@./bin/install $(if $(RECONFIGURE),--reconfigure,)
+
+signal-setup:
+	@./bin/signal-setup
+
+upgrade:
+	@./bin/upgrade apply
+
+upgrade-dryrun:
+	@./bin/upgrade dry-run
+
+new-upgrade:
+	@if [ -z "$${NAME:-}" ]; then \
+		echo "usage: make new-upgrade NAME=snake_case_slug" >&2; \
+		exit 2; \
+	fi
+	@./bin/upgrade new --name "$${NAME}"
 
 clean:
 	find . -type f -name '*.pyc' -delete
@@ -198,8 +237,11 @@ $(HTTP_API_DOC): $(HTTP_API_SRC) $(HTTP_API_GEN) $(HTTP_API_META)
 $(OP_DOC): $(OP_SRC) $(OP_GEN)
 	$(PY) $(OP_GEN)
 
-$(DIAGRAM_PNGS) &: $(DIAGRAM_SRC) $(DIAGRAM_GEN)
-	$(DIAGRAM_GEN) $(DIAGRAM_SRC)
+$(DRAWIO_DIAGRAM_PNGS) &: $(DRAWIO_DIAGRAM_SRC) $(DRAWIO_DIAGRAM_GEN)
+	$(DRAWIO_DIAGRAM_GEN) $(DRAWIO_DIAGRAM_SRC)
+
+img/%.png: img/%.d2
+	$(D2) $< $@
 
 #############################################################################
 # development conveniences
@@ -211,7 +253,7 @@ down: stack-down
 ps:
 	docker compose $(STACK_COMPOSE_FILES) ps
 
-app-up:
+app-up: $(CODING_RUNTIME_SENTINEL)
 	PYTHON_VERSION=$(PYTHON_VERSION) docker compose $(APP_COMPOSE_FILES) up --build --detach
 
 app-down:
@@ -226,7 +268,7 @@ o11y-up:
 o11y-down:
 	docker compose $(STACK_COMPOSE_FILES) rm --force --stop $(O11Y_SERVICES)
 
-stack-up:
+stack-up: $(CODING_RUNTIME_SENTINEL)
 	PYTHON_VERSION=$(PYTHON_VERSION) docker compose $(STACK_COMPOSE_FILES) up --build --detach
 
 stack-down:
@@ -234,3 +276,26 @@ stack-down:
 
 outline:
 	@tree -d -I __pycache__ -I tests -I data -I migrations actors lib resources services
+
+#############################################################################
+# coding-runtime base image (Coding Adapter)
+#############################################################################
+# Brain ships exactly one coding-runtime image. Every configured agent CLI
+# is installed into it during the build via the sibling `*.sh` scripts in
+# $(CODING_RUNTIME_DIR). Per-workspace customization layers (built lazily
+# by Brain Core when the operator drops a script under
+# ~/.config/brain/coding_images/) FROM this tag.
+#
+# `app-up` and `stack-up` depend on the sentinel below, so the image is
+# rebuilt automatically whenever Dockerfile.base or any sibling agent
+# install script changes; otherwise it's a no-op. Operators don't run
+# this target directly — `make up` handles it. The phony alias is kept
+# for explicit "build now without bringing the stack up" use.
+coding-runtime-images: $(CODING_RUNTIME_SENTINEL)
+
+$(CODING_RUNTIME_SENTINEL): $(CODING_RUNTIME_SOURCES)
+	docker build \
+		--file $(CODING_RUNTIME_DIR)/Dockerfile.base \
+		--tag $(CODING_RUNTIME_TAG_PREFIX):base \
+		$(CODING_RUNTIME_DIR)
+	@touch $(CODING_RUNTIME_SENTINEL)

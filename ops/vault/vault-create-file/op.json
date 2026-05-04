@@ -6,7 +6,7 @@
   "enabled": true,
   "input_schema": {
     "file_path": "string | The full path of the file to create.",
-    "content": "string | The initial content of the file."
+    "content": "string | optional | The initial content of the file. Defaults to empty."
   },
   "output_schema": {
     "path": "string | The full path of the file.",
@@ -17,6 +17,11 @@
     "revision": "string | The revision identifier for the file."
   },
   "call_target": "service_vault.create_file",
+  "simple_output_path": "path",
+  "slash_command": {
+    "name": "create-file",
+    "description": "create one vault file at the given path (positional path; --content optional)"
+  },
   "effect": "write",
   "approval": "never"
 }

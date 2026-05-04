@@ -377,6 +377,194 @@ Native Op over `Relay Service route_notification()`
 * `notification` *(object, optional)* Normalized routed notification payload.
 
 ------------------------------------------------------------------------
+## `Software Service`
+### `code-task-async`
+Dispatch one coding task and return immediately with a RUNNING task row.  
+`native` `1.0.0` `effect: external` `approval: never`  
+Native Op over `Software Service run_task_async()`  
+
+**Inputs:**
+* `workspace_id` *(string)* Identifier of the registered workspace to operate on.
+* `prompt` *(string)* Natural-language description of the task for the coding executor.
+* `executor` *(string | null, optional)* Override the workspace's default executor (claude_code | codex | opencode).
+
+**Outputs:**
+* `id` *(string)* Task identifier.
+* `workspace_id` *(string)* Workspace identifier the task was dispatched against.
+* `executor` *(string)* The coding executor used for this task.
+* `branch` *(string)* Branch name created for the task worktree.
+* `prompt_object_ref` *(string | null, optional)* Object Store reference holding the prompt text; null when Object Store is not wired.
+* `status` *(string)* Initial task status (running).
+* `started_at` *(string)* ISO8601 task start timestamp.
+* `finished_at` *(string, optional)* Always null on async dispatch; populated only after the task reaches terminal.
+* `commit_sha` *(string, optional)* Always null on async dispatch.
+* `test_passed` *(boolean, optional)* Always null on async dispatch.
+* `stdout_object_ref` *(string, optional)* Populated by the background driver when the executor exits.
+* `stderr_object_ref` *(string, optional)* Populated by the background driver when the executor exits.
+* `test_stdout_object_ref` *(string, optional)* Object Store reference for test stdout; null until captured.
+* `test_stderr_object_ref` *(string, optional)* Object Store reference for test stderr; null until captured.
+* `termination_reason` *(string, optional)* Populated when the task terminates.
+* `failure_detail` *(string, optional)* Populated on failure.
+
+### `code-task-cancel`
+Request cancellation of one in-flight Software task.  
+`native` `1.0.0` `effect: execute` `approval: never`  
+Native Op over `Software Service cancel_task()`  
+
+**Inputs:**
+* `task_id` *(string)* The task identifier to cancel.
+
+**Outputs:**
+* `id` *(string)* Task identifier.
+* `workspace_id` *(string)* Workspace identifier the task was dispatched against.
+* `executor` *(string)* The coding executor used for this task.
+* `branch` *(string)* Branch name created for the task worktree.
+* `prompt_object_ref` *(string | null, optional)* Object Store reference holding the prompt text; null when Object Store is not wired.
+* `status` *(string)* Current task status.
+* `started_at` *(string)* ISO8601 task start timestamp.
+* `finished_at` *(string, optional)* ISO8601 task completion timestamp; null until terminal.
+* `commit_sha` *(string, optional)* Commit SHA produced by the task; null when no commit was made.
+* `test_passed` *(boolean, optional)* Whether the configured test_command passed; null until the test step runs.
+* `stdout_object_ref` *(string, optional)* Object Store reference for executor stdout; null until captured.
+* `stderr_object_ref` *(string, optional)* Object Store reference for executor stderr; null until captured.
+* `test_stdout_object_ref` *(string, optional)* Object Store reference for test stdout; null until captured.
+* `test_stderr_object_ref` *(string, optional)* Object Store reference for test stderr; null until captured.
+* `termination_reason` *(string, optional)* Why the task terminated; null until terminal.
+* `failure_detail` *(string, optional)* Human-readable failure context; null on success.
+
+### `code-task-status`
+Return the current lineage row for one Software task.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Software Service task_status()`  
+
+**Inputs:**
+* `task_id` *(string)* The task identifier to inspect.
+
+**Outputs:**
+* `id` *(string)* Task identifier.
+* `workspace_id` *(string)* Workspace identifier the task was dispatched against.
+* `executor` *(string)* The coding executor used for this task.
+* `branch` *(string)* Branch name created for the task worktree.
+* `prompt_object_ref` *(string | null, optional)* Object Store reference holding the prompt text; null when Object Store is not wired.
+* `status` *(string)* Current task status.
+* `started_at` *(string)* ISO8601 task start timestamp.
+* `finished_at` *(string, optional)* ISO8601 task completion timestamp; null until terminal.
+* `commit_sha` *(string, optional)* Commit SHA produced by the task; null when no commit was made.
+* `test_passed` *(boolean, optional)* Whether the configured test_command passed; null until the test step runs.
+* `stdout_object_ref` *(string, optional)* Object Store reference for executor stdout; null until captured.
+* `stderr_object_ref` *(string, optional)* Object Store reference for executor stderr; null until captured.
+* `test_stdout_object_ref` *(string, optional)* Object Store reference for test stdout; null until captured.
+* `test_stderr_object_ref` *(string, optional)* Object Store reference for test stderr; null until captured.
+* `termination_reason` *(string, optional)* Why the task terminated; null until terminal.
+* `failure_detail` *(string, optional)* Human-readable failure context; null on success.
+
+### `code-task-sync`
+Dispatch one coding task and block until terminal.  
+`native` `1.0.0` `effect: external` `approval: never`  
+Native Op over `Software Service run_task_sync()`  
+
+**Inputs:**
+* `workspace_id` *(string)* Identifier of the registered workspace to operate on.
+* `prompt` *(string)* Natural-language description of the task for the coding executor.
+* `executor` *(string | null, optional)* Override the workspace's default executor (claude_code | codex | opencode).
+
+**Outputs:**
+* `id` *(string)* Task identifier.
+* `workspace_id` *(string)* Workspace identifier the task was dispatched against.
+* `executor` *(string)* The coding executor used for this task.
+* `branch` *(string)* Branch name created for the task worktree.
+* `prompt_object_ref` *(string | null, optional)* Object Store reference holding the prompt text; null when Object Store is not wired.
+* `status` *(string)* Final task status (succeeded | failed | cancelled).
+* `started_at` *(string)* ISO8601 task start timestamp.
+* `finished_at` *(string, optional)* ISO8601 task completion timestamp; null when the wait timed out before terminal.
+* `commit_sha` *(string, optional)* Commit SHA produced by the task; null when no commit was made.
+* `test_passed` *(boolean, optional)* Whether the configured test_command passed; null until the test step runs.
+* `stdout_object_ref` *(string, optional)* Object Store reference for executor stdout; null until captured.
+* `stderr_object_ref` *(string, optional)* Object Store reference for executor stderr; null until captured.
+* `test_stdout_object_ref` *(string, optional)* Object Store reference for test stdout; null until captured.
+* `test_stderr_object_ref` *(string, optional)* Object Store reference for test stderr; null until captured.
+* `termination_reason` *(string, optional)* Why the task terminated; null until terminal.
+* `failure_detail` *(string, optional)* Human-readable failure context; null on success.
+
+### `code-task-wait`
+Block until one Software task reaches a terminal status.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Software Service wait_for_task()`  
+
+**Inputs:**
+* `task_id` *(string)* The task identifier to wait on.
+* `max_wait_seconds` *(number | null, optional)* Soft deadline. When the deadline elapses before terminal, returns the most recent non-terminal row with a timed-out failure envelope.
+
+**Outputs:**
+* `id` *(string)* Task identifier.
+* `workspace_id` *(string)* Workspace identifier the task was dispatched against.
+* `executor` *(string)* The coding executor used for this task.
+* `branch` *(string)* Branch name created for the task worktree.
+* `prompt_object_ref` *(string | null, optional)* Object Store reference holding the prompt text; null when Object Store is not wired.
+* `status` *(string)* Final task status (succeeded | failed | cancelled), or non-terminal status if max_wait_seconds elapsed.
+* `started_at` *(string)* ISO8601 task start timestamp.
+* `finished_at` *(string, optional)* ISO8601 task completion timestamp; null when the wait timed out before terminal.
+* `commit_sha` *(string, optional)* Commit SHA produced by the task; null when no commit was made.
+* `test_passed` *(boolean, optional)* Whether the configured test_command passed; null until the test step runs.
+* `stdout_object_ref` *(string, optional)* Object Store reference for executor stdout; null until captured.
+* `stderr_object_ref` *(string, optional)* Object Store reference for executor stderr; null until captured.
+* `test_stdout_object_ref` *(string, optional)* Object Store reference for test stdout; null until captured.
+* `test_stderr_object_ref` *(string, optional)* Object Store reference for test stderr; null until captured.
+* `termination_reason` *(string, optional)* Why the task terminated; null until terminal.
+* `failure_detail` *(string, optional)* Human-readable failure context; null on success.
+
+### `code-workspace-list`
+List registered Software workspaces.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Software Service list_workspaces()`  
+
+**Inputs:**
+* `include_revoked` *(boolean, optional)* If true, also return revoked workspaces. Defaults to false.
+
+**Outputs:**
+* `array[object]`
+
+### `code-workspace-register`
+Register one repository as an allowlisted Software workspace; the binary trust gate.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Software Service register_workspace()`  
+
+**Inputs:**
+* `path` *(string)* Absolute path on the Brain Core host to the git repository root.
+* `default_executor` *(string | null, optional, default='claude_code')* Default coding executor for tasks against this workspace (claude_code | codex | opencode).
+* `test_command` *(string | null, optional)* Shell command run by the Service after each task to gate the commit step.
+* `max_wallclock_seconds` *(integer | null, optional, default=1800)* Hard wallclock budget per task against this workspace.
+* `branch_prefix` *(string | null, optional, default='brain/software/')* Branch prefix under which task branches are created.
+
+**Outputs:**
+* `id` *(string)* Workspace identifier.
+* `path` *(string)* Registered repository path.
+* `default_executor` *(string)* Configured default executor.
+* `test_command` *(string)* Configured test command.
+* `max_wallclock_seconds` *(integer)* Configured wallclock budget.
+* `branch_prefix` *(string)* Configured branch prefix.
+* `created_at` *(string)* ISO8601 registration timestamp.
+* `revoked_at` *(string, optional)* ISO8601 revocation timestamp; null while active.
+
+### `code-workspace-revoke`
+Revoke trust on a registered Software workspace.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Software Service revoke_workspace()`  
+
+**Inputs:**
+* `workspace_id` *(string)* The workspace identifier to revoke.
+
+**Outputs:**
+* `id` *(string)* Workspace identifier.
+* `path` *(string)* Registered repository path.
+* `default_executor` *(string)* Configured default executor.
+* `test_command` *(string)* Configured test command.
+* `max_wallclock_seconds` *(integer)* Configured wallclock budget.
+* `branch_prefix` *(string)* Configured branch prefix.
+* `created_at` *(string)* ISO8601 registration timestamp.
+* `revoked_at` *(string)* ISO8601 revocation timestamp.
+
+------------------------------------------------------------------------
 ## `Utility Service`
 ### `chunk-text`
 Split text into ordered chunks.  
@@ -447,7 +635,7 @@ Native Op over `Vault Service create_file()`
 
 **Inputs:**
 * `file_path` *(string)* The full path of the file to create.
-* `content` *(string)* The initial content of the file.
+* `content` *(string, optional)* The initial content of the file. Defaults to empty.
 
 **Outputs:**
 * `path` *(string)* The full path of the file.
@@ -679,14 +867,15 @@ Logic Op
 * `string`: Confirmation message describing the persisted classification.
 
 ### `slash-help`
-List all slash commands available via operator channels.  
+List all slash commands, or describe one in detail when a query is given.  
 `logic` `1.0.0` `effect: read` `approval: never`  
 Logic Op  
 
-**Inputs:** None
+**Inputs:**
+* `query` *(string, optional)* When omitted, list all slash commands. When given, exact-match on slash name, alias, or op_id returns details for that op; substring-match returns the matching subset (or details if exactly one matches).
 
 **Outputs:**
-* `string`: Formatted list of registered slash commands with descriptions.
+* `string`: Formatted slash-command listing or per-op detail.
 
 
 ------------------------------------------------------------------------

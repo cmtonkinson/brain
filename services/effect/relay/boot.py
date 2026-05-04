@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from time import sleep
 
 from lib.core.boot import BootContext
 from lib.shared.envelope import EnvelopeKind, new_meta
 from lib.shared.errors import codes, internal_error
+from resources.adapters.signal.config import resolve_signal_adapter_settings
 from services.effect.relay.component import SERVICE_COMPONENT_ID
 from services.effect.relay.config import (
     RelayServiceSettings,
@@ -16,6 +18,7 @@ from services.effect.relay.service import RelayService
 
 dependencies: tuple[str, ...] = ("service_cache",)
 
+_LOGGER = logging.getLogger(__name__)
 _SOURCE = "relay_boot"
 _PRINCIPAL = "service_relay"
 
@@ -54,6 +57,12 @@ def is_ready(ctx: BootContext) -> bool:
 
 def boot(ctx: BootContext) -> None:
     """Register the in-process Signal adapter callback once Relay is ready."""
+    if not resolve_signal_adapter_settings(ctx.settings).receive_e164:
+        _LOGGER.info(
+            "signal disabled (signal.receive_e164 empty); "
+            "skipping signal callback registration"
+        )
+        return
     service, settings = _resolve(ctx)
     inbound_settings = settings.inbound
     attempts = inbound_settings.callback_register_max_retries + 1

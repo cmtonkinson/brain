@@ -15,6 +15,16 @@ from fastapi import APIRouter
 from lib.core.health_api import register_routes
 from lib.core.migrations import run_startup_migrations
 from lib.core.startup import run_core_startup
+from lib.core.upgrades.runner import (
+    UpgradesPendingError,
+    assert_pre_services_clean,
+    warn_post_services_pending,
+)
+from lib.shared.auth.slash_authenticity import (
+    default_secret_path,
+    delete_secret,
+    generate_and_write_secret,
+)
 from lib.shared.component_loader import (
     import_component_modules,
     import_registered_component_modules,
@@ -228,9 +238,24 @@ def main() -> None:
         },
     )
 
+    if settings.core.boot.assert_upgrades_clean:
+        try:
+            assert_pre_services_clean(repo_root=Path.cwd())
+        except UpgradesPendingError as exc:
+            _LOGGER.error("upgrade boot guard failed: %s", exc)
+            print(f"upgrade boot guard: {exc}", file=sys.stderr)
+            sys.exit(78)
+        warn_post_services_pending(repo_root=Path.cwd())
+
     migration_result = None
     if settings.core.boot.run_migrations_on_startup:
         migration_result = run_startup_migrations(settings=settings)
+
+    secret_path = default_secret_path()
+    generate_and_write_secret(secret_path)
+    _LOGGER.info(
+        "slash authenticity secret generated", extra={"path": str(secret_path)}
+    )
 
     components = _instantiate_registered_components(settings)
     _assert_health_interface(components)
@@ -260,6 +285,10 @@ def main() -> None:
         http_server.should_exit = True
         http_thread.join(timeout=5.0)
         _LOGGER.info("core HTTP runtime stopped")
+        delete_secret(secret_path)
+        _LOGGER.info(
+            "slash authenticity secret deleted", extra={"path": str(secret_path)}
+        )
 
 
 if __name__ == "__main__":

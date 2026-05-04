@@ -56,6 +56,10 @@
     }
   },
   "call_target": "service_vault.list_directory",
+  "slash_command": {
+    "name": "ls",
+    "description": "list vault entries at one path"
+  },
   "effect": "read",
   "approval": "never"
 }

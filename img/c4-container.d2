@@ -1,0 +1,173 @@
+# Container diagram for Brain
+# Source for img/c4-container.png; rendered via `d2` (see Makefile target).
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    pad: 16
+  }
+}
+
+direction: down
+
+title: "Container diagram for Brain" {
+  near: top-center
+  shape: text
+  style: {
+    font-size: 32
+    bold: true
+  }
+}
+
+classes: {
+  person: {
+    shape: person
+    style: {
+      fill: "#08427b"
+      font-color: "#ffffff"
+      stroke: "#073b6f"
+      font-size: 18
+    }
+  }
+  container: {
+    style: {
+      fill: "#438dd5"
+      font-color: "#ffffff"
+      stroke: "#3173a8"
+      border-radius: 8
+      font-size: 16
+    }
+  }
+  store: {
+    shape: cylinder
+    style: {
+      fill: "#438dd5"
+      font-color: "#ffffff"
+      stroke: "#3173a8"
+      font-size: 16
+    }
+  }
+  ext: {
+    style: {
+      fill: "#999999"
+      font-color: "#ffffff"
+      stroke: "#7a7a7a"
+      border-radius: 8
+      font-size: 16
+    }
+  }
+  ext-store: {
+    shape: cylinder
+    style: {
+      fill: "#999999"
+      font-color: "#ffffff"
+      stroke: "#7a7a7a"
+      font-size: 16
+    }
+  }
+  rel: {
+    style: {
+      stroke: "#444444"
+      font-color: "#222222"
+      font-size: 13
+    }
+  }
+}
+
+operator: "Operator\n[Person]" { class: person }
+
+brain: "Brain [Software System]" {
+  style: {
+    stroke: "#0e5aa7"
+    stroke-dash: 4
+    fill: "#f5faff"
+    font-size: 18
+    bold: true
+  }
+
+  console: "Console\n[Container: Python TUI]\n\nLocal console UI; runs on host." { class: container }
+  cli: "CLI\n[Container: Python]\n\nOne-shot operator commands; runs on host." { class: container }
+
+  assistant: "Brain Assistant\n[Container: Python / PydanticAI]\n\nT3 actor: turns operator input into bounded action." { class: container }
+  worker: "Brain Worker\n[Container: Python]\n\nT3 actor: drains scheduled and background jobs." { class: container }
+  subagent: "Brain Subagent\n[Container: Python]\n\nT3 actor: focused, budget-bounded delegated subtasks." { class: container }
+
+  core: "Brain Core\n[Container: Python / FastAPI]\n\nHosts all T2 Services (State, Effect, Reason);\ngates all T1 Resource access behind one HTTP surface." { class: container }
+
+  mcp: "Brain MCP Adapter\n[Container: Python sidecar]\n\nBridges Execution to configured MCP servers." { class: container }
+  signal-bridge: "Signal Bridge\n[Container: signal-cli REST API]\n\nAdapter to the Signal network." { class: container }
+
+  coding-task: "Coding Task Container\n[Container: ephemeral, per-task]\n\nRuns a coding-agent CLI (Claude Code, Codex,\nOpenCode) against a mounted git worktree.\nSpawned by Core via the host Docker socket." { class: container }
+
+  postgres: "Postgres\n[Container: PostgreSQL 16]\n\nDurable state; one schema per Service." { class: store }
+  valkey: "Valkey\n[Container: Valkey 8]\n\nCache and queue substrate." { class: store }
+  qdrant: "Qdrant\n[Container: Qdrant 1.17]\n\nVector index substrate." { class: store }
+  seaweedfs: "SeaweedFS\n[Container: SeaweedFS S3]\n\nObject/blob substrate." { class: store }
+}
+
+obsidian: "Obsidian + Local REST API\n[Software System: External]" { class: ext }
+ollama: "Ollama\n[Software System: External]" { class: ext }
+llm-cloud: "Cloud LLM Providers\n[Software System: External]" { class: ext }
+mcp-servers: "MCP Servers\n[Software System: External]" { class: ext }
+host-gateway: "Host MCP Gateway\n[Software System: External]" { class: ext }
+signal: "Signal\n[Software System: External]" { class: ext }
+git-repos: "Operator's Git Repositories\n[Software System: External]\n\nAllowlisted local repos." { class: ext }
+
+operator -> brain.console: "Uses (terminal)" { class: rel }
+operator -> brain.cli: "Invokes (terminal)" { class: rel }
+operator -> signal: "Chats with" { class: rel }
+operator -> obsidian: "Reads and edits notes in" { class: rel }
+
+brain.console -> brain.core: "Calls\n(JSON/HTTP)" { class: rel }
+brain.cli -> brain.core: "Calls\n(JSON/HTTP)" { class: rel }
+brain.assistant -> brain.core: "Calls Service APIs\n(JSON/HTTP)" { class: rel }
+brain.worker -> brain.core: "Drains jobs and reports status\n(JSON/HTTP)" { class: rel }
+brain.subagent -> brain.core: "Claims and reports on subtasks\n(JSON/HTTP)" { class: rel }
+
+brain.core -> brain.postgres: "Reads / writes per-service schemas\n(SQL/TCP)" { class: rel }
+brain.core -> brain.valkey: "Caches and queues\n(RESP)" { class: rel }
+brain.core -> brain.qdrant: "Indexes and searches embeddings\n(JSON/HTTP)" { class: rel }
+brain.core -> brain.seaweedfs: "Stores / retrieves blobs\n(S3/HTTP)" { class: rel }
+brain.core -> brain.mcp: "Invokes MCP tools via\n(JSON/HTTP)" { class: rel }
+brain.core -> brain.signal-bridge: "Sends outbound and pulls inbound via\n(JSON/HTTP)" { class: rel }
+brain.core -> obsidian: "Reads / writes vault via\n(JSON/HTTPS)" { class: rel }
+brain.core -> ollama: "Embeds and infers using\n(JSON/HTTP)" { class: rel }
+brain.core -> llm-cloud: "Calls inference and embeddings using\n(JSON/HTTPS)" { class: rel }
+
+brain.mcp -> mcp-servers: "Invokes tools via\n(MCP HTTP/stdio)" { class: rel }
+brain.mcp -> host-gateway: "Reaches host APIs via\n(MCP HTTP)" { class: rel }
+
+brain.signal-bridge -> signal: "Sends and receives messages via\n(Signal protocol)" { class: rel }
+
+brain.core -> brain.coding-task: "Spawns per task via\nhost Docker socket" { class: rel }
+brain.core -> git-repos: "Stages worktrees and commits in\n(git CLI on host)" { class: rel }
+brain.coding-task -> git-repos: "Reads / writes worktree mount" { class: rel }
+brain.coding-task -> llm-cloud: "Calls coding-agent backend\n(JSON/HTTPS, per-task allowlist)" { class: rel }
+operator -> git-repos: "Owns and reviews" { class: rel }
+
+key: "Key" {
+  near: bottom-left
+  shape: rectangle
+  grid-rows: 4
+  grid-columns: 2
+  vertical-gap: 16
+  horizontal-gap: 24
+  style: {
+    fill: "#f5f5f5"
+    stroke: "#999999"
+    font-size: 16
+    bold: true
+  }
+
+  k-person-icon: "" { class: person; width: 60; height: 80 }
+  k-person-label: "Person" { shape: text; style.font-size: 16; style.bold: false }
+
+  k-container-icon: "" { class: container; width: 100; height: 50 }
+  k-container-label: "Container (in scope)" { shape: text; style.font-size: 16; style.bold: false }
+
+  k-store-icon: "" { class: store; width: 80; height: 50 }
+  k-store-label: "Data store (in scope)" { shape: text; style.font-size: 16; style.bold: false }
+
+  k-ext-icon: "" { class: ext; width: 100; height: 50 }
+  k-ext-label: "External system" { shape: text; style.font-size: 16; style.bold: false }
+}

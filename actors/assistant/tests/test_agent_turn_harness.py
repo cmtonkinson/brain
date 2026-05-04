@@ -39,7 +39,7 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
         ],
         "model": "test-model",
         "provider": "unit",
-        "token_count": agent_main._estimate_token_count("assistant reply"),
+        "token_count": agent_main.estimate_token_count("assistant reply"),
         "reasoning_level": "standard",
     }
     assert (
@@ -70,7 +70,12 @@ def test_agent_turn_harness_preserves_trace_linkage_for_final_notify() -> None:
 
 
 def test_agent_turn_harness_logs_notify_failures_without_failing_turn() -> None:
-    """Outbound notify failures should be logged while preserving turn completion."""
+    """Outbound notify failures should be logged while preserving turn completion.
+
+    Transport- and domain-class failures are expected during Brain Core
+    restarts and dependency blips; they're logged at WARNING with the
+    operation reason inline, not as a full stack trace.
+    """
     scenario = AgentTurnScenario(
         op_invoke_errors={
             "relay-notify": [
@@ -84,18 +89,23 @@ def test_agent_turn_harness_logs_notify_failures_without_failing_turn() -> None:
             ]
         }
     )
+    warning_log = MagicMock()
     exception_log = MagicMock()
-    original = agent_main._LOGGER.exception
+    original_warning = agent_main._LOGGER.warning
+    original_exception = agent_main._LOGGER.exception
+    agent_main._LOGGER.warning = warning_log
     agent_main._LOGGER.exception = exception_log
 
     try:
         result = run_agent_turn_scenario(scenario)
     finally:
-        agent_main._LOGGER.exception = original
+        agent_main._LOGGER.warning = original_warning
+        agent_main._LOGGER.exception = original_exception
 
     assert result.response_text == "assistant reply"
-    exception_log.assert_called_once()
-    assert exception_log.call_args.args[0] == "brain assistant outbound notify failed"
+    exception_log.assert_not_called()
+    warning_log.assert_called_once()
+    assert warning_log.call_args.args[0] == "brain assistant outbound notify failed: %s"
 
 
 def test_agent_turn_harness_keeps_tool_set_stable_after_discovery() -> None:

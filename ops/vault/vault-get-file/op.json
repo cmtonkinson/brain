@@ -17,6 +17,11 @@
     "revision": "string | The revision identifier for the file."
   },
   "call_target": "service_vault.get_file",
+  "slash_command": {
+    "name": "get",
+    "description": "read one vault file by path",
+    "aliases": ["cat"]
+  },
   "effect": "read",
   "approval": "never"
 }

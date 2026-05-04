@@ -35,12 +35,14 @@ _CORE_COMPONENT_NAMES = frozenset(
         "policy",
         "recall",
         "relay",
+        "software",
         "utility",
         "vault",
     }
 )
 _RESOURCE_COMPONENT_NAMES = frozenset(
     {
+        "coding",
         "llm",
         "mcp",
         "obsidian",

@@ -1,0 +1,44 @@
+{
+  "op_id": "code-workspace-list",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "List registered Software workspaces.",
+  "enabled": true,
+  "input_schema": {
+    "include_revoked": "boolean | optional | If true, also return revoked workspaces. Defaults to false."
+  },
+  "output_schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "default_executor",
+        "test_command",
+        "max_wallclock_seconds",
+        "branch_prefix",
+        "created_at"
+      ],
+      "properties": {
+        "id": {"type": "string", "description": "Workspace identifier."},
+        "path": {"type": "string", "description": "Registered repository path."},
+        "default_executor": {"type": "string", "description": "Configured default executor."},
+        "test_command": {"type": "string", "description": "Configured test command."},
+        "max_wallclock_seconds": {"type": "integer", "description": "Configured wallclock budget."},
+        "branch_prefix": {"type": "string", "description": "Configured branch prefix."},
+        "created_at": {"type": "string", "description": "ISO8601 registration timestamp."},
+        "revoked_at": {"type": ["string", "null"], "description": "ISO8601 revocation timestamp; null while active."}
+      }
+    }
+  },
+  "call_target": "service_software.list_workspaces",
+  "slash_command": {
+    "name": "workspaces",
+    "description": "list registered coding workspaces",
+    "aliases": ["workspace-list"]
+  },
+  "effect": "read",
+  "approval": "never"
+}

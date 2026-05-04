@@ -25,6 +25,7 @@ class PolicyServiceSettings(BaseModel):
     retention_max_age_seconds: int | None = Field(default=None, gt=0)
     auto_bind_threshold: float = Field(default=0.90, ge=0.0, le=1.0)
     clarify_threshold: float = Field(default=0.60, ge=0.0, le=1.0)
+    slash_authenticity_validity_seconds: int = Field(default=60, gt=0)
     base_policy: PolicyDocument = Field(
         default_factory=lambda: PolicyDocument(
             policy_id="default", policy_version="1", rules={"*": PolicyRule()}

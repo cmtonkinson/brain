@@ -57,6 +57,9 @@ third-party WAN API.
 
 **Integration** *Resources* are called *Adapters*, and are assumed to interact
 with real-world external systems. Examples include:
+* Coding Adapter (`adapter_coding`) - host Docker daemon, used to launch
+  per-task containers running coding-agent CLIs (Claude Code, Codex,
+  OpenCode)
 * GitHub MCP Server
 * Signal CLI
 
@@ -136,6 +139,23 @@ in this *Plane* owns exactly one *Adapter*.
   non-overloading by deciding to suppress, send, or batch outbounds
 * Approval round-trip: correlates outbound approval prompts with inbound
   replies inside one service
+
+#### Software
+* Owns the operator-allowlisted workspace registry and the per-task git
+  worktree lifecycle (branch, run, test, commit; no push, no PR)
+* Exposes both synchronous (`code-task-sync`) and asynchronous
+  (`code-task-async` + `code-task-wait`) dispatch shapes, mirroring the
+  Subagent precedent. Async-launched tasks are driven to terminal by an
+  in-process driver pool inside the Service; the persisted adapter
+  handle (`adapter_handle_id` / `adapter_container_id` /
+  `adapter_started_at`) lets a freshly-booted Brain Core process reattach
+  to tasks left in flight by a prior process.
+* Trust is binary at workspace registration: trust-mutating ops
+  (`code-workspace-register`, `code-workspace-revoke`) carry
+  `approval: always`; all other ops carry `approval: never` and rely on
+  the Service to reject calls against unregistered or revoked workspaces
+* Owns the Coding Adapter (`adapter_coding`); the Adapter is reachable
+  only via this Service
 
 ### Reason Plane
 The *Reason Plane* is where intentional, custom business logic resides;

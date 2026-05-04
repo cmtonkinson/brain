@@ -11,6 +11,11 @@
     "local_timezone": "string | The operator's preferred IANA timezone name."
   },
   "call_target": "service_utility.current_datetime",
+  "slash_command": {
+    "name": "now",
+    "description": "show the current datetime (UTC and operator-local)",
+    "aliases": ["datetime"]
+  },
   "effect": "read",
   "approval": "never"
 }

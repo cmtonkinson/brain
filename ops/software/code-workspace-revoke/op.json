@@ -1,0 +1,27 @@
+{
+  "op_id": "code-workspace-revoke",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Revoke trust on a registered Software workspace.",
+  "enabled": true,
+  "input_schema": {
+    "workspace_id": "string | The workspace identifier to revoke."
+  },
+  "output_schema": {
+    "id": "string | Workspace identifier.",
+    "path": "string | Registered repository path.",
+    "default_executor": "string | Configured default executor.",
+    "test_command": "string | Configured test command.",
+    "max_wallclock_seconds": "integer | Configured wallclock budget.",
+    "branch_prefix": "string | Configured branch prefix.",
+    "created_at": "string | ISO8601 registration timestamp.",
+    "revoked_at": "string | ISO8601 revocation timestamp."
+  },
+  "call_target": "service_software.revoke_workspace",
+  "slash_command": {
+    "name": "workspace-revoke",
+    "description": "revoke trust on a coding workspace (operator approval required)"
+  },
+  "effect": "write",
+  "approval": "always"
+}

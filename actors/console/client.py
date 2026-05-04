@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import time
+
 from lib.sdk import (
     BrainSdkClient,
     ConsoleEnqueueResult,
     ConsoleResponseMessage,
     MemoryContextBlock,
     MemorySessionRef,
+)
+from lib.shared.auth.slash_authenticity import (
+    SlashAuthenticityError,
+    SlashAuthenticityProof,
+    default_secret_path,
+    mint_proof,
+    new_nonce,
+    read_secret,
 )
 
 
@@ -24,8 +34,38 @@ class ConsoleClient:
         )
 
     def ingest(self, text: str) -> ConsoleEnqueueResult:
-        """Submit one operator message to Brain via the console channel."""
-        return self._sdk.relay_enqueue_console(message_text=text)
+        """Submit one operator message to Brain via the console channel.
+
+        Slash-prefixed messages are signed with the host-side authenticity
+        secret so Policy can recognize them as operator-typed and bypass the
+        approval gate for ``approval: always`` ops.
+        """
+        proof = self._mint_slash_proof(text) if text.startswith("/") else None
+        return self._sdk.relay_enqueue_console(
+            message_text=text,
+            slash_authenticity=proof,
+        )
+
+    def _mint_slash_proof(self, text: str) -> SlashAuthenticityProof | None:
+        """Read the secret and sign one outbound slash command.
+
+        Returns ``None`` when the secret file is unavailable (Brain Core not
+        running, or the runtime directory is unreadable). Policy will deny
+        the resulting invocation through the standard approval gate; this
+        keeps a missing secret a visible failure mode rather than a silent
+        bypass.
+        """
+        try:
+            secret = read_secret(default_secret_path())
+        except SlashAuthenticityError:
+            return None
+        return mint_proof(
+            secret,
+            channel="console",
+            message_text=text,
+            now_ms=int(time.time() * 1000),
+            nonce=new_nonce(),
+        )
 
     def poll_response(
         self, *, wait_timeout_seconds: float

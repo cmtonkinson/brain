@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from lib.sdk.client import BrainClient
+from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.config import CoreRuntimeSettings
 from lib.shared.envelope import Envelope, EnvelopeMeta
 from resources.adapters.signal.adapter import SignalAdapter
@@ -38,6 +39,7 @@ class RelayInboundService(ABC):
         *,
         meta: EnvelopeMeta,
         message_text: str,
+        slash_authenticity: SlashAuthenticityProof | None = None,
     ) -> Envelope[ConsoleEnqueueResult]:
         """Normalize and enqueue one inbound console message."""
 

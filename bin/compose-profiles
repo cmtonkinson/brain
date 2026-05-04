@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Print the Compose profile flags Brain should pass to `docker compose ...`.
+# Reads ~/.config/brain/secrets.yaml (or whatever BRAIN_CONFIG_DIR points at)
+# and emits one `--profile <name>` token per opt-in feature whose runtime
+# state has been recorded by the install wizard.
+#
+# Today's vocabulary:
+#   signal — emitted iff signal.receive_e164 is set to a non-empty string
+#
+# This script must always exit 0 with valid (possibly empty) output, since
+# the Makefile splices its stdout directly into compose invocations.
+
+set -euo pipefail
+
+CONFIG_DIR="${BRAIN_CONFIG_DIR:-${HOME}/.config/brain}"
+SECRETS_FILE="${CONFIG_DIR}/secrets.yaml"
+
+if [[ ! -f "${SECRETS_FILE}" ]]; then
+  exit 0
+fi
+
+# Match `receive_e164: <non-empty>` under a `signal:` block. This is a
+# deliberately narrow grep so we don't take a YAML-parser dependency in
+# the build path. The wizard always writes the key with leading whitespace
+# and a string value; if that ever changes, update the regex here too.
+if awk '
+  /^signal:[[:space:]]*$/ { in_signal = 1; next }
+  /^[A-Za-z]/ { in_signal = 0 }
+  in_signal && /^[[:space:]]+receive_e164:[[:space:]]*[^[:space:]]/ {
+    # Strip key + optional quotes and check for non-empty value.
+    sub(/^[[:space:]]+receive_e164:[[:space:]]*/, "")
+    gsub(/^"|"$|^'\''|'\''$/, "")
+    if (length($0) > 0) { found = 1 }
+  }
+  END { exit(found ? 0 : 1) }
+' "${SECRETS_FILE}"; then
+  printf -- '--profile signal'
+fi

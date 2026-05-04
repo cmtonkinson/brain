@@ -18,16 +18,16 @@ DEFAULT_OP_EMBEDDING_PROFILE = {
     "dimensions": 1024,
 }
 DEFAULT_STANDARD_PROFILE = {
-    "provider": "anthropic",
-    "model": "claude-sonnet-4-6-20251001",
+    "provider": "ollama",
+    "model": "qwen2.5:14b",
 }
 DEFAULT_QUICK_PROFILE = {
-    "provider": "anthropic",
-    "model": "claude-haiku-4-5-20251001",
+    "provider": "ollama",
+    "model": "llama3.2:3b",
 }
 DEFAULT_DEEP_PROFILE = {
-    "provider": "anthropic",
-    "model": "claude-opus-4-7",
+    "provider": "ollama",
+    "model": "gpt-oss:20b",
 }
 
 

@@ -14,7 +14,10 @@ class SignalAdapterSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     base_url: str = "http://signal-api:8080"
-    receive_e164: str
+    # Empty when the operator has declined Signal; the relay boot hook
+    # short-circuits its callback registration in that case, and the
+    # signal-api container is gated behind the "signal" Compose profile.
+    receive_e164: str = ""
     health_timeout_seconds: float = Field(default=0.5, gt=0)
     receive_connect_timeout_seconds: float = Field(default=10.0, gt=0)
     receive_heartbeat_seconds: float = Field(default=30.0, gt=0)
@@ -46,13 +49,10 @@ class SignalAdapterSettings(BaseModel):
     @field_validator("receive_e164", mode="before")
     @classmethod
     def _validate_receive_e164(cls, value: object) -> object:
-        """Require a non-empty receive identity for inbound polling."""
+        """Normalize the receive identity; empty means Signal is disabled."""
         if not isinstance(value, str):
             return value
-        normalized = value.strip()
-        if normalized == "":
-            raise ValueError("receive_e164 must be non-empty")
-        return normalized
+        return value.strip()
 
     @model_validator(mode="after")
     def _validate_timeout_budget(self) -> "SignalAdapterSettings":

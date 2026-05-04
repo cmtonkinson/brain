@@ -39,6 +39,7 @@ policy:
   retention_max_age_seconds: null
   auto_bind_threshold: 0.9
   clarify_threshold: 0.6
+  slash_authenticity_validity_seconds: 60
   base_policy:
     policy_id: default
     policy_version: "1"

@@ -1,4 +1,4 @@
-Follow the instructions in @~/.config/agents/agents.md now.
+Do ~/.config/agents/agents.md now.
 
 Additional instructions for working in this specific project:
 * @README.md
@@ -8,16 +8,13 @@ Additional instructions for working in this specific project:
 * `gmake test` for comprehensive basic checks - docs, lint, unit (takes ~12)
 * `gmake test integration` for unit+integration tests (~40s)
 * `gmake test-all` for full suite, incl. e2e smoke tests (~2m)
-* This is a new, unpublished, unsupported project. The author is the only
-  contributor, and isn't even a user yet. As such, when making changes:
-    * Never keep old naming, docs, functionality, specs, or expectations as
-  "legacy".
-    * Never assume migrations or backwards compatibility are desired unless
-      asked.
-    * If an identifier changes, propagate that change throughout the project.
-    * If code would be dead as a result, prune it; don't leave old paths "for
-      compatibility."
-    * Don't leave notes about what what things "used to" be called.
+* Forward state changes that touch user data on the host or in stateful
+  substrates go through the Upgrades system (see `docs/upgrades.md` and
+  `upgrades/`). Per-service SQL schema changes go through Alembic.
+* In-process Python contracts have no backwards-compat expectation.
+  Identifier renames propagate through the codebase; dead code is pruned, not
+  preserved.
+* Don't leave notes about what things "used to" be called.
 * Configuration parameters > module-level constants > magic scalars
 * Configuration parameters should:
   * have a sane default
@@ -26,4 +23,7 @@ Additional instructions for working in this specific project:
 * Do not hardcode prompts or prompt templates; all context assembly and
   manipulation must be done through InferenceRequest and its related objects.
   Only the LLM Adapter may flatten and serialize data for LLM API calls.
+* Python 3.14 (PEP 758) allows `except A, B:` without parentheses; this is
+  valid syntax in this project, and ruff's formatter emits the unparenthesised
+  form. Don't "fix" it.
 

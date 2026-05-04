@@ -1,0 +1,38 @@
+{
+  "op_id": "code-task-async",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Dispatch one coding task and return immediately with a RUNNING task row.",
+  "enabled": true,
+  "input_schema": {
+    "workspace_id": "string | Identifier of the registered workspace to operate on.",
+    "prompt": "string | Natural-language description of the task for the coding executor.",
+    "executor": "string | optional | null | Override the workspace's default executor (claude_code | codex | opencode)."
+  },
+  "output_schema": {
+    "id": "string | Task identifier.",
+    "workspace_id": "string | Workspace identifier the task was dispatched against.",
+    "executor": "string | The coding executor used for this task.",
+    "branch": "string | Branch name created for the task worktree.",
+    "prompt_object_ref": "string | optional | null | Object Store reference holding the prompt text; null when Object Store is not wired.",
+    "status": "string | Initial task status (running).",
+    "started_at": "string | ISO8601 task start timestamp.",
+    "finished_at": "string | optional | Always null on async dispatch; populated only after the task reaches terminal.",
+    "commit_sha": "string | optional | Always null on async dispatch.",
+    "test_passed": "boolean | optional | Always null on async dispatch.",
+    "stdout_object_ref": "string | optional | Populated by the background driver when the executor exits.",
+    "stderr_object_ref": "string | optional | Populated by the background driver when the executor exits.",
+    "test_stdout_object_ref": "string | optional | Object Store reference for test stdout; null until captured.",
+    "test_stderr_object_ref": "string | optional | Object Store reference for test stderr; null until captured.",
+    "termination_reason": "string | optional | Populated when the task terminates.",
+    "failure_detail": "string | optional | Populated on failure."
+  },
+  "call_target": "service_software.run_task_async",
+  "slash_command": {
+    "name": "code-async",
+    "description": "dispatch a coding task in the background",
+    "aliases": ["code"]
+  },
+  "effect": "external",
+  "approval": "never"
+}

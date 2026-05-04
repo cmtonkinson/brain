@@ -36,11 +36,26 @@ from lib.agent.recovery import (
 from lib.shared.observability import set_current_span_attributes, set_span_attributes
 from lib.agent.tool_model import (
     AgentToolModel,
+    OperatorIntermediateTextNotifier,
     OperatorRecoveryNotifier,
     call_with_optional_meta,
 )
-from lib.agent.tools import build_op_tools_from_descriptors
-from lib.agent.turn_state import DefaultTurnState, TurnState
+from lib.agent.tools import (
+    OpInvocationContext,
+    build_op_tools,
+    build_op_tools_from_descriptors,
+    op_error_payload,
+    parse_optional_iso_datetime,
+)
+from lib.agent.toolset import build_brain_toolset, filtered_brain_toolset
+from lib.agent.turn_state import (
+    DefaultTurnState,
+    GET_TOOL_INFO_TOOL_NAME,
+    MAX_PENDING_INVOCATIONS,
+    PendingInvocation,
+    SEARCH_TOOLS_TOOL_NAME,
+    TurnState,
+)
 
 __all__ = [
     "AgentToolModel",
@@ -48,17 +63,28 @@ __all__ = [
     "CancelReason",
     "CancellationError",
     "DefaultTurnState",
+    "GET_TOOL_INFO_TOOL_NAME",
     "INVALID_TOOL_CALL_REPAIR_ATTEMPTS",
+    "MAX_PENDING_INVOCATIONS",
     "INVALID_TOOL_CALL_RETRY_INSTRUCTION",
     "LMS_PROVIDER_RETRY_DELAYS_SECONDS",
     "LMS_RECOVERY_NOTICE_DELAY_THRESHOLD_SECONDS",
     "LoopResult",
+    "OperatorIntermediateTextNotifier",
     "OperatorRecoveryNotifier",
+    "PendingInvocation",
+    "SEARCH_TOOLS_TOOL_NAME",
     "TurnState",
     "TurnSummary",
+    "OpInvocationContext",
+    "build_brain_toolset",
     "build_inference_request",
+    "build_op_tools",
     "build_op_tools_from_descriptors",
     "call_with_optional_meta",
+    "filtered_brain_toolset",
+    "op_error_payload",
+    "parse_optional_iso_datetime",
     "is_retryable_language_throttle",
     "is_retryable_language_timeout",
     "is_retryable_language_transport_timeout",

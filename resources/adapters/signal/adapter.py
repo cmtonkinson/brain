@@ -6,6 +6,8 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
+from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
+
 
 class SignalAdapterError(Exception):
     """Base exception for Signal adapter failures."""
@@ -91,3 +93,16 @@ class SignalAdapter(Protocol):
         message: str,
     ) -> SignalSendMessageResult:
         """Send one outbound Signal message via configured runtime."""
+
+    def mint_slash_authenticity_proof(
+        self,
+        *,
+        channel: str,
+        message_text: str,
+    ) -> SlashAuthenticityProof:
+        """Sign one operator-channel slash command with the local HMAC secret.
+
+        Callers must already have confirmed the message originated from the
+        operator's identity. The Adapter holds the secret; the Relay does
+        not see it.
+        """

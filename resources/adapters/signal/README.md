@@ -72,7 +72,7 @@ Defaults and validation live in `resources/adapters/signal/config.py`.
 Deployment wiring:
 * Signal container is `signal-api` in repository root `docker-compose.yaml`.
 * Persistent Signal state directory mount defaults to:
-  * host: `./data/signal-cli`
+  * host: `~/.local/state/brain/signal-cli`
   * container: `/home/.local/share/signal-cli`
 
 ------------------------------------------------------------------------

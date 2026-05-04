@@ -63,6 +63,10 @@
     ]
   },
   "call_target": "service_delegation.get_status",
+  "slash_command": {
+    "name": "subagent-status",
+    "description": "inspect one subagent invocation"
+  },
   "effect": "read",
   "approval": "never"
 }

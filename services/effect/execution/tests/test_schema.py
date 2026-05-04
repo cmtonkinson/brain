@@ -196,3 +196,35 @@ def test_mixed_shorthand_canonical_property_is_optional_when_not_in_required() -
     )
     assert "name" in result["required"]
     assert "metadata" in result["required"]
+
+
+def test_default_modifier_typed_to_property_type() -> None:
+    """``default=N`` is parsed to the property's declared type and made optional."""
+    result = expand_schema(
+        {
+            "max_wallclock_seconds": (
+                "integer | optional | default=1800 | Hard wallclock budget per task."
+            ),
+            "branch_prefix": (
+                "string | optional | default=brain/software/ | Branch prefix."
+            ),
+            "verbose": "boolean | optional | default=false | Whether to be chatty.",
+        }
+    )
+    properties = result["properties"]
+    assert properties["max_wallclock_seconds"]["default"] == 1800
+    assert properties["branch_prefix"]["default"] == "brain/software/"
+    assert properties["verbose"]["default"] is False
+    # `required` is dropped entirely when no field is required.
+    assert "required" not in result
+
+
+def test_default_modifier_implies_optional() -> None:
+    """A property with ``default=...`` is optional even without ``optional``."""
+    result = expand_schema(
+        {
+            "limit": "integer | default=10 | Max rows.",
+        }
+    )
+    assert "required" not in result
+    assert result["properties"]["limit"]["default"] == 10

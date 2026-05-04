@@ -236,3 +236,47 @@ def test_health_reports_local_readiness_without_provider_probe() -> None:
 
     assert result.adapter_ready is True
     assert result.detail == "ready; callback=unconfigured; receive_loop=stopped"
+
+
+def test_mint_slash_authenticity_proof_uses_on_disk_secret(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Adapter mints a proof that verifies under the freshly-written secret."""
+    from lib.shared.auth.slash_authenticity import (
+        generate_and_write_secret,
+        verify_proof,
+    )
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    secret = generate_and_write_secret(tmp_path / "brain" / "slash_authenticity_secret")
+
+    adapter = _adapter()
+    proof = adapter.mint_slash_authenticity_proof(
+        channel="signal",
+        message_text="/workspace-register --path /tmp/foo",
+    )
+
+    import time as _time
+
+    assert verify_proof(
+        secret,
+        channel="signal",
+        message_text="/workspace-register --path /tmp/foo",
+        proof=proof,
+        now_ms=int(_time.time() * 1000),
+        validity_seconds=60,
+    )
+
+
+def test_mint_slash_authenticity_proof_raises_when_secret_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Adapter surfaces a dependency error when the secret file is absent."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+    adapter = _adapter()
+    with pytest.raises(SignalAdapterDependencyError):
+        adapter.mint_slash_authenticity_proof(
+            channel="signal",
+            message_text="/anything",
+        )

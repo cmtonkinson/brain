@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 from lib.sdk.calls import (
     OpDescriptor,
@@ -66,8 +66,92 @@ def test_parse_slash_args_maps_single_string_field_positionally() -> None:
         {
             "type": "object",
             "properties": {"server_id": {"type": "string"}},
+            "required": ["server_id"],
         },
     ) == {"server_id": "eventkit"}
+
+
+def test_parse_slash_args_positional_with_optional_siblings() -> None:
+    """A schema with one required string + optional siblings still maps positionally."""
+    assert _parse_slash_args(
+        "notes/today.md",
+        {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["file_path"],
+        },
+    ) == {"file_path": "notes/today.md"}
+
+
+def test_parse_slash_args_positional_for_optional_singleton_string() -> None:
+    """An optional lone string property still accepts bare positional text.
+
+    Mirrors the post-expansion shape of ops with one optional string field
+    (e.g. ``slash-help``'s ``query``), where ``required`` is absent because
+    nothing is required.
+    """
+    assert _parse_slash_args(
+        "workspace-reg",
+        {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "additionalProperties": False,
+        },
+    ) == {"query": "workspace-reg"}
+
+
+def test_parse_slash_args_positional_skipped_when_two_optional_strings() -> None:
+    """Multiple optional string fields are ambiguous; no positional mapping fires."""
+    assert (
+        _parse_slash_args(
+            "foo",
+            {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "string"},
+                    "b": {"type": "string"},
+                },
+            },
+        )
+        == {}
+    )
+
+
+def test_parse_slash_args_positional_for_optional_singleton_non_string_skipped() -> (
+    None
+):
+    """A lone optional non-string property is not eligible for positional mapping."""
+    assert (
+        _parse_slash_args(
+            "true",
+            {
+                "type": "object",
+                "properties": {"force": {"type": "boolean"}},
+            },
+        )
+        == {}
+    )
+
+
+def test_parse_slash_args_positional_skipped_when_two_required() -> None:
+    """Two required string fields disable the positional shortcut."""
+    assert (
+        _parse_slash_args(
+            "foo bar",
+            {
+                "type": "object",
+                "properties": {
+                    "a": {"type": "string"},
+                    "b": {"type": "string"},
+                },
+                "required": ["a", "b"],
+            },
+        )
+        == {}
+    )
 
 
 def test_parse_slash_args_empty() -> None:
@@ -92,6 +176,85 @@ def test_parse_slash_args_multiple() -> None:
 def test_parse_slash_args_hyphenated_key_becomes_underscore() -> None:
     result = _parse_slash_args("--dry-run", None)
     assert result == {"dry_run": True}
+
+
+def test_parse_slash_args_supports_equals_syntax() -> None:
+    """``--key=value`` is equivalent to ``--key value``."""
+    assert _parse_slash_args("--key=value --other 2", None) == {
+        "key": "value",
+        "other": "2",
+    }
+
+
+def test_parse_slash_args_quoted_value_keeps_internal_spaces() -> None:
+    """Double- and single-quoted values let spaces and slashes survive intact."""
+    assert _parse_slash_args(
+        "--test_command \"gmake test-all\" --branch_prefix='brain/software'", None
+    ) == {
+        "test_command": "gmake test-all",
+        "branch_prefix": "brain/software",
+    }
+
+
+def test_parse_slash_args_coerces_integer_field_from_string() -> None:
+    """Integer-typed fields are coerced from string before reaching the call target."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "max_wallclock_seconds": {"type": "integer"},
+        },
+    }
+    assert _parse_slash_args("--max_wallclock_seconds=1800", schema) == {
+        "max_wallclock_seconds": 1800,
+    }
+
+
+def test_parse_slash_args_coerces_boolean_and_number_fields() -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "force": {"type": "boolean"},
+            "ratio": {"type": "number"},
+        },
+    }
+    assert _parse_slash_args("--force=true --ratio=0.25", schema) == {
+        "force": True,
+        "ratio": 0.25,
+    }
+
+
+def test_parse_slash_args_unknown_field_passes_through_as_string() -> None:
+    """Fields absent from the schema are not coerced; downstream sees the raw string."""
+    schema = {"type": "object", "properties": {"path": {"type": "string"}}}
+    assert _parse_slash_args("--mystery=42", schema) == {"mystery": "42"}
+
+
+def test_parse_slash_args_combines_quoted_and_equals_in_one_command() -> None:
+    """The shape from the operator screenshot parses cleanly as a single payload."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string"},
+            "default_executor": {"type": "string"},
+            "test_command": {"type": "string"},
+            "max_wallclock_seconds": {"type": "integer"},
+            "branch_prefix": {"type": "string"},
+        },
+    }
+    text = (
+        "--path /Users/chris/repo/brain "
+        "--default_executor claude_code "
+        '--test_command "gmake test-all" '
+        "--max_wallclock_seconds=1800 "
+        '--branch_prefix="brain/software"'
+    )
+    assert _parse_slash_args(text, schema) == {
+        "path": "/Users/chris/repo/brain",
+        "default_executor": "claude_code",
+        "test_command": "gmake test-all",
+        "max_wallclock_seconds": 1800,
+        "branch_prefix": "brain/software",
+    }
 
 
 def test_render_slash_output_none() -> None:
@@ -251,6 +414,8 @@ def test_handle_slash_command_found_invokes_op_and_routes() -> None:
         input_payload={},
         actor="operator",
         channel="console",
+        message_text="/test",
+        slash_authenticity=None,
     )
     ars.route_notification.assert_called_once()
     call_kwargs = ars.route_notification.call_args.kwargs
@@ -494,5 +659,7 @@ def test_ingest_signal_slash_message_not_queued() -> None:
         input_payload={},
         actor="operator",
         channel="signal",
+        message_text="/help",
+        slash_authenticity=ANY,
     )
     assert memory.record_inbound_turn.call_args.kwargs["message"] == "/help"

@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.op_classification import OpApproval, OpEffect
 from services.effect.execution.schema import expand_schema
 
@@ -26,6 +27,7 @@ class OpInvocationMetadata(BaseModel):
     reply_to_proposal_token: str = ""
     reaction_to_proposal_token: str = ""
     message_text: str = ""
+    slash_authenticity: SlashAuthenticityProof | None = None
 
 
 class OpInvokeResult(BaseModel):

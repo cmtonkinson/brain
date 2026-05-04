@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import os
 import subprocess
 import tempfile
@@ -18,6 +19,67 @@ _INPUT_FIELD_ID = "input-field"
 _INPUT_HINT_ID = "input-hint"
 
 
+class InputHistory:
+    """Bash-style up/down history buffer with draft preservation.
+
+    Holds the last N submitted messages and a single in-progress *draft* slot
+    just past the newest entry. Walking up moves toward older entries; walking
+    down moves back toward the draft. Submissions append to history and reset
+    navigation state. Lifetime is the owning widget's; nothing is persisted.
+    """
+
+    def __init__(self, max_size: int) -> None:
+        if max_size <= 0:
+            raise ValueError("max_size must be positive")
+        self._entries: collections.deque[str] = collections.deque(maxlen=max_size)
+        self._index: int | None = None
+        self._draft: str = ""
+
+    def record(self, text: str) -> None:
+        """Record a submitted message and reset navigation to the draft tail.
+
+        Empty strings are not recorded but still reset navigation state.
+        """
+        if text:
+            self._entries.append(text)
+        self._index = None
+        self._draft = ""
+
+    def prev(self, current_text: str) -> str | None:
+        """Step one entry toward older history.
+
+        Returns the text to load into the field, or ``None`` if there's nowhere
+        to go (empty history, or already at the oldest entry). The first step
+        away from the draft tail saves ``current_text`` so it can be restored.
+        """
+        if not self._entries:
+            return None
+        if self._index is None:
+            self._draft = current_text
+            self._index = len(self._entries) - 1
+            return self._entries[self._index]
+        if self._index > 0:
+            self._index -= 1
+            return self._entries[self._index]
+        return None
+
+    def next(self, current_text: str) -> str | None:
+        """Step one entry toward newer history, ending at the saved draft.
+
+        Returns the text to load into the field, or ``None`` if already at the
+        draft tail. Stepping past the newest entry restores the saved draft.
+        ``current_text`` is unused today; accepted for symmetry with ``prev``.
+        """
+        del current_text
+        if self._index is None:
+            return None
+        if self._index < len(self._entries) - 1:
+            self._index += 1
+            return self._entries[self._index]
+        self._index = None
+        return self._draft
+
+
 class ExpandingTextArea(TextArea):
     """TextArea that grows vertically as content is typed, up to a configurable line cap.
 
@@ -27,6 +89,8 @@ class ExpandingTextArea(TextArea):
     BINDINGS = [
         Binding("enter", "submit_text", "Send", show=False, priority=True),
         Binding("alt+enter", "newline", "New line", show=False, priority=True),
+        Binding("up", "history_prev", "History prev", show=False, priority=True),
+        Binding("down", "history_next", "History next", show=False, priority=True),
     ]
 
     class Submitted(Message):
@@ -36,9 +100,16 @@ class ExpandingTextArea(TextArea):
             super().__init__()
             self.text = text
 
-    def __init__(self, *args: object, max_lines: int = 10, **kwargs: object) -> None:
+    def __init__(
+        self,
+        *args: object,
+        max_lines: int = 10,
+        history_size: int = 1000,
+        **kwargs: object,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self._max_lines = max_lines
+        self._history = InputHistory(max_size=history_size)
 
     def on_mount(self) -> None:
         self._update_height()
@@ -54,12 +125,38 @@ class ExpandingTextArea(TextArea):
         """Submit current content and clear the field."""
         text = self.text.strip()
         if text:
+            self._history.record(text)
             self.post_message(self.Submitted(text))
             self.clear()
 
     def action_newline(self) -> None:
         """Insert a literal newline at the cursor."""
         self.insert("\n")
+
+    def action_history_prev(self) -> None:
+        """At the top edge, recall older history; otherwise move the cursor up."""
+        cursor_row, _ = self.cursor_location
+        if cursor_row > 0:
+            self.action_cursor_up()
+            return
+        recalled = self._history.prev(self.text)
+        if recalled is not None:
+            self._load_recalled(recalled)
+
+    def action_history_next(self) -> None:
+        """At the bottom edge, walk back toward the draft; otherwise move cursor down."""
+        cursor_row, _ = self.cursor_location
+        if cursor_row < self.document.line_count - 1:
+            self.action_cursor_down()
+            return
+        recalled = self._history.next(self.text)
+        if recalled is not None:
+            self._load_recalled(recalled)
+
+    def _load_recalled(self, text: str) -> None:
+        """Replace buffer contents with a recalled entry, cursor at end."""
+        self.load_text(text)
+        self.move_cursor(self.document.end)
 
 
 class MessageInput(Widget, can_focus=False):
@@ -109,16 +206,21 @@ class MessageInput(Widget, can_focus=False):
         *args: object,
         editor: str = "vim",
         input_max_lines: int = 10,
+        input_history_size: int = 1000,
         **kwargs: object,
     ) -> None:
         super().__init__(*args, **kwargs)
         self._editor = editor
         self._input_max_lines = input_max_lines
+        self._input_history_size = input_history_size
 
     def compose(self) -> ComposeResult:
         """Build the input area."""
         yield ExpandingTextArea(
-            id=_INPUT_FIELD_ID, soft_wrap=True, max_lines=self._input_max_lines
+            id=_INPUT_FIELD_ID,
+            soft_wrap=True,
+            max_lines=self._input_max_lines,
+            history_size=self._input_history_size,
         )
         yield Static(
             r"\[enter] send  \[alt+enter] newline  \[ctrl+g] $EDITOR  \[ctrl+l] clear",

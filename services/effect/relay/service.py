@@ -10,8 +10,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from lib.sdk.client import BrainClient
+from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.config import CoreRuntimeSettings
 from lib.shared.envelope import Envelope, EnvelopeMeta
+from resources.adapters.console.adapter import ConsoleAdapter
 from resources.adapters.signal.adapter import SignalAdapter
 
 from services.effect.relay._outbound.domain import (
@@ -54,6 +56,7 @@ class RelayService(ABC):
         *,
         meta: EnvelopeMeta,
         message_text: str,
+        slash_authenticity: SlashAuthenticityProof | None = None,
     ) -> Envelope[ConsoleEnqueueResult]:
         """Normalize and enqueue one inbound console message."""
 
@@ -163,9 +166,14 @@ def build_relay_service(
     cache_service: CacheService,
     recall_service: RecallService,
     signal_adapter: SignalAdapter | None = None,
+    console_adapter: ConsoleAdapter | None = None,
     brain_client: BrainClient | None = None,
 ) -> RelayService:
     """Build the default Relay implementation from typed settings."""
+    from resources.adapters.console import (
+        ConsoleAdapterSettings,
+        InProcessConsoleAdapter,
+    )
     from resources.adapters.signal import (
         SignalRestApiAdapter,
         resolve_signal_adapter_settings,
@@ -182,11 +190,15 @@ def build_relay_service(
     relay_settings = resolve_relay_settings(settings)
     adapter_settings = resolve_signal_adapter_settings(settings)
     adapter = signal_adapter or SignalRestApiAdapter(settings=adapter_settings)
+    console = console_adapter or InProcessConsoleAdapter(
+        settings=ConsoleAdapterSettings()
+    )
 
     inbound = DefaultRelayInboundService(
         settings=relay_settings.inbound,
         identity=relay_settings.identity,
         adapter=adapter,
+        console_adapter=console,
         cache_service=cache_service,
         outbound_service=None,
         recall_service=recall_service,

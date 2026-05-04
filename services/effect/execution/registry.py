@@ -31,6 +31,7 @@ from services.effect.execution.domain import (
 from services.effect.language.service import LanguageService
 from services.reason.policy.service import PolicyService
 from services.effect.relay.service import RelayService
+from services.effect.software.service import SoftwareService
 from services.reason.utility.service import UtilityService
 from services.reason.policy.domain import OpInvocationRequest
 from services.reason.ingestion.service import IngestionService
@@ -621,6 +622,7 @@ class OpRegistry:
             ("service_language", LanguageService),
             ("service_policy", PolicyService),
             ("service_relay", RelayService),
+            ("service_software", SoftwareService),
             ("service_utility", UtilityService),
             ("service_commitment", CommitmentService),
             ("service_delegation", DelegationService),

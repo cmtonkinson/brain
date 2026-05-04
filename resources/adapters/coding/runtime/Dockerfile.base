@@ -1,0 +1,64 @@
+# Brain coding-runtime image.
+#
+# One image, all configured agent CLIs installed. Per-workspace
+# customization layers on top via the Coding Adapter (see
+# resources/adapters/coding/docker_coding_adapter.py); operators add
+# tools by dropping a `~/.config/brain/coding_images/<workspace>.sh`
+# rather than touching this Dockerfile.
+#
+# Layout under resources/adapters/coding/runtime/:
+#   Dockerfile.base   — this file
+#   *.sh              — one install script per agent CLI; each runs in
+#                       turn during the base build (alphabetical for
+#                       determinism). Adding an agent = drop a script
+#                       and rebuild.
+
+# TODO: pin to digest (FROM debian:trixie-slim@sha256:<digest>) once a
+# reproducible-build process is in place.
+FROM debian:sid-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    NODE_MAJOR=20 \
+    NPM_CONFIG_PREFIX=/home/coder/.npm-global \
+    PATH=/home/coder/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        gnupg \
+        jq \
+        openssh-client \
+        passwd \
+        ripgrep \
+ && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && apt-get install -y --no-install-recommends nodejs \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
+# Non-root user; the bind-mounted worktree must be writable by uid 1000.
+RUN /usr/sbin/useradd --create-home --uid 1000 --shell /bin/bash coder \
+ && mkdir -p /work /home/coder/.npm-global \
+ && chown -R coder:coder /work /home/coder
+
+USER coder
+WORKDIR /work
+
+# Install every agent CLI present in this directory. Each `*.sh` runs as
+# `coder` so npm-global lands under the per-user prefix; agents that need
+# system packages should add a sudo-equivalent step or be installed via
+# Debian packages added to the apt block above. Globbing the directory
+# rather than naming files explicitly means adding/removing an agent is
+# a one-file change with no Dockerfile edit.
+COPY --chown=coder:coder *.sh /tmp/agent-install/
+RUN set -eu \
+ && for script in /tmp/agent-install/*.sh; do \
+        echo "running agent install: $(basename "$script")" \
+     && bash "$script"; \
+    done \
+ && rm -rf /tmp/agent-install
+
+CMD ["/bin/bash"]

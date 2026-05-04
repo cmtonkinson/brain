@@ -39,12 +39,13 @@ class _Cap:
     simple_output_path: str | None = None
 
 
-def _run(caps: list[_Cap]) -> str:
+def _run(caps: list[_Cap], *, query: str | None = None) -> str:
     execute = _load_execute()
     client = MagicMock()
     client.describe_ops.return_value = tuple(caps)
+    payload = None if query is None else {"query": query}
     with patch("lib.sdk.client.BrainSdkClient", return_value=client):
-        return execute()
+        return execute(payload)
 
 
 def test_no_slash_caps_returns_none_registered() -> None:
@@ -132,3 +133,161 @@ def test_client_error_propagates() -> None:
     with patch("lib.sdk.client.BrainSdkClient", return_value=client):
         with pytest.raises(RuntimeError, match="Execution unavailable"):
             execute()
+
+
+# ---------------------------------------------------------------------------
+# Query-driven help (substring + exact match)
+# ---------------------------------------------------------------------------
+
+
+_WORKSPACE_LIST_CAP = _Cap(
+    op_id="code-workspace-list",
+    slash_command_name="workspaces",
+    slash_command_aliases=("workspace-list",),
+    slash_command_description="list registered coding workspaces",
+)
+_WORKSPACE_REGISTER_CAP = _Cap(
+    op_id="code-workspace-register",
+    slash_command_name="workspace-register",
+    slash_command_description="register a coding workspace",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Repository path."},
+            "default_executor": {"type": "string"},
+        },
+        "required": ["path", "default_executor"],
+    },
+    output_schema={
+        "type": "object",
+        "properties": {
+            "id": {"type": "string", "description": "Workspace identifier."},
+            "revoked_at": {
+                "type": ["string", "null"],
+                "description": "Revocation timestamp.",
+            },
+        },
+        "required": ["id"],
+    },
+    effect="write",
+    approval="always",
+)
+_WORKSPACE_REVOKE_CAP = _Cap(
+    op_id="code-workspace-revoke",
+    slash_command_name="workspace-revoke",
+    slash_command_description="revoke a coding workspace",
+)
+_OTHER_CAP = _Cap(
+    op_id="slash-help",
+    slash_command_name="help",
+    slash_command_description="list available slash commands",
+)
+
+
+def test_query_substring_filters_to_matches() -> None:
+    """Query 'orksp' should narrow the listing to the three workspace ops."""
+    result = _run(
+        [
+            _WORKSPACE_LIST_CAP,
+            _WORKSPACE_REGISTER_CAP,
+            _WORKSPACE_REVOKE_CAP,
+            _OTHER_CAP,
+        ],
+        query="orksp",
+    )
+    assert result.startswith("Commands matching 'orksp':")
+    assert "/workspaces" in result
+    assert "/workspace-register" in result
+    assert "/workspace-revoke" in result
+    assert "/help" not in result
+
+
+def test_query_substring_yielding_one_returns_detail() -> None:
+    """Query that substring-matches exactly one slash binding returns details."""
+    result = _run(
+        [
+            _WORKSPACE_LIST_CAP,
+            _WORKSPACE_REGISTER_CAP,
+            _WORKSPACE_REVOKE_CAP,
+        ],
+        query="workspace-reg",
+    )
+    assert result.startswith("/workspace-register —")
+    assert "Op:      code-workspace-register" in result
+    assert "Inputs:" in result
+    assert "path (string, required)" in result
+    assert "Outputs:" in result
+    assert "id (string, required)" in result
+
+
+def test_query_exact_match_on_alias_returns_detail() -> None:
+    """Exact match on an alias should also return the per-op detail view."""
+    result = _run(
+        [
+            _WORKSPACE_LIST_CAP,
+            _WORKSPACE_REGISTER_CAP,
+        ],
+        query="workspace-list",
+    )
+    assert result.startswith("/workspaces —")
+    assert "Aliases: /workspace-list" in result
+
+
+def test_query_exact_match_on_op_id_returns_detail() -> None:
+    """Exact match on the op_id (not the slash name) should return detail."""
+    result = _run(
+        [_WORKSPACE_REGISTER_CAP, _WORKSPACE_REVOKE_CAP],
+        query="code-workspace-revoke",
+    )
+    assert result.startswith("/workspace-revoke —")
+    assert "Op:      code-workspace-revoke" in result
+
+
+def test_query_no_match_returns_friendly_message() -> None:
+    """A query that matches no slash binding should return a guidance message."""
+    result = _run(
+        [_WORKSPACE_LIST_CAP, _OTHER_CAP],
+        query="zzzz-not-a-thing",
+    )
+    assert "No slash commands match 'zzzz-not-a-thing'" in result
+
+
+def test_query_is_case_insensitive() -> None:
+    """Matching should be case-insensitive on tokens and op_ids."""
+    result = _run(
+        [_WORKSPACE_REGISTER_CAP, _WORKSPACE_REVOKE_CAP],
+        query="REGISTER",
+    )
+    assert result.startswith("/workspace-register —")
+
+
+def test_detail_view_renders_default_value_when_present() -> None:
+    """Optional fields with a declared default surface that default in the help text."""
+    cap = _Cap(
+        op_id="demo-defaults",
+        slash_command_name="defaults-demo",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Repository path.",
+                },
+                "max_wallclock_seconds": {
+                    "type": "integer",
+                    "description": "Wallclock budget.",
+                    "default": 1800,
+                },
+                "branch_prefix": {
+                    "type": "string",
+                    "description": "Branch prefix.",
+                    "default": "brain/software/",
+                },
+            },
+            "required": ["path"],
+        },
+    )
+    result = _run([cap], query="defaults-demo")
+    assert "path (string, required)" in result
+    assert "max_wallclock_seconds (integer, optional, default 1800)" in result
+    assert 'branch_prefix (string, optional, default "brain/software/")' in result

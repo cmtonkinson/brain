@@ -1,0 +1,35 @@
+{
+  "op_id": "code-task-status",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Return the current lineage row for one Software task.",
+  "enabled": true,
+  "input_schema": {
+    "task_id": "string | The task identifier to inspect."
+  },
+  "output_schema": {
+    "id": "string | Task identifier.",
+    "workspace_id": "string | Workspace identifier the task was dispatched against.",
+    "executor": "string | The coding executor used for this task.",
+    "branch": "string | Branch name created for the task worktree.",
+    "prompt_object_ref": "string | optional | null | Object Store reference holding the prompt text; null when Object Store is not wired.",
+    "status": "string | Current task status.",
+    "started_at": "string | ISO8601 task start timestamp.",
+    "finished_at": "string | optional | ISO8601 task completion timestamp; null until terminal.",
+    "commit_sha": "string | optional | Commit SHA produced by the task; null when no commit was made.",
+    "test_passed": "boolean | optional | Whether the configured test_command passed; null until the test step runs.",
+    "stdout_object_ref": "string | optional | Object Store reference for executor stdout; null until captured.",
+    "stderr_object_ref": "string | optional | Object Store reference for executor stderr; null until captured.",
+    "test_stdout_object_ref": "string | optional | Object Store reference for test stdout; null until captured.",
+    "test_stderr_object_ref": "string | optional | Object Store reference for test stderr; null until captured.",
+    "termination_reason": "string | optional | Why the task terminated; null until terminal.",
+    "failure_detail": "string | optional | Human-readable failure context; null on success."
+  },
+  "call_target": "service_software.task_status",
+  "slash_command": {
+    "name": "code-status",
+    "description": "inspect the lineage of one coding task"
+  },
+  "effect": "read",
+  "approval": "never"
+}

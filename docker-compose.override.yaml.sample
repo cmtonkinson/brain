@@ -1,0 +1,59 @@
+# Operator-specific Docker Compose overrides for Brain.
+#
+# Copy this file to `docker-compose.override.yaml` (which is gitignored) and
+# customize. Compose auto-merges any `docker-compose.override.yaml` sitting
+# next to `docker-compose.yaml` — no extra flags needed; `make up` and
+# `docker compose ...` will pick it up.
+#
+# Each section below is independent. Uncomment and edit only what you need.
+#
+# ---------------------------------------------------------------------------
+# Software Service workspace mounts
+# ---------------------------------------------------------------------------
+#
+# Brain Core's Software Service registers operator-allowlisted git
+# repositories ("workspaces") and dispatches per-task git worktrees against
+# them via the Coding Adapter (Docker-out-of-Docker). Two constraints make
+# the bind-mount layout below worth understanding:
+#
+# 1. The Software Service validates each registered path against the
+#    container filesystem at registration time. If the path isn't visible
+#    inside brain-core, registration fails.
+#
+# 2. Coding Adapter task containers are spawned by the host Docker daemon.
+#    They mount the workspace at the same absolute path brain-core sees, so
+#    the per-task worktree's `.git` link resolves correctly. This means the
+#    "container path" of a workspace is also a real path on the host
+#    Docker daemon's filesystem — the same path on both sides.
+#
+# Convention: bind-mount each logical group of repositories under
+# `/mount/software/<group>` inside the container (matching the default
+# `software.workspace_root`). The operator then registers workspaces using
+# paths relative to the workspace root, e.g.:
+#
+#     /workspace-register --path repo/brain
+#
+# Brain Core resolves that to `/mount/software/repo/brain`, validates it
+# against the bind-mounted tree, and stores both the resolved virtual path
+# and its host-side equivalent. The Coding Adapter reuses the host-side
+# equivalent as the bind-mount source when spawning task containers.
+#
+# Bind-mount mode: read-write. Brain Core creates per-task git worktrees
+# that need to write `.git/worktrees/<task-id>` entries back into the
+# parent repository, so read-only mounts will fail at worktree creation.
+
+services:
+  brain-core:
+    volumes:
+      # Bind one or more groups of repositories under /mount/software. The
+      # leaf directory you supply on the host becomes the addressable group
+      # name inside brain-core. Examples (uncomment + replace HOST paths
+      # with paths that exist on your machine):
+      #
+      #   # Personal repos: anything you `git clone` under your repo root
+      #   # is addressable as `repo/<dirname>`.
+      #   - ${HOME}/repo:/mount/software/repo:rw
+      #
+      #   # Additional logical groups — one bind per group.
+      #   - ${HOME}/work:/mount/software/work:rw
+      #   - /tmp/sandbox:/mount/software/sandbox:rw

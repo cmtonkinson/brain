@@ -1,0 +1,214 @@
+# Deployment diagram for Brain (local developer environment)
+# Source for img/c4-deployment.png; rendered via `d2` (see Makefile target).
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    pad: 16
+  }
+}
+
+direction: down
+
+title: "Deployment diagram for Brain — local macOS environment" {
+  near: top-center
+  shape: text
+  style: {
+    font-size: 32
+    bold: true
+  }
+}
+
+classes: {
+  person: {
+    shape: person
+    style: {
+      fill: "#08427b"
+      font-color: "#ffffff"
+      stroke: "#073b6f"
+      font-size: 18
+    }
+  }
+  node: {
+    style: {
+      fill: "#ffffff"
+      stroke: "#666666"
+      stroke-dash: 4
+      font-color: "#222222"
+      font-size: 18
+      bold: true
+    }
+  }
+  container: {
+    style: {
+      fill: "#438dd5"
+      font-color: "#ffffff"
+      stroke: "#3173a8"
+      border-radius: 8
+      font-size: 14
+    }
+  }
+  store: {
+    shape: cylinder
+    style: {
+      fill: "#438dd5"
+      font-color: "#ffffff"
+      stroke: "#3173a8"
+      font-size: 14
+    }
+  }
+  volume: {
+    shape: cylinder
+    style: {
+      fill: "#dceaf6"
+      font-color: "#222222"
+      stroke: "#3173a8"
+      font-size: 12
+    }
+  }
+  process: {
+    style: {
+      fill: "#7faed8"
+      font-color: "#ffffff"
+      stroke: "#3173a8"
+      border-radius: 8
+      font-size: 14
+    }
+  }
+  ext: {
+    style: {
+      fill: "#999999"
+      font-color: "#ffffff"
+      stroke: "#7a7a7a"
+      border-radius: 8
+      font-size: 14
+    }
+  }
+  rel: {
+    style: {
+      stroke: "#444444"
+      font-color: "#222222"
+      font-size: 12
+    }
+  }
+}
+
+operator: "Operator\n[Person]" { class: person }
+
+mac: "Operator's Mac\n[Deployment Node: macOS]" {
+  class: node
+
+  obsidian: "Obsidian + Local REST API\n[Host process]\n\nVault on disk; HTTPS on localhost:27124." { class: process }
+  ollama: "Ollama\n[Host process]\n\nLocal LLM runtime; HTTP on localhost:11434." { class: process }
+  host-gateway: "Host MCP Gateway (optional)\n[Host process]\n\nBridges localhost APIs over MCP." { class: process }
+  console: "Brain Console\n[Host process: Python TUI]" { class: process }
+  cli: "Brain CLI\n[Host process: Python]" { class: process }
+
+  docker-sock: "/var/run/docker.sock\n[Host socket]" { class: volume }
+  staging-root: "~/.local/share/brain/software-tasks\n[Host directory]\n\nPer-task git worktrees." { class: volume }
+  git-repos: "Operator's allowlisted git repos\n[Host directories]" { class: volume }
+
+  docker: "Docker Engine\n[Deployment Node]" {
+    class: node
+
+    coding-task: "Coding Task Container\n[Container: ephemeral, per-task]\n\nSibling container spawned by brain-core via\nthe Docker socket. Runs Claude Code / Codex /\nOpenCode against a worktree mount with a\nper-executor egress allowlist." { class: container }
+
+    compose: "Brain Compose Project\n[Deployment Node: docker compose]" {
+      class: node
+
+      assistant: "brain-assistant\n[Container: Python / PydanticAI]\n\n1 instance" { class: container }
+      worker: "brain-worker\n[Container: Python]\n\n1 instance" { class: container }
+      subagent: "brain-subagent\n[Container: Python]\n\n1 instance" { class: container }
+      core: "brain-core\n[Container: Python / FastAPI]\n\n1 instance — published on host :8898" { class: container }
+      mcp: "brain-mcp\n[Container: Python sidecar]\n\n1 instance" { class: container }
+      signal-bridge: "signal-api\n[Container: signal-cli REST API]\n\n1 instance" { class: container }
+
+      postgres: "postgres\n[Container: PostgreSQL 16]\n\nhost :8760" { class: store }
+      valkey: "valkey\n[Container: Valkey 8]\n\nhost :8761" { class: store }
+      qdrant: "qdrant\n[Container: Qdrant 1.17]\n\nhost :8762" { class: store }
+      seaweedfs: "seaweedfs\n[Container: SeaweedFS S3]\n\nhost :8333" { class: store }
+
+      vol-postgres: "brain-postgres\n[Volume]" { class: volume }
+      vol-valkey: "brain-valkey\n[Volume]" { class: volume }
+      vol-qdrant: "brain-qdrant\n[Volume]" { class: volume }
+      vol-seaweedfs: "brain-seaweedfs\n[Volume]" { class: volume }
+      signal-state: "~/.local/state/brain/signal-cli\n[Bind mount]" { class: volume }
+      brain-config: "~/.config/brain\n[Bind mount, read-only]" { class: volume }
+    }
+  }
+}
+
+signal-cloud: "Signal Service\n[Software System: External, Internet]" { class: ext }
+llm-cloud: "Cloud LLM Providers\n[Software System: External, Internet]\n\nAnthropic, Voyage, ..." { class: ext }
+mcp-cloud: "MCP Servers\n[Software System: External]" { class: ext }
+
+operator -> mac.console: "Uses (terminal)" { class: rel }
+operator -> mac.cli: "Invokes (terminal)" { class: rel }
+operator -> mac.obsidian: "Reads / edits notes in" { class: rel }
+
+mac.console -> mac.docker.compose.core: "JSON/HTTP\nlocalhost:8898" { class: rel }
+mac.cli -> mac.docker.compose.core: "JSON/HTTP\nlocalhost:8898" { class: rel }
+
+mac.docker.compose.assistant -> mac.docker.compose.core: "JSON/HTTP" { class: rel }
+mac.docker.compose.worker -> mac.docker.compose.core: "JSON/HTTP" { class: rel }
+mac.docker.compose.subagent -> mac.docker.compose.core: "JSON/HTTP" { class: rel }
+
+mac.docker.compose.core -> mac.docker.compose.postgres: "SQL/TCP" { class: rel }
+mac.docker.compose.core -> mac.docker.compose.valkey: "RESP" { class: rel }
+mac.docker.compose.core -> mac.docker.compose.qdrant: "JSON/HTTP" { class: rel }
+mac.docker.compose.core -> mac.docker.compose.seaweedfs: "S3/HTTP" { class: rel }
+mac.docker.compose.core -> mac.docker.compose.mcp: "JSON/HTTP" { class: rel }
+mac.docker.compose.core -> mac.docker.compose.signal-bridge: "JSON/HTTP" { class: rel }
+
+mac.docker.compose.core -> mac.obsidian: "JSON/HTTPS\n(host.docker.internal)" { class: rel }
+mac.docker.compose.core -> mac.ollama: "JSON/HTTP\n(host.docker.internal)" { class: rel }
+
+mac.docker.compose.postgres -> mac.docker.compose.vol-postgres: "Persists" { class: rel }
+mac.docker.compose.valkey -> mac.docker.compose.vol-valkey: "Persists" { class: rel }
+mac.docker.compose.qdrant -> mac.docker.compose.vol-qdrant: "Persists" { class: rel }
+mac.docker.compose.seaweedfs -> mac.docker.compose.vol-seaweedfs: "Persists" { class: rel }
+mac.docker.compose.signal-bridge -> mac.docker.compose.signal-state: "Persists state in" { class: rel }
+mac.docker.compose.core -> mac.docker.compose.brain-config: "Reads config from" { class: rel }
+
+mac.docker.compose.signal-bridge -> signal-cloud: "Signal protocol\n(WSS)" { class: rel }
+mac.docker.compose.core -> llm-cloud: "JSON/HTTPS" { class: rel }
+mac.docker.compose.mcp -> mcp-cloud: "MCP\n(HTTP / stdio)" { class: rel }
+mac.docker.compose.mcp -> mac.host-gateway: "MCP/HTTP\n(host.docker.internal)" { class: rel }
+
+mac.docker.compose.core -> mac.docker-sock: "Spawns sibling task containers via\n(bind mount, DooD)" { class: rel }
+mac.docker.compose.core -> mac.staging-root: "Stages worktrees in\n(bind mount)" { class: rel }
+mac.docker.compose.core -> mac.git-repos: "Adds worktrees from / commits to\n(host git CLI invoked from container)" { class: rel }
+mac.docker.compose.core -> mac.docker.coding-task: "Launches and supervises" { class: rel }
+mac.docker.coding-task -> mac.staging-root: "Mounts worktree from" { class: rel }
+mac.docker.coding-task -> mac.git-repos: "Reads / writes via worktree mount" { class: rel }
+mac.docker.coding-task -> llm-cloud: "Calls coding-agent backend\n(JSON/HTTPS, per-task allowlist)" { class: rel }
+
+key: "Key" {
+  near: bottom-left
+  shape: rectangle
+  grid-rows: 5
+  grid-columns: 2
+  vertical-gap: 16
+  horizontal-gap: 24
+  style: {
+    fill: "#f5f5f5"
+    stroke: "#999999"
+    font-size: 16
+    bold: true
+  }
+
+  k-person-icon: "" { class: person; width: 60; height: 80 }
+  k-person-label: "Person" { shape: text; style.font-size: 16; style.bold: false }
+
+  k-node-icon: "" { class: node; width: 100; height: 50 }
+  k-node-label: "Deployment node" { shape: text; style.font-size: 16; style.bold: false }
+
+  k-container-icon: "" { class: container; width: 100; height: 50 }
+  k-container-label: "Container instance" { shape: text; style.font-size: 16; style.bold: false }
+
+  k-store-icon: "" { class: store; width: 80; height: 50 }
+  k-store-label: "Data store instance" { shape: text; style.font-size: 16; style.bold: false }
+
+  k-volume-icon: "" { class: volume; width: 80; height: 50 }
+  k-volume-label: "Volume / bind mount" { shape: text; style.font-size: 16; style.bold: false }
+}

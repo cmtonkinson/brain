@@ -366,6 +366,13 @@ def _safe_finalize(
             final_response=final_response,
             cancel_reason=cancel_reason,
         )
+    except (BrainTransportError, BrainDomainError) as exc:
+        _LOGGER.warning(
+            "subagent finalize failed (transport): invocation_id=%s status=%s: %s",
+            invocation_id,
+            status,
+            exc,
+        )
     except Exception:  # noqa: BLE001
         _LOGGER.exception(
             "subagent finalize failed: invocation_id=%s status=%s",

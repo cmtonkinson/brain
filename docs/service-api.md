@@ -82,7 +82,7 @@
 `flush_batch(*, meta: EnvelopeMeta, batch_key: str, actor: str = 'operator', channel: str = '', recipient_e164: str = '', sender_e164: str = '', title: str = '') -> Envelope[RouteNotificationResult]`  
 *Flush one pending batch by key and deliver consolidated summary.*
 
-`enqueue_console_message(*, meta: EnvelopeMeta, message_text: str) -> Envelope[ConsoleEnqueueResult]`  
+`enqueue_console_message(*, meta: EnvelopeMeta, message_text: str, slash_authenticity: SlashAuthenticityProof | None = None) -> Envelope[ConsoleEnqueueResult]`  
 *Normalize and enqueue one inbound console message.*
 
 `poll_console_response(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[ConsoleResponseMessage | None]`  
@@ -99,6 +99,38 @@
 
 `register_signal_callback(*, meta: EnvelopeMeta) -> Envelope[RegisterSignalCallbackResult]`  
 *Register one in-process Signal callback with the owned adapter.*
+
+------------------------------------------------------------------------
+## `SoftwareService`
+* Module: `services/effect/software/service.py`
+* Summary: Public API for the Software Service.
+
+`health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
+*Return Software Service and Coding Adapter readiness.*
+
+`wait_for_task(*, meta: EnvelopeMeta, task_id: str, max_wait_seconds: float | None = None) -> Envelope[Task]`  
+*Block until one task reaches a terminal status.*
+
+`task_status(*, meta: EnvelopeMeta, task_id: str) -> Envelope[Task]`  
+*Return the current task lineage row for one task.*
+
+`cancel_task(*, meta: EnvelopeMeta, task_id: str) -> Envelope[Task]`  
+*Request cancellation of one in-flight task.*
+
+`run_task_async(*, meta: EnvelopeMeta, workspace_id: str, prompt: str, executor: ExecutorId | None = None) -> Envelope[Task]`  
+*Dispatch one coding task and return immediately.*
+
+`run_task_sync(*, meta: EnvelopeMeta, workspace_id: str, prompt: str, executor: ExecutorId | None = None) -> Envelope[Task]`  
+*Dispatch one coding task and block until terminal.*
+
+`register_workspace(*, meta: EnvelopeMeta, path: str, default_executor: ExecutorId | None = None, test_command: str | None = None, max_wallclock_seconds: int | None = None, branch_prefix: str | None = None) -> Envelope[Workspace]`  
+*Register one repository as an allowlisted workspace.*
+
+`revoke_workspace(*, meta: EnvelopeMeta, workspace_id: str) -> Envelope[Workspace]`  
+*Revoke trust on a registered workspace.*
+
+`list_workspaces(*, meta: EnvelopeMeta, include_revoked: bool = False) -> Envelope[tuple[Workspace, ...]]`  
+*List registered workspaces.*
 
 ------------------------------------------------------------------------
 ## `CommitmentService`
@@ -521,7 +553,7 @@
 `append_file(*, meta: EnvelopeMeta, file_path: str, content: str, if_revision: str = '', force: bool = False) -> Envelope[VaultFileRecord]`  
 *Append content to one markdown file.*
 
-`create_file(*, meta: EnvelopeMeta, file_path: str, content: str) -> Envelope[VaultFileRecord]`  
+`create_file(*, meta: EnvelopeMeta, file_path: str, content: str = '') -> Envelope[VaultFileRecord]`  
 *Create one markdown file and fail when it already exists.*
 
 `edit_file(*, meta: EnvelopeMeta, file_path: str, edits: Sequence[FileEdit], if_revision: str = '', force: bool = False) -> Envelope[VaultFileRecord]`  

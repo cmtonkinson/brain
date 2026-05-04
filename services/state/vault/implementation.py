@@ -202,7 +202,7 @@ class DefaultVaultService(VaultService):
         *,
         meta: EnvelopeMeta,
         file_path: str,
-        content: str,
+        content: str = "",
     ) -> Envelope[VaultFileRecord]:
         """Create one markdown file and fail when it already exists."""
         request, errors = validate_service_request(

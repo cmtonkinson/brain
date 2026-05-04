@@ -21,7 +21,9 @@ Tool calling:
 * If a prior response is corrected for invalid tool use, repair by using only
   currently advertised tool names or by continuing in plain text when the answer
   is already available. Never repeat the same unadvertised tool call.
-* When calling any tool, always populate `call_mode` and `response_detail`.
+* When calling tools (other than search_tools and get_tool_info - those are
+  built in features and their output should never be compressed), always
+  populate `call_mode` and `response_detail`.
 * These two parameters (interpreted together) will provide context for another
   model to decide if and how to summarize/compact the raw tool call output:
   * call_mode "decide": You know exactly what you need and will act directly on

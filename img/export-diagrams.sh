@@ -2,12 +2,11 @@
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-# Map page indices to tab names
+# Map page indices to tab names. The C4 Context and Container diagrams
+# are sourced from D2 (`img/c4-context.d2`, `img/c4-container.d2`); only
+# the pages still authored in drawio are exported here.
 declare -A PAGE_NAMES=(
-  [1]="c4-context"
-  [2]="c4-container"
-  [3]="c4-component"
-  [4]="boundaries-and-responsibilities"
+  [0]="boundaries-and-responsibilities"
 )
 
 INPUT_FILE="${1:-diagrams.drawio}"

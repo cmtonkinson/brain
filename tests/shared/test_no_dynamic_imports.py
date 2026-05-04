@@ -18,10 +18,14 @@ from tests.shared.static_analysis_helpers import (
 )
 
 _DYNAMIC_IMPORT_ALLOWLIST = (
-    # component_loader.py is the only exception, and it needs dynamic imports
-    # because it's responsible for kicking off Component discovery and
-    # self-registration.
+    # component_loader.py kicks off Component discovery and self-registration.
     "lib/shared/component_loader.py",
+    # The Upgrades subsystem loads operator-authored ``upgrade.py`` modules
+    # by absolute file path (one Python module per ``upgrades/<id>_<slug>/``
+    # directory). The runner has no static way to refer to these modules and
+    # must use ``importlib.util.spec_from_file_location``.
+    "lib/core/upgrades/api.py",
+    "lib/core/upgrades/discovery.py",
 )
 
 # stdlib importlib submodules that provide metadata/resource access, not
@@ -73,12 +77,23 @@ def test_runtime_code_disallows_dynamic_imports() -> None:
 
 
 def test_dynamic_import_allowlist_is_narrow_and_intentional() -> None:
-    """Allowlist must remain limited to the component bootstrap import path."""
-    assert _DYNAMIC_IMPORT_ALLOWLIST == ("lib/shared/component_loader.py",)
+    """Allowlist must remain limited to bootstrap and upgrade-loader paths."""
+    assert _DYNAMIC_IMPORT_ALLOWLIST == (
+        "lib/shared/component_loader.py",
+        "lib/core/upgrades/api.py",
+        "lib/core/upgrades/discovery.py",
+    )
 
     source = Path("lib/shared/component_loader.py").read_text(encoding="utf-8")
     assert "import importlib" in source
     assert "importlib.import_module(" in source
+
+    for upgrade_path in (
+        "lib/core/upgrades/api.py",
+        "lib/core/upgrades/discovery.py",
+    ):
+        text = Path(upgrade_path).read_text(encoding="utf-8")
+        assert "importlib.util.spec_from_file_location" in text
 
 
 def _analyze_source_for_dynamic_imports(

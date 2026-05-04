@@ -119,9 +119,15 @@ def _expand_object_shorthand(
                 )
             prop_schema["x-from"] = source_field
 
+        has_default, default_value = _extract_default(modifiers, prop_type)
+        if has_default:
+            prop_schema["default"] = default_value
+
         schema["properties"][prop_name] = prop_schema
 
-        if "optional" not in modifiers:
+        # An explicit default implies the field is optional even if the
+        # operator did not also write the ``optional`` modifier.
+        if "optional" not in modifiers and not has_default:
             schema["required"].append(prop_name)
 
     if not schema["required"]:
@@ -198,7 +204,50 @@ def _is_modifier(part: str) -> bool:
     ``required`` explicitly for symmetry without it being absorbed into the
     description text.
     """
-    return part in {"optional", "null", "required"} or part.startswith("from=")
+    return (
+        part in {"optional", "null", "required"}
+        or part.startswith("from=")
+        or part.startswith("default=")
+    )
+
+
+def _extract_default(modifiers: set[str], type_token: str) -> tuple[bool, Any]:
+    """Return ``(present, value)`` for any ``default=<value>`` modifier.
+
+    The literal value is parsed against the property's type token so that
+    ``"integer | optional | default=3600"`` produces an int default rather
+    than the string ``"3600"``.
+    """
+    for modifier in modifiers:
+        if not modifier.startswith("default="):
+            continue
+        raw = modifier.removeprefix("default=").strip()
+        return True, _coerce_default_literal(raw, type_token)
+    return False, None
+
+
+def _coerce_default_literal(raw: str, type_token: str) -> Any:
+    """Convert a ``default=`` literal into its declared property type."""
+    if type_token == "integer":
+        try:
+            return int(raw)
+        except ValueError:
+            return raw
+    if type_token == "number":
+        try:
+            return float(raw)
+        except ValueError:
+            return raw
+    if type_token == "boolean":
+        lower = raw.lower()
+        if lower in {"true", "1", "yes"}:
+            return True
+        if lower in {"false", "0", "no"}:
+            return False
+        return raw
+    if type_token == "null":
+        return None
+    return raw
 
 
 def _validate_field_alias_usage(

@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 COMPOSE_FILE = REPO_ROOT / "docker-compose.yaml"
 PYTHON_VERSION = (REPO_ROOT / ".python-version").read_text(encoding="utf-8").strip()
 SIGNAL_RECEIVE_PAYLOAD = json.dumps(
@@ -90,7 +93,6 @@ def _compose(
 def _write_smoke_configs(*, config_dir: Path) -> None:
     """Write hermetic Brain config files used only by the smoke stack."""
     config_dir.mkdir(parents=True, exist_ok=True)
-    (config_dir / "generated").mkdir(parents=True, exist_ok=True)
     (config_dir / "core.yaml").write_text(
         "\n".join(
             [
@@ -187,6 +189,7 @@ def _write_override_file(
     override_file: Path,
     tmp_root: Path,
     config_dir: Path,
+    state_dir: Path,
 ) -> None:
     """Write one smoke-specific compose override file."""
     fake_signal_state = tmp_root / "fake-signal"
@@ -196,7 +199,6 @@ def _write_override_file(
     valkey_data = tmp_root / "valkey"
     qdrant_data = tmp_root / "qdrant"
     seaweedfs_data = tmp_root / "seaweedfs"
-    generated_dir = config_dir / "generated"
     for path in (
         fake_signal_state,
         fake_llm_state,
@@ -226,7 +228,7 @@ def _write_override_file(
                 "restart": "no",
                 "volumes": [
                     f"{config_dir}:/app/config:ro",
-                    f"{generated_dir}:/app/config/generated:rw",
+                    f"{state_dir}:/root/.local/state/brain:rw",
                     f"{REPO_ROOT / 'scripts' / 'healthcheck-core.sh'}:/usr/local/bin/brain-healthcheck:ro",
                 ],
                 "depends_on": {
@@ -241,7 +243,6 @@ def _write_override_file(
                 "restart": "no",
                 "volumes": [
                     f"{config_dir}:/app/config:ro",
-                    f"{generated_dir}:/app/config/generated:rw",
                     f"{REPO_ROOT / 'scripts' / 'healthcheck-assistant.sh'}:/usr/local/bin/brain-healthcheck:ro",
                 ],
             },
@@ -404,6 +405,32 @@ def _wait_for_agent_running(*, env: dict[str, str], override_file: Path) -> None
     raise _SmokeFailure("timed out waiting for brain-assistant to stay running")
 
 
+def _wait_for_signal_health(*, env: dict[str, str], override_file: Path) -> None:
+    """Wait until the fake Signal provider is reachable on the compose network."""
+    deadline = time.monotonic() + 60.0
+    while time.monotonic() < deadline:
+        result = _compose(
+            env,
+            override_file,
+            "exec",
+            "-T",
+            "brain-core",
+            "python",
+            "-c",
+            (
+                "import httpx;"
+                "raise SystemExit(0 if httpx.get("
+                "'http://signal-api:8080/v1/health', timeout=2.0"
+                ").status_code == 200 else 1)"
+            ),
+            check=False,
+        )
+        if result.returncode == 0:
+            return
+        time.sleep(1.0)
+    raise _SmokeFailure("timed out waiting for fake signal health")
+
+
 def _inject_signal_message(
     *, env: dict[str, str], override_file: Path
 ) -> dict[str, Any]:
@@ -549,8 +576,20 @@ def _build_smoke_environment() -> dict[str, str]:
         "PYTHON_VERSION": PYTHON_VERSION.split(".")[0]
         + "."
         + PYTHON_VERSION.split(".")[1],
+        "COMPOSE_PROFILES": "signal",
         "COMPOSE_PROJECT_NAME": f"brain-smoke-{int(time.time())}",
     }
+
+
+def _seed_smoke_upgrade_ledger(*, state_dir: Path) -> None:
+    """Initialize a grandfathered upgrades ledger for the smoke state mount."""
+    from lib.setup.ledger_init import write_grandfathered_ledger
+
+    ledger_target = state_dir / "upgrades.json"
+    write_grandfathered_ledger(
+        upgrades_root=REPO_ROOT / "upgrades",
+        ledger_target=ledger_target,
+    )
 
 
 def main() -> int:
@@ -558,13 +597,17 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="brain-smoke-docker-") as tmp:
         tmp_root = Path(tmp)
         config_dir = tmp_root / "config"
+        state_dir = tmp_root / "state"
         override_file = tmp_root / "docker-compose.smoke.yaml"
         fake_signal_state = tmp_root / "fake-signal"
+        state_dir.mkdir(parents=True, exist_ok=True)
         _write_smoke_configs(config_dir=config_dir)
+        _seed_smoke_upgrade_ledger(state_dir=state_dir)
         _write_override_file(
             override_file=override_file,
             tmp_root=tmp_root,
             config_dir=config_dir,
+            state_dir=state_dir,
         )
 
         env = _build_smoke_environment()
@@ -573,6 +616,7 @@ def main() -> int:
             _compose(env, override_file, "up", "--build", "--detach")
             _wait_for_core_health(env=env, override_file=override_file)
             _wait_for_agent_running(env=env, override_file=override_file)
+            _wait_for_signal_health(env=env, override_file=override_file)
             inbound = _inject_signal_message(env=env, override_file=override_file)
             sends = _wait_for_outbound_send(fake_signal_state=fake_signal_state)
             _assert_database_evidence(env=env, override_file=override_file)

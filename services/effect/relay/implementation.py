@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.envelope import Envelope, EnvelopeMeta, success, validate_meta, failure
 from lib.shared.errors import codes, validation_error
 from lib.shared.logging import get_logger, public_api_instrumented
@@ -61,10 +62,16 @@ class DefaultRelayService(RelayService):
         id_fields=("meta",),
     )
     def enqueue_console_message(
-        self, *, meta: EnvelopeMeta, message_text: str
+        self,
+        *,
+        meta: EnvelopeMeta,
+        message_text: str,
+        slash_authenticity: SlashAuthenticityProof | None = None,
     ) -> Envelope[ConsoleEnqueueResult]:
         return self._inbound.enqueue_console_message(
-            meta=meta, message_text=message_text
+            meta=meta,
+            message_text=message_text,
+            slash_authenticity=slash_authenticity,
         )
 
     @public_api_instrumented(

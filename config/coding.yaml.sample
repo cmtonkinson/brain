@@ -1,0 +1,45 @@
+coding:
+  # Path to the host Docker socket bind-mounted into Brain Core. The Coding
+  # Adapter speaks to the host daemon to spawn sibling task containers
+  # (DooD; see docs/adr/0001-coding-runtime-dood.md).
+  docker_socket: /var/run/docker.sock
+
+  # Docker label key carrying the Brain Core instance id on every task
+  # container. Used by the Software Service startup sweeper to reap orphan
+  # containers left behind across Brain Core restarts.
+  owner_label: brain.coding.owner
+
+  # The single Brain-shipped runtime image. Built from
+  # `resources/adapters/coding/runtime/Dockerfile.base` plus every
+  # sibling `*.sh` agent install script. All configured agent CLIs live
+  # inside this image, so workspaces that need no extra tooling spawn
+  # tasks directly from this tag.
+  base_image: brain/coding-runtime:base
+
+  # Image repository under which per-workspace customization layers are
+  # tagged (e.g. `brain/coding-runtime:repo_brain` for the `repo/brain`
+  # workspace). Tag = workspace path with `/` replaced by `_`.
+  workspace_image_repo: brain/coding-runtime
+
+  # Filesystem root for operator-supplied per-workspace customization
+  # scripts. Path layout mirrors the workspace's relative path under
+  # `software.workspace_root` — e.g. workspace `repo/brain` reads
+  # `~/.config/brain/coding_images/repo/brain.sh`. Optional per
+  # workspace; missing script means the workspace runs on `:base`.
+  # Respects $XDG_CONFIG_HOME when unset; default shown assumes the XDG default.
+  workspace_image_root: ~/.config/brain/coding_images
+
+  # Catalog of configured coding executors. Each entry binds an
+  # `ExecutorId` to the in-container CLI binary name and the secret env
+  # keys to inject from `secrets.yaml`. The runtime image is the same
+  # for every executor (see `base_image`).
+  executors:
+    claude_code:
+      cli: claude
+      env_keys: [ANTHROPIC_API_KEY]
+    codex:
+      cli: codex
+      env_keys: [OPENAI_API_KEY]
+    opencode:
+      cli: opencode
+      env_keys: [OPENCODE_API_KEY]

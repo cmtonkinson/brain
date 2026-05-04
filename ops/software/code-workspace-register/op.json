@@ -1,0 +1,31 @@
+{
+  "op_id": "code-workspace-register",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Register one repository as an allowlisted Software workspace; the binary trust gate.",
+  "enabled": true,
+  "input_schema": {
+    "path": "string | Absolute path on the Brain Core host to the git repository root.",
+    "default_executor": "string | optional | null | default=claude_code | Default coding executor for tasks against this workspace (claude_code | codex | opencode).",
+    "test_command": "string | optional | null | Shell command run by the Service after each task to gate the commit step.",
+    "max_wallclock_seconds": "integer | optional | null | default=1800 | Hard wallclock budget per task against this workspace.",
+    "branch_prefix": "string | optional | null | default=brain/software/ | Branch prefix under which task branches are created."
+  },
+  "output_schema": {
+    "id": "string | Workspace identifier.",
+    "path": "string | Registered repository path.",
+    "default_executor": "string | Configured default executor.",
+    "test_command": "string | Configured test command.",
+    "max_wallclock_seconds": "integer | Configured wallclock budget.",
+    "branch_prefix": "string | Configured branch prefix.",
+    "created_at": "string | ISO8601 registration timestamp.",
+    "revoked_at": "string | optional | ISO8601 revocation timestamp; null while active."
+  },
+  "call_target": "service_software.register_workspace",
+  "slash_command": {
+    "name": "workspace-register",
+    "description": "register a coding workspace (operator approval required)"
+  },
+  "effect": "write",
+  "approval": "always"
+}

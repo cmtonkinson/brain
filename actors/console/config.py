@@ -26,6 +26,7 @@ class ConsoleConfig(BaseModel):
     poll_timeout_seconds: float = Field(default=30.0, gt=0)
     poll_error_backoff_seconds: float = Field(default=1.0, gt=0)
     input_max_lines: int = Field(default=10, gt=0)
+    input_history_size: int = Field(default=1000, gt=0)
     editor: str = "vim"
     preferred_timezone: str = "UTC"
 
@@ -56,6 +57,7 @@ def load_console_config() -> ConsoleConfig:
         poll_timeout_seconds=actor_settings.console.poll_timeout_seconds,
         poll_error_backoff_seconds=actor_settings.console.poll_error_backoff_seconds,
         input_max_lines=actor_settings.console.input_max_lines,
+        input_history_size=actor_settings.console.input_history_size,
         editor=os.environ.get("EDITOR", actor_settings.console.editor),
         preferred_timezone=core_settings.profile.preferred_timezone,
     )

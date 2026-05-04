@@ -948,3 +948,187 @@ def test_approval_correlation_payload_maps_to_invocation_fields() -> None:
         reaction_to_proposal_token=payload.reaction_to_proposal_token,
     )
     assert invocation.reply_to_proposal_token == "token-1"
+
+
+# ---------------------------------------------------------------------------
+# Slash authenticity proof
+# ---------------------------------------------------------------------------
+
+
+def _seed_authenticity_secret(tmp_path) -> bytes:
+    """Write a known secret at the XDG-resolved path and return its bytes."""
+    from lib.shared.auth.slash_authenticity import generate_and_write_secret
+
+    secret_path = tmp_path / "brain" / "slash_authenticity_secret"
+    return generate_and_write_secret(secret_path)
+
+
+_SLASH_TEXT = "/workspace-register --path /tmp/foo"
+
+
+def _slash_request(
+    *,
+    proof,
+    message_text: str = _SLASH_TEXT,
+    channel: str = "console",
+    op_id: str = "demo-ping",
+    approval: str = "always",
+    envelope_id: str = "env-slash-1",
+    invocation_id: str = "inv-slash-1",
+) -> OpInvocationRequest:
+    """Build an OpInvocationRequest carrying a slash_authenticity proof."""
+    return OpInvocationRequest(
+        metadata=new_meta(
+            kind=EnvelopeKind.COMMAND,
+            source="test",
+            principal="operator",
+            envelope_id=envelope_id,
+            trace_id="trace-1",
+        ),
+        op_policy=OpPolicyInput(
+            op_id=op_id,
+            kind="op",
+            version="1.0.0",
+            effect="write",
+            approval=approval,
+        ),
+        invocation=InvocationPolicyInput(
+            actor="operator",
+            source="console",
+            channel=channel,
+            invocation_id=invocation_id,
+            message_text=message_text,
+            slash_authenticity=proof,
+        ),
+        input_payload={"path": "/tmp/foo"},
+    )
+
+
+def test_valid_slash_authenticity_allows_execution(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A correct HMAC bypasses the approval gate on an `approval: always` op."""
+    from lib.shared.auth.slash_authenticity import mint_proof, new_nonce
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    secret = _seed_authenticity_secret(tmp_path)
+    proof = mint_proof(
+        secret,
+        channel="console",
+        message_text=_SLASH_TEXT,
+        now_ms=int(datetime.now(UTC).timestamp() * 1000),
+        nonce=new_nonce(),
+    )
+
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    result = service.authorize_and_execute(
+        request=_slash_request(proof=proof),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert result.allowed is True
+    assert result.output == {"ok": True}
+
+
+def test_invalid_slash_authenticity_denies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A tampered HMAC is rejected and the reason code surfaces."""
+    from lib.shared.auth.slash_authenticity import (
+        SlashAuthenticityProof,
+        mint_proof,
+        new_nonce,
+    )
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    secret = _seed_authenticity_secret(tmp_path)
+    minted = mint_proof(
+        secret,
+        channel="console",
+        message_text=_SLASH_TEXT,
+        now_ms=int(datetime.now(UTC).timestamp() * 1000),
+        nonce=new_nonce(),
+    )
+    tampered = SlashAuthenticityProof(
+        hmac_b64="A" * 43,  # well-formed base64 of wrong bytes
+        timestamp_ms=minted.timestamp_ms,
+        nonce=minted.nonce,
+    )
+
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    result = service.authorize_and_execute(
+        request=_slash_request(proof=tampered),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert result.allowed is False
+    assert "slash_authenticity_invalid" in result.decision.reason_codes
+
+
+def test_replayed_slash_authenticity_nonce_denies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Re-using a nonce within the validity window fails."""
+    from lib.shared.auth.slash_authenticity import mint_proof
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    secret = _seed_authenticity_secret(tmp_path)
+    proof = mint_proof(
+        secret,
+        channel="console",
+        message_text=_SLASH_TEXT,
+        now_ms=int(datetime.now(UTC).timestamp() * 1000),
+        nonce="fixed-nonce",
+    )
+
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    first = service.authorize_and_execute(
+        request=_slash_request(proof=proof),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert first.allowed is True
+
+    replay = service.authorize_and_execute(
+        request=_slash_request(
+            proof=proof,
+            envelope_id="env-slash-2",
+            invocation_id="inv-slash-2",
+        ),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert replay.allowed is False
+    assert "slash_authenticity_invalid" in replay.decision.reason_codes
+
+
+def test_missing_slash_authenticity_falls_through_to_proposal() -> None:
+    """No proof present means standard `approval: always` flow runs."""
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    result = service.authorize_and_execute(
+        request=_request(approval="always"),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert result.allowed is False
+    assert result.proposal is not None

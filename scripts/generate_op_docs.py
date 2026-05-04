@@ -34,6 +34,7 @@ _DIR_SERVICE_LABELS = {
     "policy": "Policy Service",
     "recall": "Recall Service",
     "relay": "Relay Service",
+    "software": "Software Service",
     "utility": "Utility Service",
     "vault": "Vault Service",
 }
@@ -51,6 +52,7 @@ _SERVICE_LABELS = {
     "service_policy": "Policy Service",
     "service_recall": "Recall Service",
     "service_relay": "Relay Service",
+    "service_software": "Software Service",
     "service_utility": "Utility Service",
     "service_vault": "Vault Service",
 }

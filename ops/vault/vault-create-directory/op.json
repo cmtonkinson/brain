@@ -18,6 +18,12 @@
     "revision": "string | The revision identifier for the entry."
   },
   "call_target": "service_vault.create_directory",
+  "simple_output_path": "path",
+  "slash_command": {
+    "name": "create-directory",
+    "description": "create one vault directory at the given path (positional path; --recursive flag optional)",
+    "aliases": ["mkdir"]
+  },
   "effect": "write",
   "approval": "never"
 }

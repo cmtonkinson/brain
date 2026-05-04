@@ -1,0 +1,45 @@
+software:
+  # Host directory under which per-task git worktrees are created. One
+  # subdirectory per task; the worktree is preserved after the task ends so
+  # the operator can inspect the diff and the executor's logs.
+  # Bind-mounted symmetrically (same path on host and inside brain-core)
+  # so Coding Adapter task containers see worktrees at the same absolute
+  # path brain-core does — no host-vs-container path translation.
+  # Respects $XDG_STATE_HOME when unset; default shown assumes the XDG default.
+  staging_root: ~/.local/state/brain/software-tasks
+
+  # In-container virtual root under which the operator's repository trees
+  # are bind-mounted (see `docker-compose.override.yaml.sample`). Workspace
+  # registration paths are interpreted relative to this root, so the
+  # operator types `--path repo/brain` rather than the host-absolute path.
+  # The same path is reused as the bind-mount target inside Coding-Adapter
+  # task containers so brain-core and task containers see workspaces at
+  # identical absolute paths — no host-vs-container path translation
+  # leaks into the rest of the codebase.
+  workspace_root: /mount/software
+
+  # Default coding executor used when a workspace registration omits one.
+  # Must match a key in `coding.executors` (claude_code | codex | opencode).
+  default_executor: claude_code
+
+  # Default branch prefix under which task branches are created. The Service
+  # appends `<slug>-<short_id>` per task.
+  default_branch_prefix: brain/software/
+
+  # Whole-task wallclock budget, in seconds. May be overridden per
+  # workspace at registration time. Covers the executor run *and* the test
+  # command — the test phase gets only what's left after the executor
+  # finishes. Enforced by a Service-side supervisor watchdog plus an
+  # adapter-side check on each `poll`. Docker's `--stop-timeout` is *not*
+  # the cap; that flag only governs the SIGTERM-to-SIGKILL grace window
+  # when the watchdog signals shutdown.
+  default_max_wallclock_seconds: 1800
+
+  # Default shell command run by the Service after each task to gate the
+  # commit step. May be overridden per workspace at registration time.
+  default_test_command: ""
+
+  # Git identity used for Brain-authored commits when a task succeeds.
+  # Distinct identity keeps Brain-authored commits scannable in `git log`.
+  commit_author_name: Brain
+  commit_author_email: brain@local

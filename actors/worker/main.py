@@ -163,6 +163,12 @@ def _safe_fail(
             error_message=error_message,
             is_retryable=is_retryable,
         )
+    except (BrainTransportError, BrainDomainError) as exc:
+        _LOGGER.warning(
+            "Failed to report execution failure (transport): execution_id=%s: %s",
+            execution_id,
+            exc,
+        )
     except Exception:  # noqa: BLE001
         _LOGGER.exception(
             "Failed to report execution failure: execution_id=%s", execution_id

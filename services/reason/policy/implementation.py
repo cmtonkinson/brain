@@ -8,6 +8,12 @@ import json
 from typing import Any
 
 from lib.shared.approval import normalize_approval_intent
+from lib.shared.auth.slash_authenticity import (
+    SlashAuthenticityError,
+    default_secret_path,
+    read_secret,
+    verify_proof,
+)
 from lib.shared.config import ApprovalResponseSettings, CoreRuntimeSettings
 from lib.shared.envelope import (
     Envelope,
@@ -67,6 +73,7 @@ _REASON_POLICY_ERROR = "policy_error"
 _REASON_ACTOR_DENIED = "actor_denied"
 _REASON_ACTOR_NOT_ALLOWED = "actor_not_allowed"
 _REASON_APPROVAL_NOTIFICATION_FAILED = "approval_notification_failed"
+_REASON_SLASH_AUTHENTICITY_INVALID = "slash_authenticity_invalid"
 
 _TOKEN_VALID = "valid"
 _TOKEN_INVALID = "invalid"
@@ -97,6 +104,10 @@ class DefaultPolicyService(PolicyService):
             else ApprovalResponseSettings()
         )
         self._seen_envelopes: dict[str, datetime] = {}
+        # In-memory nonce ledger for slash authenticity replay protection.
+        # Single-instance Brain Core, so process-local state is sufficient;
+        # entries auto-expire on read past the validity window.
+        self._slash_authenticity_seen_nonces: dict[str, datetime] = {}
         self._effective_policy = self._initialize_effective_policy()
 
     @classmethod
@@ -360,6 +371,13 @@ class DefaultPolicyService(PolicyService):
         request: OpInvocationRequest,
         now: datetime,
     ) -> tuple[bool, str | None, str]:
+        if request.invocation.slash_authenticity is not None:
+            authentic = self._resolve_slash_authenticity(request=request, now=now)
+            if authentic[0]:
+                return authentic
+            if authentic[1] is not None:
+                return authentic
+
         token = request.invocation.approval_token.strip()
         if token:
             token_status = self._validate_approval_token(
@@ -411,6 +429,50 @@ class DefaultPolicyService(PolicyService):
         if actor_policy is None:
             return None
         return actor_policy.overrides.get(op_id)
+
+    def _resolve_slash_authenticity(
+        self,
+        *,
+        request: OpInvocationRequest,
+        now: datetime,
+    ) -> tuple[bool, str | None, str]:
+        """Verify a slash authenticity HMAC and accept it as approval if valid.
+
+        Returns ``(True, None, "")`` on a verified proof, ``(False, reason, "")``
+        on an invalid one, or ``(False, None, "")`` if there is nothing to do.
+        """
+        proof = request.invocation.slash_authenticity
+        if proof is None:
+            return False, None, ""
+        validity_seconds = self._settings.slash_authenticity_validity_seconds
+        # Sweep expired nonces opportunistically to keep the ledger bounded.
+        cutoff = now - timedelta(seconds=validity_seconds)
+        self._slash_authenticity_seen_nonces = {
+            nonce: seen_at
+            for nonce, seen_at in self._slash_authenticity_seen_nonces.items()
+            if seen_at > cutoff
+        }
+        if proof.nonce in self._slash_authenticity_seen_nonces:
+            return False, _REASON_SLASH_AUTHENTICITY_INVALID, ""
+        try:
+            secret = read_secret(default_secret_path())
+        except SlashAuthenticityError:
+            _LOGGER.warning(
+                "slash authenticity secret unavailable; cannot verify proof"
+            )
+            return False, _REASON_SLASH_AUTHENTICITY_INVALID, ""
+        now_ms = int(now.timestamp() * 1000)
+        if not verify_proof(
+            secret,
+            channel=request.invocation.channel,
+            message_text=request.invocation.message_text,
+            proof=proof,
+            now_ms=now_ms,
+            validity_seconds=validity_seconds,
+        ):
+            return False, _REASON_SLASH_AUTHENTICITY_INVALID, ""
+        self._slash_authenticity_seen_nonces[proof.nonce] = now
+        return True, None, ""
 
     def _resolve_deterministic_correlation(
         self,

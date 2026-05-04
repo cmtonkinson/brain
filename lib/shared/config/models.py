@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, TypeVar
@@ -10,7 +11,10 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.fields import PydanticUndefined
 
-DEFAULT_CONFIG_DIR = Path.home() / ".config" / "brain"
+DEFAULT_CONFIG_DIR = (
+    Path(os.environ.get("XDG_CONFIG_HOME", "").strip() or (Path.home() / ".config"))
+    / "brain"
+)
 DEFAULT_DASHBOARD_CONFIG_PATH = DEFAULT_CONFIG_DIR / "dashboard.yaml"
 SECRETS_CONFIG_PREFIX = "secrets"
 SECRETS_CONFIG_FILENAME = "secrets.yaml"
@@ -145,6 +149,7 @@ class CoreBootSettings(BaseModel):
     """Core boot framework settings under ``core.boot``."""
 
     run_migrations_on_startup: bool = True
+    assert_upgrades_clean: bool = True
     readiness_poll_interval_seconds: float = Field(default=0.25, gt=0)
     readiness_timeout_seconds: float = Field(default=30.0, gt=0)
     boot_retry_attempts: int = Field(default=3, gt=0)
@@ -263,6 +268,7 @@ class AssistantActorSettings(ActorNamespaceSettings):
     tool_return_max_chars: int = 8000
     tool_return_compress_threshold: int = 4000
     tool_loop_tier2_hop_threshold: int = Field(default=3, ge=1)
+    surface_intermediate_text: bool = False
 
 
 class WorkerActorSettings(ActorNamespaceSettings):
@@ -293,6 +299,7 @@ class ConsoleActorSettings(ActorNamespaceSettings):
     poll_timeout_seconds: float = Field(default=30.0, gt=0)
     poll_error_backoff_seconds: float = Field(default=1.0, gt=0)
     input_max_lines: int = Field(default=10, gt=0)
+    input_history_size: int = Field(default=1000, gt=0)
     editor: str = "vim"
 
 

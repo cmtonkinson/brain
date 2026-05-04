@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from lib.sdk.meta import MetaOverrides
 
+from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.sdk.errors import (
     BrainDomainError,
     BrainTransportError,
@@ -577,6 +578,8 @@ def call_op_invoke(
     approval_token: str = "",
     reply_to_proposal_token: str = "",
     reaction_to_proposal_token: str = "",
+    message_text: str = "",
+    slash_authenticity: SlashAuthenticityProof | None = None,
 ) -> OpInvokeResult:
     """Invoke one Op through the Execution HTTP surface."""
     resolved_invocation_id = invocation_id.strip() or generate_ulid_str()
@@ -596,6 +599,12 @@ def call_op_invoke(
             "approval_token": approval_token,
             "reply_to_proposal_token": reply_to_proposal_token,
             "reaction_to_proposal_token": reaction_to_proposal_token,
+            "message_text": message_text,
+            "slash_authenticity": (
+                slash_authenticity.model_dump(mode="json")
+                if slash_authenticity is not None
+                else None
+            ),
         },
         timeout_seconds=timeout_seconds,
     )
@@ -1146,6 +1155,7 @@ def call_relay_enqueue_console(
     metadata: dict[str, object],
     timeout_seconds: float,
     message_text: str,
+    slash_authenticity: SlashAuthenticityProof | None = None,
 ) -> ConsoleEnqueueResult:
     """Submit one console operator message to Relay inbound for processing."""
     data = _post_json(
@@ -1155,6 +1165,11 @@ def call_relay_enqueue_console(
         body={
             **metadata,
             "message_text": message_text,
+            "slash_authenticity": (
+                slash_authenticity.model_dump(mode="json")
+                if slash_authenticity is not None
+                else None
+            ),
         },
         timeout_seconds=timeout_seconds,
     )

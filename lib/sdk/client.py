@@ -68,6 +68,7 @@ from lib.sdk.config import (
     resolve_timeout_seconds,
 )
 from lib.sdk.meta import MetaOverrides, build_envelope_meta
+from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.language_model import InferenceRequest
 from lib.shared.http.client import HttpClient
 
@@ -220,6 +221,8 @@ class BrainClient:
         approval_token: str = "",
         reply_to_proposal_token: str = "",
         reaction_to_proposal_token: str = "",
+        message_text: str = "",
+        slash_authenticity: SlashAuthenticityProof | None = None,
         meta: MetaOverrides | None = None,
     ) -> OpInvokeResult:
         """Invoke one Op via the Execution route surface."""
@@ -237,6 +240,8 @@ class BrainClient:
             approval_token=approval_token,
             reply_to_proposal_token=reply_to_proposal_token,
             reaction_to_proposal_token=reaction_to_proposal_token,
+            message_text=message_text,
+            slash_authenticity=slash_authenticity,
         )
 
     def language_chat(
@@ -455,6 +460,7 @@ class BrainClient:
         self,
         *,
         message_text: str,
+        slash_authenticity: SlashAuthenticityProof | None = None,
         meta: MetaOverrides | None = None,
     ) -> ConsoleEnqueueResult:
         """Submit one console operator message to Relay inbound."""
@@ -463,6 +469,7 @@ class BrainClient:
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
             message_text=message_text,
+            slash_authenticity=slash_authenticity,
         )
 
     def job_claim_execution(

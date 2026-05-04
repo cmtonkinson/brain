@@ -126,15 +126,21 @@ plugin already installed:
 ```sh
 make deps
 cp .env.sample .env
-mkdir -p ~/.config/brain
-for f in config/*.yaml.sample; do
-  cp "$f" ~/.config/brain/"$(basename "$f" .sample)"
-done
-# edit ~/.config/brain/secrets.yaml with your API keys, etc.
+make install   # interactive setup; covers identity, Signal, Software, API keys
 make up
 ```
 
-See the [Development Guide](docs/development-guide.md) for full prerequisites,
+`make install` is re-runnable. Routine updates pull in any new
+host-side state changes via the [Upgrades](docs/upgrades.md) system:
+```sh
+git pull
+make upgrade-dryrun   # see what's pending
+make upgrade          # apply
+make up
+```
+
+See the [Install Guide](docs/install.md) for the operator-facing walkthrough,
+or the [Development Guide](docs/development-guide.md) for full prerequisites,
 configuration details, and the test/lint workflow.
 
 ------------------------------------------------------------------------
@@ -143,6 +149,8 @@ For the full index see the [`docs/`](docs/) directory, but this is where I'd
 start as a gentle introduction:
 * [Manifesto](docs/manifesto.md) &mdash; Design philosophy and first
   principles.
+* [Install Guide](docs/install.md) &mdash; Operator-facing setup: prereqs,
+  config, Software Service workspace mounts, coding-runtime customization.
 * [Boundaries & Responsibilities](docs/boundaries-and-responsibilities.md)
   &mdash; Tier and Plane model, service catalog, and shared infrastructure.
 * [Development Guide](docs/development-guide.md) &mdash; Setup, make targets,

@@ -41,6 +41,10 @@
     ]
   },
   "call_target": "service_delegation.cancel",
+  "slash_command": {
+    "name": "subagent-cancel",
+    "description": "cancel one queued or running subagent invocation"
+  },
   "effect": "execute",
   "approval": "never"
 }

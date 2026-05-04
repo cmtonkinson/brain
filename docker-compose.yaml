@@ -14,11 +14,36 @@ services:
       BRAIN_SEAWEEDFS__BUCKET: ${BRAIN_SEAWEEDFS__BUCKET:-brain-oas}
       BRAIN_SEAWEEDFS__ACCESS_KEY_ID: ${BRAIN_SEAWEEDFS__ACCESS_KEY_ID:-replace-me}
       BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY: ${BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY:-replace-me}
+      # Pin Software Service staging_root to a host-shaped path so it
+      # matches the symmetric bind mount below: brain-core writes
+      # worktrees at the same absolute path the host Docker daemon sees,
+      # so DooD task spawns can mount worktrees without translation.
+      BRAIN_SOFTWARE__STAGING_ROOT: ${XDG_STATE_HOME:-${HOME}/.local/state}/brain/software-tasks
+      # Coding Adapter secret allowlist sources values from this process's
+      # env. Each `coding.executors.<id>.env_keys` entry is read here and
+      # injected into task containers — agent CLIs need their respective
+      # API keys to authenticate. Unset keys flow through as absent (the
+      # task container starts without them; the agent CLI will fail loudly
+      # on first call, which is the desired loud-failure behavior).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
     volumes:
-      - ${HOME}/.config/brain:/app/config:ro
-      - ${HOME}/.config/brain/generated:/app/config/generated:rw
+      - ${XDG_CONFIG_HOME:-${HOME}/.config}/brain:/app/config:ro
+      # Slash authenticity secret. Mounted into brain-core only; not into
+      # brain-assistant / brain-worker / brain-subagent so LLM-driven code
+      # cannot mint a valid HMAC for operator-typed slash commands.
+      - ${XDG_STATE_HOME:-${HOME}/.local/state}/brain:/root/.local/state/brain:rw
+      # Software Service staging root. Symmetric host:host mount so
+      # brain-core and the host Docker daemon see worktrees at one
+      # identical absolute path — no host-vs-container translation when
+      # the Coding Adapter spawns sibling task containers.
+      - ${XDG_STATE_HOME:-${HOME}/.local/state}/brain/software-tasks:${XDG_STATE_HOME:-${HOME}/.local/state}/brain/software-tasks:rw
       - ./logs:/app/logs
       - ./scripts/healthcheck-core.sh:/usr/local/bin/brain-healthcheck:ro
+      # Coding Adapter (DooD): Brain Core launches sibling task containers
+      # via the host Docker daemon. See ADR 0001.
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "${BRAIN_CORE__PORT_BIND:-8898:8898}"
     depends_on:
@@ -28,7 +53,7 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
-      seaweedfs-oas-bucket-init:
+      seaweedfs-init:
         condition: service_completed_successfully
       brain-mcp:
         condition: service_healthy
@@ -48,8 +73,7 @@ services:
       BRAIN_ASSISTANT_HEARTBEAT_FILE: /run/brain/assistant-heartbeat
       BRAIN_ASSISTANT_HEARTBEAT_MAX_AGE_SECONDS: 90
     volumes:
-      - ${HOME}/.config/brain:/app/config:ro
-      - ${HOME}/.config/brain/generated:/app/config/generated:rw
+      - ${XDG_CONFIG_HOME:-${HOME}/.config}/brain:/app/config:ro
       - ./logs:/app/logs
       - ./scripts/healthcheck-assistant.sh:/usr/local/bin/brain-healthcheck:ro
     depends_on:
@@ -71,8 +95,7 @@ services:
       BRAIN_WORKER_HEARTBEAT_FILE: /run/brain/worker-heartbeat
       BRAIN_WORKER_HEARTBEAT_MAX_AGE_SECONDS: 90
     volumes:
-      - ${HOME}/.config/brain:/app/config:ro
-      - ${HOME}/.config/brain/generated:/app/config/generated:rw
+      - ${XDG_CONFIG_HOME:-${HOME}/.config}/brain:/app/config:ro
       - ./logs:/app/logs
       - ./scripts/healthcheck-worker.sh:/usr/local/bin/brain-healthcheck:ro
     depends_on:
@@ -94,8 +117,7 @@ services:
       BRAIN_SUBAGENT_HEARTBEAT_FILE: /run/brain/subagent-heartbeat
       BRAIN_SUBAGENT_HEARTBEAT_MAX_AGE_SECONDS: 90
     volumes:
-      - ${HOME}/.config/brain:/app/config:ro
-      - ${HOME}/.config/brain/generated:/app/config/generated:rw
+      - ${XDG_CONFIG_HOME:-${HOME}/.config}/brain:/app/config:ro
       - ./logs:/app/logs
       - ./scripts/healthcheck-subagent.sh:/usr/local/bin/brain-healthcheck:ro
     depends_on:
@@ -113,7 +135,7 @@ services:
     environment:
       MCP_ADAPTER_CONFIG_FILE: /app/config/mcp-adapter.yaml
     volumes:
-      - ${HOME}/.config/brain:/app/config:ro
+      - ${XDG_CONFIG_HOME:-${HOME}/.config}/brain:/app/config:ro
       - ${BRAIN_MCP_FILESYSTEM_RO_SOURCE:-${HOME}}:/mnt/host:ro
     healthcheck:
       test:
@@ -176,7 +198,7 @@ services:
       retries: 20
       start_period: 30s
 
-  seaweedfs-oas-bucket-init:
+  seaweedfs-init:
     image: amazon/aws-cli:2.32.17
     restart: "no"
     environment:
@@ -211,6 +233,11 @@ services:
       retries: 10
 
   signal-api:
+    # Gated behind the "signal" Compose profile: only starts when the
+    # operator opted in to Signal during `make install` (the Makefile reads
+    # `~/.config/brain/secrets.yaml` and adds `--profile signal` when
+    # `signal.receive_e164` is set).
+    profiles: ["signal"]
     image: ${SIGNAL_CLI_REST_API_IMAGE:-bbernhard/signal-cli-rest-api:latest}
     restart: unless-stopped
     depends_on:
@@ -221,8 +248,21 @@ services:
       MODE: ${SIGNAL_CLI_REST_API_MODE:-json-rpc}
       JSON_RPC_IGNORE_ATTACHMENTS: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_ATTACHMENTS:-true}
       JSON_RPC_IGNORE_STORIES: ${SIGNAL_CLI_REST_API_JSON_RPC_IGNORE_STORIES:-true}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "--silent",
+          "--fail",
+          "http://127.0.0.1:8080/v1/health",
+        ]
+      interval: 5s
+      timeout: 2s
+      retries: 30
+      start_period: 30s
     volumes:
-      - ${SIGNAL_CLI_CONFIG_DIR:-./data/signal-cli}:/home/.local/share/signal-cli
+      - ${SIGNAL_CLI_CONFIG_DIR}:/home/.local/share/signal-cli
 
 volumes:
   brain-valkey:

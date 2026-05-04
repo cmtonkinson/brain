@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections import deque
 from dataclasses import dataclass
 from random import random
@@ -16,6 +17,14 @@ if TYPE_CHECKING:
 
 import aiohttp
 
+from lib.shared.auth.slash_authenticity import (
+    SlashAuthenticityError,
+    SlashAuthenticityProof,
+    default_secret_path,
+    mint_proof,
+    new_nonce,
+    read_secret,
+)
 from lib.shared.http import (
     HttpClient,
     HttpRequestError,
@@ -92,6 +101,32 @@ class SignalRestApiAdapter(SignalAdapter):
         return SignalAdapterHealthResult(
             adapter_ready=True,
             detail=f"ready; callback={callback_state}; receive_loop={loop_state}",
+        )
+
+    @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
+    def mint_slash_authenticity_proof(
+        self,
+        *,
+        channel: str,
+        message_text: str,
+    ) -> SlashAuthenticityProof:
+        """Sign an operator-channel slash command with the on-disk HMAC secret.
+
+        Reads the secret on every call so a Brain Core restart (which rotates
+        the file) is picked up without an Adapter restart.
+        """
+        try:
+            secret = read_secret(default_secret_path())
+        except SlashAuthenticityError as exc:
+            raise SignalAdapterDependencyError(
+                f"slash authenticity secret unavailable: {exc}"
+            ) from None
+        return mint_proof(
+            secret,
+            channel=channel,
+            message_text=message_text,
+            now_ms=int(time.time() * 1000),
+            nonce=new_nonce(),
         )
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))

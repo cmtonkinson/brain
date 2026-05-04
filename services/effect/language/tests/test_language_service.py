@@ -34,6 +34,9 @@ from resources.adapters.llm import (
     LlmAdapter,
 )
 from services.effect.language.config import (
+    DEFAULT_DEEP_PROFILE,
+    DEFAULT_QUICK_PROFILE,
+    DEFAULT_STANDARD_PROFILE,
     LanguageEmbeddingProfileSettings,
     LanguageProfileSettings,
     LanguageServiceSettings,
@@ -535,12 +538,12 @@ def test_resolve_settings_defaults_standard_profile_when_missing() -> None:
     assert resolved.op_embedding.provider == "ollama"
     assert resolved.op_embedding.model == "embed-cap"
     assert resolved.op_embedding.dimensions == 1024
-    assert resolved.quick.provider == "anthropic"
-    assert resolved.quick.model == "claude-haiku-4-5-20251001"
-    assert resolved.standard.provider == "anthropic"
-    assert resolved.standard.model == "claude-sonnet-4-6-20251001"
-    assert resolved.deep.provider == "anthropic"
-    assert resolved.deep.model == "claude-opus-4-7"
+    assert resolved.quick.provider == DEFAULT_QUICK_PROFILE["provider"]
+    assert resolved.quick.model == DEFAULT_QUICK_PROFILE["model"]
+    assert resolved.standard.provider == DEFAULT_STANDARD_PROFILE["provider"]
+    assert resolved.standard.model == DEFAULT_STANDARD_PROFILE["model"]
+    assert resolved.deep.provider == DEFAULT_DEEP_PROFILE["provider"]
+    assert resolved.deep.model == DEFAULT_DEEP_PROFILE["model"]
 
 
 def test_chat_batch_rejects_empty_prompts() -> None:

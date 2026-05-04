@@ -32,7 +32,12 @@ MANIFEST = register_component(
                 ModuleRoot("services.effect.relay.domain"),
             }
         ),
-        owns_resources=frozenset({ComponentId("adapter_signal")}),
+        owns_resources=frozenset(
+            {
+                ComponentId("adapter_signal"),
+                ComponentId("adapter_console"),
+            }
+        ),
         exposes_ops=True,
         tool_system_label="Relay Service",
         tool_system_summary=(
@@ -48,6 +53,7 @@ def build_component(
 ) -> object:
     """Build the Relay service from typed settings and resolved deps."""
     from lib.sdk.client import BrainSdkClient
+    from resources.adapters.console.adapter import ConsoleAdapter
     from resources.adapters.signal.adapter import SignalAdapter
     from services.effect.relay.service import build_relay_service
     from services.state.cache.service import CacheService
@@ -65,6 +71,10 @@ def build_component(
     if signal_adapter is not None and not isinstance(signal_adapter, SignalAdapter):
         raise TypeError("adapter_signal")
 
+    console_adapter = components.get("adapter_console")
+    if console_adapter is not None and not isinstance(console_adapter, ConsoleAdapter):
+        raise TypeError("adapter_console")
+
     brain_client = BrainSdkClient(source="relay", principal="operator")
 
     return build_relay_service(
@@ -72,5 +82,6 @@ def build_component(
         cache_service=cache_service,
         recall_service=recall_service,
         signal_adapter=signal_adapter,
+        console_adapter=console_adapter,
         brain_client=brain_client,
     )
