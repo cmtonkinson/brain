@@ -644,6 +644,62 @@ def test_single_pending_proposal_approved_text_allows_execution() -> None:
     assert approved.output == {"ok": True}
 
 
+def test_mentioned_pending_proposal_token_allows_execution_when_multiple_pending() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    first = service.authorize_and_execute(
+        request=_request(approval="always"),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    second = service.authorize_and_execute(
+        request=_request(
+            envelope_id="env-second-pending",
+            approval="always",
+            op_id="demo-ping",
+        ).model_copy(update={"input_payload": {"ping": "pang"}}),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert first.proposal is not None
+    assert second.proposal is not None
+
+    approved = service.authorize_and_execute(
+        request=_request(
+            envelope_id="env-mentioned-token-approved",
+            approval="always",
+            message_text=f"approve {second.proposal.proposal_token}",
+        ).model_copy(
+            update={
+                "input_payload": {"ping": "pang"},
+                "invocation": InvocationPolicyInput(
+                    actor="operator",
+                    source="assistant",
+                    channel="signal",
+                    invocation_id="inv-mentioned-token-approved",
+                    message_text=f"approve {second.proposal.proposal_token}",
+                ),
+            }
+        ),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert approved.allowed is True
+    assert approved.output == {"ok": True}
+
+
 def test_low_confidence_disambiguation_requests_clarification() -> None:
     service = DefaultPolicyService(settings=PolicyServiceSettings())
     pending = service.authorize_and_execute(
@@ -903,7 +959,7 @@ def test_request_schema_validation_rejects_extra_fields() -> None:
         )
 
 
-def test_approval_notification_payload_is_token_only() -> None:
+def test_approval_notification_payload_includes_context() -> None:
     service = DefaultPolicyService(settings=PolicyServiceSettings())
     pending = service.authorize_and_execute(
         request=_request(approval="always"),
@@ -924,10 +980,12 @@ def test_approval_notification_payload_is_token_only() -> None:
         channel=pending.proposal.channel,
         trace_id=pending.proposal.trace_id,
         invocation_id=pending.proposal.invocation_id,
+        input_payload={"ping": "pong"},
         expires_at=pending.proposal.expires_at,
     )
     assert notification.proposal_token != ""
     assert notification.summary != ""
+    assert notification.input_payload == {"ping": "pong"}
 
 
 def test_approval_correlation_payload_maps_to_invocation_fields() -> None:

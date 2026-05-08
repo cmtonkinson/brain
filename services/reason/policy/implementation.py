@@ -500,6 +500,13 @@ class DefaultPolicyService(PolicyService):
         if text == "":
             return False, None, ""
 
+        intent = normalize_approval_intent(
+            message_text=text,
+            settings=self._approval_response_settings,
+        )
+        if intent is None:
+            return False, None, ""
+
         pending = list(
             self._persistence.list_pending_proposals(
                 actor=request.invocation.actor,
@@ -507,13 +514,22 @@ class DefaultPolicyService(PolicyService):
                 now=now,
             )
         )
+        mentioned = [
+            item for item in pending if item.proposal.proposal_token.lower() in text
+        ]
+        if len(mentioned) == 1:
+            token = mentioned[0].proposal.proposal_token
+            if intent == "approve":
+                return True, None, token
+            if intent == "reject":
+                self._persistence.mark_proposal_status(
+                    token=token, status="rejected"
+                )
+                return False, _REASON_APPROVAL_REQUIRED, ""
+
         if len(pending) != 1:
             return False, None, ""
 
-        intent = normalize_approval_intent(
-            message_text=text,
-            settings=self._approval_response_settings,
-        )
         if intent == "approve":
             return True, None, pending[0].proposal.proposal_token
         if intent == "reject":
@@ -708,6 +724,7 @@ class DefaultPolicyService(PolicyService):
                 channel=proposal.channel,
                 trace_id=proposal.trace_id,
                 invocation_id=proposal.invocation_id,
+                input_payload=request.input_payload,
                 expires_at=proposal.expires_at,
             ),
         )

@@ -523,13 +523,16 @@ def test_route_approval_notification_formats_policy_payload() -> None:
             channel="signal",
             trace_id="trace-1",
             invocation_id="inv-1",
+            input_payload={"path": "repo/brain", "default_executor": "opencode"},
             expires_at=datetime(2026, 2, 25, 12, 0, 0, tzinfo=UTC),
         ),
     )
 
     assert result.ok is True
     assert len(adapter.send_calls) == 1
-    assert "Token: tok-123" in adapter.send_calls[0].message
+    assert "Op: cap.demo@1.0.0" in adapter.send_calls[0].message
+    assert '"path": "repo/brain"' in adapter.send_calls[0].message
+    assert "Approve with: approve tok-123" in adapter.send_calls[0].message
     resolved = service.resolve_approval_notification_proposal_token(
         meta=_meta(),
         channel="signal",

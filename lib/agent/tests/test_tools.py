@@ -50,7 +50,7 @@ class _FakeInvokeResult:
 
 class _SuccessClient:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, object], str, str, str, str]] = []
+        self.calls: list[tuple[str, dict[str, object], str, str, str, str, str]] = []
 
     def invoke_op(
         self,
@@ -61,6 +61,7 @@ class _SuccessClient:
         channel: str,
         reply_to_proposal_token: str = "",
         reaction_to_proposal_token: str = "",
+        message_text: str = "",
         parent_invocation_id: str = "",
         **_kwargs: object,
     ):
@@ -72,6 +73,7 @@ class _SuccessClient:
                 channel,
                 reply_to_proposal_token,
                 reaction_to_proposal_token,
+                message_text,
             )
         )
         return _FakeInvokeResult(output={"ok": True})
@@ -85,7 +87,11 @@ class _SuccessClient:
 def test_context_invoke_routes_through_sdk_client() -> None:
     """Op tool wrappers should route calls through Brain SDK with trace metadata."""
     client = _SuccessClient()
-    turn_state = DefaultTurnState(actor="operator", channel="signal")
+    turn_state = DefaultTurnState(
+        actor="operator",
+        channel="signal",
+        message_text="tok-123 approved",
+    )
     tools = build_op_tools(
         client=client,
         descriptors=(_DEMO_DESCRIPTOR,),
@@ -93,7 +99,17 @@ def test_context_invoke_routes_through_sdk_client() -> None:
     )
     result = tools[0].function(value="x")
     assert result == {"ok": True}
-    assert client.calls == [("demo-tool", {"value": "x"}, "operator", "signal", "", "")]
+    assert client.calls == [
+        (
+            "demo-tool",
+            {"value": "x"},
+            "operator",
+            "signal",
+            "",
+            "",
+            "tok-123 approved",
+        )
+    ]
 
 
 def test_context_invoke_strips_extra_properties() -> None:

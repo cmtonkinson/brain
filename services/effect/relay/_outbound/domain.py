@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -37,7 +38,7 @@ class RouteNotificationResult(BaseModel):
 
 
 class ApprovalNotificationPayload(BaseModel):
-    """Token-only policy approval notification payload routed via Relay outbound."""
+    """Policy approval notification payload routed via Relay outbound."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -49,6 +50,7 @@ class ApprovalNotificationPayload(BaseModel):
     channel: str = Field(min_length=1)
     trace_id: str = Field(min_length=1)
     invocation_id: str = Field(min_length=1)
+    input_payload: dict[str, Any] = Field(default_factory=dict)
     expires_at: datetime
 
 

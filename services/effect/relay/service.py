@@ -102,7 +102,7 @@ class RelayService(ABC):
         meta: EnvelopeMeta,
         approval: ApprovalNotificationPayload,
     ) -> Envelope[RouteNotificationResult]:
-        """Route one token-only Policy->Relay approval notification."""
+        """Route one Policy approval notification."""
 
     @abstractmethod
     def flush_batch(

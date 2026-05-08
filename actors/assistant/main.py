@@ -830,6 +830,7 @@ async def _process_instruction(
         context = turn_context.context
         runtime.turn_state.actor = "operator"
         runtime.turn_state.channel = instruction.source
+        runtime.turn_state.message_text = instruction.message_text
         runtime.turn_state.reply_to_proposal_token = (
             ""
             if instruction.reply_to_proposal_token is None

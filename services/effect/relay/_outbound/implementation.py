@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from collections import defaultdict, deque
 from collections.abc import Mapping
@@ -58,6 +59,17 @@ from services.effect.relay._outbound.validation import (
 )
 
 _LOGGER = get_logger(__name__)
+_APPROVAL_INPUT_PREVIEW_MAX_CHARS = 1200
+
+
+def _render_approval_input_preview(input_payload: Mapping[str, Any]) -> str:
+    """Return a bounded JSON preview for one approval request input."""
+    if len(input_payload) == 0:
+        return "{}"
+    rendered = json.dumps(input_payload, sort_keys=True, indent=2, default=str)
+    if len(rendered) <= _APPROVAL_INPUT_PREVIEW_MAX_CHARS:
+        return rendered
+    return f"{rendered[:_APPROVAL_INPUT_PREVIEW_MAX_CHARS]}\n... [truncated]"
 _POLL_INTERVAL_SECONDS = 0.25
 
 
@@ -239,12 +251,19 @@ class DefaultRelayOutboundService(RelayOutboundService):
     ) -> Envelope[RouteNotificationResult]:
         """Route one Policy approval proposal as an outbound notification."""
         lines = [
-            f"Approval required: {approval.op_id}@{approval.op_version}",
-            approval.summary,
-            f"Token: {approval.proposal_token}",
+            "Approval required",
+            f"Op: {approval.op_id}@{approval.op_version}",
+            f"Summary: {approval.summary}",
+            f"Actor/channel: {approval.actor}/{approval.channel}",
             f"Trace: {approval.trace_id}",
             f"Invocation: {approval.invocation_id}",
             f"Expires: {approval.expires_at.isoformat()}",
+            "",
+            "Input:",
+            _render_approval_input_preview(approval.input_payload),
+            "",
+            f"Approve with: approve {approval.proposal_token}",
+            f"Reject with: reject {approval.proposal_token}",
         ]
         result = self.route_notification(
             meta=meta,

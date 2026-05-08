@@ -43,6 +43,7 @@ class TurnState(Protocol):
 
     actor: str
     channel: str
+    message_text: str
     conversation_episode_id: str
     language_recovery_notice_sent: bool
     active_tool_names: set[str]
@@ -82,6 +83,7 @@ class DefaultTurnState:
 
     actor: str = "operator"
     channel: str = ""
+    message_text: str = ""
     trace_id: str = field(default_factory=generate_ulid_str)
     conversation_episode_id: str = ""
     root_envelope_id: str = field(default_factory=generate_ulid_str)

@@ -41,6 +41,7 @@ class OpInvocationContext(Protocol):
 
     actor: str
     channel: str
+    message_text: str
 
     def nested_call_meta(self) -> object | None:
         """Return metadata for one nested SDK call under the current model node."""
@@ -243,6 +244,7 @@ def _make_context_invoke(
                 channel=ctx.channel,
                 reply_to_proposal_token=reply_token,
                 reaction_to_proposal_token=reaction_token,
+                message_text=ctx.message_text,
             )
         except BrainPolicyError as exc:
             return _handle_policy_error(

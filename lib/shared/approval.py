@@ -28,7 +28,7 @@ def normalize_approval_intent(
         return None
     if text in config.approve_text_responses:
         return "approve"
-    if text.startswith("yes ") or " approved" in text:
+    if text.startswith("yes ") or text.startswith("approve ") or " approved" in text:
         return "approve"
     if text in config.reject_text_responses:
         return "reject"

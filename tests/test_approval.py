@@ -122,6 +122,11 @@ def test_normalize_approval_intent_approved_substring_approves() -> None:
     assert normalize_approval_intent(message_text="request approved") == "approve"
 
 
+def test_normalize_approval_intent_approve_prefix_approves() -> None:
+    """Text starting with 'approve ' should normalize to approve."""
+    assert normalize_approval_intent(message_text="approve token-1") == "approve"
+
+
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
