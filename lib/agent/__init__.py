@@ -48,6 +48,12 @@ from lib.agent.tools import (
     parse_optional_iso_datetime,
 )
 from lib.agent.toolset import build_brain_toolset, filtered_brain_toolset
+from lib.agent.operator_runtime import (
+    OperatorAgentRuntime,
+    create_runtime as create_operator_runtime,
+    process_instruction as process_operator_instruction,
+)
+from lib.agent.subagent_runtime import run_invocation as run_subagent_invocation
 from lib.agent.turn_state import (
     DefaultTurnState,
     GET_TOOL_INFO_TOOL_NAME,
@@ -71,6 +77,7 @@ __all__ = [
     "LMS_RECOVERY_NOTICE_DELAY_THRESHOLD_SECONDS",
     "LoopResult",
     "OperatorIntermediateTextNotifier",
+    "OperatorAgentRuntime",
     "OperatorRecoveryNotifier",
     "PendingInvocation",
     "SEARCH_TOOLS_TOOL_NAME",
@@ -82,14 +89,17 @@ __all__ = [
     "build_op_tools",
     "build_op_tools_from_descriptors",
     "call_with_optional_meta",
+    "create_operator_runtime",
     "filtered_brain_toolset",
     "op_error_payload",
     "parse_optional_iso_datetime",
+    "process_operator_instruction",
     "is_retryable_language_throttle",
     "is_retryable_language_timeout",
     "is_retryable_language_transport_timeout",
     "language_recovery_profile_sequence",
     "run",
+    "run_subagent_invocation",
     "set_current_span_attributes",
     "set_span_attributes",
     "should_notify_operator_of_language_recovery",

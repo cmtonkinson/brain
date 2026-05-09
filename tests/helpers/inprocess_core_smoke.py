@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
-from actors.assistant import main as agent_main
+from lib.agent import operator_runtime
 from lib.sdk import (
     BrainClient,
     BrainSdkConfig,
@@ -395,7 +395,7 @@ def run_agent_e2e_smoke(
         config=BrainSdkConfig(source="assistant", principal="operator"),
         http=_TestClientHttpAdapter(test_client),
     )
-    runtime = agent_main._create_runtime(
+    runtime = operator_runtime.create_runtime(
         client=sdk_client,
         settings=ActorSettings(),
     )
@@ -404,7 +404,7 @@ def run_agent_e2e_smoke(
     )
     assert instruction is not None
     response_text = asyncio.run(
-        agent_main._process_instruction(
+        operator_runtime.process_instruction(
             runtime=runtime,
             instruction=instruction,
         )

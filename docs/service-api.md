@@ -77,7 +77,7 @@
 *Resolve one outbound approval notification timestamp to a proposal token.*
 
 `route_approval_notification(*, meta: EnvelopeMeta, approval: ApprovalNotificationPayload) -> Envelope[RouteNotificationResult]`  
-*Route one token-only Policy->Relay approval notification.*
+*Route one Policy approval notification.*
 
 `flush_batch(*, meta: EnvelopeMeta, batch_key: str, actor: str = 'operator', channel: str = '', recipient_e164: str = '', sender_e164: str = '', title: str = '') -> Envelope[RouteNotificationResult]`  
 *Flush one pending batch by key and deliver consolidated summary.*

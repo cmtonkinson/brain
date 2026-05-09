@@ -70,6 +70,8 @@ def _render_approval_input_preview(input_payload: Mapping[str, Any]) -> str:
     if len(rendered) <= _APPROVAL_INPUT_PREVIEW_MAX_CHARS:
         return rendered
     return f"{rendered[:_APPROVAL_INPUT_PREVIEW_MAX_CHARS]}\n... [truncated]"
+
+
 _POLL_INTERVAL_SECONDS = 0.25
 
 

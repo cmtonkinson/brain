@@ -21,4 +21,3 @@
   * "explore": It is orienting or speculatively fetching data, and may need the
     full result to reason further.
 </instructions>
-

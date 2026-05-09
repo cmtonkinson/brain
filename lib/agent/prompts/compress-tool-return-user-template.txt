@@ -8,4 +8,3 @@
 <raw_result>
 {{raw_output}}
 </raw_result>
-

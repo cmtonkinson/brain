@@ -644,7 +644,9 @@ def test_single_pending_proposal_approved_text_allows_execution() -> None:
     assert approved.output == {"ok": True}
 
 
-def test_mentioned_pending_proposal_token_allows_execution_when_multiple_pending() -> None:
+def test_mentioned_pending_proposal_token_allows_execution_when_multiple_pending() -> (
+    None
+):
     service = DefaultPolicyService(settings=PolicyServiceSettings())
     first = service.authorize_and_execute(
         request=_request(approval="always"),

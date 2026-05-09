@@ -15,6 +15,7 @@ from lib.agent import (
     INVALID_TOOL_CALL_RETRY_INSTRUCTION,
     build_inference_request,
 )
+from lib.agent import operator_runtime
 from lib.shared.language_model import (
     ConversationSummaryContentPart,
     DialogueTurnContentPart,
@@ -282,25 +283,29 @@ def test_render_system_prompt_template_supports_spaced_and_unspaced_placeholders
 
 def test_load_prompt_file_reads_compressor_prompt_from_disk() -> None:
     """Prompt-file helper should load the colocated compressor prompt text."""
-    from actors.assistant import main
 
-    prompt = main._load_prompt_file(main._COMPRESS_SYSTEM_PROMPT_PATH)
+    prompt = operator_runtime.load_prompt_file(
+        operator_runtime.COMPRESS_SYSTEM_PROMPT_PATH
+    )
 
-    assert prompt == main._COMPRESS_SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
-    assert prompt == main._COMPRESS_SYSTEM_PROMPT
+    assert prompt == operator_runtime.COMPRESS_SYSTEM_PROMPT_PATH.read_text(
+        encoding="utf-8"
+    )
+    assert prompt == operator_runtime.COMPRESS_SYSTEM_PROMPT
     assert "tool result compressor" in prompt.lower()
 
 
 def test_load_prompt_file_reads_compressor_user_template_from_disk() -> None:
     """Prompt-file helper should load the colocated compressor user template."""
-    from actors.assistant import main
 
-    prompt = main._load_prompt_file(main._COMPRESS_USER_PROMPT_TEMPLATE_PATH)
+    prompt = operator_runtime.load_prompt_file(
+        operator_runtime.COMPRESS_USER_PROMPT_TEMPLATE_PATH
+    )
 
-    assert prompt == main._COMPRESS_USER_PROMPT_TEMPLATE_PATH.read_text(
+    assert prompt == operator_runtime.COMPRESS_USER_PROMPT_TEMPLATE_PATH.read_text(
         encoding="utf-8"
     )
-    assert prompt == main._COMPRESS_USER_PROMPT_TEMPLATE
+    assert prompt == operator_runtime.COMPRESS_USER_PROMPT_TEMPLATE
     assert "{{tool_name}}" in prompt
     assert "{{raw_output}}" in prompt
 
@@ -329,11 +334,10 @@ def test_render_prompt_template_raises_for_unresolved_placeholders() -> None:
 
 def test_load_agent_context_properties_reads_json_from_disk() -> None:
     """Agent context schema helper should load the colocated JSON object."""
-    from actors.assistant import main
 
-    properties = main._load_agent_context_properties()
+    properties = operator_runtime.load_agent_context_properties()
 
-    assert properties == main._AGENT_CONTEXT_PROPERTIES
+    assert properties == operator_runtime.AGENT_CONTEXT_PROPERTIES
     assert set(properties) == {"call_mode", "response_detail"}
 
 
@@ -368,7 +372,6 @@ def test_configure_logging_uses_shared_dual_path_settings(monkeypatch) -> None:
 
 def test_build_inference_request_translates_tool_loop_history() -> None:
     """Inference-request assembly should preserve tool loop state as live events."""
-    from actors.assistant import main
     from pydantic_ai.messages import (
         ModelRequest,
         ModelResponse,
@@ -414,7 +417,7 @@ def test_build_inference_request_translates_tool_loop_history() -> None:
         allow_text_output=True,
         profile="standard",
         tool_approvals={},
-        extra_input_properties=main._AGENT_CONTEXT_PROPERTIES,
+        extra_input_properties=operator_runtime.AGENT_CONTEXT_PROPERTIES,
     )
 
     assert result == InferenceRequest(
@@ -482,7 +485,6 @@ def test_build_inference_request_translates_tool_loop_history() -> None:
 
 def test_build_inference_request_marks_explicit_cache_mode() -> None:
     """Prompt-cache markers should become explicit cache intent in the IR."""
-    from actors.assistant import main
     from pydantic_ai.messages import CachePoint, ModelRequest, UserPromptPart
 
     messages = [
@@ -502,7 +504,7 @@ def test_build_inference_request_marks_explicit_cache_mode() -> None:
         allow_text_output=True,
         profile="standard",
         tool_approvals={},
-        extra_input_properties=main._AGENT_CONTEXT_PROPERTIES,
+        extra_input_properties=operator_runtime.AGENT_CONTEXT_PROPERTIES,
     )
 
     assert result.current_turn.operator_message.message_text == "hello"
@@ -511,7 +513,6 @@ def test_build_inference_request_marks_explicit_cache_mode() -> None:
 
 def test_build_inference_request_batches_tool_returns_and_sets_status() -> None:
     """Tool returns from one request should become one batch with explicit statuses."""
-    from actors.assistant import main
     from pydantic_ai.messages import ModelRequest, ToolReturnPart
 
     messages = [
@@ -547,7 +548,7 @@ def test_build_inference_request_batches_tool_returns_and_sets_status() -> None:
         allow_text_output=True,
         profile="standard",
         tool_approvals={},
-        extra_input_properties=main._AGENT_CONTEXT_PROPERTIES,
+        extra_input_properties=operator_runtime.AGENT_CONTEXT_PROPERTIES,
     )
 
     assert result.live_events == (
@@ -584,7 +585,6 @@ def test_build_inference_request_batches_tool_returns_and_sets_status() -> None:
 
 def test_build_inference_request_assigns_cache_marker_to_tool_result_batch() -> None:
     """Cache-only prompts after tool returns should mark the tool-result batch itself."""
-    from actors.assistant import main
     from pydantic_ai.messages import (
         CachePoint,
         ModelRequest,
@@ -629,7 +629,7 @@ def test_build_inference_request_assigns_cache_marker_to_tool_result_batch() -> 
         allow_text_output=True,
         profile="standard",
         tool_approvals={},
-        extra_input_properties=main._AGENT_CONTEXT_PROPERTIES,
+        extra_input_properties=operator_runtime.AGENT_CONTEXT_PROPERTIES,
     )
 
     assert result.live_events == (
@@ -770,10 +770,9 @@ def test_history_processor_skips_rolling_cachepoint_for_low_value_growth() -> No
 
 def test_format_user_prompt_places_cachepoint_before_current_instruction() -> None:
     """The operator-message block should come after the historical snapshot cache cut."""
-    from actors.assistant import main
     from pydantic_ai.messages import CachePoint
 
-    prompt = main._format_user_prompt(
+    prompt = operator_runtime.format_user_prompt(
         instruction=RelayOperatorInstruction(
             sender_e164="+12025550100",
             message_text="hello",
@@ -827,7 +826,6 @@ def test_format_user_prompt_places_cachepoint_before_current_instruction() -> No
 
 def test_format_user_prompt_places_environment_context_after_cachepoint() -> None:
     """Environment context should never be placed before the first cache point."""
-    from actors.assistant import main
     from pydantic_ai.messages import CachePoint
 
     environment_context = InferenceEnvironmentContext(
@@ -840,7 +838,7 @@ def test_format_user_prompt_places_environment_context_after_cachepoint() -> Non
         )
     )
 
-    prompt = main._format_user_prompt(
+    prompt = operator_runtime.format_user_prompt(
         instruction=RelayOperatorInstruction(
             sender_e164="+12025550100",
             message_text="hello",
@@ -872,7 +870,6 @@ def test_format_user_prompt_places_environment_context_after_cachepoint() -> Non
 
 def test_build_inference_request_extracts_environment_context() -> None:
     """Environment context content parts should become a top-level inference field."""
-    from actors.assistant import main
     from pydantic_ai.messages import ModelRequest, UserPromptPart
 
     environment_context = InferenceEnvironmentContext(
@@ -915,7 +912,7 @@ def test_build_inference_request_extracts_environment_context() -> None:
         allow_text_output=True,
         profile="standard",
         tool_approvals={},
-        extra_input_properties=main._AGENT_CONTEXT_PROPERTIES,
+        extra_input_properties=operator_runtime.AGENT_CONTEXT_PROPERTIES,
     )
 
     assert result.environment_context == environment_context
@@ -1126,7 +1123,6 @@ def test_compress_tool_return_uses_file_backed_user_template() -> None:
 
 def test_create_runtime_uses_personality_system_prompt() -> None:
     """Runtime creation should render the personality into the model system blocks."""
-    from actors.assistant import main
 
     class _FakeClient:
         def memory_create_session(self):
@@ -1141,7 +1137,7 @@ def test_create_runtime_uses_personality_system_prompt() -> None:
         def list_always_on_ops(self):
             return ()
 
-    runtime = main._create_runtime(
+    runtime = operator_runtime.create_runtime(
         client=_FakeClient(),
         settings=_actor_settings_stub(personality="default"),
     )
@@ -1154,7 +1150,6 @@ def test_create_runtime_uses_personality_system_prompt() -> None:
 
 def test_create_runtime_includes_system_prompt_append_in_blocks() -> None:
     """Runtime creation should preserve agent.system_prompt_append in the model system blocks."""
-    from actors.assistant import main
 
     class _FakeClient:
         def memory_create_session(self):
@@ -1170,7 +1165,7 @@ def test_create_runtime_includes_system_prompt_append_in_blocks() -> None:
             return ()
 
     append_text = "APPEND_MARKER_123"
-    runtime = main._create_runtime(
+    runtime = operator_runtime.create_runtime(
         client=_FakeClient(),
         settings=_actor_settings_stub(system_prompt_append=append_text),
     )
@@ -1183,7 +1178,6 @@ def test_create_runtime_includes_system_prompt_append_in_blocks() -> None:
 
 def test_create_runtime_includes_tool_system_hints_in_blocks() -> None:
     """Runtime creation should append compact tool-system orientation hints into model system blocks."""
-    from actors.assistant import main
 
     class _FakeClient:
         def memory_create_session(self):
@@ -1216,7 +1210,7 @@ def test_create_runtime_includes_tool_system_hints_in_blocks() -> None:
                 ),
             )
 
-    runtime = main._create_runtime(
+    runtime = operator_runtime.create_runtime(
         client=_FakeClient(),
         settings=_actor_settings_stub(),
     )
@@ -1233,7 +1227,6 @@ def test_create_runtime_includes_tool_system_hints_in_blocks() -> None:
 
 def test_create_runtime_uses_configured_tier2_hop_threshold() -> None:
     """Runtime creation should wire the configured Tier 2 hop threshold."""
-    from actors.assistant import main
 
     class _FakeClient:
         def memory_create_session(self):
@@ -1265,7 +1258,7 @@ def test_create_runtime_uses_configured_tier2_hop_threshold() -> None:
     original = _history_mod.build_history_processor
     _history_mod.build_history_processor = _fake_build_history_processor  # type: ignore[assignment]
     try:
-        main._create_runtime(
+        operator_runtime.create_runtime(
             client=_FakeClient(),
             settings=settings,
         )
@@ -1277,10 +1270,9 @@ def test_create_runtime_uses_configured_tier2_hop_threshold() -> None:
 
 def test_instruction_context_message_uses_reaction_approval_when_text_missing() -> None:
     """Reaction-only approvals should still produce a usable Recall context message."""
-    from actors.assistant import main
 
     assert (
-        main._instruction_context_message(
+        operator_runtime.instruction_context_message(
             RelayOperatorInstruction(
                 sender_e164="+12025550100",
                 message_text="",
@@ -1300,12 +1292,11 @@ def test_instruction_context_message_uses_reaction_approval_when_text_missing() 
 
 def test_turn_state_prunes_expired_pending_invocations() -> None:
     """Expired pending approval records should be evicted eagerly."""
-    from actors.assistant import main
 
     now = datetime(2026, 3, 11, 12, 0, 0, tzinfo=UTC)
-    turn_state = main._TurnState()
+    turn_state = operator_runtime.TurnState()
     turn_state.pending_invocations = {
-        "expired": main._PendingInvocation(
+        "expired": operator_runtime.OperatorPendingInvocation(
             proposal_token="expired",
             op_id="vault-move-path",
             input_payload={},
@@ -1316,7 +1307,7 @@ def test_turn_state_prunes_expired_pending_invocations() -> None:
             created_at=now - timedelta(minutes=5),
             expires_at=now - timedelta(seconds=1),
         ),
-        "active": main._PendingInvocation(
+        "active": operator_runtime.OperatorPendingInvocation(
             proposal_token="active",
             op_id="vault-move-path",
             input_payload={},
@@ -1336,12 +1327,11 @@ def test_turn_state_prunes_expired_pending_invocations() -> None:
 
 def test_turn_state_remember_pending_invocation_evicts_oldest_over_limit() -> None:
     """Pending approval records should remain bounded even without expiry data."""
-    from actors.assistant import main
 
     base = datetime(2026, 3, 11, 12, 0, 0, tzinfo=UTC)
-    turn_state = main._TurnState(actor="operator", channel="signal")
+    turn_state = operator_runtime.TurnState(actor="operator", channel="signal")
 
-    for index in range(main._MAX_PENDING_INVOCATIONS + 1):
+    for index in range(operator_runtime.MAX_PENDING_INVOCATIONS + 1):
         turn_state.remember_pending_invocation(
             proposal_token=f"tok-{index}",
             op_id="vault-move-path",
@@ -1351,14 +1341,18 @@ def test_turn_state_remember_pending_invocation_evicts_oldest_over_limit() -> No
             now=base + timedelta(seconds=index),
         )
 
-    assert len(turn_state.pending_invocations) == main._MAX_PENDING_INVOCATIONS
+    assert (
+        len(turn_state.pending_invocations) == operator_runtime.MAX_PENDING_INVOCATIONS
+    )
     assert "tok-0" not in turn_state.pending_invocations
-    assert f"tok-{main._MAX_PENDING_INVOCATIONS}" in turn_state.pending_invocations
+    assert (
+        f"tok-{operator_runtime.MAX_PENDING_INVOCATIONS}"
+        in turn_state.pending_invocations
+    )
 
 
 def test_tool_model_requests_language_chat_with_tools() -> None:
     """Custom model should translate request history and tool schemas into SDK calls."""
-    from actors.assistant import main
     from pydantic_ai.messages import (
         ModelRequest,
         SystemPromptPart,
@@ -1405,10 +1399,10 @@ def test_tool_model_requests_language_chat_with_tools() -> None:
         source="assistant",
         principal="operator",
         system_blocks=(InferenceSystemBlock(kind="assistant_persona", text="system"),),
-        extra_input_properties=main._AGENT_CONTEXT_PROPERTIES,
-        discovery_tool_names=main._DISCOVERY_TOOL_NAMES,
-        operator_recovery_notifier=main._notify_operator_of_language_recovery,
-        recovery_notice_message=main._LMS_RECOVERY_IN_PROGRESS_RESPONSE,
+        extra_input_properties=operator_runtime.AGENT_CONTEXT_PROPERTIES,
+        discovery_tool_names=operator_runtime.DISCOVERY_TOOL_NAMES,
+        operator_recovery_notifier=operator_runtime.notify_operator_of_language_recovery,
+        recovery_notice_message=operator_runtime.LMS_RECOVERY_IN_PROGRESS_RESPONSE,
     )
     response = asyncio.run(
         model.request(
@@ -1635,7 +1629,6 @@ def test_tool_model_retries_once_when_model_returns_only_unadvertised_tool_calls
 
 def test_process_instruction_assembles_context_and_records_response() -> None:
     """One processed instruction should assemble Recall context and record the reply."""
-    from actors.assistant import main
 
     class _FakeClient:
         def __init__(self) -> None:
@@ -1725,10 +1718,10 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
             return _FakeRunResult(output="assistant reply")
 
     client = _FakeClient()
-    runtime = main._AgentRuntime(
+    runtime = operator_runtime.OperatorAgentRuntime(
         client=client,  # type: ignore[arg-type]
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
-        turn_state=main._TurnState(),
+        turn_state=operator_runtime.TurnState(),
         model=AgentToolModel.__new__(AgentToolModel),
         agent=None,  # type: ignore[arg-type]
         language_request_timeout_seconds=45.0,
@@ -1737,7 +1730,7 @@ def test_process_instruction_assembles_context_and_records_response() -> None:
     runtime.agent = _FakeAgent(runtime)  # type: ignore[assignment]
 
     response = asyncio.run(
-        main._process_instruction(
+        operator_runtime.process_instruction(
             runtime=runtime,
             instruction=RelayOperatorInstruction(
                 sender_e164="+12025550100",
@@ -1803,7 +1796,6 @@ def test_process_instruction_passes_preferred_timezone_to_environment_assembly(
     monkeypatch,
 ) -> None:
     """Instruction processing should forward runtime preferred_timezone into assembly."""
-    from actors.assistant import main
 
     class _FakeClient:
         def memory_record_inbound_turn(
@@ -1861,16 +1853,16 @@ def test_process_instruction_passes_preferred_timezone_to_environment_assembly(
         return InferenceEnvironmentContext(items=()), ()
 
     monkeypatch.setattr(
-        main,
+        operator_runtime,
         "assemble_environment_context",
         _fake_assemble_environment_context,
     )
 
     client = _FakeClient()
-    runtime = main._AgentRuntime(
+    runtime = operator_runtime.OperatorAgentRuntime(
         client=client,  # type: ignore[arg-type]
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
-        turn_state=main._TurnState(),
+        turn_state=operator_runtime.TurnState(),
         model=AgentToolModel.__new__(AgentToolModel),
         agent=None,  # type: ignore[arg-type]
         language_request_timeout_seconds=45.0,
@@ -1883,7 +1875,7 @@ def test_process_instruction_passes_preferred_timezone_to_environment_assembly(
     runtime.agent = _FakeAgent(runtime)  # type: ignore[assignment]
 
     asyncio.run(
-        main._process_instruction(
+        operator_runtime.process_instruction(
             runtime=runtime,
             instruction=RelayOperatorInstruction(
                 sender_e164="+12025550100",
@@ -2001,10 +1993,10 @@ def test_process_instruction_handles_language_throttle_gracefully(monkeypatch) -
 
     monkeypatch.setattr(main.asyncio, "sleep", _no_sleep)
     client = _FakeClient()
-    runtime = main._AgentRuntime(
+    runtime = operator_runtime.OperatorAgentRuntime(
         client=client,  # type: ignore[arg-type]
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
-        turn_state=main._TurnState(),
+        turn_state=operator_runtime.TurnState(),
         model=AgentToolModel.__new__(AgentToolModel),
         agent=_FakeAgent(),  # type: ignore[arg-type]
         language_request_timeout_seconds=45.0,
@@ -2012,7 +2004,7 @@ def test_process_instruction_handles_language_throttle_gracefully(monkeypatch) -
     runtime.model.last_result = None
 
     response = asyncio.run(
-        main._process_instruction(
+        operator_runtime.process_instruction(
             runtime=runtime,
             instruction=RelayOperatorInstruction(
                 sender_e164="+12025550100",
@@ -2029,7 +2021,7 @@ def test_process_instruction_handles_language_throttle_gracefully(monkeypatch) -
         )
     )
 
-    assert response == main._LMS_THROTTLE_RESPONSE
+    assert response == operator_runtime.LMS_THROTTLE_RESPONSE
     assert client.recorded == []
     assert client.invoked == [
         (
@@ -2037,13 +2029,13 @@ def test_process_instruction_handles_language_throttle_gracefully(monkeypatch) -
             {
                 "actor": "operator",
                 "channel": "signal",
-                "message": main._LMS_THROTTLE_RESPONSE,
+                "message": operator_runtime.LMS_THROTTLE_RESPONSE,
                 "conversational_memory": {
                     "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
                     "model": "brain-sdk-lms",
                     "provider": "brain-sdk",
                     "token_count": history.estimate_token_count(
-                        main._LMS_THROTTLE_RESPONSE
+                        operator_runtime.LMS_THROTTLE_RESPONSE
                     ),
                     "reasoning_level": "standard",
                 },
@@ -2138,10 +2130,10 @@ def test_process_instruction_handles_language_timeout_gracefully(monkeypatch) ->
 
     monkeypatch.setattr(main.asyncio, "sleep", _no_sleep)
     client = _FakeClient()
-    runtime = main._AgentRuntime(
+    runtime = operator_runtime.OperatorAgentRuntime(
         client=client,  # type: ignore[arg-type]
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
-        turn_state=main._TurnState(),
+        turn_state=operator_runtime.TurnState(),
         model=AgentToolModel.__new__(AgentToolModel),
         agent=_FakeAgent(),  # type: ignore[arg-type]
         language_request_timeout_seconds=45.0,
@@ -2149,7 +2141,7 @@ def test_process_instruction_handles_language_timeout_gracefully(monkeypatch) ->
     runtime.model.last_result = None
 
     response = asyncio.run(
-        main._process_instruction(
+        operator_runtime.process_instruction(
             runtime=runtime,
             instruction=RelayOperatorInstruction(
                 sender_e164="+12025550100",
@@ -2166,7 +2158,7 @@ def test_process_instruction_handles_language_timeout_gracefully(monkeypatch) ->
         )
     )
 
-    assert response == main._LMS_TIMEOUT_RESPONSE
+    assert response == operator_runtime.LMS_TIMEOUT_RESPONSE
     assert client.recorded == []
     assert client.invoked == [
         (
@@ -2174,13 +2166,13 @@ def test_process_instruction_handles_language_timeout_gracefully(monkeypatch) ->
             {
                 "actor": "operator",
                 "channel": "signal",
-                "message": main._LMS_TIMEOUT_RESPONSE,
+                "message": operator_runtime.LMS_TIMEOUT_RESPONSE,
                 "conversational_memory": {
                     "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
                     "model": "brain-sdk-lms",
                     "provider": "brain-sdk",
                     "token_count": history.estimate_token_count(
-                        main._LMS_TIMEOUT_RESPONSE
+                        operator_runtime.LMS_TIMEOUT_RESPONSE
                     ),
                     "reasoning_level": "standard",
                 },
@@ -2193,7 +2185,6 @@ def test_process_instruction_handles_language_timeout_gracefully(monkeypatch) ->
 
 def test_process_instruction_handles_language_internal_error_gracefully() -> None:
     """Non-timeout Language domain errors should produce the generic fallback response."""
-    from actors.assistant import main
 
     class _FakeClient:
         def __init__(self) -> None:
@@ -2271,10 +2262,10 @@ def test_process_instruction_handles_language_internal_error_gracefully() -> Non
             )
 
     client = _FakeClient()
-    runtime = main._AgentRuntime(
+    runtime = operator_runtime.OperatorAgentRuntime(
         client=client,  # type: ignore[arg-type]
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
-        turn_state=main._TurnState(),
+        turn_state=operator_runtime.TurnState(),
         model=AgentToolModel.__new__(AgentToolModel),
         agent=_FakeAgent(),  # type: ignore[arg-type]
         language_request_timeout_seconds=45.0,
@@ -2282,7 +2273,7 @@ def test_process_instruction_handles_language_internal_error_gracefully() -> Non
     runtime.model.last_result = None
 
     response = asyncio.run(
-        main._process_instruction(
+        operator_runtime.process_instruction(
             runtime=runtime,
             instruction=RelayOperatorInstruction(
                 sender_e164="+12025550100",
@@ -2299,7 +2290,7 @@ def test_process_instruction_handles_language_internal_error_gracefully() -> Non
         )
     )
 
-    assert response == main._LMS_GENERIC_ERROR_RESPONSE
+    assert response == operator_runtime.LMS_GENERIC_ERROR_RESPONSE
     assert client.recorded == []
     assert client.invoked == [
         (
@@ -2307,13 +2298,13 @@ def test_process_instruction_handles_language_internal_error_gracefully() -> Non
             {
                 "actor": "operator",
                 "channel": "signal",
-                "message": main._LMS_GENERIC_ERROR_RESPONSE,
+                "message": operator_runtime.LMS_GENERIC_ERROR_RESPONSE,
                 "conversational_memory": {
                     "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
                     "model": "brain-sdk-lms",
                     "provider": "brain-sdk",
                     "token_count": history.estimate_token_count(
-                        main._LMS_GENERIC_ERROR_RESPONSE
+                        operator_runtime.LMS_GENERIC_ERROR_RESPONSE
                     ),
                     "reasoning_level": "standard",
                 },
@@ -2328,7 +2319,6 @@ def test_process_instruction_handles_retryable_internal_error_with_generic_fallb
     None
 ):
     """Retryable internal errors from outside model.request still fall back cleanly."""
-    from actors.assistant import main
 
     class _FakeClient:
         def __init__(self) -> None:
@@ -2409,10 +2399,10 @@ def test_process_instruction_handles_retryable_internal_error_with_generic_fallb
             )
 
     client = _FakeClient()
-    runtime = main._AgentRuntime(
+    runtime = operator_runtime.OperatorAgentRuntime(
         client=client,  # type: ignore[arg-type]
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
-        turn_state=main._TurnState(),
+        turn_state=operator_runtime.TurnState(),
         model=AgentToolModel.__new__(AgentToolModel),
         agent=None,  # type: ignore[arg-type]
         language_request_timeout_seconds=45.0,
@@ -2421,7 +2411,7 @@ def test_process_instruction_handles_retryable_internal_error_with_generic_fallb
     runtime.agent = _FakeAgent()  # type: ignore[assignment]
 
     response = asyncio.run(
-        main._process_instruction(
+        operator_runtime.process_instruction(
             runtime=runtime,
             instruction=RelayOperatorInstruction(
                 sender_e164="+12025550100",
@@ -2438,7 +2428,7 @@ def test_process_instruction_handles_retryable_internal_error_with_generic_fallb
         )
     )
 
-    assert response == main._LMS_GENERIC_ERROR_RESPONSE
+    assert response == operator_runtime.LMS_GENERIC_ERROR_RESPONSE
     assert client.recorded == []
     assert client.invoked == [
         (
@@ -2446,13 +2436,13 @@ def test_process_instruction_handles_retryable_internal_error_with_generic_fallb
             {
                 "actor": "operator",
                 "channel": "signal",
-                "message": main._LMS_GENERIC_ERROR_RESPONSE,
+                "message": operator_runtime.LMS_GENERIC_ERROR_RESPONSE,
                 "conversational_memory": {
                     "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
                     "model": "brain-sdk-lms",
                     "provider": "brain-sdk",
                     "token_count": history.estimate_token_count(
-                        main._LMS_GENERIC_ERROR_RESPONSE
+                        operator_runtime.LMS_GENERIC_ERROR_RESPONSE
                     ),
                     "reasoning_level": "standard",
                 },
@@ -2543,10 +2533,10 @@ def test_process_instruction_handles_language_transport_5xx_gracefully(
 
     monkeypatch.setattr(main.asyncio, "sleep", _no_sleep)
     client = _FakeClient()
-    runtime = main._AgentRuntime(
+    runtime = operator_runtime.OperatorAgentRuntime(
         client=client,  # type: ignore[arg-type]
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
-        turn_state=main._TurnState(),
+        turn_state=operator_runtime.TurnState(),
         model=AgentToolModel.__new__(AgentToolModel),
         agent=_FakeAgent(),  # type: ignore[arg-type]
         language_request_timeout_seconds=45.0,
@@ -2554,7 +2544,7 @@ def test_process_instruction_handles_language_transport_5xx_gracefully(
     runtime.model.last_result = None
 
     response = asyncio.run(
-        main._process_instruction(
+        operator_runtime.process_instruction(
             runtime=runtime,
             instruction=RelayOperatorInstruction(
                 sender_e164="+12025550100",
@@ -2571,7 +2561,7 @@ def test_process_instruction_handles_language_transport_5xx_gracefully(
         )
     )
 
-    assert response == main._LMS_GENERIC_ERROR_RESPONSE
+    assert response == operator_runtime.LMS_GENERIC_ERROR_RESPONSE
     assert client.recorded == []
     assert client.invoked == [
         (
@@ -2579,13 +2569,13 @@ def test_process_instruction_handles_language_transport_5xx_gracefully(
             {
                 "actor": "operator",
                 "channel": "signal",
-                "message": main._LMS_GENERIC_ERROR_RESPONSE,
+                "message": operator_runtime.LMS_GENERIC_ERROR_RESPONSE,
                 "conversational_memory": {
                     "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
                     "model": "brain-sdk-lms",
                     "provider": "brain-sdk",
                     "token_count": history.estimate_token_count(
-                        main._LMS_GENERIC_ERROR_RESPONSE
+                        operator_runtime.LMS_GENERIC_ERROR_RESPONSE
                     ),
                     "reasoning_level": "standard",
                 },
@@ -2600,7 +2590,6 @@ def test_derive_language_request_timeout_seconds_uses_largest_chat_provider_budg
     None
 ):
     """Derived Language timeout should reflect retry budget plus margin across profiles."""
-    from actors.assistant import main
     from lib.shared.config import (
         CoreRuntimeSettings,
         CoreSettings,
@@ -2630,12 +2619,14 @@ def test_derive_language_request_timeout_seconds_uses_largest_chat_provider_budg
         },
     )
 
-    assert main._derive_language_request_timeout_seconds(runtime_settings) == 93.5
+    assert (
+        operator_runtime.derive_language_request_timeout_seconds(runtime_settings)
+        == 93.5
+    )
 
 
 def test_create_runtime_reuses_existing_session_and_registers_tools() -> None:
     """Runtime creation should reuse-or-create by default and register tools."""
-    from actors.assistant import main
 
     class _FakeClient:
         def __init__(self) -> None:
@@ -2673,7 +2664,7 @@ def test_create_runtime_reuses_existing_session_and_registers_tools() -> None:
             return ()
 
     client = _FakeClient()
-    runtime = main._create_runtime(
+    runtime = operator_runtime.create_runtime(
         client=client,  # type: ignore[arg-type]
         settings=_actor_settings_stub(),
         core_settings=_core_settings_stub(),
@@ -2691,7 +2682,6 @@ def test_create_runtime_reuses_existing_session_and_registers_tools() -> None:
 
 def test_create_runtime_copies_preferred_timezone_from_core_settings() -> None:
     """Runtime creation should retain the operator timezone for environment assembly."""
-    from actors.assistant import main
 
     class _FakeClient:
         def memory_create_session(self) -> MemorySessionRef:
@@ -2709,7 +2699,7 @@ def test_create_runtime_copies_preferred_timezone_from_core_settings() -> None:
     core_settings = _core_settings_stub()
     core_settings.profile.preferred_timezone = "America/Los_Angeles"
 
-    runtime = main._create_runtime(
+    runtime = operator_runtime.create_runtime(
         client=_FakeClient(),  # type: ignore[arg-type]
         settings=_actor_settings_stub(),
         core_settings=core_settings,  # type: ignore[arg-type]
@@ -2720,7 +2710,6 @@ def test_create_runtime_copies_preferred_timezone_from_core_settings() -> None:
 
 def test_create_runtime_defaults_preferred_timezone_to_utc_when_missing() -> None:
     """Runtime creation should fall back to UTC for older core-settings stubs."""
-    from actors.assistant import main
 
     class _FakeClient:
         def memory_create_session(self) -> MemorySessionRef:
@@ -2735,7 +2724,7 @@ def test_create_runtime_defaults_preferred_timezone_to_utc_when_missing() -> Non
         def list_always_on_ops(self) -> tuple[OpDescriptor, ...]:
             return ()
 
-    runtime = main._create_runtime(
+    runtime = operator_runtime.create_runtime(
         client=_FakeClient(),  # type: ignore[arg-type]
         settings=_actor_settings_stub(),
         core_settings=SimpleNamespace(profile=SimpleNamespace()),  # type: ignore[arg-type]
@@ -2746,7 +2735,6 @@ def test_create_runtime_defaults_preferred_timezone_to_utc_when_missing() -> Non
 
 def test_agent_turn_observation_sets_langfuse_root_io(monkeypatch) -> None:
     """Agent root turn span should expose clean Langfuse trace input and output."""
-    from actors.assistant import main
 
     class _Span:
         """In-memory span for root observation assertions."""
@@ -2784,7 +2772,7 @@ def test_agent_turn_observation_sets_langfuse_root_io(monkeypatch) -> None:
 
     span = _Span()
     fake_trace = SimpleNamespace(get_tracer=lambda _name: _Tracer(span))
-    monkeypatch.setattr(main, "is_observability_enabled", lambda: True)
+    monkeypatch.setattr(operator_runtime, "is_observability_enabled", lambda: True)
     monkeypatch.setitem(sys.modules, "opentelemetry", SimpleNamespace(trace=fake_trace))
     runtime = SimpleNamespace(
         session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
@@ -2810,16 +2798,16 @@ def test_agent_turn_observation_sets_langfuse_root_io(monkeypatch) -> None:
         reaction_target_timestamp_ms=None,
     )
 
-    with main._AgentTurnObservation(
+    with operator_runtime.AgentTurnObservation(
         runtime=runtime,  # type: ignore[arg-type]
         instruction=instruction,
     ) as root_span:
         assert root_span is span
-        main._update_agent_turn_observation_session(
+        operator_runtime.update_agent_turn_observation_session(
             span=root_span,
             runtime=runtime,  # type: ignore[arg-type]
         )
-        main._complete_agent_turn_observation(
+        operator_runtime.complete_agent_turn_observation(
             span=root_span,
             response_text="hi there",
         )
@@ -2849,9 +2837,8 @@ def test_agent_turn_observation_sets_langfuse_root_io(monkeypatch) -> None:
 
 def test_system_blocks_for_observation_renders_sgml_sections() -> None:
     """Observation rendering should preserve canonical system block structure."""
-    from actors.assistant import main
 
-    rendered = main._system_blocks_for_observation(
+    rendered = operator_runtime.system_blocks_for_observation(
         (
             InferenceSystemBlock(kind="assistant_persona", text="Persona"),
             InferenceSystemBlock(kind="operator_profile", text="Call me boss"),
@@ -2868,7 +2855,6 @@ def test_system_blocks_for_observation_renders_sgml_sections() -> None:
 
 def test_create_runtime_uses_new_session_mode_when_configured() -> None:
     """Runtime creation should always create a new session in new mode."""
-    from actors.assistant import main
 
     class _FakeClient:
         def __init__(self) -> None:
@@ -2893,7 +2879,7 @@ def test_create_runtime_uses_new_session_mode_when_configured() -> None:
     settings.agent.session_start_mode = "new"
     client = _FakeClient()
 
-    runtime = main._create_runtime(
+    runtime = operator_runtime.create_runtime(
         client=client,  # type: ignore[arg-type],
         settings=settings,
         core_settings=_core_settings_stub(),
@@ -2906,7 +2892,6 @@ def test_create_runtime_uses_new_session_mode_when_configured() -> None:
 
 def test_create_runtime_falls_back_to_new_session_when_existing_lookup_fails() -> None:
     """Runtime creation should create a new session when existing-mode lookup fails."""
-    from actors.assistant import main
 
     class _FakeClient:
         def __init__(self) -> None:
@@ -2929,7 +2914,7 @@ def test_create_runtime_falls_back_to_new_session_when_existing_lookup_fails() -
 
     client = _FakeClient()
 
-    runtime = main._create_runtime(
+    runtime = operator_runtime.create_runtime(
         client=client,  # type: ignore[arg-type],
         settings=_actor_settings_stub(),
         core_settings=_core_settings_stub(),
@@ -2942,7 +2927,6 @@ def test_create_runtime_falls_back_to_new_session_when_existing_lookup_fails() -
 
 def test_create_runtime_aborts_when_new_session_creation_fails() -> None:
     """Runtime creation should fail when the create-session path fails."""
-    from actors.assistant import main
 
     class _FakeClient:
         def memory_create_session(self) -> MemorySessionRef:
@@ -2958,7 +2942,7 @@ def test_create_runtime_aborts_when_new_session_creation_fails() -> None:
             return ()
 
     try:
-        main._create_runtime(
+        operator_runtime.create_runtime(
             client=_FakeClient(),  # type: ignore[arg-type]
             settings=_actor_settings_stub(),
             core_settings=_core_settings_stub(),
@@ -2970,7 +2954,6 @@ def test_create_runtime_aborts_when_new_session_creation_fails() -> None:
 
 def test_runtime_discovery_tools_do_not_activate_ops_for_prepare_tools() -> None:
     """Discovery should not mutate the callable tool set within the current turn."""
-    from actors.assistant import main
 
     class _FakeClient:
         def search_ops(
@@ -3005,7 +2988,9 @@ def test_runtime_discovery_tools_do_not_activate_ops_for_prepare_tools() -> None
                 required_ops=(),
             )
 
-    turn_state = main._TurnState(always_on_op_ids=frozenset({"vault-search-files"}))
+    turn_state = operator_runtime.TurnState(
+        always_on_op_ids=frozenset({"vault-search-files"})
+    )
     turn_state.reset_active_tools()
 
     from lib.agent.toolset import _build_discovery_tools
@@ -3033,7 +3018,6 @@ def test_runtime_discovery_tools_do_not_activate_ops_for_prepare_tools() -> None
 
 def test_allow_parallel_tool_calls_is_disabled_after_search_tool_result() -> None:
     """Discovery results disable parallelism because the next hop may expose new tools."""
-    from actors.assistant import main
     from lib.agent.inference_request import allow_parallel_tool_calls
     from pydantic_ai.messages import ModelRequest, ToolReturnPart
 
@@ -3043,14 +3027,14 @@ def test_allow_parallel_tool_calls_is_disabled_after_search_tool_result() -> Non
                 ModelRequest(
                     parts=[
                         ToolReturnPart(
-                            tool_name=main._SEARCH_TOOLS_TOOL_NAME,
+                            tool_name=operator_runtime.SEARCH_TOOLS_TOOL_NAME,
                             content="[]",
                             tool_call_id="call-1",
                         )
                     ]
                 )
             ],
-            discovery_tool_names=main._DISCOVERY_TOOL_NAMES,
+            discovery_tool_names=operator_runtime.DISCOVERY_TOOL_NAMES,
         )
         is False
     )
@@ -3058,7 +3042,6 @@ def test_allow_parallel_tool_calls_is_disabled_after_search_tool_result() -> Non
 
 def test_allow_parallel_tool_calls_is_disabled_after_get_tool_info_result() -> None:
     """Tool-info results disable parallelism because they can change next-hop callability."""
-    from actors.assistant import main
     from lib.agent.inference_request import allow_parallel_tool_calls
     from pydantic_ai.messages import ModelRequest, ToolReturnPart
 
@@ -3068,14 +3051,14 @@ def test_allow_parallel_tool_calls_is_disabled_after_get_tool_info_result() -> N
                 ModelRequest(
                     parts=[
                         ToolReturnPart(
-                            tool_name=main._GET_TOOL_INFO_TOOL_NAME,
+                            tool_name=operator_runtime.GET_TOOL_INFO_TOOL_NAME,
                             content="{}",
                             tool_call_id="call-1",
                         )
                     ]
                 )
             ],
-            discovery_tool_names=main._DISCOVERY_TOOL_NAMES,
+            discovery_tool_names=operator_runtime.DISCOVERY_TOOL_NAMES,
         )
         is False
     )
@@ -3085,7 +3068,6 @@ def test_allow_parallel_tool_calls_remains_enabled_after_non_discovery_results()
     None
 ):
     """Ordinary tool results keep parallelism enabled because they do not mutate tool exposure."""
-    from actors.assistant import main
     from lib.agent.inference_request import allow_parallel_tool_calls
     from pydantic_ai.messages import ModelRequest, ToolReturnPart
 
@@ -3102,7 +3084,7 @@ def test_allow_parallel_tool_calls_remains_enabled_after_non_discovery_results()
                     ]
                 )
             ],
-            discovery_tool_names=main._DISCOVERY_TOOL_NAMES,
+            discovery_tool_names=operator_runtime.DISCOVERY_TOOL_NAMES,
         )
         is True
     )
@@ -3117,7 +3099,6 @@ def test_allow_parallel_tool_calls_defaults_enabled_before_any_tool_results() ->
 
 def test_runtime_discovery_tools_filter_denied_ops() -> None:
     """Discovery and describe should not activate deny-listed ops."""
-    from actors.assistant import main
 
     class _FakeClient:
         def search_ops(
@@ -3152,7 +3133,7 @@ def test_runtime_discovery_tools_filter_denied_ops() -> None:
                 required_ops=(),
             )
 
-    turn_state = main._TurnState(
+    turn_state = operator_runtime.TurnState(
         always_on_op_ids=frozenset({"vault-search-files"}),
         denied_op_ids=frozenset({"relay-notify"}),
     )

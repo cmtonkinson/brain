@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from actors.assistant import main as agent_main
+from lib.agent import operator_runtime
+from lib.agent.history import estimate_token_count
 from lib.sdk import (
     OpDescriptor,
     OpSearchHit,
@@ -39,7 +40,7 @@ def test_agent_turn_harness_routes_final_reply_via_attention_notify() -> None:
         ],
         "model": "test-model",
         "provider": "unit",
-        "token_count": agent_main.estimate_token_count("assistant reply"),
+        "token_count": estimate_token_count("assistant reply"),
         "reasoning_level": "standard",
     }
     assert (
@@ -91,16 +92,16 @@ def test_agent_turn_harness_logs_notify_failures_without_failing_turn() -> None:
     )
     warning_log = MagicMock()
     exception_log = MagicMock()
-    original_warning = agent_main._LOGGER.warning
-    original_exception = agent_main._LOGGER.exception
-    agent_main._LOGGER.warning = warning_log
-    agent_main._LOGGER.exception = exception_log
+    original_warning = operator_runtime._LOGGER.warning
+    original_exception = operator_runtime._LOGGER.exception
+    operator_runtime._LOGGER.warning = warning_log
+    operator_runtime._LOGGER.exception = exception_log
 
     try:
         result = run_agent_turn_scenario(scenario)
     finally:
-        agent_main._LOGGER.warning = original_warning
-        agent_main._LOGGER.exception = original_exception
+        operator_runtime._LOGGER.warning = original_warning
+        operator_runtime._LOGGER.exception = original_exception
 
     assert result.response_text == "assistant reply"
     exception_log.assert_not_called()

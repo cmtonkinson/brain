@@ -3,7 +3,7 @@
 Test approach: BrainClient is replaced by a lightweight fake that records
 calls and can be configured to raise on demand. No live Core connection is
 required. The module-level signal handlers and poll loop (_main) are not
-tested here — only the pure execution units (_run_execution, _safe_fail,
+tested here — only the pure execution units (run_execution, safe_fail,
 _resolve_heartbeat_path) and the utility helper _write_heartbeat.
 """
 
@@ -11,9 +11,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from lib.agent.worker_runtime import run_execution, safe_fail
 from lib.sdk.calls import JobClaimResult
+from lib.sdk.client import BrainClient
 from lib.sdk.errors import (
     BrainDependencyError,
     BrainDomainError,
@@ -22,8 +24,6 @@ from lib.sdk.errors import (
 from actors.worker.main import (
     _HEARTBEAT_PATH,
     _resolve_heartbeat_path,
-    _run_execution,
-    _safe_fail,
     _write_heartbeat,
 )
 
@@ -105,8 +105,12 @@ class _FakeClient:
         return [c for c in self.calls if c.method == method]
 
 
+def _as_client(client: _FakeClient) -> BrainClient:
+    return cast(BrainClient, client)
+
+
 # ---------------------------------------------------------------------------
-# _run_execution — success path
+# run_execution — success path
 # ---------------------------------------------------------------------------
 
 
@@ -115,7 +119,7 @@ def test_run_execution_success_invokes_op_then_completes() -> None:
     client = _FakeClient()
     claim = _make_claim()
 
-    _run_execution(client=client, claim=claim, channel="worker")
+    run_execution(client=_as_client(client), claim=claim, channel="worker")
 
     invoke_calls = client._calls_for("invoke_op")
     complete_calls = client._calls_for("job_complete_execution")
@@ -137,7 +141,7 @@ def test_run_execution_forwards_claim_fields_to_invoke() -> None:
         parent_envelope_id="env-222",
     )
 
-    _run_execution(client=client, claim=claim, channel="worker")
+    run_execution(client=_as_client(client), claim=claim, channel="worker")
 
     kwargs = client._calls_for("invoke_op")[0].kwargs
     assert kwargs["op_id"] == "my-cap"
@@ -153,14 +157,14 @@ def test_run_execution_forwards_execution_id_to_complete() -> None:
     client = _FakeClient()
     claim = _make_claim(execution_id="exec-xyz")
 
-    _run_execution(client=client, claim=claim, channel="worker")
+    run_execution(client=_as_client(client), claim=claim, channel="worker")
 
     kwargs = client._calls_for("job_complete_execution")[0].kwargs
     assert kwargs["execution_id"] == "exec-xyz"
 
 
 # ---------------------------------------------------------------------------
-# _run_execution — failure paths
+# run_execution — failure paths
 # ---------------------------------------------------------------------------
 
 
@@ -170,7 +174,7 @@ def test_run_execution_dependency_error_fails_retryable() -> None:
     client = _FakeClient(invoke_raises=exc)
     claim = _make_claim(execution_id="exec-dep")
 
-    _run_execution(client=client, claim=claim, channel="worker")
+    run_execution(client=_as_client(client), claim=claim, channel="worker")
 
     fail_calls = client._calls_for("job_fail_execution")
     assert len(fail_calls) == 1
@@ -185,7 +189,7 @@ def test_run_execution_domain_error_fails_non_retryable() -> None:
     client = _FakeClient(invoke_raises=exc)
     claim = _make_claim(execution_id="exec-dom")
 
-    _run_execution(client=client, claim=claim, channel="worker")
+    run_execution(client=_as_client(client), claim=claim, channel="worker")
 
     fail_calls = client._calls_for("job_fail_execution")
     assert len(fail_calls) == 1
@@ -204,7 +208,7 @@ def test_run_execution_transport_error_retryable_true() -> None:
     client = _FakeClient(invoke_raises=exc)
     claim = _make_claim()
 
-    _run_execution(client=client, claim=claim, channel="worker")
+    run_execution(client=_as_client(client), claim=claim, channel="worker")
 
     fail_calls = client._calls_for("job_fail_execution")
     assert len(fail_calls) == 1
@@ -222,7 +226,7 @@ def test_run_execution_transport_error_retryable_false() -> None:
     client = _FakeClient(invoke_raises=exc)
     claim = _make_claim()
 
-    _run_execution(client=client, claim=claim, channel="worker")
+    run_execution(client=_as_client(client), claim=claim, channel="worker")
 
     fail_calls = client._calls_for("job_fail_execution")
     assert len(fail_calls) == 1
@@ -234,7 +238,7 @@ def test_run_execution_unexpected_error_fails_non_retryable() -> None:
     client = _FakeClient(invoke_raises=RuntimeError("oops"))
     claim = _make_claim(execution_id="exec-unk")
 
-    _run_execution(client=client, claim=claim, channel="worker")
+    run_execution(client=_as_client(client), claim=claim, channel="worker")
 
     fail_calls = client._calls_for("job_fail_execution")
     assert len(fail_calls) == 1
@@ -248,23 +252,23 @@ def test_run_execution_failure_message_contains_original_error() -> None:
     exc = BrainDomainError(message="quota exceeded", operation="ops.invoke")
     client = _FakeClient(invoke_raises=exc)
 
-    _run_execution(client=client, claim=_make_claim(), channel="worker")
+    run_execution(client=_as_client(client), claim=_make_claim(), channel="worker")
 
     msg = client._calls_for("job_fail_execution")[0].kwargs["error_message"]
     assert "quota exceeded" in msg
 
 
 # ---------------------------------------------------------------------------
-# _safe_fail
+# safe_fail
 # ---------------------------------------------------------------------------
 
 
 def test_safe_fail_calls_job_fail_execution() -> None:
-    """_safe_fail forwards all arguments to job_fail_execution."""
+    """safe_fail forwards all arguments to job_fail_execution."""
     client = _FakeClient()
 
-    _safe_fail(
-        client=client,
+    safe_fail(
+        client=_as_client(client),
         execution_id="exec-sf",
         error_message="something went wrong",
         is_retryable=True,
@@ -278,7 +282,7 @@ def test_safe_fail_calls_job_fail_execution() -> None:
 
 
 def test_safe_fail_swallows_secondary_exception() -> None:
-    """_safe_fail does not re-raise when job_fail_execution itself raises."""
+    """safe_fail does not re-raise when job_fail_execution itself raises."""
     client = _FakeClient(
         fail_raises=BrainTransportError(
             message="core unreachable", operation="jobs.executions.fail", status_code=0
@@ -286,8 +290,8 @@ def test_safe_fail_swallows_secondary_exception() -> None:
     )
 
     # Must not raise.
-    _safe_fail(
-        client=client,
+    safe_fail(
+        client=_as_client(client),
         execution_id="exec-sf2",
         error_message="original failure",
         is_retryable=False,

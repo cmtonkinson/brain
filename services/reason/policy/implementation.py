@@ -522,9 +522,7 @@ class DefaultPolicyService(PolicyService):
             if intent == "approve":
                 return True, None, token
             if intent == "reject":
-                self._persistence.mark_proposal_status(
-                    token=token, status="rejected"
-                )
+                self._persistence.mark_proposal_status(token=token, status="rejected")
                 return False, _REASON_APPROVAL_REQUIRED, ""
 
         if len(pending) != 1:

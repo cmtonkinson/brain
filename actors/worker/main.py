@@ -2,22 +2,21 @@
 
 from __future__ import annotations
 
-import os
 import signal
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
+from lib.agent import actor_process, worker_runtime
 from lib.sdk.calls import JobClaimResult
 from lib.sdk.client import BrainClient
 from lib.sdk.config import BrainSdkConfig
 from lib.sdk.errors import (
-    BrainDependencyError,
     BrainDomainError,
     BrainTransportError,
 )
 from lib.shared.config.loader import load_actor_settings
-from lib.shared.logging import configure_logging, get_logger
+from lib.shared.logging import get_logger
 
 _LOGGER = get_logger(__name__)
 
@@ -54,13 +53,13 @@ def _handle_signal(sig: int, frame: object) -> None:  # noqa: ARG001
 
 def _resolve_heartbeat_path() -> Path:
     """Return the heartbeat file path used by container health checks."""
-    value = os.getenv(_HEARTBEAT_FILE_ENV, "").strip()
-    return Path(value) if value else _HEARTBEAT_PATH
+    return actor_process.resolve_env_path(
+        env_var=_HEARTBEAT_FILE_ENV, default=_HEARTBEAT_PATH
+    )
 
 
 def _write_heartbeat(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch()
+    actor_process.touch_path(path)
 
 
 # ---------------------------------------------------------------------------
@@ -75,110 +74,10 @@ def _get_thread_client(config: BrainSdkConfig) -> BrainClient:
     return _thread_local.client
 
 
-# ---------------------------------------------------------------------------
-# Execution runner (runs inside a pool thread)
-# ---------------------------------------------------------------------------
-
-
-def _run_execution(*, client: BrainClient, claim: JobClaimResult, channel: str) -> None:
-    """Execute one claimed job and report the result back to the Job Service."""
-    execution_id = claim.execution_id
-    _LOGGER.info(
-        "Executing job: execution_id=%s op_id=%s attempt=%d/%d",
-        execution_id,
-        claim.op_id,
-        claim.attempt_number,
-        claim.max_attempts,
-    )
-    try:
-        client.invoke_op(
-            op_id=claim.op_id,
-            input_payload=claim.input_payload,
-            actor=claim.actor,
-            channel=channel,
-            invocation_id=claim.trace_id,
-            parent_invocation_id=claim.parent_envelope_id,
-        )
-        client.job_complete_execution(execution_id=execution_id)
-        _LOGGER.info("Execution succeeded: execution_id=%s", execution_id)
-    except BrainDependencyError as exc:
-        _LOGGER.warning(
-            "Execution failed (dependency, retryable): execution_id=%s error=%s",
-            execution_id,
-            exc,
-        )
-        _safe_fail(
-            client=client,
-            execution_id=execution_id,
-            error_message=str(exc),
-            is_retryable=True,
-        )
-    except BrainDomainError as exc:
-        _LOGGER.warning(
-            "Execution failed (domain): execution_id=%s error=%s",
-            execution_id,
-            exc,
-        )
-        _safe_fail(
-            client=client,
-            execution_id=execution_id,
-            error_message=str(exc),
-            is_retryable=False,
-        )
-    except BrainTransportError as exc:
-        _LOGGER.warning(
-            "Execution failed (transport, retryable): execution_id=%s error=%s",
-            execution_id,
-            exc,
-        )
-        _safe_fail(
-            client=client,
-            execution_id=execution_id,
-            error_message=str(exc),
-            is_retryable=exc.retryable,
-        )
-    except Exception as exc:  # noqa: BLE001
-        _LOGGER.exception(
-            "Execution failed (unexpected): execution_id=%s", execution_id
-        )
-        _safe_fail(
-            client=client,
-            execution_id=execution_id,
-            error_message=f"unexpected error: {type(exc).__name__}: {exc}",
-            is_retryable=False,
-        )
-
-
-def _safe_fail(
-    *,
-    client: BrainClient,
-    execution_id: str,
-    error_message: str,
-    is_retryable: bool,
-) -> None:
-    """Report a failure result, swallowing any secondary transport errors."""
-    try:
-        client.job_fail_execution(
-            execution_id=execution_id,
-            error_message=error_message,
-            is_retryable=is_retryable,
-        )
-    except (BrainTransportError, BrainDomainError) as exc:
-        _LOGGER.warning(
-            "Failed to report execution failure (transport): execution_id=%s: %s",
-            execution_id,
-            exc,
-        )
-    except Exception:  # noqa: BLE001
-        _LOGGER.exception(
-            "Failed to report execution failure: execution_id=%s", execution_id
-        )
-
-
 def _dispatch(*, config: BrainSdkConfig, claim: JobClaimResult, channel: str) -> None:
     """Resolve the calling thread's BrainClient and execute one claimed job."""
     client = _get_thread_client(config)
-    _run_execution(client=client, claim=claim, channel=channel)
+    worker_runtime.run_execution(client=client, claim=claim, channel=channel)
 
 
 # ---------------------------------------------------------------------------
@@ -188,16 +87,9 @@ def _dispatch(*, config: BrainSdkConfig, claim: JobClaimResult, channel: str) ->
 
 def _main() -> None:
     settings = load_actor_settings()
-    process_name = settings.logging.process_name or "worker"
-
-    configure_logging(
-        level=str(settings.logging.level),
-        file_capture_enabled=settings.logging.file_capture_enabled,
-        file_capture_level=str(settings.logging.file_capture_level),
-        file_capture_directory=settings.logging.file_capture_directory,
-        json_output=bool(settings.logging.json_output),
-        process_name=process_name,
-        environment=str(settings.logging.environment),
+    actor_process.configure_actor_logging(
+        settings=settings,
+        default_process_name="worker",
     )
 
     signal.signal(signal.SIGINT, _handle_signal)
@@ -208,10 +100,8 @@ def _main() -> None:
     poll_interval: float = worker_cfg.poll_interval_seconds
     channel: str = worker_cfg.channel
 
-    sdk_config = BrainSdkConfig(
-        host=settings.core.host,
-        port=settings.core.port,
-        timeout_seconds=settings.core.timeout_seconds,
+    sdk_config = actor_process.sdk_config_from_parts(
+        core_settings=settings.core,
         source=worker_cfg.source,
         principal=worker_cfg.principal,
     )

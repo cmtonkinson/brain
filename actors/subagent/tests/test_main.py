@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -22,13 +22,16 @@ from lib.sdk.calls import (
     OpInvokeResult,
     PolicyDecision,
 )
+from lib.agent.subagent_runtime import (
+    build_cancel_check,
+    build_record_turn,
+    coerce_object_text,
+    run_invocation,
+    safe_finalize,
+)
+from lib.sdk.client import BrainClient
 from actors.subagent.main import (
-    _build_cancel_check,
-    _build_record_turn,
-    _coerce_object_text,
     _resolve_heartbeat_path,
-    _run_invocation,
-    _safe_finalize,
     _write_heartbeat,
 )
 
@@ -157,17 +160,21 @@ class _FakeClient:
         )
 
 
+def _as_client(client: _FakeClient) -> BrainClient:
+    return cast(BrainClient, client)
+
+
 def test_coerce_object_text_handles_common_shapes() -> None:
-    assert _coerce_object_text("plain") == "plain"
-    assert _coerce_object_text({"text": "wrapped"}) == "wrapped"
-    assert _coerce_object_text({"content": "alt"}) == "alt"
-    assert _coerce_object_text(None) == ""
-    assert _coerce_object_text(42) == ""
+    assert coerce_object_text("plain") == "plain"
+    assert coerce_object_text({"text": "wrapped"}) == "wrapped"
+    assert coerce_object_text({"content": "alt"}) == "alt"
+    assert coerce_object_text(None) == ""
+    assert coerce_object_text(42) == ""
 
 
 def test_cancel_check_returns_continue_when_running() -> None:
     client = _FakeClient()
-    check = _build_cancel_check(client=client, invocation_id="abc")
+    check = build_cancel_check(client=_as_client(client), invocation_id="abc")
     decision = check()
     assert decision.should_stop is False
     assert decision.reason is None
@@ -185,7 +192,7 @@ def test_cancel_check_returns_stop_when_canceling() -> None:
         started_at=None,
         completed_at=None,
     )
-    decision = _build_cancel_check(client=client, invocation_id="abc")()
+    decision = build_cancel_check(client=_as_client(client), invocation_id="abc")()
     assert decision.should_stop is True
     assert decision.reason == CancelReason.manual
 
@@ -195,7 +202,7 @@ def test_record_turn_propagates_stop_reason() -> None:
     client.state.record_response = DelegationTurnDecision(
         should_stop=True, reason="budget_tokens"
     )
-    decision = _build_record_turn(client=client, invocation_id="abc")(
+    decision = build_record_turn(client=_as_client(client), invocation_id="abc")(
         TurnSummary(turn_index=0)
     )
     assert decision.should_stop is True
@@ -213,11 +220,11 @@ def test_run_invocation_succeeds_and_finalizes(monkeypatch: pytest.MonkeyPatch) 
             exhausted=False,
         )
 
-    monkeypatch.setattr("actors.subagent.main.run_agent_loop", _fake_run)
+    monkeypatch.setattr("lib.agent.subagent_runtime.run_agent_loop", _fake_run)
     client = _FakeClient()
     claim = _make_claim()
 
-    _run_invocation(client=client, claim=claim)
+    run_invocation(client=_as_client(client), claim=claim)
 
     assert len(client.state.finalize_calls) == 1
     finalize_kwargs = client.state.finalize_calls[0].kwargs
@@ -234,11 +241,11 @@ def test_run_invocation_handles_cancellation(monkeypatch: pytest.MonkeyPatch) ->
     def _fake_run(**_: Any) -> LoopResult:
         raise CancellationError(CancelReason.manual)
 
-    monkeypatch.setattr("actors.subagent.main.run_agent_loop", _fake_run)
+    monkeypatch.setattr("lib.agent.subagent_runtime.run_agent_loop", _fake_run)
     client = _FakeClient()
     claim = _make_claim()
 
-    _run_invocation(client=client, claim=claim)
+    run_invocation(client=_as_client(client), claim=claim)
 
     finalize_kwargs = client.state.finalize_calls[0].kwargs
     assert finalize_kwargs["status"] == "canceled"
@@ -258,7 +265,7 @@ def test_run_invocation_resolves_object_refs(
             exhausted=False,
         )
 
-    monkeypatch.setattr("actors.subagent.main.run_agent_loop", _fake_run)
+    monkeypatch.setattr("lib.agent.subagent_runtime.run_agent_loop", _fake_run)
     client = _FakeClient()
     client.state.object_text = {"obj-1": "ref-text-one", "obj-2": "ref-text-two"}
     claim = _make_claim(
@@ -267,7 +274,7 @@ def test_run_invocation_resolves_object_refs(
         context_object_refs=("obj-1", "obj-2"),
     )
 
-    _run_invocation(client=client, claim=claim)
+    run_invocation(client=_as_client(client), claim=claim)
 
     object_calls = [
         c for c in client.state.invoke_calls if c.kwargs["op_id"] == "object-get-text"
@@ -286,7 +293,7 @@ def test_safe_finalize_swallows_secondary_errors() -> None:
         def delegation_finalize_invocation(self, **_: Any) -> None:
             raise RuntimeError("boom")
 
-    _safe_finalize(
+    safe_finalize(
         client=_ExplodingClient(),  # type: ignore[arg-type]
         invocation_id="abc",
         status="failed",

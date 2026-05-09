@@ -6,11 +6,11 @@ import asyncio
 from dataclasses import dataclass, field
 import json
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
-from actors.assistant import main as agent_main
+from lib.agent import operator_runtime
 from lib.sdk import (
     BrainClient,
     BrainSdkConfig,
@@ -24,6 +24,7 @@ from lib.sdk import (
 )
 from lib.shared.http.client import HttpClient
 from lib.shared.ids import generate_ulid_str
+from lib.shared.config import ActorSettings, CoreSettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -411,13 +412,13 @@ def run_agent_turn_scenario(scenario: AgentTurnScenario) -> AgentTurnRunResult:
             system_prompt_append="",
         ),
     )
-    runtime = agent_main._create_runtime(
+    runtime = operator_runtime.create_runtime(
         client=client,
-        settings=settings,
-        core_settings=core_settings,
+        settings=cast(ActorSettings, settings),
+        core_settings=cast(CoreSettings, core_settings),
     )
     response_text = asyncio.run(
-        agent_main._process_instruction(
+        operator_runtime.process_instruction(
             runtime=runtime,
             instruction=scenario.instruction,
         )
