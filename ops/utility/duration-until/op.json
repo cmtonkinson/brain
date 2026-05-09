@@ -1,0 +1,27 @@
+{
+  "op_id": "duration-until",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Compute the signed duration from now, or a supplied instant, to a target datetime.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "target_timestamp": {"type": "string"},
+      "target_timezone": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+      "now_timestamp": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+      "now_timezone": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    },
+    "required": ["target_timestamp"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_utility.duration_until",
+  "slash_command": {
+    "name": "until",
+    "description": "compute duration until a target datetime",
+    "aliases": ["duration-until"]
+  },
+  "effect": "read",
+  "approval": "never"
+}

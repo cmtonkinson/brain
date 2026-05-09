@@ -1,0 +1,22 @@
+{
+  "op_id": "commitment-history",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Read one commitment with progress and transition history.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {"commitment_id": {"type": "string"}},
+    "required": ["commitment_id"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_commitment.get_commitment_history",
+  "slash_command": {
+    "name": "commitment-history",
+    "description": "read progress and transition history for one commitment",
+    "aliases": []
+  },
+  "effect": "read",
+  "approval": "never"
+}

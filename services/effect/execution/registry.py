@@ -196,11 +196,18 @@ class OpRegistry:
     def _strip_descriptions(schema: Any) -> Any:
         """Recursively remove 'description' keys from a schema."""
         if isinstance(schema, dict):
-            return {
-                key: OpRegistry._strip_descriptions(value)
-                for key, value in schema.items()
-                if key != "description"
-            }
+            stripped: dict[str, Any] = {}
+            for key, value in schema.items():
+                if key == "description":
+                    continue
+                if key == "properties" and isinstance(value, dict):
+                    stripped[key] = {
+                        prop_name: OpRegistry._strip_descriptions(prop_schema)
+                        for prop_name, prop_schema in value.items()
+                    }
+                    continue
+                stripped[key] = OpRegistry._strip_descriptions(value)
+            return stripped
         if isinstance(schema, list):
             return [OpRegistry._strip_descriptions(item) for item in schema]
         return schema
@@ -611,6 +618,7 @@ class OpRegistry:
     def _discover_native_service_targets(self) -> dict[str, CallTargetContract]:
         from services.reason.commitment.service import CommitmentService
         from services.reason.delegation.service import DelegationService
+        from services.reason.job.service import JobService
 
         contracts: dict[str, CallTargetContract] = {}
         services: tuple[tuple[str, type[Any]], ...] = (
@@ -627,6 +635,7 @@ class OpRegistry:
             ("service_commitment", CommitmentService),
             ("service_delegation", DelegationService),
             ("service_ingestion", IngestionService),
+            ("service_job", JobService),
         )
         for component_id, service_cls in services:
             for method_name, contract in self._service_target_contracts(

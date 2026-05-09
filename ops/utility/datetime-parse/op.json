@@ -1,0 +1,25 @@
+{
+  "op_id": "datetime-parse",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Parse an ISO-like datetime and return UTC plus local projections.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "timestamp": {"type": "string"},
+      "timezone": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    },
+    "required": ["timestamp"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_utility.parse_datetime",
+  "slash_command": {
+    "name": "parse-date",
+    "description": "parse a datetime and show UTC/local projections",
+    "aliases": ["date-parse"]
+  },
+  "effect": "read",
+  "approval": "never"
+}

@@ -1,0 +1,26 @@
+{
+  "op_id": "datetime-convert-timezone",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Convert an ISO-like datetime from one timezone to another.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "timestamp": {"type": "string"},
+      "to_timezone": {"type": "string"},
+      "from_timezone": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    },
+    "required": ["timestamp", "to_timezone"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_utility.convert_datetime",
+  "slash_command": {
+    "name": "tz",
+    "description": "convert a datetime between timezones",
+    "aliases": ["timezone", "convert-timezone"]
+  },
+  "effect": "read",
+  "approval": "never"
+}

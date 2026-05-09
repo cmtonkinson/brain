@@ -1,0 +1,28 @@
+{
+  "op_id": "commitment-record-progress",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Record progress against one commitment.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "commitment_id": {"type": "string"},
+      "provenance_reference": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+      "occurred_at": {"type": "date-time"},
+      "summary": {"type": "string"},
+      "snippet": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    },
+    "required": ["commitment_id", "occurred_at", "summary"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_commitment.record_progress",
+  "slash_command": {
+    "name": "progress",
+    "description": "record progress against one commitment",
+    "aliases": ["commitment-progress"]
+  },
+  "effect": "write",
+  "approval": "always"
+}

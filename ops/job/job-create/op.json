@@ -1,0 +1,88 @@
+{
+  "op_id": "job-create",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Create a scheduled job that invokes one op in the future or on a recurrence.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "summary": {
+        "type": "string",
+        "description": "Short human-readable description of the scheduled job."
+      },
+      "details": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Optional longer explanation of the job's purpose."
+      },
+      "origin_reference": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Optional caller-owned reference used to correlate this job with an external object."
+      },
+      "schedule_type": {
+        "type": "string",
+        "enum": [
+          "one_time",
+          "interval",
+          "calendar_rule",
+          "conditional"
+        ],
+        "description": "Schedule discriminator. Must match the definition type."
+      },
+      "timezone": {
+        "type": "string",
+        "description": "IANA timezone used to interpret calendar schedules, for example America/New_York or UTC."
+      },
+      "definition": {
+        "type": "object",
+        "description": "Schedule definition. one_time uses run_at; interval uses interval_count and interval_unit; calendar_rule uses rrule; conditional uses predicate fields."
+      },
+      "job_action": {
+        "type": "object",
+        "description": "Action to execute. Currently supports {type: op_invocation, op_id, input_payload}."
+      },
+      "start_state": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "active"
+        ],
+        "description": "Initial lifecycle state. Use active when the schedule should begin firing."
+      }
+    },
+    "required": [
+      "summary",
+      "schedule_type",
+      "timezone",
+      "definition",
+      "job_action"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "description": "Job mutation result containing the created job and audit row."
+  },
+  "call_target": "service_job.create_job",
+  "slash_command": {
+    "name": "schedule",
+    "description": "create a scheduled job",
+    "aliases": []
+  },
+  "effect": "write",
+  "approval": "always"
+}

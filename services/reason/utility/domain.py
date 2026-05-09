@@ -25,6 +25,45 @@ class CurrentDateTime(BaseModel):
     local_timezone: str
 
 
+class ParsedDateTime(BaseModel):
+    """Parsed datetime with UTC and requested-local projections."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    input_timestamp: str
+    local_timestamp: str
+    local_timezone: str
+    utc_timestamp: str
+    unix_timestamp: float
+
+
+class ConvertedDateTime(BaseModel):
+    """Datetime converted from one timezone to another."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    input_timestamp: str
+    from_timezone: str
+    to_timezone: str
+    converted_timestamp: str
+    utc_timestamp: str
+    unix_timestamp: float
+
+
+class DurationUntil(BaseModel):
+    """Signed duration from one instant to a target instant."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    now_timestamp: str
+    target_timestamp: str
+    seconds: float
+    minutes: float
+    hours: float
+    days: float
+    is_past: bool
+
+
 class HealthStatus(BaseModel):
     """Utility Service readiness payload."""
 

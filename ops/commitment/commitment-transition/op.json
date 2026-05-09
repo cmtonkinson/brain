@@ -1,0 +1,28 @@
+{
+  "op_id": "commitment-transition",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Transition one commitment to another lifecycle state.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "commitment_id": {"type": "string"},
+      "to_state": {"type": "string"},
+      "requested_by": {"type": "string"},
+      "reason": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+      "confidence": {"anyOf": [{"type": "number"}, {"type": "null"}]}
+    },
+    "required": ["commitment_id", "to_state", "requested_by"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_commitment.transition_commitment",
+  "slash_command": {
+    "name": "done",
+    "description": "transition one commitment to another state",
+    "aliases": ["commitment-transition"]
+  },
+  "effect": "write",
+  "approval": "always"
+}

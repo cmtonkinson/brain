@@ -1,0 +1,25 @@
+{
+  "op_id": "ingestion-replay",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Replay an ingestion from a named stage forward.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "ingestion_id": {"type": "string"},
+      "from_stage": {"type": "string"}
+    },
+    "required": ["ingestion_id", "from_stage"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_ingestion.replay_ingestion",
+  "slash_command": {
+    "name": "ingestion-replay",
+    "description": "replay an ingestion from one stage forward",
+    "aliases": []
+  },
+  "effect": "write",
+  "approval": "always"
+}

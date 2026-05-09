@@ -79,6 +79,11 @@
     ]
   },
   "call_target": "service_object.stat_object",
+  "slash_command": {
+    "name": "stat",
+    "description": "read metadata for one object-store key",
+    "aliases": ["object-stat"]
+  },
   "effect": "read",
   "approval": "never"
 }

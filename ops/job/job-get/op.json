@@ -1,0 +1,32 @@
+{
+  "op_id": "job-get",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Read one scheduled job by id.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "job_id": {
+        "type": "string",
+        "description": "Job id to read."
+      }
+    },
+    "required": [
+      "job_id"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "description": "The requested job record."
+  },
+  "call_target": "service_job.get_job",
+  "slash_command": {
+    "name": "job",
+    "description": "read one scheduled job by id",
+    "aliases": []
+  },
+  "effect": "read",
+  "approval": "never"
+}

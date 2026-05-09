@@ -146,19 +146,19 @@
 `get_commitment_history(*, meta: EnvelopeMeta, commitment_id: str) -> Envelope[CommitmentHistoryResult]`  
 *Return one commitment plus progress and transition history.*
 
-`create_commitment(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+`create_commitment(*, meta: EnvelopeMeta, description: str, provenance_reference: str | None = None, ingestion_id: str | None = None, source: str | None = None, due_by: datetime | date | None = None, due_timezone: str | None = None, importance: int = 2, effort_provided: int = 2, effort_inferred: int | None = None, confidence: float | None = None, requested_by: str = 'operator') -> Envelope[CommitmentMutationResult]`  
 *Create one commitment or persist a creation proposal.*
 
 `extract_commitment_candidates(*, meta: EnvelopeMeta, text: str, context: str = '') -> Envelope[ExtractCandidatesResult]`  
 *Extract zero or more commitment candidate signals from arbitrary text.*
 
-`ingest_commitment_candidate(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+`ingest_commitment_candidate(*, meta: EnvelopeMeta, description: str, provenance_reference: str | None = None, ingestion_id: str | None = None, source: str | None = None, due_by: datetime | date | None = None, due_timezone: str | None = None, importance: int = 2, effort_provided: int = 2, effort_inferred: int | None = None, confidence: float | None = None, requested_by: str = 'service') -> Envelope[CommitmentMutationResult]`  
 *Accept one typed ingestion-derived commitment candidate.*
 
-`transition_commitment(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+`transition_commitment(*, meta: EnvelopeMeta, commitment_id: str, to_state: str, requested_by: str, reason: str | None = None, confidence: float | None = None) -> Envelope[CommitmentMutationResult]`  
 *Apply one lifecycle transition or persist a transition proposal.*
 
-`update_commitment(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+`update_commitment(*, meta: EnvelopeMeta, commitment_id: str, description: str | None = None, provenance_reference: str | None = None, ingestion_id: str | None = None, source: str | None = None, due_by: datetime | date | None = None, due_timezone: str | None = None, importance: int | None = None, effort_provided: int | None = None, effort_inferred: int | None = None, reviewed_at: datetime | None = None) -> Envelope[CommitmentMutationResult]`  
 *Update one commitment without changing lifecycle state.*
 
 `list_commitments(*, meta: EnvelopeMeta, state: str | None = None, limit: int = 50, cursor: str | None = None) -> Envelope[CommitmentListResult]`  
@@ -179,7 +179,7 @@
 `run_miss_detection(*, meta: EnvelopeMeta, commitment_id: str | None = None) -> Envelope[MissDetectionResult]`  
 *Detect and mark due open commitments as MISSED.*
 
-`record_progress(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
+`record_progress(*, meta: EnvelopeMeta, commitment_id: str, provenance_reference: str | None = None, occurred_at: datetime, summary: str, snippet: str | None = None) -> Envelope[CommitmentMutationResult]`  
 *Record one progress entry and update last_progress_at atomically.*
 
 `get_review_run(*, meta: EnvelopeMeta, review_run_id: str) -> Envelope[CommitmentReviewRun]`  
@@ -407,11 +407,20 @@
 `health(*, meta: EnvelopeMeta) -> Envelope[HealthStatus]`  
 *Return Utility Service readiness state.*
 
+`convert_datetime(*, meta: EnvelopeMeta, timestamp: str, to_timezone: str, from_timezone: str | None = None) -> Envelope[ConvertedDateTime]`  
+*Convert an ISO-like datetime into another timezone.*
+
 `current_datetime(*, meta: EnvelopeMeta) -> Envelope[CurrentDateTime]`  
 *Return current UTC and operator-local datetimes.*
 
+`parse_datetime(*, meta: EnvelopeMeta, timestamp: str, timezone: str | None = None) -> Envelope[ParsedDateTime]`  
+*Parse an ISO-like datetime and return normalized projections.*
+
 `chunk_text(*, meta: EnvelopeMeta, text: str) -> Envelope[list[TextChunk]]`  
 *Return one or more chunks for the provided text content.*
+
+`duration_until(*, meta: EnvelopeMeta, target_timestamp: str, target_timezone: str | None = None, now_timestamp: str | None = None, now_timezone: str | None = None) -> Envelope[DurationUntil]`  
+*Return the signed duration from now, or a supplied instant, to target.*
 
 ------------------------------------------------------------------------
 ## `CacheService`

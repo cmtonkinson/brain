@@ -1,0 +1,30 @@
+{
+  "op_id": "ingestion-submit",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Submit one content item to the ingestion pipeline.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "source_type": {"type": "string"},
+      "source_uri": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+      "source_actor": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+      "payload": {"anyOf": [{"type": "object", "title": "bytes"}, {"type": "null"}]},
+      "existing_object_key": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+      "capture_time": {"type": "string"},
+      "mime_type": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    },
+    "required": ["source_type", "capture_time"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_ingestion.submit_ingestion",
+  "slash_command": {
+    "name": "ingest",
+    "description": "submit content to the ingestion pipeline",
+    "aliases": []
+  },
+  "effect": "write",
+  "approval": "always"
+}

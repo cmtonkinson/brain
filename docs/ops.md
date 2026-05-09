@@ -85,6 +85,27 @@ Native Op over `Cache Service set_value()`
 
 ------------------------------------------------------------------------
 ## `Commitment Service`
+### `commitment-create`
+Create one commitment, reminder, task, or loop-closure obligation.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Commitment Service create_commitment()`  
+
+**Inputs:**
+* `description` *(string)*
+* `provenance_reference` *(string | null, optional)*
+* `ingestion_id` *(string | null, optional)*
+* `source` *(string | null, optional)*
+* `due_by` *(date-time | object | null, optional)*
+* `due_timezone` *(string | null, optional)*
+* `importance` *(integer, optional)*
+* `effort_provided` *(integer, optional)*
+* `effort_inferred` *(integer | null, optional)*
+* `confidence` *(number | null, optional)*
+* `requested_by` *(string, optional)*
+
+**Outputs:**
+* `object`
+
 ### `commitment-extract-candidates`
 Extract zero or more commitment candidate signals from arbitrary text.  
 `native` `1.0.0` `effect: read` `approval: never`  
@@ -96,6 +117,56 @@ Native Op over `Commitment Service extract_commitment_candidates()`
 
 **Outputs:**
 * `candidates` *(array[object])* Extracted commitment candidates, ordered by descending confidence.
+
+### `commitment-get`
+Read one commitment by id.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Commitment Service get_commitment()`  
+
+**Inputs:**
+* `commitment_id` *(string)*
+
+**Outputs:**
+* `object`
+
+### `commitment-history`
+Read one commitment with progress and transition history.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Commitment Service get_commitment_history()`  
+
+**Inputs:**
+* `commitment_id` *(string)*
+
+**Outputs:**
+* `object`
+
+### `commitment-list`
+List commitments with optional lifecycle-state filtering.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Commitment Service list_commitments()`  
+
+**Inputs:**
+* `state` *(string | null, optional)*
+* `limit` *(integer, optional)*
+* `cursor` *(string | null, optional)*
+
+**Outputs:**
+* `object`
+
+### `commitment-record-progress`
+Record progress against one commitment.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Commitment Service record_progress()`  
+
+**Inputs:**
+* `commitment_id` *(string)*
+* `provenance_reference` *(string | null, optional)*
+* `occurred_at` *(date-time)*
+* `summary` *(string)*
+* `snippet` *(string | null, optional)*
+
+**Outputs:**
+* `object`
 
 ### `commitment-run-miss-detection`
 Run commitment miss detection for one commitment or all due commitments.  
@@ -110,6 +181,42 @@ Native Op over `Commitment Service run_miss_detection()`
 * `missed_count` *(integer)* Number of commitments transitioned to MISSED.
 * `notified_count` *(integer)* Number of missed notifications delivered.
 * `commitment_ids` *(array[string])* Commitment ids transitioned during this run.
+
+### `commitment-transition`
+Transition one commitment to another lifecycle state.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Commitment Service transition_commitment()`  
+
+**Inputs:**
+* `commitment_id` *(string)*
+* `to_state` *(string)*
+* `requested_by` *(string)*
+* `reason` *(string | null, optional)*
+* `confidence` *(number | null, optional)*
+
+**Outputs:**
+* `object`
+
+### `commitment-update`
+Update one commitment without changing its lifecycle state.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Commitment Service update_commitment()`  
+
+**Inputs:**
+* `commitment_id` *(string)*
+* `description` *(string | null, optional)*
+* `provenance_reference` *(string | null, optional)*
+* `ingestion_id` *(string | null, optional)*
+* `source` *(string | null, optional)*
+* `due_by` *(date-time | object | null, optional)*
+* `due_timezone` *(string | null, optional)*
+* `importance` *(integer | null, optional)*
+* `effort_provided` *(integer | null, optional)*
+* `effort_inferred` *(integer | null, optional)*
+* `reviewed_at` *(date-time | null, optional)*
+
+**Outputs:**
+* `object`
 
 ------------------------------------------------------------------------
 ## `Delegation Service`
@@ -271,6 +378,149 @@ Native Op over `Ingestion Service index_anchored_ingestion()`
 * `chunk_count` *(integer)* Number of chunks created or updated.
 * `embedding_count` *(integer)* Number of embedding vectors persisted.
 * `failed_count` *(integer)* Number of anchored artifacts that failed indexing.
+
+### `ingestion-list`
+List ingestions with optional status filtering.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Ingestion Service list_ingestions()`  
+
+**Inputs:**
+* `status` *(string | null, optional)*
+* `limit` *(integer, optional)*
+* `cursor` *(string | null, optional)*
+
+**Outputs:**
+* `object`
+
+### `ingestion-replay`
+Replay an ingestion from a named stage forward.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Ingestion Service replay_ingestion()`  
+
+**Inputs:**
+* `ingestion_id` *(string)*
+* `from_stage` *(string)*
+
+**Outputs:**
+* `object`
+
+### `ingestion-results`
+Return stage-ordered artifact outcomes for one ingestion.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Ingestion Service get_ingestion_results()`  
+
+**Inputs:**
+* `ingestion_id` *(string)*
+
+**Outputs:**
+* `object`
+
+### `ingestion-retry`
+Retry one failed ingestion stage.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Ingestion Service retry_ingestion_stage()`  
+
+**Inputs:**
+* `ingestion_id` *(string)*
+* `stage` *(string)*
+
+**Outputs:**
+* `object`
+
+### `ingestion-status`
+Return the current pipeline status for one ingestion.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Ingestion Service get_ingestion_status()`  
+
+**Inputs:**
+* `ingestion_id` *(string)*
+
+**Outputs:**
+* `object`
+
+### `ingestion-submit`
+Submit one content item to the ingestion pipeline.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Ingestion Service submit_ingestion()`  
+
+**Inputs:**
+* `source_type` *(string)*
+* `source_uri` *(string | null, optional)*
+* `source_actor` *(string | null, optional)*
+* `payload` *(object | null, optional)*
+* `existing_object_key` *(string | null, optional)*
+* `capture_time` *(string)*
+* `mime_type` *(string | null, optional)*
+
+**Outputs:**
+* `object`
+
+------------------------------------------------------------------------
+## `Job Service`
+### `job-cancel`
+Cancel one scheduled job and clear its next run time.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Job Service cancel_job()`  
+
+**Inputs:**
+* `job_id` *(string)* Job id to cancel.
+
+**Outputs:**
+* `object`: Job mutation result containing the canceled job and audit row.
+
+### `job-create`
+Create a scheduled job that invokes one op in the future or on a recurrence.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Job Service create_job()`  
+
+**Inputs:**
+* `summary` *(string)* Short human-readable description of the scheduled job.
+* `details` *(string | null, optional)* Optional longer explanation of the job's purpose.
+* `origin_reference` *(string | null, optional)* Optional caller-owned reference used to correlate this job with an external object.
+* `schedule_type` *(string)* Schedule discriminator. Must match the definition type.
+* `timezone` *(string)* IANA timezone used to interpret calendar schedules, for example America/New_York or UTC.
+* `definition` *(object)* Schedule definition. one_time uses run_at; interval uses interval_count and interval_unit; calendar_rule uses rrule; conditional uses predicate fields.
+* `job_action` *(object)* Action to execute. Currently supports {type: op_invocation, op_id, input_payload}.
+* `start_state` *(string, optional)* Initial lifecycle state. Use active when the schedule should begin firing.
+
+**Outputs:**
+* `object`: Job mutation result containing the created job and audit row.
+
+### `job-get`
+Read one scheduled job by id.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Job Service get_job()`  
+
+**Inputs:**
+* `job_id` *(string)* Job id to read.
+
+**Outputs:**
+* `object`: The requested job record.
+
+### `job-list`
+List scheduled jobs with optional state and schedule-type filters.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Job Service list_jobs()`  
+
+**Inputs:**
+* `state` *(string | null, optional)* Optional lifecycle-state filter such as active, paused, canceled, completed, or draft.
+* `schedule_type` *(string | null, optional)* Optional schedule-type filter such as one_time, interval, calendar_rule, or conditional.
+* `limit` *(integer, optional)* Maximum number of jobs to return.
+* `cursor` *(string | null, optional)* Pagination cursor returned by a previous list call.
+
+**Outputs:**
+* `object`: Job list result containing matching job records and the next cursor.
+
+### `job-run-now`
+Queue an immediate execution for an active or paused scheduled job.  
+`native` `1.0.0` `effect: write` `approval: always`  
+Native Op over `Job Service run_job_now()`  
+
+**Inputs:**
+* `job_id` *(string)* Job id to execute immediately.
+
+**Outputs:**
+* `object`: Run-now result containing the queued execution id.
 
 ------------------------------------------------------------------------
 ## `Object Service`
@@ -588,6 +838,45 @@ Native Op over `Utility Service current_datetime()`
 * `utc_timestamp` *(date-time)* The current UTC datetime in ISO 8601 format.
 * `local_timestamp` *(date-time)* The current datetime in the operator's preferred timezone.
 * `local_timezone` *(string)* The operator's preferred IANA timezone name.
+
+### `datetime-convert-timezone`
+Convert an ISO-like datetime from one timezone to another.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Utility Service convert_datetime()`  
+
+**Inputs:**
+* `timestamp` *(string)*
+* `to_timezone` *(string)*
+* `from_timezone` *(string | null, optional)*
+
+**Outputs:**
+* `object`
+
+### `datetime-parse`
+Parse an ISO-like datetime and return UTC plus local projections.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Utility Service parse_datetime()`  
+
+**Inputs:**
+* `timestamp` *(string)*
+* `timezone` *(string | null, optional)*
+
+**Outputs:**
+* `object`
+
+### `duration-until`
+Compute the signed duration from now, or a supplied instant, to a target datetime.  
+`native` `1.0.0` `effect: read` `approval: never`  
+Native Op over `Utility Service duration_until()`  
+
+**Inputs:**
+* `target_timestamp` *(string)*
+* `target_timezone` *(string | null, optional)*
+* `now_timestamp` *(string | null, optional)*
+* `now_timezone` *(string | null, optional)*
+
+**Outputs:**
+* `object`
 
 ------------------------------------------------------------------------
 ## `Vault Service`

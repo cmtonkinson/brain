@@ -1,0 +1,22 @@
+{
+  "op_id": "commitment-get",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Read one commitment by id.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {"commitment_id": {"type": "string"}},
+    "required": ["commitment_id"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_commitment.get_commitment",
+  "slash_command": {
+    "name": "commitment",
+    "description": "read one commitment by id",
+    "aliases": []
+  },
+  "effect": "read",
+  "approval": "never"
+}

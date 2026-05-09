@@ -1,0 +1,62 @@
+{
+  "op_id": "job-list",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "List scheduled jobs with optional state and schedule-type filters.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "state": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Optional lifecycle-state filter such as active, paused, canceled, completed, or draft."
+      },
+      "schedule_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Optional schedule-type filter such as one_time, interval, calendar_rule, or conditional."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of jobs to return."
+      },
+      "cursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Pagination cursor returned by a previous list call."
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "description": "Job list result containing matching job records and the next cursor."
+  },
+  "call_target": "service_job.list_jobs",
+  "slash_command": {
+    "name": "jobs",
+    "description": "list scheduled jobs",
+    "aliases": []
+  },
+  "effect": "read",
+  "approval": "never"
+}

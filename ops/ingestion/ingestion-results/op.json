@@ -1,0 +1,22 @@
+{
+  "op_id": "ingestion-results",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Return stage-ordered artifact outcomes for one ingestion.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {"ingestion_id": {"type": "string"}},
+    "required": ["ingestion_id"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_ingestion.get_ingestion_results",
+  "slash_command": {
+    "name": "ingestion-results",
+    "description": "show artifact outcomes for one ingestion",
+    "aliases": []
+  },
+  "effect": "read",
+  "approval": "never"
+}

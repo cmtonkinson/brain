@@ -1,0 +1,32 @@
+{
+  "op_id": "job-cancel",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Cancel one scheduled job and clear its next run time.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "job_id": {
+        "type": "string",
+        "description": "Job id to cancel."
+      }
+    },
+    "required": [
+      "job_id"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "description": "Job mutation result containing the canceled job and audit row."
+  },
+  "call_target": "service_job.cancel_job",
+  "slash_command": {
+    "name": "unschedule",
+    "description": "cancel one scheduled job",
+    "aliases": ["job-cancel"]
+  },
+  "effect": "write",
+  "approval": "always"
+}

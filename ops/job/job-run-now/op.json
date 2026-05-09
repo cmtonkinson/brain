@@ -1,0 +1,32 @@
+{
+  "op_id": "job-run-now",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Queue an immediate execution for an active or paused scheduled job.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "job_id": {
+        "type": "string",
+        "description": "Job id to execute immediately."
+      }
+    },
+    "required": [
+      "job_id"
+    ],
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": "object",
+    "description": "Run-now result containing the queued execution id."
+  },
+  "call_target": "service_job.run_job_now",
+  "slash_command": {
+    "name": "run-job",
+    "description": "queue an immediate execution for one scheduled job",
+    "aliases": []
+  },
+  "effect": "write",
+  "approval": "always"
+}

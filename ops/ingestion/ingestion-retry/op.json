@@ -1,0 +1,25 @@
+{
+  "op_id": "ingestion-retry",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Retry one failed ingestion stage.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "ingestion_id": {"type": "string"},
+      "stage": {"type": "string"}
+    },
+    "required": ["ingestion_id", "stage"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_ingestion.retry_ingestion_stage",
+  "slash_command": {
+    "name": "ingestion-retry",
+    "description": "retry one failed ingestion stage",
+    "aliases": []
+  },
+  "effect": "write",
+  "approval": "always"
+}

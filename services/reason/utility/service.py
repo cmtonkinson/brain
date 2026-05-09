@@ -6,8 +6,11 @@ from abc import ABC, abstractmethod
 from lib.shared.config import CoreRuntimeSettings
 from lib.shared.envelope import Envelope, EnvelopeMeta
 from services.reason.utility.domain import (
+    ConvertedDateTime,
     CurrentDateTime,
+    DurationUntil,
     HealthStatus,
+    ParsedDateTime,
     TextChunk,
 )
 
@@ -18,6 +21,35 @@ class UtilityService(ABC):
     @abstractmethod
     def current_datetime(self, *, meta: EnvelopeMeta) -> Envelope[CurrentDateTime]:
         """Return current UTC and operator-local datetimes."""
+
+    @abstractmethod
+    def parse_datetime(
+        self, *, meta: EnvelopeMeta, timestamp: str, timezone: str | None = None
+    ) -> Envelope[ParsedDateTime]:
+        """Parse an ISO-like datetime and return normalized projections."""
+
+    @abstractmethod
+    def convert_datetime(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        timestamp: str,
+        to_timezone: str,
+        from_timezone: str | None = None,
+    ) -> Envelope[ConvertedDateTime]:
+        """Convert an ISO-like datetime into another timezone."""
+
+    @abstractmethod
+    def duration_until(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        target_timestamp: str,
+        target_timezone: str | None = None,
+        now_timestamp: str | None = None,
+        now_timezone: str | None = None,
+    ) -> Envelope[DurationUntil]:
+        """Return the signed duration from now, or a supplied instant, to target."""
 
     @abstractmethod
     def chunk_text(self, *, meta: EnvelopeMeta, text: str) -> Envelope[list[TextChunk]]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -60,6 +61,62 @@ def test_discover_loads_valid_op_manifest(tmp_path) -> None:
     assert manifest is not None
     assert manifest.input_schema is not None
     assert manifest.input_schema["properties"]["payload"]["type"] == "object"
+
+
+def test_builtin_job_ops_are_discoverable() -> None:
+    registry = OpRegistry()
+
+    registry.discover(roots=(Path("ops"),))
+
+    job_ops = {
+        manifest.op_id: manifest
+        for manifest in registry.list_manifests()
+        if manifest.op_id.startswith("job-")
+    }
+    assert set(job_ops) == {
+        "job-cancel",
+        "job-create",
+        "job-get",
+        "job-list",
+        "job-run-now",
+    }
+    assert job_ops["job-list"].effect == "read"
+    assert job_ops["job-list"].approval == "never"
+    assert job_ops["job-create"].effect == "write"
+    assert job_ops["job-create"].approval == "always"
+
+
+def test_builtin_commitment_ingestion_and_datetime_ops_are_discoverable() -> None:
+    registry = OpRegistry()
+
+    registry.discover(roots=(Path("ops"),))
+
+    manifests = {manifest.op_id: manifest for manifest in registry.list_manifests()}
+    for op_id in (
+        "commitment-create",
+        "commitment-list",
+        "commitment-get",
+        "commitment-update",
+        "commitment-record-progress",
+        "commitment-transition",
+        "commitment-history",
+        "ingestion-submit",
+        "ingestion-status",
+        "ingestion-results",
+        "ingestion-list",
+        "ingestion-retry",
+        "ingestion-replay",
+        "datetime-parse",
+        "datetime-convert-timezone",
+        "duration-until",
+    ):
+        assert op_id in manifests
+
+    assert manifests["commitment-list"].effect == "read"
+    assert manifests["commitment-create"].approval == "always"
+    assert manifests["ingestion-submit"].approval == "always"
+    assert manifests["ingestion-status"].approval == "never"
+    assert manifests["datetime-parse"].approval == "never"
 
 
 def test_discover_loads_valid_op_manifest_from_nested_group_directory(tmp_path) -> None:

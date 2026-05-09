@@ -1,0 +1,25 @@
+{
+  "op_id": "commitment-list",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "List commitments with optional lifecycle-state filtering.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "state": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+      "limit": {"type": "integer"},
+      "cursor": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_commitment.list_commitments",
+  "slash_command": {
+    "name": "commitments",
+    "description": "list commitments by lifecycle state",
+    "aliases": ["todos"]
+  },
+  "effect": "read",
+  "approval": "never"
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
+from datetime import date, datetime
 
 from lib.shared.config import CoreRuntimeSettings
 from lib.shared.envelope import Envelope, EnvelopeMeta
@@ -30,31 +31,84 @@ class CommitmentService(ABC):
 
     @abstractmethod
     def create_commitment(
-        self, *, meta: EnvelopeMeta, **payload: object
+        self,
+        *,
+        meta: EnvelopeMeta,
+        description: str,
+        provenance_reference: str | None = None,
+        ingestion_id: str | None = None,
+        source: str | None = None,
+        due_by: datetime | date | None = None,
+        due_timezone: str | None = None,
+        importance: int = 2,
+        effort_provided: int = 2,
+        effort_inferred: int | None = None,
+        confidence: float | None = None,
+        requested_by: str = "operator",
     ) -> Envelope[CommitmentMutationResult]:
         """Create one commitment or persist a creation proposal."""
 
     @abstractmethod
     def ingest_commitment_candidate(
-        self, *, meta: EnvelopeMeta, **payload: object
+        self,
+        *,
+        meta: EnvelopeMeta,
+        description: str,
+        provenance_reference: str | None = None,
+        ingestion_id: str | None = None,
+        source: str | None = None,
+        due_by: datetime | date | None = None,
+        due_timezone: str | None = None,
+        importance: int = 2,
+        effort_provided: int = 2,
+        effort_inferred: int | None = None,
+        confidence: float | None = None,
+        requested_by: str = "service",
     ) -> Envelope[CommitmentMutationResult]:
         """Accept one typed ingestion-derived commitment candidate."""
 
     @abstractmethod
     def update_commitment(
-        self, *, meta: EnvelopeMeta, **payload: object
+        self,
+        *,
+        meta: EnvelopeMeta,
+        commitment_id: str,
+        description: str | None = None,
+        provenance_reference: str | None = None,
+        ingestion_id: str | None = None,
+        source: str | None = None,
+        due_by: datetime | date | None = None,
+        due_timezone: str | None = None,
+        importance: int | None = None,
+        effort_provided: int | None = None,
+        effort_inferred: int | None = None,
+        reviewed_at: datetime | None = None,
     ) -> Envelope[CommitmentMutationResult]:
         """Update one commitment without changing lifecycle state."""
 
     @abstractmethod
     def transition_commitment(
-        self, *, meta: EnvelopeMeta, **payload: object
+        self,
+        *,
+        meta: EnvelopeMeta,
+        commitment_id: str,
+        to_state: str,
+        requested_by: str,
+        reason: str | None = None,
+        confidence: float | None = None,
     ) -> Envelope[CommitmentMutationResult]:
         """Apply one lifecycle transition or persist a transition proposal."""
 
     @abstractmethod
     def record_progress(
-        self, *, meta: EnvelopeMeta, **payload: object
+        self,
+        *,
+        meta: EnvelopeMeta,
+        commitment_id: str,
+        provenance_reference: str | None = None,
+        occurred_at: datetime,
+        summary: str,
+        snippet: str | None = None,
     ) -> Envelope[CommitmentMutationResult]:
         """Record one progress entry and update last_progress_at atomically."""
 

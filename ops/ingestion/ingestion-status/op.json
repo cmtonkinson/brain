@@ -1,0 +1,22 @@
+{
+  "op_id": "ingestion-status",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Return the current pipeline status for one ingestion.",
+  "enabled": true,
+  "input_schema": {
+    "type": "object",
+    "properties": {"ingestion_id": {"type": "string"}},
+    "required": ["ingestion_id"],
+    "additionalProperties": false
+  },
+  "output_schema": {"type": "object"},
+  "call_target": "service_ingestion.get_ingestion_status",
+  "slash_command": {
+    "name": "ingestion",
+    "description": "show current status for one ingestion",
+    "aliases": ["ingestion-status"]
+  },
+  "effect": "read",
+  "approval": "never"
+}

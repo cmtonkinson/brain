@@ -46,6 +46,11 @@
     }
   },
   "call_target": "service_vault.search_files",
+  "slash_command": {
+    "name": "search",
+    "description": "search markdown files in the vault",
+    "aliases": ["vault-search"]
+  },
   "effect": "read",
   "approval": "never"
 }
