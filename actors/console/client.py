@@ -6,10 +6,10 @@ import time
 
 from lib.sdk import (
     BrainSdkClient,
-    ConsoleEnqueueResult,
     ConsoleResponseMessage,
     MemoryContextBlock,
     MemorySessionRef,
+    RelayInboundIngestResult,
 )
 from lib.shared.auth.slash_authenticity import (
     SlashAuthenticityError,
@@ -18,6 +18,12 @@ from lib.shared.auth.slash_authenticity import (
     mint_proof,
     new_nonce,
     read_secret,
+)
+from lib.shared.inbound_message import InboundMessage, InboundSender
+from lib.shared.inbound_text import (
+    parse_links,
+    parse_slash_command,
+    parse_text_approval,
 )
 
 
@@ -33,7 +39,7 @@ class ConsoleClient:
             principal="operator",
         )
 
-    def ingest(self, text: str) -> ConsoleEnqueueResult:
+    def ingest(self, text: str) -> RelayInboundIngestResult:
         """Submit one operator message to Brain via the console channel.
 
         Slash-prefixed messages are signed with the host-side authenticity
@@ -41,9 +47,18 @@ class ConsoleClient:
         approval gate for ``approval: always`` ops.
         """
         proof = self._mint_slash_proof(text) if text.startswith("/") else None
-        return self._sdk.relay_enqueue_console(
+        message = InboundMessage(
+            channel="console",
+            sender=InboundSender(id="operator"),
             message_text=text,
+            timestamp_ms=int(time.time() * 1000),
+            links=parse_links(text),
+            approval=parse_text_approval(text),
+            slash_command=parse_slash_command(text),
             slash_authenticity=proof,
+        )
+        return self._sdk.relay_ingest_inbound_message(
+            message=message,
         )
 
     def _mint_slash_proof(self, text: str) -> SlashAuthenticityProof | None:

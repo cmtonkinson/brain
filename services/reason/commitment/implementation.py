@@ -54,6 +54,7 @@ from services.reason.commitment.domain import (
     ReviewCategory,
     ReviewDeliveryResult,
     TransitionProposalDecision,
+    TurnScanResult,
 )
 from services.reason.commitment.interfaces import CommitmentRepository
 from services.reason.commitment.service import CommitmentService
@@ -73,6 +74,8 @@ from services.reason.commitment.validation import (
 )
 from services.effect.language.service import LanguageService, ReasoningLevel
 from services.reason.job.service import JobService
+from services.reason.recall.service import RecallService
+from services.state.cache.service import CacheService
 
 _LOGGER = get_logger(__name__)
 _DEFAULT_REVIEW_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
@@ -135,6 +138,8 @@ class DefaultCommitmentService(CommitmentService):
         job_service: JobService,
         outbound_service: RelayService | None = None,
         language_service: LanguageService | None = None,
+        recall_service: RecallService | None = None,
+        cache_service: CacheService | None = None,
     ) -> None:
         self._settings = settings
         self._repository = repository
@@ -142,6 +147,8 @@ class DefaultCommitmentService(CommitmentService):
         self._job_service = job_service
         self._outbound_service = outbound_service
         self._language_service = language_service
+        self._recall_service = recall_service
+        self._cache_service = cache_service
         self._dedupe_system_prompt = _render_prompt_template(
             _DEDUPE_SYSTEM_TEMPLATE,
             max_words=str(settings.dedupe_summary_max_words),
@@ -1338,6 +1345,113 @@ class DefaultCommitmentService(CommitmentService):
                 "Extraction failed; returning empty candidates", exc_info=True
             )
             return success(meta=meta, payload=empty)
+
+    _TURN_SCANNER_CACHE_KEY = "turn-scanner:cursor"
+
+    @public_api_instrumented(logger=_LOGGER, component_id=str(SERVICE_COMPONENT_ID))
+    def run_turn_scanner(self, *, meta: EnvelopeMeta) -> Envelope[TurnScanResult]:
+        """Scan recent inbound turns for commitment candidates."""
+        empty = TurnScanResult(
+            turns_scanned=0,
+            candidates_extracted=0,
+            candidates_ingested=0,
+            errors_encountered=0,
+        )
+        if not self._settings.turn_scanner_enabled:
+            return success(meta=meta, payload=empty)
+        if self._recall_service is None or self._language_service is None:
+            return success(meta=meta, payload=empty)
+        if self._cache_service is None:
+            return success(meta=meta, payload=empty)
+
+        try:
+            validate_meta(meta)
+        except ValueError as exc:
+            return failure(
+                meta=meta,
+                errors=[validation_error(str(exc), code=codes.INVALID_ARGUMENT)],
+            )
+
+        cursor_env = self._cache_service.get_value(
+            meta=meta,
+            component_id=str(SERVICE_COMPONENT_ID),
+            key=self._TURN_SCANNER_CACHE_KEY,
+        )
+        after_id: str | None = None
+        if cursor_env.ok and cursor_env.payload.value is not None:
+            entry = cursor_env.payload.value
+            if isinstance(entry.value, str):
+                after_id = entry.value
+
+        turns_env = self._recall_service.list_inbound_turns_after(
+            meta=meta,
+            after_id=after_id,
+            limit=self._settings.turn_scanner_batch_size,
+        )
+        if not turns_env.ok:
+            return failure(meta=meta, errors=list(turns_env.payload.errors))
+
+        turns = turns_env.payload.value
+        if not turns:
+            return success(meta=meta, payload=empty)
+
+        scanned = 0
+        extracted = 0
+        ingested = 0
+        errors = 0
+        last_turn_id: str | None = None
+
+        for turn in turns:
+            scanned += 1
+            last_turn_id = turn.id
+            try:
+                extract_env = self.extract_commitment_candidates(
+                    meta=meta,
+                    text=turn.content,
+                    context=f"session_id={turn.session_id} turn_id={turn.id}",
+                )
+                if not extract_env.ok:
+                    errors += 1
+                    continue
+                candidates = extract_env.payload.value.candidates
+                extracted += len(candidates)
+                for candidate in candidates:
+                    ingest_env = self.ingest_commitment_candidate(
+                        meta=meta,
+                        description=candidate.description,
+                        provenance_reference=f"recall:turn:{turn.id}",
+                        source="turn-scanner",
+                        due_by=candidate.due_by,
+                        due_timezone=candidate.due_timezone,
+                        importance=candidate.importance or 2,
+                        effort_provided=candidate.effort_provided or 2,
+                        confidence=candidate.confidence,
+                    )
+                    if ingest_env.ok:
+                        ingested += 1
+            except Exception:  # noqa: BLE001
+                _LOGGER.warning("Turn scanner error on turn %s", turn.id, exc_info=True)
+                errors += 1
+
+        if last_turn_id is not None:
+            self._cache_service.set_value(
+                meta=meta,
+                component_id=str(SERVICE_COMPONENT_ID),
+                key=self._TURN_SCANNER_CACHE_KEY,
+                value=last_turn_id,
+                ttl_seconds=0,
+            )
+
+        return success(
+            meta=meta,
+            payload=TurnScanResult(
+                turns_scanned=scanned,
+                candidates_extracted=extracted,
+                candidates_ingested=ingested,
+                errors_encountered=errors,
+                last_turn_id=last_turn_id,
+            ),
+        )
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(SERVICE_COMPONENT_ID))
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:

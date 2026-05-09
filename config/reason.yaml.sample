@@ -12,6 +12,10 @@ commitment:
   extraction_min_confidence: 0.4
   extraction_max_candidates: 10
   extraction_reasoning_level: quick
+  turn_scanner_enabled: true
+  turn_scanner_interval_minutes: 5
+  turn_scanner_batch_size: 50
+  turn_scanner_op_id: commitment-scan-turns
 
 delegation:
   max_recursion_depth: 4

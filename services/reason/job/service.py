@@ -102,6 +102,15 @@ class JobService(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
+    def find_job_by_origin_reference(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        origin_reference: str,
+    ) -> Envelope[JobRecord | None]:
+        """Find the most recent job whose intent matches *origin_reference*."""
+
+    @abstractmethod
     def get_job(
         self,
         *,

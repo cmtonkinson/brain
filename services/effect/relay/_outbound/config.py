@@ -13,6 +13,7 @@ class RelayOutboundServiceSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     default_channel: str = "signal"
+    approval_channels: tuple[str, ...] = ("signal", "console")
     conversational_channels: tuple[str, ...] = ("signal", "console")
     max_message_chars: int = Field(default=4000, ge=1)
     dedupe_window_seconds: int = Field(default=120, ge=0)

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.envelope import Envelope, EnvelopeMeta, success, validate_meta, failure
+from lib.shared.inbound_message import InboundMessage
 from lib.shared.errors import codes, validation_error
 from lib.shared.logging import get_logger, public_api_instrumented
 from services.effect.relay._outbound.domain import (
@@ -16,10 +16,8 @@ from services.effect.relay._outbound.implementation import (
     DefaultRelayOutboundService,
 )
 from services.effect.relay._inbound.domain import (
-    ConsoleEnqueueResult,
     IngestResult,
-    NormalizedOperatorMessage,
-    RegisterSignalCallbackResult,
+    RegisterInboundCallbacksResult,
 )
 from services.effect.relay._inbound.implementation import DefaultRelayInboundService
 from services.effect.relay.component import SERVICE_COMPONENT_ID
@@ -49,40 +47,23 @@ class DefaultRelayService(RelayService):
         component_id=str(SERVICE_COMPONENT_ID),
         id_fields=("meta",),
     )
-    def ingest_signal_message(
-        self, *, meta: EnvelopeMeta, raw_body_json: str
-    ) -> Envelope[IngestResult]:
-        return self._inbound.ingest_signal_message(
-            meta=meta, raw_body_json=raw_body_json
-        )
-
-    @public_api_instrumented(
-        logger=_LOGGER,
-        component_id=str(SERVICE_COMPONENT_ID),
-        id_fields=("meta",),
-    )
-    def enqueue_console_message(
+    def ingest_inbound_message(
         self,
         *,
         meta: EnvelopeMeta,
-        message_text: str,
-        slash_authenticity: SlashAuthenticityProof | None = None,
-    ) -> Envelope[ConsoleEnqueueResult]:
-        return self._inbound.enqueue_console_message(
-            meta=meta,
-            message_text=message_text,
-            slash_authenticity=slash_authenticity,
-        )
+        message: InboundMessage,
+    ) -> Envelope[IngestResult]:
+        return self._inbound.ingest_inbound_message(meta=meta, message=message)
 
     @public_api_instrumented(
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
         id_fields=("meta",),
     )
-    def register_signal_callback(
+    def register_inbound_callbacks(
         self, *, meta: EnvelopeMeta
-    ) -> Envelope[RegisterSignalCallbackResult]:
-        return self._inbound.register_signal_callback(meta=meta)
+    ) -> Envelope[RegisterInboundCallbacksResult]:
+        return self._inbound.register_inbound_callbacks(meta=meta)
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -91,7 +72,7 @@ class DefaultRelayService(RelayService):
     )
     def poll_operator_instruction(
         self, *, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0
-    ) -> Envelope[NormalizedOperatorMessage | None]:
+    ) -> Envelope[InboundMessage | None]:
         return self._inbound.poll_operator_instruction(
             meta=meta, wait_timeout_seconds=wait_timeout_seconds
         )
@@ -153,8 +134,6 @@ class DefaultRelayService(RelayService):
         batch_key: str,
         actor: str = "operator",
         channel: str = "",
-        recipient_e164: str = "",
-        sender_e164: str = "",
         title: str = "",
     ) -> Envelope[RouteNotificationResult]:
         return self._outbound.flush_batch(
@@ -162,8 +141,6 @@ class DefaultRelayService(RelayService):
             batch_key=batch_key,
             actor=actor,
             channel=channel,
-            recipient_e164=recipient_e164,
-            sender_e164=sender_e164,
             title=title,
         )
 

@@ -7,56 +7,25 @@ from typing import Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict
 
 from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
+from lib.shared.inbound_adapter import (
+    InboundAdapterDependencyError,
+    InboundAdapterHealthResult,
+    InboundAdapterInternalError,
+    InboundCallback,
+    InboundCallbackRegistrationResult,
+)
 
 
-class SignalAdapterError(Exception):
+class SignalAdapterError(InboundAdapterInternalError):
     """Base exception for Signal adapter failures."""
 
 
-class SignalAdapterDependencyError(SignalAdapterError):
+class SignalAdapterDependencyError(InboundAdapterDependencyError):
     """Dependency-level adapter failure (network/upstream unavailable)."""
 
 
-class SignalAdapterInternalError(SignalAdapterError):
+class SignalAdapterInternalError(InboundAdapterInternalError):
     """Internal adapter failure (mapping or contract mismatch)."""
-
-
-class SignalInboundCallbackResult(BaseModel):
-    """Result payload returned by one in-process inbound callback."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    accepted: bool
-    queued: bool
-    reason: str
-    sender_e164: str | None = None
-    timestamp_ms: int | None = None
-
-
-@runtime_checkable
-class SignalInboundCallback(Protocol):
-    """In-process callback invoked for one raw Signal receive payload."""
-
-    def __call__(self, *, raw_body_json: str) -> SignalInboundCallbackResult:
-        """Handle one raw inbound Signal payload and return the queueing result."""
-
-
-class SignalCallbackRegistrationResult(BaseModel):
-    """Result payload for in-process callback registration calls."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    registered: bool
-    detail: str
-
-
-class SignalAdapterHealthResult(BaseModel):
-    """Readiness payload for Signal adapter dependencies."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    adapter_ready: bool
-    detail: str
 
 
 class SignalSendMessageResult(BaseModel):
@@ -73,17 +42,19 @@ class SignalSendMessageResult(BaseModel):
 
 @runtime_checkable
 class SignalAdapter(Protocol):
-    """Protocol for Signal inbound callback registration and health checks."""
+    """Protocol for Signal adapter inbound, health, and outbound operations."""
 
     def register_callback(
         self,
         *,
-        callback: SignalInboundCallback,
-    ) -> SignalCallbackRegistrationResult:
-        """Configure one in-process callback for inbound Signal forwarding."""
+        callback: InboundCallback,
+    ) -> InboundCallbackRegistrationResult:
+        """Configure one in-process callback for inbound forwarding."""
+        ...
 
-    def health(self) -> SignalAdapterHealthResult:
+    def health(self) -> InboundAdapterHealthResult:
         """Return adapter health state."""
+        ...
 
     def send_message(
         self,
@@ -93,6 +64,7 @@ class SignalAdapter(Protocol):
         message: str,
     ) -> SignalSendMessageResult:
         """Send one outbound Signal message via configured runtime."""
+        ...
 
     def mint_slash_authenticity_proof(
         self,
@@ -106,3 +78,4 @@ class SignalAdapter(Protocol):
         operator's identity. The Adapter holds the secret; the Relay does
         not see it.
         """
+        ...

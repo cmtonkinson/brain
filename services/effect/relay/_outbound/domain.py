@@ -46,10 +46,15 @@ class ApprovalNotificationPayload(BaseModel):
     op_id: str = Field(min_length=1)
     op_version: str = Field(min_length=1)
     summary: str = Field(min_length=1)
+    effect: str = ""
+    reason: str = ""
     actor: str = Field(min_length=1)
+    source: str = ""
     channel: str = Field(min_length=1)
     trace_id: str = Field(min_length=1)
     invocation_id: str = Field(min_length=1)
+    parent_invocation_id: str = ""
+    message_text: str = ""
     input_payload: dict[str, Any] = Field(default_factory=dict)
     expires_at: datetime
 

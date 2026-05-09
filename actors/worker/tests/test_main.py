@@ -19,7 +19,9 @@ from lib.sdk.client import BrainClient
 from lib.sdk.errors import (
     BrainDependencyError,
     BrainDomainError,
+    BrainPolicyError,
     BrainTransportError,
+    SdkErrorDetail,
 )
 from actors.worker.main import (
     _HEARTBEAT_PATH,
@@ -71,24 +73,44 @@ class _FakeClient:
     """Minimal BrainClient stand-in that records calls and can raise on demand.
 
     Set `invoke_raises` or `fail_raises` to an exception instance to trigger
-    that error when the corresponding method is called.
+    that error when the corresponding method is called. Set `approval_status`
+    to control what `policy_approval_status` returns (default "approved").
     """
 
     def __init__(
         self,
         *,
         invoke_raises: Exception | None = None,
+        invoke_side_effects: list[Exception | None] | None = None,
         fail_raises: Exception | None = None,
+        approval_status: str = "approved",
     ) -> None:
         self.calls: list[_Call] = []
         self._invoke_raises = invoke_raises
+        self._invoke_side_effects = invoke_side_effects or []
         self._fail_raises = fail_raises
+        self._approval_status = approval_status
 
     def invoke_op(self, **kwargs: Any) -> None:
         """Record call; raise configured error when present."""
         self.calls.append(_Call(method="invoke_op", kwargs=kwargs))
+        if self._invoke_side_effects:
+            exc = self._invoke_side_effects.pop(0)
+            if exc is not None:
+                raise exc
+            return
         if self._invoke_raises is not None:
             raise self._invoke_raises
+
+    def policy_approval_status(self, **kwargs: Any):
+        """Record approval status polls and return configured status."""
+        self.calls.append(_Call(method="policy_approval_status", kwargs=kwargs))
+        configured = self._approval_status
+
+        class _Status:
+            status = configured
+
+        return _Status()
 
     def job_complete_execution(self, **kwargs: Any) -> None:
         """Record call."""
@@ -256,6 +278,100 @@ def test_run_execution_failure_message_contains_original_error() -> None:
 
     msg = client._calls_for("job_fail_execution")[0].kwargs["error_message"]
     assert "quota exceeded" in msg
+
+
+def test_run_execution_approved_retry_failure_is_reported() -> None:
+    """An approved retry failure still fails the claimed execution."""
+    approval_error = BrainPolicyError(
+        message="approval required",
+        operation="ops.invoke",
+        details=(
+            SdkErrorDetail(
+                code="permission_denied",
+                message="approval required",
+                category="policy",
+                metadata={
+                    "proposal_token": "tok-123",
+                    "reason_codes": "approval_required",
+                    "expires_at": "",
+                },
+            ),
+        ),
+    )
+    retry_error = BrainDependencyError(message="dep down", operation="ops.invoke")
+    client = _FakeClient(invoke_side_effects=[approval_error, retry_error])
+
+    run_execution(client=_as_client(client), claim=_make_claim(), channel="worker")
+
+    invoke_calls = client._calls_for("invoke_op")
+    fail_calls = client._calls_for("job_fail_execution")
+    assert len(invoke_calls) == 2
+    assert invoke_calls[1].kwargs["approval_token"] == "tok-123"
+    assert len(fail_calls) == 1
+    assert fail_calls[0].kwargs["is_retryable"] is True
+    assert len(client._calls_for("job_complete_execution")) == 0
+
+
+def _make_approval_policy_error(token: str = "tok-wait") -> BrainPolicyError:
+    """Return a BrainPolicyError carrying approval-required metadata."""
+    return BrainPolicyError(
+        message="approval required",
+        operation="ops.invoke",
+        details=(
+            SdkErrorDetail(
+                code="permission_denied",
+                message="approval required",
+                category="policy",
+                metadata={
+                    "proposal_token": token,
+                    "reason_codes": "approval_required",
+                    "expires_at": "",
+                },
+            ),
+        ),
+    )
+
+
+def test_run_execution_rejected_approval_fails_non_retryable() -> None:
+    """Operator rejection of an approval proposal fails the execution non-retryably."""
+    client = _FakeClient(
+        invoke_side_effects=[_make_approval_policy_error()],
+        approval_status="rejected",
+    )
+
+    run_execution(
+        client=_as_client(client),
+        claim=_make_claim(execution_id="exec-rej"),
+        channel="worker",
+    )
+
+    invoke_calls = client._calls_for("invoke_op")
+    fail_calls = client._calls_for("job_fail_execution")
+    assert len(invoke_calls) == 1
+    assert len(fail_calls) == 1
+    assert fail_calls[0].kwargs["execution_id"] == "exec-rej"
+    assert fail_calls[0].kwargs["is_retryable"] is False
+    assert len(client._calls_for("job_complete_execution")) == 0
+
+
+def test_run_execution_expired_approval_fails_non_retryable() -> None:
+    """An expired approval proposal fails the execution non-retryably."""
+    client = _FakeClient(
+        invoke_side_effects=[_make_approval_policy_error()],
+        approval_status="expired",
+    )
+
+    run_execution(
+        client=_as_client(client),
+        claim=_make_claim(execution_id="exec-exp"),
+        channel="worker",
+    )
+
+    fail_calls = client._calls_for("job_fail_execution")
+    assert len(fail_calls) == 1
+    assert fail_calls[0].kwargs["execution_id"] == "exec-exp"
+    assert fail_calls[0].kwargs["is_retryable"] is False
+    assert len(client._calls_for("job_complete_execution")) == 0
 
 
 # ---------------------------------------------------------------------------

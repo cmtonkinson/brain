@@ -3,11 +3,7 @@
 from resources.adapters.console.adapter import (
     ConsoleAdapter,
     ConsoleAdapterError,
-    ConsoleAdapterHealthResult,
     ConsoleAdapterInternalError,
-    ConsoleCallbackRegistrationResult,
-    ConsoleInboundCallback,
-    ConsoleInboundCallbackResult,
     ConsoleInboundPayload,
 )
 from resources.adapters.console.component import MANIFEST, RESOURCE_COMPONENT_ID
@@ -22,12 +18,8 @@ __all__ = [
     "RESOURCE_COMPONENT_ID",
     "ConsoleAdapter",
     "ConsoleAdapterError",
-    "ConsoleAdapterHealthResult",
     "ConsoleAdapterInternalError",
     "ConsoleAdapterSettings",
-    "ConsoleCallbackRegistrationResult",
-    "ConsoleInboundCallback",
-    "ConsoleInboundCallbackResult",
     "ConsoleInboundPayload",
     "InProcessConsoleAdapter",
     "resolve_console_adapter_settings",

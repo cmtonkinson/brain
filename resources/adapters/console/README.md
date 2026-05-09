@@ -27,16 +27,15 @@ Boundary rules:
 Primary interactions:
 * Receives registration input from Relay inbound:
   * in-process callback method
-* Receives inbound calls from the HTTP route layer (`/relay/enqueue_console_message`):
-  * already-parsed `ConsoleInboundPayload` (message text + optional slash authenticity proof)
-* Forwards each submission as an in-process callback invocation to Relay inbound.
+* Receives inbound calls from the Console actor and normalizes them into `InboundMessage`.
+* Forwards each normalized message as an in-process callback invocation to Relay inbound.
 
 ------------------------------------------------------------------------
 ## Operational Flow (High Level)
 1. Relay inbound calls `register_callback(callback)` at boot.
-2. The HTTP route handler receives one Console-actor request and parses it into a `ConsoleInboundPayload`.
+2. The Console actor submits one `ConsoleInboundPayload`.
 3. Route handler calls `adapter.submit(meta, payload)`.
-4. Adapter invokes the registered Relay inbound callback synchronously.
+4. Adapter normalizes the payload into `InboundMessage` and invokes the registered Relay inbound callback synchronously.
 5. Adapter returns the callback's result (queued state + queue name) to the route handler.
 
 ------------------------------------------------------------------------

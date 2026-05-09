@@ -4,30 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-
-class NormalizedOperatorMessage(BaseModel):
-    """Normalized inbound operator message payload for downstream processing.
-
-    Required fields (``source``, ``message_text``, ``timestamp_ms``) are
-    channel-agnostic.  Signal-specific fields default to empty/``None`` so that
-    non-Signal channels (e.g. console) can produce valid instances without
-    synthesizing placeholder values.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    source: str
-    message_text: str
-    timestamp_ms: int
-    sender_e164: str = ""
-    source_device: str = ""
-    group_id: str | None = None
-    quote_target_timestamp_ms: int | None = None
-    reaction_target_timestamp_ms: int | None = None
-    reaction_emoji: str | None = None
-    approval_intent: str | None = None
-    reply_to_proposal_token: str | None = None
-    reaction_to_proposal_token: str | None = None
+from lib.shared.inbound_message import InboundMessage
 
 
 class IngestResult(BaseModel):
@@ -39,20 +16,11 @@ class IngestResult(BaseModel):
     queued: bool
     queue_name: str
     reason: str
-    message: NormalizedOperatorMessage | None = None
+    message: InboundMessage | None = None
 
 
-class ConsoleEnqueueResult(BaseModel):
-    """Result payload for console message ingestion."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    queued: bool
-    queue_name: str
-
-
-class RegisterSignalCallbackResult(BaseModel):
-    """Signal adapter callback-registration operation result payload."""
+class RegisterInboundCallbacksResult(BaseModel):
+    """Adapter callback-registration operation result payload."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

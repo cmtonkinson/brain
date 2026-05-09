@@ -2,12 +2,8 @@
 
 from resources.adapters.signal.adapter import (
     SignalAdapter,
-    SignalCallbackRegistrationResult,
     SignalAdapterDependencyError,
     SignalAdapterError,
-    SignalAdapterHealthResult,
-    SignalInboundCallback,
-    SignalInboundCallbackResult,
     SignalAdapterInternalError,
     SignalSendMessageResult,
 )
@@ -25,12 +21,8 @@ __all__ = [
     "MANIFEST",
     "RESOURCE_COMPONENT_ID",
     "SignalAdapter",
-    "SignalCallbackRegistrationResult",
     "SignalAdapterDependencyError",
     "SignalAdapterError",
-    "SignalAdapterHealthResult",
-    "SignalInboundCallback",
-    "SignalInboundCallbackResult",
     "SignalAdapterInternalError",
     "SignalAdapterSettings",
     "SignalSendMessageResult",

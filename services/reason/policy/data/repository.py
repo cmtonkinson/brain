@@ -16,6 +16,7 @@ from resources.substrates.postgres.schema_session import ServiceSchemaSessionPro
 from services.reason.policy.domain import (
     ActivePolicyRegimePointer,
     ApprovalProposal,
+    ApprovalProposalStatus,
     PolicyApprovalProposalRow,
     PolicyDecisionLogRow,
     PolicyDedupeLogRow,
@@ -70,6 +71,14 @@ class InMemoryPolicyPersistenceRepository(PolicyPersistenceRepository):
         self._decision_rows.append(row)
 
     def append_proposal(self, *, row: PolicyApprovalProposalRow) -> None:
+        for index in range(len(self._proposal_rows) - 1, -1, -1):
+            existing = self._proposal_rows[index]
+            if existing.proposal.proposal_token != row.proposal.proposal_token:
+                continue
+            if existing.status == "approved":
+                return
+            self._proposal_rows[index] = row
+            return
         self._proposal_rows.append(row)
 
     def append_dedupe(self, *, row: PolicyDedupeLogRow) -> None:
@@ -80,6 +89,26 @@ class InMemoryPolicyPersistenceRepository(PolicyPersistenceRepository):
             if row.proposal.proposal_token == token and row.status == "pending":
                 return row.proposal
         return None
+
+    def find_proposal(self, *, token: str) -> ApprovalProposal | None:
+        for row in reversed(self._proposal_rows):
+            if row.proposal.proposal_token == token:
+                return row.proposal
+        return None
+
+    def get_proposal_status(
+        self, *, token: str, now: datetime
+    ) -> ApprovalProposalStatus:
+        for index in range(len(self._proposal_rows) - 1, -1, -1):
+            row = self._proposal_rows[index]
+            if row.proposal.proposal_token != token:
+                continue
+            status = row.status
+            if status == "pending" and row.proposal.expires_at <= now:
+                status = "expired"
+                self._proposal_rows[index] = row.model_copy(update={"status": status})
+            return _proposal_status(row.proposal, status=status)
+        return ApprovalProposalStatus(proposal_token=token, status="missing")
 
     def list_pending_proposals(
         self, *, actor: str, channel: str, now: datetime
@@ -96,7 +125,10 @@ class InMemoryPolicyPersistenceRepository(PolicyPersistenceRepository):
     def mark_proposal_status(self, *, token: str, status: str) -> None:
         for index in range(len(self._proposal_rows) - 1, -1, -1):
             row = self._proposal_rows[index]
-            if row.proposal.proposal_token == token and row.status == "pending":
+            if row.proposal.proposal_token == token and row.status in {
+                "pending",
+                "approved",
+            }:
                 self._proposal_rows[index] = row.model_copy(update={"status": status})
                 return
 
@@ -265,6 +297,7 @@ class PostgresPolicyPersistenceRepository(PolicyPersistenceRepository):
                         "clarification_attempts": row.proposal.clarification_attempts,
                         "expires_at": row.proposal.expires_at,
                     },
+                    where=approvals.c.status != "approved",
                 )
             )
 
@@ -297,6 +330,48 @@ class PostgresPolicyPersistenceRepository(PolicyPersistenceRepository):
             )
             return None if row is None else _to_proposal(row)
 
+    def find_proposal(self, *, token: str) -> ApprovalProposal | None:
+        with self._sessions.session() as session:
+            row = (
+                session.execute(
+                    select(approvals)
+                    .where(approvals.c.proposal_token == token)
+                    .order_by(desc(approvals.c.created_at), desc(approvals.c.id))
+                    .limit(1)
+                )
+                .mappings()
+                .one_or_none()
+            )
+            return None if row is None else _to_proposal(row)
+
+    def get_proposal_status(
+        self, *, token: str, now: datetime
+    ) -> ApprovalProposalStatus:
+        with self._sessions.session() as session:
+            row = (
+                session.execute(
+                    select(approvals)
+                    .where(approvals.c.proposal_token == token)
+                    .order_by(desc(approvals.c.created_at), desc(approvals.c.id))
+                    .limit(1)
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                return ApprovalProposalStatus(proposal_token=token, status="missing")
+            status = str(row["status"])
+            proposal = _to_proposal(row)
+            if status == "pending" and proposal.expires_at <= now:
+                status = "expired"
+                session.execute(
+                    update(approvals)
+                    .where(approvals.c.proposal_token == token)
+                    .where(approvals.c.status == "pending")
+                    .values(status=status)
+                )
+            return _proposal_status(proposal, status=status)
+
     def list_pending_proposals(
         self, *, actor: str, channel: str, now: datetime
     ) -> tuple[PolicyApprovalProposalRow, ...]:
@@ -323,7 +398,7 @@ class PostgresPolicyPersistenceRepository(PolicyPersistenceRepository):
             session.execute(
                 update(approvals)
                 .where(approvals.c.proposal_token == token)
-                .where(approvals.c.status == "pending")
+                .where(approvals.c.status.in_(["pending", "approved"]))
                 .values(status=status)
             )
 
@@ -451,4 +526,17 @@ def _to_proposal(row: dict[str, object]) -> ApprovalProposal:
         created_at=created_at,
         expires_at=row["expires_at"],
         clarification_attempts=int(row["clarification_attempts"]),
+    )
+
+
+def _proposal_status(
+    proposal: ApprovalProposal, *, status: str
+) -> ApprovalProposalStatus:
+    return ApprovalProposalStatus(
+        proposal_token=proposal.proposal_token,
+        status=status,
+        op_id=proposal.op_id,
+        actor=proposal.actor,
+        channel=proposal.channel,
+        expires_at=proposal.expires_at,
     )

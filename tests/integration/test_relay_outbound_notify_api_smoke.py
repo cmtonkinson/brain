@@ -11,13 +11,15 @@ from fastapi.testclient import TestClient
 
 from lib.shared.http.server import create_app
 from lib.shared.ids import generate_ulid_str
+from lib.shared.inbound_adapter import (
+    InboundAdapterHealthResult,
+    InboundCallback,
+    InboundCallbackRegistrationResult,
+)
 from resources.adapters.signal import (
     SignalAdapter,
     SignalAdapterDependencyError,
-    SignalAdapterHealthResult,
     SignalSendMessageResult,
-    SignalCallbackRegistrationResult,
-    SignalInboundCallback,
 )
 from services.effect.relay._outbound.config import RelayOutboundServiceSettings
 from services.effect.relay._outbound.implementation import (
@@ -47,13 +49,17 @@ class _FakeSignalAdapter(SignalAdapter):
     def register_callback(
         self,
         *,
-        callback: SignalInboundCallback,
-    ) -> SignalCallbackRegistrationResult:
+        callback: InboundCallback,
+    ) -> InboundCallbackRegistrationResult:
         del callback
-        return SignalCallbackRegistrationResult(registered=True, detail="ok")
+        return InboundCallbackRegistrationResult(registered=True, detail="ok")
 
-    def health(self) -> SignalAdapterHealthResult:
-        return SignalAdapterHealthResult(adapter_ready=True, detail="ok")
+    def health(self) -> InboundAdapterHealthResult:
+        return InboundAdapterHealthResult(adapter_ready=True, detail="ok")
+
+    def mint_slash_authenticity_proof(self, *, channel: str, message_text: str):
+        del channel, message_text
+        raise NotImplementedError
 
     def send_message(
         self,

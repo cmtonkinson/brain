@@ -79,26 +79,20 @@
 `route_approval_notification(*, meta: EnvelopeMeta, approval: ApprovalNotificationPayload) -> Envelope[RouteNotificationResult]`  
 *Route one Policy approval notification.*
 
-`flush_batch(*, meta: EnvelopeMeta, batch_key: str, actor: str = 'operator', channel: str = '', recipient_e164: str = '', sender_e164: str = '', title: str = '') -> Envelope[RouteNotificationResult]`  
+`flush_batch(*, meta: EnvelopeMeta, batch_key: str, actor: str = 'operator', channel: str = '', title: str = '') -> Envelope[RouteNotificationResult]`  
 *Flush one pending batch by key and deliver consolidated summary.*
 
-`enqueue_console_message(*, meta: EnvelopeMeta, message_text: str, slash_authenticity: SlashAuthenticityProof | None = None) -> Envelope[ConsoleEnqueueResult]`  
-*Normalize and enqueue one inbound console message.*
+`ingest_inbound_message(*, meta: EnvelopeMeta, message: InboundMessage) -> Envelope[IngestResult]`  
+*Enqueue one normalized inbound operator message.*
 
-`poll_console_response(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[ConsoleResponseMessage | None]`  
-*Pop the next queued console response, optionally long-polling.*
+`register_inbound_callbacks(*, meta: EnvelopeMeta) -> Envelope[RegisterInboundCallbacksResult]`  
+*Register in-process inbound adapter callbacks.*
 
 `route_notification(*, meta: EnvelopeMeta, actor: str = 'operator', channel: str = '', title: str = '', message: str, dedupe_key: str = '', batch_key: str = '', force: bool = False, conversational_memory: ConversationalMemoryContext | None = None) -> Envelope[RouteNotificationResult]`  
 *Route one outbound notification and decide suppress/send/batch.*
 
-`poll_operator_instruction(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[NormalizedOperatorMessage | None]`  
+`poll_operator_instruction(*, meta: EnvelopeMeta, wait_timeout_seconds: float = 0.0) -> Envelope[InboundMessage | None]`  
 *Pop the next queued operator instruction, optionally long-polling.*
-
-`ingest_signal_message(*, meta: EnvelopeMeta, raw_body_json: str) -> Envelope[IngestResult]`  
-*Normalize and enqueue one raw inbound Signal payload.*
-
-`register_signal_callback(*, meta: EnvelopeMeta) -> Envelope[RegisterSignalCallbackResult]`  
-*Register one in-process Signal callback with the owned adapter.*
 
 ------------------------------------------------------------------------
 ## `SoftwareService`
@@ -199,6 +193,9 @@
 
 `apply_transition_proposal_decision(*, meta: EnvelopeMeta, **payload: object) -> Envelope[CommitmentMutationResult]`  
 *Approve or reject one pending transition proposal.*
+
+`run_turn_scanner(*, meta: EnvelopeMeta) -> Envelope[TurnScanResult]`  
+*Scan recent inbound turns for commitment candidates.*
 
 ------------------------------------------------------------------------
 ## `DelegationService`
@@ -314,6 +311,9 @@
 `create_job(*, meta: EnvelopeMeta, summary: str, details: str | None = None, origin_reference: str | None = None, schedule_type: str, timezone: str, definition: dict[str, object], job_action: dict[str, object], start_state: str = JobState.draft.value) -> Envelope[JobMutationResult]`  
 *Create a job intent, job record, and initial audit entry.*
 
+`find_job_by_origin_reference(*, meta: EnvelopeMeta, origin_reference: str) -> Envelope[JobRecord | None]`  
+*Find the most recent job whose intent matches *origin_reference*.*
+
 `pause_job(*, meta: EnvelopeMeta, job_id: str, reason: str = '') -> Envelope[JobMutationResult]`  
 *Transition a job from active to paused.*
 
@@ -371,6 +371,9 @@
 
 `update_focus(*, meta: EnvelopeMeta, session_id: str, content: str) -> Envelope[FocusRecord]`  
 *Persist explicit focus content with budget-aware compaction semantics.*
+
+`list_inbound_turns_after(*, meta: EnvelopeMeta, after_id: str | None, limit: int = 100) -> Envelope[tuple[TurnRecord, ...]]`  
+*List inbound turns across all sessions created after a given turn id.*
 
 `record_inbound_turn(*, meta: EnvelopeMeta, session_id: str, message: str, instruction: InboundInstructionRecord | None = None) -> Envelope[TurnRecord]`  
 *Persist one inbound turn and return the recorded turn row.*

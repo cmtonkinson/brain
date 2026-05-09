@@ -165,7 +165,9 @@ Important keys:
 Examples of canonical paths:
 * `commitment.dedupe_scan_limit`
 * `relay.inbound.callback_register_max_retries`
+* `relay.identity.operator_contact_e164`
 * `relay.outbound.default_channel`
+* `relay.outbound.approval_channels`
 * `language.standard.model`
 * `embedding.max_list_limit`
 * `obsidian.search_context_length`
@@ -175,6 +177,25 @@ Examples of canonical paths:
 * `signal.base_url`
 * `llm.providers.anthropic.api_key`
 * `policy.slash_authenticity_validity_seconds`
+
+------------------------------------------------------------------------
+## Turn Scanner
+The Commitment Service includes a periodic turn scanner that reads recent
+inbound Recall turns, extracts commitment candidates via the LLM extraction
+pipeline, and feeds them through the standard creation+dedup flow.
+
+An interval job is registered at boot via `after_boot`. Progress is tracked
+with a cache-backed watermark (`turn-scanner:cursor`). If the cache is flushed,
+the scanner restarts from the oldest turn; dedup prevents duplicate
+commitments.
+
+Keys (under `commitment.*`):
+* `turn_scanner_enabled` — enable or disable the scanner (default `true`).
+* `turn_scanner_interval_minutes` — how often the scanner runs, 1–1440
+  (default `5`).
+* `turn_scanner_batch_size` — maximum turns per run, 1–500 (default `50`).
+* `turn_scanner_op_id` — native op id invoked by the interval job
+  (default `commitment-scan-turns`).
 
 ------------------------------------------------------------------------
 ## Software
@@ -269,7 +290,11 @@ Examples:
 * `console.editor`
 * `console.input_history_size`
 * `worker.max_workers`
+* `worker.approval_poll_interval_seconds`
+* `worker.approval_poll_max_interval_seconds`
 * `subagent.default_max_turns`
+* `subagent.approval_poll_interval_seconds`
+* `subagent.approval_poll_max_interval_seconds`
 
 ------------------------------------------------------------------------
 ## Environment Variable Examples

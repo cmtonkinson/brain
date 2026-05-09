@@ -27,7 +27,7 @@ class ValkeySettings(BaseModel):
     connect_timeout_seconds: float = Field(default=5.0, gt=0)
     socket_timeout_seconds: float = Field(default=5.0, gt=0)
     health_timeout_seconds: float = Field(default=1.0, gt=0)
-    max_connections: int = Field(default=20, gt=0)
+    max_connections: int = Field(default=100, gt=0)
 
     @field_validator("url", mode="before")
     @classmethod

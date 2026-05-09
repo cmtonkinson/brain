@@ -242,7 +242,7 @@ def _render_markdown(
                 if index > 0:
                     lines.append("")
                 lines.append(
-                    f"`{route.method} {route.path}` &mdash; {metadata[route.path].why}  "
+                    f"`{route.method} {route.path}` &mdash; {metadata[route.path].why}"
                 )
                 lines.append(f"*Handler: `{route.handler_name}`*")
                 if route.response_model:

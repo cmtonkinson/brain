@@ -472,6 +472,34 @@ class DefaultJobService(JobService):
     @public_api_instrumented(
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
+    )
+    def find_job_by_origin_reference(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        origin_reference: str,
+    ) -> Envelope[JobRecord | None]:
+        """Find the most recent job whose intent matches *origin_reference*."""
+        try:
+            validate_meta(meta)
+        except ValueError as exc:
+            return failure(
+                meta=meta,
+                errors=[validation_error(str(exc), code=codes.INVALID_ARGUMENT)],
+            )
+        try:
+            record = self._repository.find_job_by_origin_reference(
+                origin_reference=origin_reference,
+            )
+            return success(meta=meta, payload=record)
+        except Exception as exc:  # noqa: BLE001
+            return self._handle_exception(
+                meta=meta, operation="find_job_by_origin_reference", exc=exc
+            )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
         id_fields=("job_id",),
     )
     def get_job(

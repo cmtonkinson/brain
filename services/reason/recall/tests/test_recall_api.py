@@ -300,6 +300,10 @@ class _FakeRecallService(RecallService):
         del meta, session_id
         raise NotImplementedError
 
+    def list_inbound_turns_after(self, *, meta, after_id, limit=100):
+        del meta, after_id, limit
+        raise NotImplementedError
+
     def health(self, *, meta):
         del meta
         raise NotImplementedError

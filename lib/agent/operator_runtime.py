@@ -90,6 +90,7 @@ LMS_RECOVERY_IN_PROGRESS_RESPONSE = (
     "I'm sorry, but the language model provider is having trouble. "
     "I'm still working on it and will keep trying."
 )
+TURN_ERROR_RESPONSE = "I hit an internal error on that turn. Please try again."
 INTERMEDIATE_TEXT_FORMAT = "_... {text}..._"
 LMS_TIMEOUT_MARGIN_SECONDS = 2.0
 AGENT_TOOL_CALL_RETRIES = 3
@@ -527,9 +528,31 @@ async def process_instruction(
                 "brain.source": instruction.source,
             }
         )
-        turn_context = await _assemble_recall_context(
-            runtime=runtime, instruction=instruction
-        )
+        try:
+            turn_context = await _assemble_recall_context(
+                runtime=runtime, instruction=instruction
+            )
+        except Exception as exc:
+            _LOGGER.warning(
+                "brain assistant context assembly failed",
+                extra={
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                    "channel": instruction.source,
+                },
+            )
+            await route_outbound_response(
+                runtime=runtime,
+                instruction=instruction,
+                response_text=TURN_ERROR_RESPONSE,
+                model="brain-runtime",
+                provider="brain-runtime",
+                reasoning_level="system",
+            )
+            complete_agent_turn_observation(
+                span=turn_span, response_text=TURN_ERROR_RESPONSE
+            )
+            return TURN_ERROR_RESPONSE
         runtime.session_id = turn_context.session_id
         runtime.model._session_id = turn_context.session_id
         inbound_turn = turn_context.inbound_turn
@@ -547,6 +570,23 @@ async def process_instruction(
         runtime.turn_state.reaction_to_proposal_token = (
             instruction.reaction_to_proposal_token or ""
         )
+        approval_response = await _handle_mechanical_approval(
+            runtime=runtime,
+            instruction=instruction,
+        )
+        if approval_response is not None:
+            await route_outbound_response(
+                runtime=runtime,
+                instruction=instruction,
+                response_text=approval_response,
+                model="brain-runtime",
+                provider="brain-runtime",
+                reasoning_level="system",
+            )
+            complete_agent_turn_observation(
+                span=turn_span, response_text=approval_response
+            )
+            return approval_response
         environment_context, environment_diagnostics = await asyncio.to_thread(
             assemble_environment_context,
             client=runtime.client,
@@ -581,7 +621,7 @@ async def process_instruction(
         except BrainSdkError as exc:
             fallback_response = classify_language_failure_response(exc)
             if fallback_response is None:
-                raise
+                fallback_response = TURN_ERROR_RESPONSE
             _LOGGER.warning(
                 "brain assistant lms request failed; returning fallback response",
                 extra={
@@ -610,6 +650,62 @@ async def process_instruction(
         complete_agent_turn_observation(span=turn_span, response_text=response_text)
         return response_text
     raise RuntimeError("operator agent turn exited without a response")
+
+
+async def _handle_mechanical_approval(
+    *,
+    runtime: OperatorAgentRuntime,
+    instruction: RelayOperatorInstruction,
+) -> str | None:
+    """Consume approval-only inbound messages without sending them to the LLM."""
+    intent = (instruction.approval_intent or "").strip()
+    if intent == "":
+        return None
+    # Tokens that arrived on the instruction were pre-marked in Policy by
+    # _record_approval_response before the message was queued; they are safe
+    # to pass as approval_token.  The one-pending fallback token was NOT
+    # pre-marked, so we must leave approval_token empty and let Policy's
+    # message-text correlation path resolve it instead.
+    instruction_token = (
+        (instruction.approval_token or "").strip()
+        or (instruction.reply_to_proposal_token or "").strip()
+        or (instruction.reaction_to_proposal_token or "").strip()
+    )
+    token = instruction_token
+    if token == "" and len(runtime.turn_state.pending_invocations) == 1:
+        token = next(iter(runtime.turn_state.pending_invocations))
+    if token == "":
+        return "I could not match that approval to a pending proposal."
+    pending = runtime.turn_state.pending_invocations.get(token)
+    if pending is None:
+        if intent == "approve":
+            return f"Recorded approval for `{token}`."
+        if intent == "reject":
+            return f"Recorded rejection for `{token}`."
+        return f"No pending approval matches token `{token}`."
+    if intent == "reject":
+        runtime.turn_state.pending_invocations.pop(token, None)
+        return f"Rejected `{pending.op_id}`."
+    if intent != "approve":
+        return None
+    try:
+        result = await asyncio.to_thread(
+            call_with_optional_meta,
+            runtime.client.invoke_op,
+            meta=runtime.turn_state.nested_call_meta(),
+            op_id=pending.op_id,
+            input_payload=pending.input_payload,
+            actor=pending.actor,
+            channel=pending.channel,
+            approval_token=instruction_token,
+            message_text=instruction.message_text,
+        )
+    except BrainDomainError as exc:
+        return f"Approval failed for `{pending.op_id}`: {exc}"
+    runtime.turn_state.pending_invocations.pop(token, None)
+    if result.output is None:
+        return f"Approved and completed `{pending.op_id}`."
+    return json.dumps(result.output, sort_keys=True, default=str)
 
 
 async def _assemble_recall_context(
@@ -865,6 +961,7 @@ __all__ = [
     "LMS_RECOVERY_IN_PROGRESS_RESPONSE",
     "LMS_THROTTLE_RESPONSE",
     "LMS_TIMEOUT_RESPONSE",
+    "TURN_ERROR_RESPONSE",
     "MAX_PENDING_INVOCATIONS",
     "OperatorAgentRuntime",
     "OperatorPendingInvocation",

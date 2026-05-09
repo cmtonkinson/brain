@@ -99,6 +99,21 @@ class PostgresJobRepository:
             )
             return None if row is None else _to_job_intent(row)
 
+    def find_job_by_origin_reference(
+        self, *, origin_reference: str
+    ) -> JobRecord | None:
+        """Find the most recent job whose intent matches *origin_reference*."""
+        with self._sessions.session() as session:
+            stmt = (
+                select(jobs)
+                .join(job_intents, jobs.c.job_intent_id == job_intents.c.id)
+                .where(job_intents.c.origin_reference == origin_reference)
+                .order_by(jobs.c.created_at.desc())
+                .limit(1)
+            )
+            row = session.execute(stmt).mappings().one_or_none()
+            return None if row is None else _to_job_record(row)
+
     # ------------------------------------------------------------------
     # Jobs
     # ------------------------------------------------------------------

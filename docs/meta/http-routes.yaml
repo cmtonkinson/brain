@@ -8,6 +8,8 @@
 /ops/search: semantically search the enabled Op catalog and return compact matches
 /ops/slash-lookup: resolve one op descriptor by slash command name or alias
 /ops/tool-system-hints: return compact orientation hints for systems reachable through tools
+/policy/approval_response: record an operator approval or rejection for a pending Policy proposal
+/policy/approval_status: return current status for one Policy approval proposal
 /lms/chat: direct access to model inference without Execution/Policy overhead
 /lms/chat-with-tools: direct access to tool-capable model inference without Execution/Policy overhead
 /memory/create_session: create one new Recall session for the Assistant
@@ -19,7 +21,7 @@
 /memory/record_outbound_delivery: persist the final delivery state for one outbound Recall turn
 /memory/compact_dialogue: force-summarize all visible turns and advance dialogue frontier
 /memory/record_response: persist one outbound Recall response turn
-/relay/enqueue_console_message: accept and enqueue one inbound console operator message
+/relay/ingest_inbound_message: accept one normalized inbound operator message
 /relay/poll_console_response: dequeue the next queued Brain response for the console channel
 /relay/poll_operator_instruction: dequeue the next queued operator instruction for the Assistant
 /ingestion/submit: validate and submit one ingestion attempt; runs store stage inline

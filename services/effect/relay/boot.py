@@ -1,4 +1,4 @@
-"""Relay boot hook: register Signal adapter callback once inbound is healthy."""
+"""Relay boot hook: register inbound adapter callbacks once inbound is healthy."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from time import sleep
 from lib.core.boot import BootContext
 from lib.shared.envelope import EnvelopeKind, new_meta
 from lib.shared.errors import codes, internal_error
-from resources.adapters.signal.config import resolve_signal_adapter_settings
 from services.effect.relay.component import SERVICE_COMPONENT_ID
 from services.effect.relay.config import (
     RelayServiceSettings,
@@ -56,13 +55,7 @@ def is_ready(ctx: BootContext) -> bool:
 
 
 def boot(ctx: BootContext) -> None:
-    """Register the in-process Signal adapter callback once Relay is ready."""
-    if not resolve_signal_adapter_settings(ctx.settings).receive_e164:
-        _LOGGER.info(
-            "signal disabled (signal.receive_e164 empty); "
-            "skipping signal callback registration"
-        )
-        return
+    """Register in-process inbound adapter callbacks once Relay is ready."""
     service, settings = _resolve(ctx)
     inbound_settings = settings.inbound
     attempts = inbound_settings.callback_register_max_retries + 1
@@ -74,7 +67,7 @@ def boot(ctx: BootContext) -> None:
                 source=_SOURCE,
                 principal=_PRINCIPAL,
             )
-            result = service.register_signal_callback(meta=registration_meta)
+            result = service.register_inbound_callbacks(meta=registration_meta)
             if result.ok:
                 return
             messages = "; ".join(error.message for error in result.errors) or "unknown"

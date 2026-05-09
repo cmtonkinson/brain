@@ -19,10 +19,11 @@ from lib.shared.envelope import (
     Envelope,
     EnvelopeKind,
     EnvelopeMeta,
+    failure,
     success,
     validate_meta,
 )
-from lib.shared.errors import codes, policy_error
+from lib.shared.errors import ErrorDetail, codes, policy_error, validation_error
 from lib.shared.ids import generate_ulid_str
 from lib.shared.logging import get_logger, public_api_instrumented
 from services.effect.relay.domain import ApprovalNotificationPayload
@@ -42,6 +43,7 @@ from services.reason.policy.domain import (
     UNKNOWN_CALL_TARGET_REASON,
     ActorPolicyDeclaration,
     ApprovalProposal,
+    ApprovalProposalStatus,
     OpInvocationRequest,
     PolicyApprovalProposalRow,
     PolicyDecision,
@@ -82,6 +84,18 @@ _TOKEN_EXPIRED = "expired"
 # Proposal tokens are derived from the first N hex chars of a SHA-256 digest.
 # 26 chars = 104 bits of entropy, matching ULID string length for consistency.
 _PROPOSAL_TOKEN_LENGTH = 26
+
+
+def _approval_reason(request: OpInvocationRequest) -> str:
+    """Explain why Policy is interrupting this op for operator approval."""
+    effect = str(request.op_policy.effect)
+    actor = request.invocation.actor.strip()
+    source = request.invocation.source.strip()
+    channel = request.invocation.channel.strip()
+    return (
+        f"Policy requires operator approval before actor `{actor}` from `{source}` "
+        f"can run this {effect} op via `{channel}`."
+    )
 
 
 class DefaultPolicyService(PolicyService):
@@ -149,6 +163,87 @@ class DefaultPolicyService(PolicyService):
                 detail="ok",
             ),
         )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("proposal_token",),
+    )
+    def get_approval_proposal_status(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        proposal_token: str,
+    ) -> Envelope[ApprovalProposalStatus]:
+        """Return current approval proposal status."""
+        errors = self._validate_meta_and_token(meta=meta, proposal_token=proposal_token)
+        if errors:
+            return failure(meta=meta, errors=errors)
+        status = self._persistence.get_proposal_status(
+            token=proposal_token.strip(), now=datetime.now(UTC)
+        )
+        return success(meta=meta, payload=status)
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+        id_fields=("proposal_token",),
+    )
+    def record_approval_response(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        proposal_token: str,
+        intent: str,
+    ) -> Envelope[ApprovalProposalStatus]:
+        """Record an operator approval/rejection response."""
+        errors = self._validate_meta_and_token(meta=meta, proposal_token=proposal_token)
+        if errors:
+            return failure(meta=meta, errors=errors)
+        normalized_intent = intent.strip().lower()
+        if normalized_intent not in {"approve", "reject"}:
+            return failure(
+                meta=meta,
+                errors=[
+                    validation_error(
+                        "intent must be approve or reject", code=codes.INVALID_ARGUMENT
+                    )
+                ],
+            )
+        token = proposal_token.strip()
+        current = self._persistence.get_proposal_status(
+            token=token, now=datetime.now(UTC)
+        )
+        if current.status == "missing":
+            return failure(
+                meta=meta,
+                errors=[validation_error("proposal not found", code=codes.NOT_FOUND)],
+            )
+        if current.status != "pending":
+            return success(meta=meta, payload=current)
+        self._persistence.mark_proposal_status(
+            token=token,
+            status="approved" if normalized_intent == "approve" else "rejected",
+        )
+        updated = self._persistence.get_proposal_status(
+            token=token, now=datetime.now(UTC)
+        )
+        return success(meta=meta, payload=updated)
+
+    def _validate_meta_and_token(
+        self, *, meta: EnvelopeMeta, proposal_token: str
+    ) -> list[ErrorDetail]:
+        try:
+            validate_meta(meta)
+        except ValueError as exc:
+            return [validation_error(str(exc), code=codes.INVALID_ARGUMENT)]
+        if proposal_token.strip() == "":
+            return [
+                validation_error(
+                    "proposal_token is required", code=codes.INVALID_ARGUMENT
+                )
+            ]
+        return []
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -347,7 +442,7 @@ class DefaultPolicyService(PolicyService):
                     reason_codes.append(_REASON_APPROVAL_NOTIFICATION_FAILED)
             elif approved_token:
                 self._persistence.mark_proposal_status(
-                    token=approved_token, status="approved"
+                    token=approved_token, status="consumed"
                 )
 
         allowed = len(reason_codes) == 0 and len(obligations) == 0
@@ -382,8 +477,7 @@ class DefaultPolicyService(PolicyService):
         if token:
             token_status = self._validate_approval_token(
                 token=token,
-                actor=request.invocation.actor,
-                channel=request.invocation.channel,
+                request=request,
                 now=now,
             )
             if token_status == _TOKEN_VALID:
@@ -486,8 +580,7 @@ class DefaultPolicyService(PolicyService):
         if linked_token:
             status = self._validate_approval_token(
                 token=linked_token,
-                actor=request.invocation.actor,
-                channel=request.invocation.channel,
+                request=request,
                 now=now,
             )
             if status == _TOKEN_VALID:
@@ -664,7 +757,7 @@ class DefaultPolicyService(PolicyService):
             proposal_token=proposal_token,
             op_id=request.op_policy.op_id,
             op_version=request.op_policy.version,
-            summary=f"Approval required for {request.op_policy.op_id}",
+            summary=request.op_policy.summary or request.op_policy.op_id,
             actor=request.invocation.actor,
             channel=request.invocation.channel,
             trace_id=request.metadata.trace_id,
@@ -678,14 +771,30 @@ class DefaultPolicyService(PolicyService):
         self,
         *,
         token: str,
-        actor: str,
-        channel: str,
+        request: OpInvocationRequest,
         now: datetime,
     ) -> str:
-        proposal = self._persistence.find_pending_proposal(token=token)
+        proposal = self._persistence.find_proposal(token=token)
         if proposal is None:
             return _TOKEN_INVALID
-        if proposal.actor != actor or proposal.channel != channel:
+        status = self._persistence.get_proposal_status(token=token, now=now)
+        if status.status == "expired":
+            return _TOKEN_EXPIRED
+        if status.status != "approved":
+            return _TOKEN_INVALID
+        if (
+            proposal.actor != request.invocation.actor
+            or proposal.channel != request.invocation.channel
+            or proposal.op_id != request.op_policy.op_id
+            or proposal.op_version != request.op_policy.version
+        ):
+            return _TOKEN_INVALID
+        expected = self._create_proposal(
+            request=request,
+            regime=self._require_active_regime(),
+            now=proposal.created_at,
+        )
+        if expected.proposal_token != proposal.proposal_token:
             return _TOKEN_INVALID
         if proposal.expires_at < now:
             self._persistence.mark_proposal_status(token=token, status="expired")
@@ -718,10 +827,15 @@ class DefaultPolicyService(PolicyService):
                 op_id=proposal.op_id,
                 op_version=proposal.op_version,
                 summary=proposal.summary,
+                effect=str(request.op_policy.effect),
+                reason=_approval_reason(request),
                 actor=proposal.actor,
+                source=request.invocation.source,
                 channel=proposal.channel,
                 trace_id=proposal.trace_id,
                 invocation_id=proposal.invocation_id,
+                parent_invocation_id=request.invocation.parent_invocation_id,
+                message_text=request.invocation.message_text,
                 input_payload=request.input_payload,
                 expires_at=proposal.expires_at,
             ),

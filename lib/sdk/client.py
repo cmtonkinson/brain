@@ -11,9 +11,9 @@ from lib.sdk.calls import (
     DelegationTurnDecision,
     DynamicOpClassification,
     OpDescriptor,
+    ApprovalProposalStatus,
     OpInvokeResult,
     OpSearchHit,
-    ConsoleEnqueueResult,
     ConsoleResponseMessage,
     CoreHealthResult,
     JobClaimResult,
@@ -24,6 +24,7 @@ from lib.sdk.calls import (
     MemoryTurnContext,
     MemoryTurnRecord,
     RelayOperatorInstruction,
+    RelayInboundIngestResult,
     ToolSystemHint,
     call_delegation_cancel,
     call_delegation_claim_invocation,
@@ -41,6 +42,8 @@ from lib.sdk.calls import (
     call_ops_tool_system_hints,
     call_op_describe,
     call_op_invoke,
+    call_policy_approval_response,
+    call_policy_approval_status,
     call_core_health,
     call_job_claim_execution,
     call_job_complete_execution,
@@ -57,7 +60,7 @@ from lib.sdk.calls import (
     call_memory_record_outbound_delivery,
     call_memory_record_response,
     call_slash_lookup,
-    call_relay_enqueue_console,
+    call_relay_ingest_inbound_message,
     call_relay_poll_console_response,
     call_relay_poll_operator_instruction,
 )
@@ -69,6 +72,7 @@ from lib.sdk.config import (
 )
 from lib.sdk.meta import MetaOverrides, build_envelope_meta
 from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
+from lib.shared.inbound_message import InboundMessage
 from lib.shared.language_model import InferenceRequest
 from lib.shared.http.client import HttpClient
 
@@ -242,6 +246,36 @@ class BrainClient:
             reaction_to_proposal_token=reaction_to_proposal_token,
             message_text=message_text,
             slash_authenticity=slash_authenticity,
+        )
+
+    def policy_approval_status(
+        self,
+        *,
+        proposal_token: str,
+        meta: MetaOverrides | None = None,
+    ) -> ApprovalProposalStatus:
+        """Return current Policy approval proposal status."""
+        return call_policy_approval_status(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            proposal_token=proposal_token,
+        )
+
+    def policy_approval_response(
+        self,
+        *,
+        proposal_token: str,
+        intent: str,
+        meta: MetaOverrides | None = None,
+    ) -> ApprovalProposalStatus:
+        """Record an operator approval/rejection response."""
+        return call_policy_approval_response(
+            http=self._http,
+            metadata=self._meta(meta),
+            timeout_seconds=self._config.timeout_seconds,
+            proposal_token=proposal_token,
+            intent=intent,
         )
 
     def language_chat(
@@ -456,20 +490,18 @@ class BrainClient:
             wait_timeout_seconds=wait_timeout_seconds,
         )
 
-    def relay_enqueue_console(
+    def relay_ingest_inbound_message(
         self,
         *,
-        message_text: str,
-        slash_authenticity: SlashAuthenticityProof | None = None,
+        message: InboundMessage,
         meta: MetaOverrides | None = None,
-    ) -> ConsoleEnqueueResult:
-        """Submit one console operator message to Relay inbound."""
-        return call_relay_enqueue_console(
+    ) -> RelayInboundIngestResult:
+        """Submit one normalized operator message to Relay inbound."""
+        return call_relay_ingest_inbound_message(
             http=self._http,
             metadata=self._meta(meta),
             timeout_seconds=self._config.timeout_seconds,
-            message_text=message_text,
-            slash_authenticity=slash_authenticity,
+            message=message,
         )
 
     def job_claim_execution(

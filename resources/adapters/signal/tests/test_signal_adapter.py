@@ -6,9 +6,9 @@ import json
 
 import pytest
 
+from lib.shared.inbound_adapter import InboundCallbackResult
 from resources.adapters.signal.adapter import (
     SignalAdapterDependencyError,
-    SignalInboundCallbackResult,
 )
 from resources.adapters.signal.config import SignalAdapterSettings
 from resources.adapters.signal.signal_adapter import SignalRestApiAdapter
@@ -58,9 +58,9 @@ def test_process_receive_payload_invokes_callback_and_sends_receipt() -> None:
     signal = adapter._signal_client
     callback_calls: list[str] = []
     adapter.register_callback(
-        callback=lambda *, raw_body_json: (
-            callback_calls.append(raw_body_json)
-            or SignalInboundCallbackResult(
+        callback=lambda *, meta, message: (  # noqa: ARG005
+            callback_calls.append(message.message_text)
+            or InboundCallbackResult(
                 accepted=True,
                 queued=True,
                 reason="accepted",
@@ -87,21 +87,7 @@ def test_process_receive_payload_invokes_callback_and_sends_receipt() -> None:
         ),
     )
 
-    assert callback_calls == [
-        json.dumps(
-            {
-                "data": {
-                    "account": "+12025550100",
-                    "envelope": {
-                        "source": "+12025550100",
-                        "sourceDevice": 1,
-                        "timestamp": 1730000000000,
-                        "dataMessage": {"message": "hello"},
-                    },
-                }
-            }
-        )
-    ]
+    assert callback_calls == ["hello"]
     assert signal.posts == [
         (
             "/v1/receipts/%2B13333333333",
@@ -121,12 +107,14 @@ def test_process_receive_payload_retries_pending_payload_after_callback_failure(
     adapter = _adapter()
     attempts = 0
 
-    def _callback(*, raw_body_json: str) -> SignalInboundCallbackResult:
+    def _callback(*, meta, message) -> InboundCallbackResult:
+        del meta
+        del message
         nonlocal attempts
         attempts += 1
         if attempts == 1:
             raise SignalAdapterDependencyError("connect failed")
-        return SignalInboundCallbackResult(
+        return InboundCallbackResult(
             accepted=True,
             queued=True,
             reason="accepted",
@@ -163,10 +151,10 @@ def test_process_receive_payload_does_not_send_receipt_when_not_queued() -> None
     adapter = _adapter()
     signal = adapter._signal_client
     adapter.register_callback(
-        callback=lambda *, raw_body_json: SignalInboundCallbackResult(
+        callback=lambda *, meta, message: InboundCallbackResult(  # noqa: ARG005
             accepted=False,
             queued=False,
-            reason=f"ignored:{raw_body_json[:5]}",
+            reason=f"ignored:{message.message_text}",
         )
     )
 

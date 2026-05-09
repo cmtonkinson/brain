@@ -182,6 +182,20 @@ Native Op over `Commitment Service run_miss_detection()`
 * `notified_count` *(integer)* Number of missed notifications delivered.
 * `commitment_ids` *(array[string])* Commitment ids transitioned during this run.
 
+### `commitment-scan-turns`
+Scan recent inbound conversation turns for commitment candidates.  
+`native` `1.0.0` `effect: execute` `approval: never`  
+Native Op over `Commitment Service run_turn_scanner()`  
+
+**Inputs:** None
+
+**Outputs:**
+* `turns_scanned` *(integer)* Number of inbound turns examined.
+* `candidates_extracted` *(integer)* Number of commitment candidates extracted.
+* `candidates_ingested` *(integer)* Number of candidates ingested through the creation pipeline.
+* `errors_encountered` *(integer)* Number of per-turn errors encountered.
+* `last_turn_id` *(string | null)* Id of the last turn processed in this batch.
+
 ### `commitment-transition`
 Transition one commitment to another lifecycle state.  
 `native` `1.0.0` `effect: write` `approval: always`  
@@ -591,8 +605,6 @@ Native Op over `Relay Service flush_batch()`
 * `batch_key` *(string)* The batch key to flush.
 * `actor` *(string, optional)* Actor identity for routing context. Defaults to 'operator'.
 * `channel` *(string, optional)* Channel identifier. Defaults to service routing default.
-* `recipient_e164` *(string, optional)* Explicit recipient E.164 override.
-* `sender_e164` *(string, optional)* Explicit sender E.164 override.
 * `title` *(string, optional)* Optional title for flushed summary notification.
 
 **Outputs:**

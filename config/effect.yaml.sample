@@ -24,14 +24,20 @@ language:
     model: gpt-oss:20b
 
 relay:
+  # Optional override for inbound operator identity. Defaults to profile.operator.
+  # identity:
+  #   operator_contact_e164: "+12222222222"
+  #   default_dial_code: "+1"
   inbound:
-    queue_name: signal_inbound
-    console_queue_name: console_inbound
+    queue_name: operator_inbound
     console_response_queue_name: console_outbound
     callback_register_max_retries: 8
     callback_register_retry_delay_seconds: 2.0
   outbound:
     default_channel: signal
+    approval_channels:
+      - signal
+      - console
     conversational_channels:
       - signal
       - console

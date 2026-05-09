@@ -10,7 +10,6 @@ from resources.adapters.signal.adapter import SignalAdapter
 from services.effect.relay._outbound.domain import (
     ApprovalCorrelationPayload,
     ApprovalNotificationPayload,
-    ConsoleResponseMessage,
     HealthStatus,
     RouteNotificationResult,
 )
@@ -57,8 +56,6 @@ class RelayOutboundService(ABC):
         batch_key: str,
         actor: str = "operator",
         channel: str = "",
-        recipient_e164: str = "",
-        sender_e164: str = "",
         title: str = "",
     ) -> Envelope[RouteNotificationResult]:
         """Flush one pending batch by key and deliver consolidated summary."""
@@ -90,15 +87,6 @@ class RelayOutboundService(ABC):
         target_timestamp_ms: int,
     ) -> Envelope[str | None]:
         """Resolve one outbound approval notification timestamp to a proposal token."""
-
-    @abstractmethod
-    def poll_console_response(
-        self,
-        *,
-        meta: EnvelopeMeta,
-        wait_timeout_seconds: float = 0.0,
-    ) -> Envelope[ConsoleResponseMessage | None]:
-        """Pop the next queued console response, optionally long-polling."""
 
 
 def build_outbound_service(

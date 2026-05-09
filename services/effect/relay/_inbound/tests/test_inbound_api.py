@@ -10,10 +10,9 @@ from fastapi.testclient import TestClient
 from lib.shared.envelope import EnvelopeKind, failure, new_meta, success
 from lib.shared.errors import validation_error
 from lib.shared.http.server import create_app
+from lib.shared.inbound_message import InboundMessage, InboundSender
 from services.effect.relay._inbound.api import register_routes
-from services.effect.relay._inbound.domain import (
-    NormalizedOperatorMessage,
-)
+from services.effect.relay._inbound.domain import IngestResult
 from services.effect.relay._inbound.service import RelayInboundService
 
 
@@ -33,31 +32,31 @@ class _FakeRelayInboundService(RelayInboundService):
         self.poll_calls: list[_PollCall] = []
         self.poll_result = success(
             meta=_meta(),
-            payload=NormalizedOperatorMessage(
-                sender_e164="+12025550100",
+            payload=InboundMessage(
+                channel="signal",
+                sender=InboundSender(e164="+12025550100"),
                 message_text="hello",
                 timestamp_ms=1,
                 source_device="1",
-                source="signal",
-                reaction_emoji=None,
-                approval_intent=None,
+            ),
+        )
+        self.ingest_calls: list[InboundMessage] = []
+
+    def ingest_inbound_message(self, *, meta, message):
+        del meta
+        self.ingest_calls.append(message)
+        return success(
+            meta=_meta(),
+            payload=IngestResult(
+                accepted=True,
+                queued=True,
+                queue_name="operator_inbound",
+                reason="accepted",
+                message=message,
             ),
         )
 
-    def ingest_signal_message(
-        self,
-        *,
-        meta,
-        raw_body_json: str,
-    ):
-        del meta, raw_body_json
-        raise NotImplementedError
-
-    def enqueue_console_message(self, *, meta, message_text: str):
-        del meta, message_text
-        raise NotImplementedError
-
-    def register_signal_callback(self, *, meta):
+    def register_inbound_callbacks(self, *, meta):
         del meta
         raise NotImplementedError
 

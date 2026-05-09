@@ -12,8 +12,7 @@ class RelayInboundServiceSettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    queue_name: str = "signal_inbound"
-    console_queue_name: str = "console_inbound"
+    queue_name: str = "operator_inbound"
     console_response_queue_name: str = "console_outbound"
     callback_register_max_retries: int = Field(default=8, ge=0)
     callback_register_retry_delay_seconds: float = Field(default=2.0, gt=0)
@@ -24,7 +23,7 @@ class RelayInboundIdentitySettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operator_signal_contact_e164: str
+    operator_contact_e164: str
     default_dial_code: str
 
 
@@ -48,6 +47,6 @@ def resolve_relay_inbound_identity_settings(
     if isinstance(identity_raw, dict):
         return RelayInboundIdentitySettings.model_validate(identity_raw)
     return RelayInboundIdentitySettings(
-        operator_signal_contact_e164=settings.core.profile.operator.signal_contact_e164,
+        operator_contact_e164=settings.core.profile.operator.signal_contact_e164,
         default_dial_code=settings.core.profile.default_dial_code,
     )

@@ -97,6 +97,11 @@ class MemoryRepository(Protocol):
     def list_turns(self, *, session_id: str) -> list[TurnRecord]:
         """List dialogue turns ordered by creation time."""
 
+    def list_inbound_turns_after(
+        self, *, after_id: str | None, limit: int
+    ) -> list[TurnRecord]:
+        """List inbound turns across all sessions with id > *after_id*."""
+
     def get_latest_turn(self, *, session_id: str) -> TurnRecord | None:
         """Read latest turn for one session."""
 
@@ -390,6 +395,18 @@ class PostgresMemoryRepository:
                 .mappings()
                 .all()
             )
+            return [_to_turn(row) for row in rows]
+
+    def list_inbound_turns_after(
+        self, *, after_id: str | None, limit: int
+    ) -> list[TurnRecord]:
+        """List inbound turns across all sessions with id > *after_id*."""
+        with self._sessions.session() as session:
+            stmt = select(turns).where(turns.c.direction == "inbound")
+            if after_id is not None:
+                stmt = stmt.where(turns.c.id > ulid_str_to_bytes(after_id))
+            stmt = stmt.order_by(turns.c.id.asc()).limit(limit)
+            rows = session.execute(stmt).mappings().all()
             return [_to_turn(row) for row in rows]
 
     def get_latest_turn(self, *, session_id: str) -> TurnRecord | None:

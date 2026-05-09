@@ -636,6 +636,39 @@ class DefaultRecallService(RecallService):
         logger=_LOGGER,
         component_id=str(SERVICE_COMPONENT_ID),
     )
+    def list_inbound_turns_after(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        after_id: str | None,
+        limit: int = 100,
+    ) -> Envelope[tuple[TurnRecord, ...]]:
+        """List inbound turns across all sessions created after a given turn id."""
+        try:
+            validate_meta(meta)
+        except ValueError as exc:
+            return failure(
+                meta=meta,
+                errors=[validation_error(str(exc), code=codes.INVALID_ARGUMENT)],
+            )
+
+        clamped_limit = max(1, min(limit, 500))
+
+        try:
+            records = self._repository.list_inbound_turns_after(
+                after_id=after_id,
+                limit=clamped_limit,
+            )
+            return success(meta=meta, payload=tuple(records))
+        except Exception as exc:  # noqa: BLE001
+            return self._handle_exception(
+                meta=meta, operation="list_inbound_turns_after", exc=exc
+            )
+
+    @public_api_instrumented(
+        logger=_LOGGER,
+        component_id=str(SERVICE_COMPONENT_ID),
+    )
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
         """Return Recall and Postgres substrate readiness."""
         try:

@@ -16,6 +16,12 @@ from typing import Any, Protocol
 
 from pydantic_ai import Tool
 
+from lib.agent.approval_wait import (
+    ApprovalWaitExpired,
+    ApprovalWaitRejected,
+    approval_required_from_error,
+    wait_for_approval,
+)
 from lib.sdk.calls import OpDescriptor
 from lib.sdk.errors import (
     BrainConflictError,
@@ -77,6 +83,8 @@ def build_op_tools(
     on_before_dispatch: Callable[[OpDescriptor], None] | None = None,
     invocation_context: OpInvocationContext | None = None,
     extra_input_properties: dict[str, object] | None = None,
+    approval_poll_interval_seconds: float = 2.0,
+    approval_poll_max_interval_seconds: float = 5.0,
 ) -> list[Tool[None]]:
     """Wrap each ``OpDescriptor`` in a PydanticAI ``Tool``.
 
@@ -100,6 +108,8 @@ def build_op_tools(
             on_before_dispatch=on_before_dispatch,
             invocation_context=invocation_context,
             extra_input_properties=extra_input_properties,
+            approval_poll_interval_seconds=approval_poll_interval_seconds,
+            approval_poll_max_interval_seconds=approval_poll_max_interval_seconds,
         )
         for descriptor in descriptors
     ]
@@ -167,6 +177,8 @@ def _wrap_descriptor(
     on_before_dispatch: Callable[[OpDescriptor], None] | None,
     invocation_context: OpInvocationContext | None,
     extra_input_properties: dict[str, object] | None,
+    approval_poll_interval_seconds: float,
+    approval_poll_max_interval_seconds: float,
 ) -> Tool[None]:
     """Return one ``Tool[None]`` bound to ``client.invoke_op`` for one Op."""
     description = descriptor.summary.strip()
@@ -201,6 +213,8 @@ def _wrap_descriptor(
             parent_invocation_id=parent_invocation_id,
             on_before_dispatch=on_before_dispatch,
             descriptor=descriptor,
+            approval_poll_interval_seconds=approval_poll_interval_seconds,
+            approval_poll_max_interval_seconds=approval_poll_max_interval_seconds,
         )
 
     invoke_fn.__name__ = op_id
@@ -281,6 +295,8 @@ def _make_direct_invoke(
     parent_invocation_id: str | None,
     on_before_dispatch: Callable[[OpDescriptor], None] | None,
     descriptor: OpDescriptor,
+    approval_poll_interval_seconds: float,
+    approval_poll_max_interval_seconds: float,
 ) -> Callable[..., Any]:
     """Build an invoke closure for headless runtimes (no approval gating)."""
 
@@ -303,6 +319,46 @@ def _make_direct_invoke(
             return op_error_payload(error="conflict_error", op_id=op_id, exc=exc)
         except BrainNotFoundError as exc:
             return op_error_payload(error="not_found", op_id=op_id, exc=exc)
+        except BrainPolicyError as exc:
+            approval = approval_required_from_error(exc)
+            if approval is None:
+                return op_error_payload(error="policy_error", op_id=op_id, exc=exc)
+            try:
+                token = wait_for_approval(
+                    client=client,
+                    approval=approval,
+                    poll_interval_seconds=approval_poll_interval_seconds,
+                    poll_max_interval_seconds=approval_poll_max_interval_seconds,
+                )
+                result = client.invoke_op(  # type: ignore[attr-defined]
+                    op_id=op_id,
+                    input_payload=input_payload,
+                    actor=actor,
+                    channel=channel,
+                    parent_invocation_id=""
+                    if parent_invocation_id is None
+                    else parent_invocation_id,
+                    approval_token=token,
+                )
+            except (ApprovalWaitExpired, ApprovalWaitRejected) as wait_exc:
+                return {
+                    "ok": False,
+                    "error": "approval_not_granted",
+                    "op_id": op_id,
+                    "message": str(wait_exc),
+                }
+            except BrainInternalError as retry_exc:
+                _LOGGER.error(
+                    "op tool internal error (approved retry)", extra={"op_id": op_id}
+                )
+                return op_error_payload(
+                    error="internal_error", op_id=op_id, exc=retry_exc
+                )
+            except BrainDomainError as retry_exc:
+                return op_error_payload(
+                    error="domain_error", op_id=op_id, exc=retry_exc
+                )
+            return result.output
         except BrainDependencyError as exc:
             return op_error_payload(error="dependency_error", op_id=op_id, exc=exc)
         except BrainInternalError as exc:

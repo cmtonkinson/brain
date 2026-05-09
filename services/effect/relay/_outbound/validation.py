@@ -45,16 +45,12 @@ class FlushBatchRequest(BaseModel):
     batch_key: str = Field(min_length=1)
     actor: str = Field(default="operator", min_length=1)
     channel: str = Field(default="", min_length=0)
-    recipient_e164: str = Field(default="", min_length=0)
-    sender_e164: str = Field(default="", min_length=0)
     title: str = Field(default="", min_length=0)
 
     @field_validator(
         "batch_key",
         "actor",
         "channel",
-        "recipient_e164",
-        "sender_e164",
         "title",
         mode="before",
     )

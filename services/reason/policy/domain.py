@@ -24,6 +24,7 @@ class OpPolicyInput(BaseModel):
     op_id: str = Field(min_length=1)
     kind: str
     version: str = Field(min_length=1)
+    summary: str = ""
     effect: OpEffect
     approval: OpApproval
     required_ops: tuple[str, ...] = ()
@@ -236,7 +237,20 @@ class PolicyApprovalProposalRow(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     proposal: ApprovalProposal
-    status: Literal["pending", "approved", "expired", "rejected"]
+    status: Literal["pending", "approved", "expired", "rejected", "consumed"]
+
+
+class ApprovalProposalStatus(BaseModel):
+    """Current operator approval proposal status."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    proposal_token: str
+    status: Literal["missing", "pending", "approved", "expired", "rejected", "consumed"]
+    op_id: str = ""
+    actor: str = ""
+    channel: str = ""
+    expires_at: datetime | None = None
 
 
 class PolicyDedupeLogRow(BaseModel):

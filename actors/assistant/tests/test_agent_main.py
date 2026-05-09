@@ -49,8 +49,10 @@ from lib.agent import history
 from lib.sdk import (
     BrainDependencyError,
     BrainInternalError,
+    BrainPolicyError,
     BrainTransportError,
     OpDescriptor,
+    OpInvokeResult,
     OpSearchHit,
     LmsChatToolCall,
     LmsToolChatResult,
@@ -3384,3 +3386,278 @@ def test_rolling_cachepoint_score_non_positive_for_tiny_decisive_success() -> No
     )
 
     assert score <= 0.0
+
+
+# ---------------------------------------------------------------------------
+# _handle_mechanical_approval
+# ---------------------------------------------------------------------------
+
+
+def _pending_invocation(**kwargs):
+    """Build a PendingInvocation with sensible defaults for approval tests."""
+    from lib.agent.turn_state import PendingInvocation
+
+    defaults = dict(
+        proposal_token="tok-abc",
+        op_id="vault-move-path",
+        input_payload={"src": "a.md", "dst": "b.md"},
+        actor="operator",
+        channel="signal",
+        approval="always",
+        reason_codes=("approval_required",),
+        created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        expires_at=datetime(2026, 1, 1, 13, 0, tzinfo=UTC),
+    )
+    defaults.update(kwargs)
+    return PendingInvocation(**defaults)
+
+
+def _instruction(**kwargs):
+    """Build a RelayOperatorInstruction with sensible defaults."""
+    defaults = dict(
+        sender_e164="+12025550100",
+        message_text="",
+        timestamp_ms=1,
+        source_device="1",
+        source="signal",
+        group_id=None,
+        quote_target_timestamp_ms=None,
+        reaction_target_timestamp_ms=None,
+        reaction_emoji=None,
+        approval_intent=None,
+        approval_token=None,
+        reply_to_proposal_token=None,
+        reaction_to_proposal_token=None,
+    )
+    defaults.update(kwargs)
+    return RelayOperatorInstruction(**defaults)
+
+
+def _runtime_with_pending(invocations: dict) -> operator_runtime.OperatorAgentRuntime:
+    """Return a minimal OperatorAgentRuntime with pre-loaded pending invocations."""
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.invoke_calls: list[dict] = []
+            self.raise_on_invoke: Exception | None = None
+
+        def invoke_op(
+            self,
+            *,
+            op_id,
+            input_payload,
+            actor,
+            channel,
+            approval_token="",
+            message_text="",
+            **_kw,
+        ):
+            self.invoke_calls.append(
+                dict(
+                    op_id=op_id,
+                    input_payload=input_payload,
+                    actor=actor,
+                    channel=channel,
+                    approval_token=approval_token,
+                    message_text=message_text,
+                )
+            )
+            if self.raise_on_invoke is not None:
+                raise self.raise_on_invoke
+            return OpInvokeResult(output=None, policy=None)  # type: ignore[arg-type]
+
+    client = _FakeClient()
+    turn_state = operator_runtime.TurnState()
+    turn_state.pending_invocations = dict(invocations)
+    runtime = operator_runtime.OperatorAgentRuntime(
+        client=client,  # type: ignore[arg-type]
+        session_id="sess-1",
+        turn_state=turn_state,
+        model=AgentToolModel.__new__(AgentToolModel),
+        agent=None,  # type: ignore[arg-type]
+        language_request_timeout_seconds=10.0,
+    )
+    return runtime
+
+
+def test_handle_mechanical_approval_no_intent_returns_none() -> None:
+    """No approval_intent → pass through to the LLM (return None)."""
+    runtime = _runtime_with_pending({})
+    result = asyncio.run(
+        operator_runtime._handle_mechanical_approval(
+            runtime=runtime,
+            instruction=_instruction(approval_intent=None, message_text="hello"),
+        )
+    )
+    assert result is None
+
+
+def test_handle_mechanical_approval_no_token_no_pending_returns_error() -> None:
+    """Missing token with no pending invocations → unambiguous failure message."""
+    runtime = _runtime_with_pending({})
+    result = asyncio.run(
+        operator_runtime._handle_mechanical_approval(
+            runtime=runtime,
+            instruction=_instruction(approval_intent="approve", message_text="approve"),
+        )
+    )
+    assert result is not None
+    assert "could not match" in result.lower()
+
+
+def test_handle_mechanical_approval_explicit_token_invokes_with_approval_token() -> (
+    None
+):
+    """Explicit token from instruction passes approval_token (pre-marked by inbound)."""
+    token = "tok-abc"
+    pending = _pending_invocation(proposal_token=token)
+    runtime = _runtime_with_pending({token: pending})
+
+    result = asyncio.run(
+        operator_runtime._handle_mechanical_approval(
+            runtime=runtime,
+            instruction=_instruction(
+                approval_intent="approve",
+                reply_to_proposal_token=token,
+                message_text="",
+            ),
+        )
+    )
+
+    assert result is not None
+    assert "Approved" in result
+    client = runtime.client  # type: ignore[attr-defined]
+    assert len(client.invoke_calls) == 1
+    call = client.invoke_calls[0]
+    assert call["op_id"] == "vault-move-path"
+    assert call["approval_token"] == token
+    assert token not in runtime.turn_state.pending_invocations
+
+
+def test_handle_mechanical_approval_fallback_token_omits_approval_token() -> None:
+    """Fallback (one-pending) approval passes empty approval_token so Policy uses
+    message_text correlation — the proposal has not been pre-marked 'approved'."""
+    token = "tok-abc"
+    pending = _pending_invocation(proposal_token=token)
+    runtime = _runtime_with_pending({token: pending})
+
+    result = asyncio.run(
+        operator_runtime._handle_mechanical_approval(
+            runtime=runtime,
+            instruction=_instruction(
+                approval_intent="approve",
+                message_text="approve",
+            ),
+        )
+    )
+
+    assert result is not None
+    assert "Approved" in result
+    client = runtime.client  # type: ignore[attr-defined]
+    assert len(client.invoke_calls) == 1
+    call = client.invoke_calls[0]
+    assert call["approval_token"] == ""
+    assert call["message_text"] == "approve"
+    assert token not in runtime.turn_state.pending_invocations
+
+
+def test_handle_mechanical_approval_reject_explicit_token_pops_pending() -> None:
+    """Explicit rejection removes the pending invocation and returns a clear message."""
+    token = "tok-abc"
+    pending = _pending_invocation(proposal_token=token)
+    runtime = _runtime_with_pending({token: pending})
+
+    result = asyncio.run(
+        operator_runtime._handle_mechanical_approval(
+            runtime=runtime,
+            instruction=_instruction(
+                approval_intent="reject",
+                reply_to_proposal_token=token,
+                message_text="",
+            ),
+        )
+    )
+
+    assert result is not None
+    assert "Rejected" in result
+    assert "vault-move-path" in result
+    assert token not in runtime.turn_state.pending_invocations
+    client = runtime.client  # type: ignore[attr-defined]
+    assert len(client.invoke_calls) == 0
+
+
+def test_handle_mechanical_approval_reject_fallback_token_pops_pending() -> None:
+    """Fallback rejection (one-pending, no instruction token) also clears local state."""
+    token = "tok-abc"
+    pending = _pending_invocation(proposal_token=token)
+    runtime = _runtime_with_pending({token: pending})
+
+    result = asyncio.run(
+        operator_runtime._handle_mechanical_approval(
+            runtime=runtime,
+            instruction=_instruction(approval_intent="reject", message_text="reject"),
+        )
+    )
+
+    assert result is not None
+    assert "Rejected" in result
+    assert token not in runtime.turn_state.pending_invocations
+    client = runtime.client  # type: ignore[attr-defined]
+    assert len(client.invoke_calls) == 0
+
+
+def test_handle_mechanical_approval_token_in_instruction_no_matching_pending() -> None:
+    """Token from instruction but absent from local state → acknowledgment only."""
+    runtime = _runtime_with_pending({})
+
+    result = asyncio.run(
+        operator_runtime._handle_mechanical_approval(
+            runtime=runtime,
+            instruction=_instruction(
+                approval_intent="approve",
+                reply_to_proposal_token="unknown-token",
+            ),
+        )
+    )
+
+    assert result is not None
+    assert "Recorded approval" in result
+    assert "unknown-token" in result
+    client = runtime.client  # type: ignore[attr-defined]
+    assert len(client.invoke_calls) == 0
+
+
+def test_handle_mechanical_approval_invoke_failure_returns_error_message() -> None:
+    """invoke_op failure during approval → surfaces error without crashing."""
+    from lib.sdk.errors import SdkErrorDetail
+
+    token = "tok-abc"
+    pending = _pending_invocation(proposal_token=token)
+    runtime = _runtime_with_pending({token: pending})
+    runtime.client.raise_on_invoke = BrainPolicyError(  # type: ignore[attr-defined]
+        "policy denied op invocation",
+        operation="ops.invoke",
+        details=(
+            SdkErrorDetail(
+                code="PERMISSION_DENIED",
+                message="policy denied op invocation",
+                category="policy",
+                retryable=False,
+                metadata={"reason_codes": "approval_token_invalid"},
+            ),
+        ),
+    )
+
+    result = asyncio.run(
+        operator_runtime._handle_mechanical_approval(
+            runtime=runtime,
+            instruction=_instruction(
+                approval_intent="approve",
+                reply_to_proposal_token=token,
+            ),
+        )
+    )
+
+    assert result is not None
+    assert "Approval failed" in result
+    assert "vault-move-path" in result

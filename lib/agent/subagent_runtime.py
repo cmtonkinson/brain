@@ -135,7 +135,13 @@ def build_record_turn(
     return _record
 
 
-def run_invocation(*, client: BrainClient, claim: DelegationClaim) -> None:
+def run_invocation(
+    *,
+    client: BrainClient,
+    claim: DelegationClaim,
+    approval_poll_interval_seconds: float = 2.0,
+    approval_poll_max_interval_seconds: float = 5.0,
+) -> None:
     """Execute one claimed Delegation invocation through the headless loop."""
     invocation_id = claim.invocation_id
     inherited_channel = resolve_inherited_channel(claim)
@@ -188,6 +194,8 @@ def run_invocation(*, client: BrainClient, claim: DelegationClaim) -> None:
             max_turns=claim.max_turns,
             cancel_check=cancel_check,
             record_turn=record_turn,
+            approval_poll_interval_seconds=approval_poll_interval_seconds,
+            approval_poll_max_interval_seconds=approval_poll_max_interval_seconds,
         )
     except CancellationError as exc:
         _LOGGER.info(

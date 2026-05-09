@@ -41,7 +41,7 @@ def resolve_relay_settings(settings: CoreRuntimeSettings) -> RelayServiceSetting
 
     if identity_raw is None:
         identity = RelayInboundIdentitySettings(
-            operator_signal_contact_e164=settings.core.profile.operator.signal_contact_e164,
+            operator_contact_e164=settings.core.profile.operator.signal_contact_e164,
             default_dial_code=settings.core.profile.default_dial_code,
         )
     else:

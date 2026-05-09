@@ -69,6 +69,8 @@ def _dispatch(
     *,
     config: BrainSdkConfig,
     claim: DelegationClaim,
+    approval_poll_interval_seconds: float,
+    approval_poll_max_interval_seconds: float,
 ) -> None:
     """Run one claimed invocation under a fresh per-task BrainClient.
 
@@ -76,7 +78,12 @@ def _dispatch(
     even when the worker thread outlives the task.
     """
     with BrainClient(config=config) as client:
-        subagent_runtime.run_invocation(client=client, claim=claim)
+        subagent_runtime.run_invocation(
+            client=client,
+            claim=claim,
+            approval_poll_interval_seconds=approval_poll_interval_seconds,
+            approval_poll_max_interval_seconds=approval_poll_max_interval_seconds,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +178,8 @@ def _main() -> None:
                     _dispatch,
                     config=sdk_config,
                     claim=claim,
+                    approval_poll_interval_seconds=subagent_cfg.approval_poll_interval_seconds,
+                    approval_poll_max_interval_seconds=subagent_cfg.approval_poll_max_interval_seconds,
                 )
                 pending.append(future)
 

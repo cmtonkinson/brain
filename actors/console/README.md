@@ -52,9 +52,9 @@ loads on startup.
 ------------------------------------------------------------------------
 ## Message Flow
 ```
-Operator types → POST /relay/enqueue_console_message
-                         ↓
-                  console_inbound queue (Cache)
+Operator types → POST /relay/ingest_inbound_message
+                          ↓
+                   operator_inbound queue (Cache)
                          ↓
                   Agent poll_operator_instruction
                          ↓
@@ -76,13 +76,12 @@ visible in Console history and vice versa.
 
 ------------------------------------------------------------------------
 ## Architecture Notes
-The console uses two Cache queues:
-* `console_inbound` — operator messages waiting for the Agent
+The console uses shared Relay queues:
+* `operator_inbound` — normalized operator messages waiting for the Agent
 * `console_outbound` — Brain responses waiting for the TUI
 
 Queue names are configured in `config/core.yaml` under
-`service.inbound.console_queue_name` and
-`service.inbound.console_response_queue_name`.
+`service.inbound.queue_name` and `service.inbound.console_response_queue_name`.
 
 The poll loop runs as a daemon thread inside the Textual app. It uses a
 configurable long-poll timeout (`actors.console.poll_timeout_seconds`,

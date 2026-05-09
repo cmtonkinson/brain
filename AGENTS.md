@@ -27,3 +27,20 @@ Additional instructions for working in this specific project:
   valid syntax in this project, and ruff's formatter emits the unparenthesised
   form. Don't "fix" it.
 
+Recent-turn analysis pointers:
+* Start with service state: `docker compose ps`.
+* Check recent service logs with timestamps: `docker compose logs --since 10m
+  brain-core brain-assistant brain-worker brain-subagent`.
+* Include adapter/substrate logs when relevant: `docker compose logs --since
+  10m postgres valkey qdrant seaweedfs signal-api brain-mcp`.
+* Inspect Postgres read-only via compose: `docker compose exec postgres psql -U
+  brain -d brain`.
+* List schemas/tables in `psql` with `\dn` and `\dt service_recall.*`; common
+  turn-debug tables include `service_recall.turn`, `service_recall.session`,
+  and `service_language.call_audits`.
+* Useful recent-turn SQL snippets:
+  * `select id, session_id, direction, role, trace_id, created_at from
+    service_recall.turn order by created_at desc limit 20;`
+  * `select trace_id, provider, model, operation, request_phase, outcome_kind,
+    duration_ms, error_message, created_at from service_language.call_audits
+    order by created_at desc limit 20;`

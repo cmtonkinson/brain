@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
-
 from lib.shared.envelope import EnvelopeKind, new_meta
-from services.effect.relay._inbound.tests.test_inbound_integration import (
+from lib.shared.inbound_message import InboundMessage, InboundSender
+from services.effect.relay._inbound.tests.test_inbound_service import (
     _FakeCacheService,
     _FakeSignalAdapter,
 )
@@ -27,25 +26,21 @@ def test_signal_ingest_enqueues_message_in_cache() -> None:
     service = DefaultRelayInboundService(
         settings=RelayInboundServiceSettings(),
         identity=RelayInboundIdentitySettings(
-            operator_signal_contact_e164="+12025550100",
+            operator_contact_e164="+12025550100",
             default_dial_code="+1",
         ),
-        adapter=_FakeSignalAdapter(),
+        inbound_adapters=(_FakeSignalAdapter(),),
         cache_service=cache,
     )
-    body = json.dumps(
-        {
-            "data": {
-                "source": "+12025550100",
-                "message": "hello",
-                "timestamp": 1730000000000,
-            }
-        }
-    )
-    result = service.ingest_signal_message(
+    result = service.ingest_inbound_message(
         meta=_meta(),
-        raw_body_json=body,
+        message=InboundMessage(
+            channel="signal",
+            sender=InboundSender(e164="+12025550100"),
+            message_text="hello",
+            timestamp_ms=1730000000000,
+        ),
     )
 
     assert result.ok is True
-    assert len(cache.pushed) == 1
+    assert len(cache.queue_calls) == 1

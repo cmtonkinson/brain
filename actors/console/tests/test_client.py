@@ -30,9 +30,10 @@ def test_non_slash_message_is_not_signed(
 
     client.ingest("hello brain, how are you?")
 
-    call_kwargs = client._sdk.relay_enqueue_console.call_args.kwargs  # type: ignore[attr-defined]
-    assert call_kwargs["message_text"] == "hello brain, how are you?"
-    assert call_kwargs["slash_authenticity"] is None
+    call_kwargs = client._sdk.relay_ingest_inbound_message.call_args.kwargs  # type: ignore[attr-defined]
+    message = call_kwargs["message"]
+    assert message.message_text == "hello brain, how are you?"
+    assert message.slash_authenticity is None
 
 
 def test_slash_message_is_signed_and_verifies(
@@ -47,9 +48,10 @@ def test_slash_message_is_signed_and_verifies(
     text = "/workspace-register --path /tmp/foo"
     client.ingest(text)
 
-    call_kwargs = client._sdk.relay_enqueue_console.call_args.kwargs  # type: ignore[attr-defined]
-    assert call_kwargs["message_text"] == text
-    proof = call_kwargs["slash_authenticity"]
+    call_kwargs = client._sdk.relay_ingest_inbound_message.call_args.kwargs  # type: ignore[attr-defined]
+    message = call_kwargs["message"]
+    assert message.message_text == text
+    proof = message.slash_authenticity
     assert proof is not None
     assert verify_proof(
         secret,
@@ -69,5 +71,5 @@ def test_slash_message_with_missing_secret_returns_none_proof(
 
     client.ingest("/workspace-register --path /tmp/foo")
 
-    call_kwargs = client._sdk.relay_enqueue_console.call_args.kwargs  # type: ignore[attr-defined]
-    assert call_kwargs["slash_authenticity"] is None
+    call_kwargs = client._sdk.relay_ingest_inbound_message.call_args.kwargs  # type: ignore[attr-defined]
+    assert call_kwargs["message"].slash_authenticity is None

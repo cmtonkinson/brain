@@ -1,0 +1,51 @@
+{
+  "op_id": "commitment-scan-turns",
+  "kind": "native",
+  "version": "1.0.0",
+  "summary": "Scan recent inbound conversation turns for commitment candidates.",
+  "enabled": true,
+  "input_schema": null,
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "turns_scanned": {
+        "type": "integer",
+        "description": "Number of inbound turns examined."
+      },
+      "candidates_extracted": {
+        "type": "integer",
+        "description": "Number of commitment candidates extracted."
+      },
+      "candidates_ingested": {
+        "type": "integer",
+        "description": "Number of candidates ingested through the creation pipeline."
+      },
+      "errors_encountered": {
+        "type": "integer",
+        "description": "Number of per-turn errors encountered."
+      },
+      "last_turn_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "Id of the last turn processed in this batch."
+      }
+    },
+    "required": [
+      "turns_scanned",
+      "candidates_extracted",
+      "candidates_ingested",
+      "errors_encountered",
+      "last_turn_id"
+    ],
+    "additionalProperties": false
+  },
+  "call_target": "service_commitment.run_turn_scanner",
+  "effect": "execute",
+  "approval": "never"
+}

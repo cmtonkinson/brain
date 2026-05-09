@@ -7,13 +7,15 @@ from datetime import UTC, datetime
 
 from lib.shared.envelope import EnvelopeKind, failure, new_meta, success
 from lib.shared.errors import dependency_error
+from lib.shared.inbound_adapter import (
+    InboundAdapterHealthResult,
+    InboundCallback,
+    InboundCallbackRegistrationResult,
+)
 from resources.adapters.signal import (
     SignalAdapter,
     SignalAdapterDependencyError,
-    SignalAdapterHealthResult,
     SignalSendMessageResult,
-    SignalCallbackRegistrationResult,
-    SignalInboundCallback,
 )
 from services.effect.relay._outbound.config import RelayOutboundServiceSettings
 from services.effect.relay._outbound.domain import ApprovalNotificationPayload
@@ -46,18 +48,22 @@ class _FakeSignalAdapter(SignalAdapter):
     def __init__(self) -> None:
         self.send_calls: list[_SendCall] = []
         self.raise_send: Exception | None = None
-        self.health_result = SignalAdapterHealthResult(adapter_ready=True, detail="ok")
+        self.health_result = InboundAdapterHealthResult(adapter_ready=True, detail="ok")
 
     def register_callback(
         self,
         *,
-        callback: SignalInboundCallback,
-    ) -> SignalCallbackRegistrationResult:
+        callback: InboundCallback,
+    ) -> InboundCallbackRegistrationResult:
         del callback
-        return SignalCallbackRegistrationResult(registered=True, detail="ok")
+        return InboundCallbackRegistrationResult(registered=True, detail="ok")
 
-    def health(self) -> SignalAdapterHealthResult:
+    def health(self) -> InboundAdapterHealthResult:
         return self.health_result
+
+    def mint_slash_authenticity_proof(self, *, channel: str, message_text: str):
+        del channel, message_text
+        raise NotImplementedError
 
     def send_message(
         self,
@@ -265,6 +271,9 @@ class _FakeRecallService(RecallService):
         raise NotImplementedError
 
     def get_session(self, *, meta, session_id: str):
+        raise NotImplementedError
+
+    def list_inbound_turns_after(self, *, meta, after_id, limit=100):
         raise NotImplementedError
 
     def health(self, *, meta):
@@ -518,11 +527,15 @@ def test_route_approval_notification_formats_policy_payload() -> None:
             proposal_token="tok-123",
             op_id="cap.demo",
             op_version="1.0.0",
-            summary="Need approval",
+            summary="Register a coding workspace",
+            effect="write",
+            reason="Policy requires operator approval before actor `operator` from `assistant` can run this write op via `signal`.",
             actor="operator",
+            source="assistant",
             channel="signal",
             trace_id="trace-1",
             invocation_id="inv-1",
+            message_text="please register the repo",
             input_payload={"path": "repo/brain", "default_executor": "opencode"},
             expires_at=datetime(2026, 2, 25, 12, 0, 0, tzinfo=UTC),
         ),
@@ -530,9 +543,19 @@ def test_route_approval_notification_formats_policy_payload() -> None:
 
     assert result.ok is True
     assert len(adapter.send_calls) == 1
+    assert "What: Register a coding workspace" in adapter.send_calls[0].message
+    assert "Why: Policy requires operator approval" in adapter.send_calls[0].message
+    assert "Approval token: tok-123" in adapter.send_calls[0].message
     assert "Op: cap.demo@1.0.0" in adapter.send_calls[0].message
+    assert "Effect: write" in adapter.send_calls[0].message
+    assert (
+        "Requested by: operator via assistant on signal"
+        in adapter.send_calls[0].message
+    )
+    assert "Operator message:" in adapter.send_calls[0].message
+    assert "please register the repo" in adapter.send_calls[0].message
     assert '"path": "repo/brain"' in adapter.send_calls[0].message
-    assert "Approve with: approve tok-123" in adapter.send_calls[0].message
+    assert "approve tok-123" in adapter.send_calls[0].message
     resolved = service.resolve_approval_notification_proposal_token(
         meta=_meta(),
         channel="signal",

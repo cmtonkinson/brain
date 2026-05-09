@@ -111,6 +111,12 @@ class JobRepository(Protocol):
         """Read one job intent by id."""
         ...
 
+    def find_job_by_origin_reference(
+        self, *, origin_reference: str
+    ) -> JobRecord | None:
+        """Find the most recent job whose intent matches *origin_reference*."""
+        ...
+
     # -- jobs --
 
     def create_job(

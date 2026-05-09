@@ -8,6 +8,7 @@ from typing import Protocol
 from services.reason.policy.domain import (
     ActivePolicyRegimePointer,
     ApprovalProposal,
+    ApprovalProposalStatus,
     PolicyApprovalProposalRow,
     PolicyDecisionLogRow,
     PolicyDedupeLogRow,
@@ -45,6 +46,14 @@ class PolicyPersistenceRepository(Protocol):
 
     def find_pending_proposal(self, *, token: str) -> ApprovalProposal | None:
         """Resolve one pending proposal by token."""
+
+    def find_proposal(self, *, token: str) -> ApprovalProposal | None:
+        """Resolve one proposal by token regardless of status."""
+
+    def get_proposal_status(
+        self, *, token: str, now: datetime
+    ) -> ApprovalProposalStatus:
+        """Return current proposal status, expiring stale pending rows."""
 
     def list_pending_proposals(
         self, *, actor: str, channel: str, now: datetime

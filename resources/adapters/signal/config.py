@@ -27,6 +27,7 @@ class SignalAdapterSettings(BaseModel):
     failure_backoff_max_seconds: float = Field(default=30.0, gt=0)
     failure_backoff_multiplier: float = Field(default=2.0, gt=1.0)
     failure_backoff_jitter_ratio: float = Field(default=0.2, ge=0, lt=1.0)
+    default_dial_code: str = "+1"
 
     @field_validator("base_url", mode="before")
     @classmethod
@@ -69,8 +70,11 @@ def resolve_signal_adapter_settings(
     settings: CoreRuntimeSettings,
 ) -> SignalAdapterSettings:
     """Resolve adapter settings from ``adapter.signal``."""
-    return resolve_component_settings(
+    resolved = resolve_component_settings(
         settings=settings,
         component_id=str(RESOURCE_COMPONENT_ID),
         model=SignalAdapterSettings,
+    )
+    return resolved.model_copy(
+        update={"default_dial_code": settings.core.profile.default_dial_code}
     )

@@ -10,6 +10,7 @@ from lib.shared.envelope import Envelope, EnvelopeMeta
 from services.effect.relay.service import RelayService
 from services.reason.policy.domain import (
     OpInvocationRequest,
+    ApprovalProposalStatus,
     PolicyExecutionResult,
     PolicyHealthStatus,
 )
@@ -32,6 +33,25 @@ class PolicyService(ABC):
     @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[PolicyHealthStatus]:
         """Return Policy Service readiness and persistence-backed audit counters."""
+
+    def get_approval_proposal_status(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        proposal_token: str,
+    ) -> Envelope[ApprovalProposalStatus]:
+        """Return current approval proposal status."""
+        raise NotImplementedError
+
+    def record_approval_response(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        proposal_token: str,
+        intent: str,
+    ) -> Envelope[ApprovalProposalStatus]:
+        """Record an operator approval/rejection response."""
+        raise NotImplementedError
 
 
 def build_policy_service(

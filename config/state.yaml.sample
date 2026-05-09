@@ -64,4 +64,4 @@ valkey:
   connect_timeout_seconds: 5.0
   socket_timeout_seconds: 5.0
   health_timeout_seconds: 1.0
-  max_connections: 20
+  max_connections: 100

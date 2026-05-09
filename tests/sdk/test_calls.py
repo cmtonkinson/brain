@@ -344,6 +344,71 @@ def test_call_op_invoke_includes_reply_and_reaction_proposal_tokens() -> None:
     assert body["reaction_to_proposal_token"] == "tok-react"
 
 
+def test_call_policy_approval_status_success() -> None:
+    """Policy approval status wrapper should return typed status payload."""
+    from lib.sdk.calls import call_policy_approval_status
+
+    http = _fake_http(
+        {
+            "payload": {
+                "proposal_token": "tok-123",
+                "status": "pending",
+                "op_id": "demo-ping",
+                "actor": "worker",
+                "channel": "worker",
+                "expires_at": "2026-01-01T00:00:00+00:00",
+            },
+            "errors": [],
+        }
+    )
+
+    result = call_policy_approval_status(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+        proposal_token="tok-123",
+    )
+
+    body = http.post_json.call_args.kwargs["json"]
+    assert body["proposal_token"] == "tok-123"
+    assert result.proposal_token == "tok-123"
+    assert result.status == "pending"
+    assert result.expires_at == "2026-01-01T00:00:00+00:00"
+
+
+def test_call_policy_approval_response_success() -> None:
+    """Policy approval response wrapper should send intent and return status."""
+    from lib.sdk.calls import call_policy_approval_response
+
+    http = _fake_http(
+        {
+            "payload": {
+                "proposal_token": "tok-123",
+                "status": "approved",
+                "op_id": "demo-ping",
+                "actor": "worker",
+                "channel": "worker",
+                "expires_at": None,
+            },
+            "errors": [],
+        }
+    )
+
+    result = call_policy_approval_response(
+        http=http,
+        metadata=_meta(),
+        timeout_seconds=1.0,
+        proposal_token="tok-123",
+        intent="approve",
+    )
+
+    body = http.post_json.call_args.kwargs["json"]
+    assert body["proposal_token"] == "tok-123"
+    assert body["intent"] == "approve"
+    assert result.proposal_token == "tok-123"
+    assert result.status == "approved"
+
+
 def test_call_language_chat_success() -> None:
     """Language chat wrapper should return the typed chat payload."""
     from lib.sdk.calls import call_language_chat
@@ -710,16 +775,15 @@ def test_call_relay_poll_operator_instruction_success() -> None:
     http = _fake_http(
         {
             "payload": {
-                "sender_e164": "+12025550100",
+                "channel": "signal",
+                "sender": {"e164": "+12025550100"},
                 "message_text": "hello",
                 "timestamp_ms": 1,
                 "source_device": "1",
-                "source": "signal",
-                "group_id": None,
-                "quote_target_timestamp_ms": None,
-                "reaction_target_timestamp_ms": None,
-                "reaction_emoji": "👍",
-                "approval_intent": "approve",
+                "thread": None,
+                "reply_to": None,
+                "reaction": {"text": "👍"},
+                "approval": {"intent": "approve", "source": "reaction"},
                 "reply_to_proposal_token": "tok-quote",
                 "reaction_to_proposal_token": "tok-react",
             },

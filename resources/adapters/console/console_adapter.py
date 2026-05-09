@@ -2,17 +2,26 @@
 
 from __future__ import annotations
 
+import time
 from threading import Lock
 
 from lib.shared.envelope import EnvelopeMeta
+from lib.shared.inbound_message import InboundMessage, InboundSender
+from lib.shared.inbound_adapter import (
+    InboundAdapterHealthResult,
+    InboundCallback,
+    InboundCallbackRegistrationResult,
+    InboundCallbackResult,
+)
+from lib.shared.inbound_text import (
+    parse_links,
+    parse_slash_command,
+    parse_text_approval,
+)
 from lib.shared.logging import get_logger, public_api_instrumented
 from resources.adapters.console.adapter import (
     ConsoleAdapter,
-    ConsoleAdapterHealthResult,
     ConsoleAdapterInternalError,
-    ConsoleCallbackRegistrationResult,
-    ConsoleInboundCallback,
-    ConsoleInboundCallbackResult,
     ConsoleInboundPayload,
 )
 from resources.adapters.console.component import RESOURCE_COMPONENT_ID
@@ -27,18 +36,18 @@ class InProcessConsoleAdapter(ConsoleAdapter):
     def __init__(self, *, settings: ConsoleAdapterSettings) -> None:
         self._settings = settings
         self._lock = Lock()
-        self._callback: ConsoleInboundCallback | None = None
+        self._callback: InboundCallback | None = None
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
     def register_callback(
         self,
         *,
-        callback: ConsoleInboundCallback,
-    ) -> ConsoleCallbackRegistrationResult:
+        callback: InboundCallback,
+    ) -> InboundCallbackRegistrationResult:
         """Configure the in-process callback for inbound forwarding."""
         with self._lock:
             self._callback = callback
-        return ConsoleCallbackRegistrationResult(
+        return InboundCallbackRegistrationResult(
             registered=True,
             detail="configured",
         )
@@ -49,7 +58,7 @@ class InProcessConsoleAdapter(ConsoleAdapter):
         *,
         meta: EnvelopeMeta,
         payload: ConsoleInboundPayload,
-    ) -> ConsoleInboundCallbackResult:
+    ) -> InboundCallbackResult:
         """Forward one parsed Console payload to the registered callback."""
         with self._lock:
             callback = self._callback
@@ -57,16 +66,26 @@ class InProcessConsoleAdapter(ConsoleAdapter):
             raise ConsoleAdapterInternalError(
                 "console adapter has no registered callback"
             )
-        return callback(meta=meta, payload=payload)
+        message = InboundMessage(
+            channel="console",
+            sender=InboundSender(id="operator"),
+            message_text=payload.message_text,
+            timestamp_ms=int(time.time() * 1000),
+            links=parse_links(payload.message_text),
+            approval=parse_text_approval(payload.message_text),
+            slash_command=parse_slash_command(payload.message_text),
+            slash_authenticity=payload.slash_authenticity,
+        )
+        return callback(meta=meta, message=message)
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
-    def health(self) -> ConsoleAdapterHealthResult:
+    def health(self) -> InboundAdapterHealthResult:
         """Return adapter readiness."""
         with self._lock:
             callback_state = (
                 "configured" if self._callback is not None else "unconfigured"
             )
-        return ConsoleAdapterHealthResult(
+        return InboundAdapterHealthResult(
             adapter_ready=True,
             detail=f"ready; callback={callback_state}",
         )

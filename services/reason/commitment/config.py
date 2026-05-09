@@ -28,6 +28,10 @@ class CommitmentServiceSettings(BaseModel):
     extraction_min_confidence: float = Field(default=0.4, ge=0.0, le=1.0)
     extraction_max_candidates: int = Field(default=10, ge=1, le=50)
     extraction_reasoning_level: str = Field(default="quick")
+    turn_scanner_enabled: bool = Field(default=True)
+    turn_scanner_interval_minutes: int = Field(default=5, ge=1, le=1440)
+    turn_scanner_batch_size: int = Field(default=50, ge=1, le=500)
+    turn_scanner_op_id: str = Field(default="commitment-scan-turns", min_length=1)
 
     @field_validator("default_timezone")
     @classmethod

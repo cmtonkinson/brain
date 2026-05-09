@@ -1200,6 +1200,7 @@ class DefaultExecutionService(ExecutionService):
                 op_id=manifest.op_id,
                 kind=manifest.kind,
                 version=manifest.version,
+                summary=manifest.summary,
                 effect=manifest.effect,
                 approval=manifest.approval,
                 required_ops=manifest.required_ops,

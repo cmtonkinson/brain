@@ -6,9 +6,10 @@ import pytest
 
 from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.envelope import EnvelopeKind, new_meta
+from lib.shared.inbound_adapter import InboundCallbackResult
+from lib.shared.inbound_message import InboundMessage
 from resources.adapters.console.adapter import (
     ConsoleAdapterInternalError,
-    ConsoleInboundCallbackResult,
     ConsoleInboundPayload,
 )
 from resources.adapters.console.config import ConsoleAdapterSettings
@@ -35,12 +36,17 @@ def test_submit_without_callback_raises_internal_error() -> None:
 
 def test_submit_dispatches_payload_to_registered_callback() -> None:
     """The registered callback receives the parsed payload verbatim."""
-    captured: list[ConsoleInboundPayload] = []
+    captured: list[InboundMessage] = []
 
-    def callback(*, meta, payload):
+    def callback(*, meta, message):
         del meta
-        captured.append(payload)
-        return ConsoleInboundCallbackResult(queued=True, queue_name="console_inbound")
+        captured.append(message)
+        return InboundCallbackResult(
+            accepted=True,
+            queued=True,
+            reason="accepted",
+            queue_name="operator_inbound",
+        )
 
     adapter = _adapter()
     adapter.register_callback(callback=callback)
@@ -55,8 +61,10 @@ def test_submit_dispatches_payload_to_registered_callback() -> None:
     assert len(captured) == 1
     assert captured[0].message_text == "/workspace-register --path /tmp/foo"
     assert captured[0].slash_authenticity == proof
+    assert captured[0].slash_command is not None
+    assert captured[0].slash_command.name == "workspace-register"
     assert result.queued is True
-    assert result.queue_name == "console_inbound"
+    assert result.queue_name == "operator_inbound"
 
 
 def test_health_reports_callback_state() -> None:
@@ -65,8 +73,8 @@ def test_health_reports_callback_state() -> None:
     assert "callback=unconfigured" in adapter.health().detail
 
     adapter.register_callback(
-        callback=lambda *, meta, payload: ConsoleInboundCallbackResult(  # noqa: ARG005
-            queued=True, queue_name="x"
+        callback=lambda *, meta, message: InboundCallbackResult(  # noqa: ARG005
+            accepted=True, queued=True, reason="accepted", queue_name="x"
         )
     )
     assert "callback=configured" in adapter.health().detail

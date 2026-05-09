@@ -34,12 +34,16 @@ worker:
   channel: worker
   max_workers: 4
   poll_interval_seconds: 2.0
+  approval_poll_interval_seconds: 2.0
+  approval_poll_max_interval_seconds: 5.0
 
 subagent:
   principal: subagent
   source: subagent
   max_workers: 1
   poll_interval_seconds: 2.0
+  approval_poll_interval_seconds: 2.0
+  approval_poll_max_interval_seconds: 5.0
   default_personality: subagent
   default_max_turns: 8
   default_budget_tokens: 200000

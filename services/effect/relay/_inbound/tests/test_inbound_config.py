@@ -14,7 +14,7 @@ def test_inbound_settings_include_callback_registration_defaults() -> None:
     settings = load_core_runtime_settings()
     inbound = resolve_relay_inbound_service_settings(settings)
 
-    assert inbound.queue_name == "signal_inbound"
+    assert inbound.queue_name == "operator_inbound"
     assert inbound.callback_register_max_retries == 8
     assert inbound.callback_register_retry_delay_seconds == 2.0
 
@@ -39,7 +39,7 @@ def test_resolve_identity_settings_reads_from_core_profile() -> None:
     identity = resolve_relay_inbound_identity_settings(settings)
 
     assert (
-        identity.operator_signal_contact_e164
+        identity.operator_contact_e164
         == settings.core.profile.operator.signal_contact_e164
     )
     assert identity.default_dial_code == settings.core.profile.default_dial_code

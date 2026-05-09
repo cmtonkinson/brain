@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-import json
 import shutil
 from pathlib import Path
 
@@ -28,6 +27,12 @@ from lib.shared.envelope import (
 )
 from lib.shared.errors import ErrorDetail
 from lib.shared.http.server import create_app
+from lib.shared.inbound_adapter import (
+    InboundAdapterHealthResult,
+    InboundCallback,
+    InboundCallbackRegistrationResult,
+)
+from lib.shared.inbound_message import InboundMessage, InboundSender
 from resources.adapters.llm import (
     AdapterChatResult,
     AdapterEmbeddingResult,
@@ -37,9 +42,6 @@ from resources.adapters.llm import (
 )
 from resources.adapters.signal import (
     SignalAdapter,
-    SignalCallbackRegistrationResult,
-    SignalAdapterHealthResult,
-    SignalInboundCallback,
     SignalSendMessageResult,
 )
 from services.effect.relay._outbound.config import RelayOutboundServiceSettings
@@ -217,13 +219,17 @@ class _FakeSignalAdapter(SignalAdapter):
     def register_callback(
         self,
         *,
-        callback: SignalInboundCallback,
-    ) -> SignalCallbackRegistrationResult:
+        callback: InboundCallback,
+    ) -> InboundCallbackRegistrationResult:
         del callback
-        return SignalCallbackRegistrationResult(registered=True, detail="ok")
+        return InboundCallbackRegistrationResult(registered=True, detail="ok")
 
-    def health(self) -> SignalAdapterHealthResult:
-        return SignalAdapterHealthResult(adapter_ready=True, detail="ok")
+    def health(self) -> InboundAdapterHealthResult:
+        return InboundAdapterHealthResult(adapter_ready=True, detail="ok")
+
+    def mint_slash_authenticity_proof(self, *, channel: str, message_text: str):
+        del channel, message_text
+        raise NotImplementedError
 
     def send_message(
         self,
@@ -373,22 +379,15 @@ def run_agent_e2e_smoke(
     inbound = app.state.inbound_service
     test_client = TestClient(app)
 
-    body = json.dumps(
-        {
-            "data": {
-                "account": "+17175371552",
-                "envelope": {
-                    "source": "+16104257807",
-                    "sourceDevice": 1,
-                    "timestamp": 1730000000000,
-                    "dataMessage": {"message": "hello"},
-                },
-            }
-        }
-    )
-    inbound_result = inbound.ingest_signal_message(
+    inbound_result = inbound.ingest_inbound_message(
         meta=new_meta(kind=EnvelopeKind.EVENT, source="test", principal="operator"),
-        raw_body_json=body,
+        message=InboundMessage(
+            channel="signal",
+            sender=InboundSender(e164="+16104257807"),
+            message_text="hello",
+            timestamp_ms=1730000000000,
+            source_device="1",
+        ),
     )
 
     sdk_client = BrainClient(
@@ -443,10 +442,10 @@ def _build_core_app(
     inbound = DefaultRelayInboundService(
         settings=inbound_settings,
         identity=RelayInboundIdentitySettings(
-            operator_signal_contact_e164="+16104257807",
+            operator_contact_e164="+16104257807",
             default_dial_code="+1",
         ),
-        adapter=signal,
+        inbound_adapters=(signal,),
         cache_service=cache,
     )
     adapter: LlmAdapter = (

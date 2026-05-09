@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from lib.sdk.meta import MetaOverrides
 
 from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
+from lib.shared.inbound_message import InboundMessage
 from lib.sdk.errors import (
     BrainDomainError,
     BrainTransportError,
@@ -200,6 +201,18 @@ class MemorySessionRef:
 
 
 @dataclass(frozen=True, slots=True)
+class ApprovalProposalStatus:
+    """Current Policy approval proposal status."""
+
+    proposal_token: str
+    status: str
+    op_id: str
+    actor: str
+    channel: str
+    expires_at: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class RelayOperatorInstruction:
     """One queued operator instruction delivered from Relay inbound."""
 
@@ -213,6 +226,7 @@ class RelayOperatorInstruction:
     reaction_target_timestamp_ms: int | None
     reaction_emoji: str | None = None
     approval_intent: str | None = None
+    approval_token: str | None = None
     reply_to_proposal_token: str | None = None
     reaction_to_proposal_token: str | None = None
 
@@ -233,8 +247,8 @@ class JobClaimResult:
 
 
 @dataclass(frozen=True, slots=True)
-class ConsoleEnqueueResult:
-    """Result of enqueuing one console operator message."""
+class RelayInboundIngestResult:
+    """Result of ingesting one normalized inbound operator message."""
 
     queued: bool
 
@@ -738,6 +752,63 @@ def call_memory_assemble_context(
     return _memory_turn_context(payload)
 
 
+def call_policy_approval_status(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    proposal_token: str,
+) -> ApprovalProposalStatus:
+    """Return current Policy approval proposal status."""
+    data = _post_json(
+        operation="policy.approval_status",
+        http=http,
+        url="/policy/approval_status",
+        body={**metadata, "proposal_token": proposal_token},
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="policy.approval_status",
+        errors=_errors_from_data(data),
+    )
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        raise BrainDomainError(
+            message="policy.approval_status domain failure: missing payload",
+            operation="policy.approval_status",
+        )
+    return _approval_proposal_status(payload)
+
+
+def call_policy_approval_response(
+    *,
+    http: object,
+    metadata: dict[str, object],
+    timeout_seconds: float,
+    proposal_token: str,
+    intent: str,
+) -> ApprovalProposalStatus:
+    """Record an operator approval response and return current status."""
+    data = _post_json(
+        operation="policy.approval_response",
+        http=http,
+        url="/policy/approval_response",
+        body={**metadata, "proposal_token": proposal_token, "intent": intent},
+        timeout_seconds=timeout_seconds,
+    )
+    raise_for_domain_errors(
+        operation="policy.approval_response",
+        errors=_errors_from_data(data),
+    )
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        raise BrainDomainError(
+            message="policy.approval_response domain failure: missing payload",
+            operation="policy.approval_response",
+        )
+    return _approval_proposal_status(payload)
+
+
 def call_memory_record_inbound_turn(
     *,
     http: object,
@@ -789,6 +860,7 @@ def _instruction_body(instruction: RelayOperatorInstruction) -> dict[str, object
         "reaction_target_timestamp_ms": instruction.reaction_target_timestamp_ms,
         "reaction_emoji": instruction.reaction_emoji,
         "approval_intent": instruction.approval_intent,
+        "approval_token": instruction.approval_token,
         "reply_to_proposal_token": instruction.reply_to_proposal_token,
         "reaction_to_proposal_token": instruction.reaction_to_proposal_token,
     }
@@ -1149,41 +1221,35 @@ def call_relay_poll_operator_instruction(
     return _relay_operator_instruction(payload)
 
 
-def call_relay_enqueue_console(
+def call_relay_ingest_inbound_message(
     *,
     http: object,
     metadata: dict[str, object],
     timeout_seconds: float,
-    message_text: str,
-    slash_authenticity: SlashAuthenticityProof | None = None,
-) -> ConsoleEnqueueResult:
-    """Submit one console operator message to Relay inbound for processing."""
+    message: InboundMessage,
+) -> RelayInboundIngestResult:
+    """Submit one normalized operator message to Relay inbound for processing."""
     data = _post_json(
-        operation="inbound.enqueue_console",
+        operation="relay.ingest_inbound_message",
         http=http,
-        url="/relay/enqueue_console_message",
+        url="/relay/ingest_inbound_message",
         body={
             **metadata,
-            "message_text": message_text,
-            "slash_authenticity": (
-                slash_authenticity.model_dump(mode="json")
-                if slash_authenticity is not None
-                else None
-            ),
+            "message": message.model_dump(mode="json"),
         },
         timeout_seconds=timeout_seconds,
     )
     raise_for_domain_errors(
-        operation="inbound.enqueue_console",
+        operation="relay.ingest_inbound_message",
         errors=_errors_from_data(data),
     )
     payload = data.get("payload")
     if payload is None or not isinstance(payload, dict):
         raise BrainDomainError(
-            message="inbound.enqueue_console domain failure: invalid payload",
-            operation="inbound.enqueue_console",
+            message="relay.ingest_inbound_message domain failure: invalid payload",
+            operation="relay.ingest_inbound_message",
         )
-    return ConsoleEnqueueResult(queued=bool(payload.get("queued", False)))
+    return RelayInboundIngestResult(queued=bool(payload.get("queued", False)))
 
 
 def call_relay_poll_console_response(
@@ -1521,30 +1587,62 @@ def _memory_dialogue_turn(value: object) -> MemoryDialogueTurn:
     )
 
 
+def _approval_proposal_status(value: dict[str, Any]) -> ApprovalProposalStatus:
+    """Map one raw Policy approval status payload into SDK dataclass."""
+    expires_at = value.get("expires_at")
+    return ApprovalProposalStatus(
+        proposal_token=str(value.get("proposal_token", "")),
+        status=str(value.get("status", "")),
+        op_id=str(value.get("op_id", "")),
+        actor=str(value.get("actor", "")),
+        channel=str(value.get("channel", "")),
+        expires_at=None if expires_at is None else str(expires_at),
+    )
+
+
 def _relay_operator_instruction(
     value: dict[str, Any],
 ) -> RelayOperatorInstruction:
     """Map one raw Relay inbound queue payload into the SDK dataclass."""
+    sender = value.get("sender") if isinstance(value.get("sender"), dict) else {}
+    thread = value.get("thread") if isinstance(value.get("thread"), dict) else None
+    reply_to = (
+        value.get("reply_to") if isinstance(value.get("reply_to"), dict) else None
+    )
+    reaction = (
+        value.get("reaction") if isinstance(value.get("reaction"), dict) else None
+    )
+    reaction_target = (
+        reaction.get("target")
+        if isinstance(reaction, dict) and isinstance(reaction.get("target"), dict)
+        else None
+    )
+    approval = (
+        value.get("approval") if isinstance(value.get("approval"), dict) else None
+    )
     return RelayOperatorInstruction(
-        sender_e164=str(value.get("sender_e164", "")),
+        sender_e164=str(sender.get("e164", "")),
         message_text=str(value.get("message_text", "")),
         timestamp_ms=int(value.get("timestamp_ms", 0)),
         source_device=str(value.get("source_device", "")),
-        source=str(value.get("source", "")),
-        group_id=None if value.get("group_id") is None else str(value.get("group_id")),
-        quote_target_timestamp_ms=_optional_int(value.get("quote_target_timestamp_ms")),
-        reaction_target_timestamp_ms=_optional_int(
-            value.get("reaction_target_timestamp_ms")
-        ),
+        source=str(value.get("channel", "")),
+        group_id=None if thread is None else str(thread.get("id", "")),
+        quote_target_timestamp_ms=None
+        if reply_to is None
+        else _optional_int(reply_to.get("timestamp_ms")),
+        reaction_target_timestamp_ms=None
+        if reaction_target is None
+        else _optional_int(reaction_target.get("timestamp_ms")),
         reaction_emoji=(
             None
-            if value.get("reaction_emoji") is None
-            else str(value.get("reaction_emoji"))
+            if not isinstance(reaction, dict) or reaction.get("text") is None
+            else str(reaction.get("text"))
         ),
-        approval_intent=(
+        approval_intent=(None if approval is None else str(approval.get("intent", ""))),
+        approval_token=(
             None
-            if value.get("approval_intent") is None
-            else str(value.get("approval_intent"))
+            if approval is None or approval.get("token") is None
+            else str(approval.get("token"))
         ),
         reply_to_proposal_token=(
             None
@@ -2014,18 +2112,18 @@ def relay_poll_operator_instruction(
     )
 
 
-def relay_enqueue_console(
+def relay_ingest_inbound_message(
     *,
     client: object,
-    message_text: str,
+    message: InboundMessage,
     principal: str = "",
     source: str = "",
     trace_id: str | None = None,
     parent_id: str | None = None,
-) -> ConsoleEnqueueResult:
-    """High-level SDK wrapper for submitting one console operator message."""
-    return client.relay_enqueue_console(  # type: ignore[union-attr]
-        message_text=message_text,
+) -> RelayInboundIngestResult:
+    """High-level SDK wrapper for submitting one normalized inbound message."""
+    return client.relay_ingest_inbound_message(  # type: ignore[union-attr]
+        message=message,
         meta=_meta_overrides(
             principal=principal,
             source=source,

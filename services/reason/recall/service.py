@@ -146,6 +146,16 @@ class RecallService(ABC):
         """Read one Recall session by id."""
 
     @abstractmethod
+    def list_inbound_turns_after(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        after_id: str | None,
+        limit: int = 100,
+    ) -> Envelope[tuple[TurnRecord, ...]]:
+        """List inbound turns across all sessions created after a given turn id."""
+
+    @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
         """Return Recall and Postgres substrate readiness."""
 

@@ -6,11 +6,10 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.http.server import read_json_body
+from lib.shared.inbound_message import InboundMessage
 from services.effect.relay._inbound.domain import (
-    ConsoleEnqueueResult,
-    NormalizedOperatorMessage,
+    IngestResult,
 )
 from services.effect.relay._inbound.service import RelayInboundService
 from services.effect.relay._shared import (
@@ -27,24 +26,23 @@ class _PollOperatorInstructionRequest(RequestMeta):
     wait_timeout_seconds: float = 0.0
 
 
-class _EnqueueConsoleMessageRequest(RequestMeta):
-    """Inbound body for console message enqueue requests."""
+class _IngestInboundMessageRequest(RequestMeta):
+    """Inbound body for normalized message ingestion."""
 
-    message_text: str
-    slash_authenticity: SlashAuthenticityProof | None = None
+    message: InboundMessage
 
 
 class _PollOperatorInstructionResponse(BaseModel):
     """Serialized response body for operator-instruction dequeue requests."""
 
-    payload: NormalizedOperatorMessage | None
+    payload: InboundMessage | None
     errors: list[ErrorOut]
 
 
-class _EnqueueConsoleMessageResponse(BaseModel):
-    """Serialized response body for console message enqueue."""
+class _IngestInboundMessageResponse(BaseModel):
+    """Serialized response body for normalized message ingestion."""
 
-    payload: ConsoleEnqueueResult | None
+    payload: IngestResult | None
     errors: list[ErrorOut]
 
 
@@ -76,26 +74,25 @@ def register_routes(*, router: APIRouter, service: RelayInboundService) -> None:
         )
 
     @router.post(
-        "/relay/enqueue_console_message",
-        response_model=_EnqueueConsoleMessageResponse,
+        "/relay/ingest_inbound_message",
+        response_model=_IngestInboundMessageResponse,
     )
-    async def enqueue_console_message(
+    async def ingest_inbound_message(
         request: Request,
-    ) -> _EnqueueConsoleMessageResponse:
-        """Enqueue one inbound console operator message."""
+    ) -> _IngestInboundMessageResponse:
+        """Ingest one already-normalized inbound operator message."""
         body = await read_json_body(request)
-        req = _EnqueueConsoleMessageRequest.model_validate(body)
+        req = _IngestInboundMessageRequest.model_validate(body)
         meta = meta_from_request(
             req.source, req.principal, req.trace_id, req.parent_id, req.envelope_id
         )
         result = await run_in_threadpool(
-            service.enqueue_console_message,
+            service.ingest_inbound_message,
             meta=meta,
-            message_text=req.message_text,
-            slash_authenticity=req.slash_authenticity,
+            message=req.message,
         )
         payload = None if result.payload is None else result.payload.value
-        return _EnqueueConsoleMessageResponse(
+        return _IngestInboundMessageResponse(
             payload=payload,
             errors=[error_out(error) for error in result.errors],
         )

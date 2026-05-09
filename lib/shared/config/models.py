@@ -278,6 +278,8 @@ class WorkerActorSettings(ActorNamespaceSettings):
     channel: str = "worker"
     max_workers: int = Field(default=4, ge=1, le=32)
     poll_interval_seconds: float = Field(default=2.0, gt=0)
+    approval_poll_interval_seconds: float = Field(default=2.0, gt=0)
+    approval_poll_max_interval_seconds: float = Field(default=5.0, gt=0)
 
 
 class SubagentActorSettings(ActorNamespaceSettings):
@@ -287,6 +289,8 @@ class SubagentActorSettings(ActorNamespaceSettings):
     principal: str = "subagent"
     max_workers: int = Field(default=1, ge=1, le=16)
     poll_interval_seconds: float = Field(default=2.0, gt=0)
+    approval_poll_interval_seconds: float = Field(default=2.0, gt=0)
+    approval_poll_max_interval_seconds: float = Field(default=5.0, gt=0)
     default_personality: str = "subagent"
     default_max_turns: int = Field(default=8, ge=1, le=64)
     default_budget_tokens: int = Field(default=200_000, ge=1_000)

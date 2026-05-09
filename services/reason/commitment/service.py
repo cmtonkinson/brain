@@ -22,8 +22,11 @@ from services.reason.commitment.domain import (
     LoopClosureResolutionResult,
     MissDetectionResult,
     ReviewDeliveryResult,
+    TurnScanResult,
 )
 from services.reason.job.service import JobService
+from services.reason.recall.service import RecallService
+from services.state.cache.service import CacheService
 
 
 class CommitmentService(ABC):
@@ -210,6 +213,10 @@ class CommitmentService(ABC):
         """Extract zero or more commitment candidate signals from arbitrary text."""
 
     @abstractmethod
+    def run_turn_scanner(self, *, meta: EnvelopeMeta) -> Envelope[TurnScanResult]:
+        """Scan recent inbound turns for commitment candidates."""
+
+    @abstractmethod
     def health(self, *, meta: EnvelopeMeta) -> Envelope[HealthStatus]:
         """Return Commitment Service readiness state."""
 
@@ -238,6 +245,12 @@ def build_commitment_service(
         language_service, LanguageService
     ):
         raise KeyError("service_language")
+    recall_service = components.get("service_recall")
+    if recall_service is not None and not isinstance(recall_service, RecallService):
+        raise KeyError("service_recall")
+    cache_service = components.get("service_cache")
+    if cache_service is not None and not isinstance(cache_service, CacheService):
+        raise KeyError("service_cache")
     return DefaultCommitmentService(
         settings=resolve_commitment_service_settings(settings),
         repository=repository,
@@ -245,4 +258,6 @@ def build_commitment_service(
         job_service=job_service,
         outbound_service=outbound,
         language_service=language_service,
+        recall_service=recall_service,
+        cache_service=cache_service,
     )

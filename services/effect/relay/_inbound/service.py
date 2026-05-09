@@ -5,19 +5,17 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from lib.sdk.client import BrainClient
-from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.config import CoreRuntimeSettings
 from lib.shared.envelope import Envelope, EnvelopeMeta
-from resources.adapters.signal.adapter import SignalAdapter
+from lib.shared.inbound_adapter import InboundCallbackRegistrar
+from lib.shared.inbound_message import InboundMessage
 from services.effect.relay._outbound.service import RelayOutboundService
 from services.reason.recall.service import RecallService
 from services.state.cache.service import CacheService
 from services.effect.relay._inbound.domain import (
-    ConsoleEnqueueResult,
     HealthStatus,
     IngestResult,
-    NormalizedOperatorMessage,
-    RegisterSignalCallbackResult,
+    RegisterInboundCallbacksResult,
 )
 
 
@@ -25,31 +23,21 @@ class RelayInboundService(ABC):
     """Public API for inbound operator message ingestion and polling."""
 
     @abstractmethod
-    def ingest_signal_message(
+    def ingest_inbound_message(
         self,
         *,
         meta: EnvelopeMeta,
-        raw_body_json: str,
+        message: InboundMessage,
     ) -> Envelope[IngestResult]:
-        """Normalize and enqueue one raw inbound Signal payload."""
+        """Enqueue one normalized inbound operator message."""
 
     @abstractmethod
-    def enqueue_console_message(
+    def register_inbound_callbacks(
         self,
         *,
         meta: EnvelopeMeta,
-        message_text: str,
-        slash_authenticity: SlashAuthenticityProof | None = None,
-    ) -> Envelope[ConsoleEnqueueResult]:
-        """Normalize and enqueue one inbound console message."""
-
-    @abstractmethod
-    def register_signal_callback(
-        self,
-        *,
-        meta: EnvelopeMeta,
-    ) -> Envelope[RegisterSignalCallbackResult]:
-        """Register one in-process Signal callback with the owned adapter."""
+    ) -> Envelope[RegisterInboundCallbacksResult]:
+        """Register in-process inbound adapter callbacks."""
 
     @abstractmethod
     def poll_operator_instruction(
@@ -57,7 +45,7 @@ class RelayInboundService(ABC):
         *,
         meta: EnvelopeMeta,
         wait_timeout_seconds: float = 0.0,
-    ) -> Envelope[NormalizedOperatorMessage | None]:
+    ) -> Envelope[InboundMessage | None]:
         """Pop the next queued operator instruction, optionally long-polling."""
 
     @abstractmethod
@@ -69,16 +57,12 @@ def build_relay_inbound_service(
     *,
     settings: CoreRuntimeSettings,
     cache_service: CacheService,
-    signal_adapter: SignalAdapter | None = None,
+    inbound_adapters: tuple[InboundCallbackRegistrar, ...] = (),
     outbound_service: RelayOutboundService | None = None,
     recall_service: RecallService | None = None,
     brain_client: BrainClient | None = None,
 ) -> RelayInboundService:
     """Build default Relay inbound implementation from typed settings."""
-    from resources.adapters.signal import (
-        SignalRestApiAdapter,
-        resolve_signal_adapter_settings,
-    )
     from services.effect.relay._inbound.config import (
         resolve_relay_inbound_identity_settings,
         resolve_relay_inbound_service_settings,
@@ -90,8 +74,7 @@ def build_relay_inbound_service(
     return DefaultRelayInboundService(
         settings=resolve_relay_inbound_service_settings(settings),
         identity=resolve_relay_inbound_identity_settings(settings),
-        adapter=signal_adapter
-        or SignalRestApiAdapter(settings=resolve_signal_adapter_settings(settings)),
+        inbound_adapters=inbound_adapters,
         cache_service=cache_service,
         outbound_service=outbound_service,
         recall_service=recall_service,

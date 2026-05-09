@@ -252,42 +252,85 @@ class DefaultRelayOutboundService(RelayOutboundService):
         approval: ApprovalNotificationPayload,
     ) -> Envelope[RouteNotificationResult]:
         """Route one Policy approval proposal as an outbound notification."""
+        reason = approval.reason or "Policy requires operator approval for this op."
         lines = [
             "Approval required",
+            "",
+            f"What: {approval.summary}",
+            f"Why: {reason}",
+            f"Approval token: {approval.proposal_token}",
+            "",
             f"Op: {approval.op_id}@{approval.op_version}",
-            f"Summary: {approval.summary}",
-            f"Actor/channel: {approval.actor}/{approval.channel}",
+            f"Effect: {approval.effect or 'unknown'}",
+            f"Requested by: {approval.actor} via {approval.source or 'unknown'} on {approval.channel}",
             f"Trace: {approval.trace_id}",
             f"Invocation: {approval.invocation_id}",
             f"Expires: {approval.expires_at.isoformat()}",
-            "",
-            "Input:",
-            _render_approval_input_preview(approval.input_payload),
-            "",
-            f"Approve with: approve {approval.proposal_token}",
-            f"Reject with: reject {approval.proposal_token}",
         ]
-        result = self.route_notification(
-            meta=meta,
-            actor=approval.actor,
-            channel=approval.channel,
-            title="Policy approval required",
-            message="\n".join(lines),
-            dedupe_key=f"approval:{approval.proposal_token}",
+        if approval.parent_invocation_id:
+            lines.append(f"Parent invocation: {approval.parent_invocation_id}")
+        if approval.message_text:
+            lines.extend(["", "Operator message:", approval.message_text])
+        lines.extend(
+            [
+                "",
+                "Input:",
+                _render_approval_input_preview(approval.input_payload),
+                "",
+                "Reply with one of:",
+                f"approve {approval.proposal_token}",
+                f"reject {approval.proposal_token}",
+            ]
         )
-        if (
-            result.ok
-            and result.payload is not None
-            and result.payload.value.delivery_timestamp_ms is not None
-        ):
-            persist_error = self._persist_approval_timestamp_correlation(
-                meta=meta,
-                approval=approval,
-                delivery_timestamp_ms=result.payload.value.delivery_timestamp_ms,
-            )
-            if persist_error is not None:
-                return failure(meta=meta, errors=[persist_error])
-        return result
+        result: Envelope[RouteNotificationResult] | None = None
+        errors: list[ErrorDetail] = []
+        for channel in self._approval_delivery_channels():
+            try:
+                routed = self.route_notification(
+                    meta=meta,
+                    actor=approval.actor,
+                    channel=channel,
+                    title="Policy approval required",
+                    message="\n".join(lines),
+                    dedupe_key=f"approval:{approval.proposal_token}:{channel}",
+                    force=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors.append(
+                    internal_error(
+                        "approval notification routing failed",
+                        metadata={"channel": channel, "exception": type(exc).__name__},
+                    )
+                )
+                continue
+            if not routed.ok:
+                errors.extend(routed.errors)
+                continue
+            result = routed
+            if (
+                routed.payload is not None
+                and routed.payload.value.delivery_timestamp_ms is not None
+            ):
+                persist_error = self._persist_approval_timestamp_correlation(
+                    meta=meta,
+                    approval=approval,
+                    delivery_channel=channel,
+                    delivery_timestamp_ms=routed.payload.value.delivery_timestamp_ms,
+                )
+                if persist_error is not None:
+                    return failure(meta=meta, errors=[persist_error])
+        if result is not None:
+            return result
+        return failure(meta=meta, errors=errors)
+
+    def _approval_delivery_channels(self) -> tuple[str, ...]:
+        """Return configured operator-facing channels for approval prompts."""
+        channels = tuple(
+            channel.strip()
+            for channel in self._settings.approval_channels
+            if channel.strip() != ""
+        )
+        return channels or (self._settings.default_channel,)
 
     @public_api_instrumented(
         logger=_LOGGER,
@@ -300,8 +343,6 @@ class DefaultRelayOutboundService(RelayOutboundService):
         batch_key: str,
         actor: str = "operator",
         channel: str = "",
-        recipient_e164: str = "",
-        sender_e164: str = "",
         title: str = "",
     ) -> Envelope[RouteNotificationResult]:
         """Flush one pending batch and deliver consolidated summary message."""
@@ -312,8 +353,6 @@ class DefaultRelayOutboundService(RelayOutboundService):
                 "batch_key": batch_key,
                 "actor": actor,
                 "channel": channel,
-                "recipient_e164": recipient_e164,
-                "sender_e164": sender_e164,
                 "title": title,
             },
         )
@@ -587,6 +626,7 @@ class DefaultRelayOutboundService(RelayOutboundService):
         *,
         meta: EnvelopeMeta,
         approval: ApprovalNotificationPayload,
+        delivery_channel: str,
         delivery_timestamp_ms: int,
     ) -> ErrorDetail | None:
         """Persist one delivery timestamp -> proposal token mapping with approval TTL."""
@@ -601,7 +641,7 @@ class DefaultRelayOutboundService(RelayOutboundService):
             meta=meta,
             component_id=str(SERVICE_COMPONENT_ID),
             key=self._approval_timestamp_cache_key(
-                channel=approval.channel,
+                channel=delivery_channel,
                 timestamp_ms=delivery_timestamp_ms,
             ),
             value={"proposal_token": approval.proposal_token},
@@ -612,7 +652,7 @@ class DefaultRelayOutboundService(RelayOutboundService):
         return dependency_error(
             "approval timestamp correlation persistence failed",
             metadata={
-                "channel": approval.channel,
+                "channel": delivery_channel,
                 "proposal_token": approval.proposal_token,
                 "timestamp_ms": str(delivery_timestamp_ms),
             },

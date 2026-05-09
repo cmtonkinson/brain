@@ -2,9 +2,9 @@
 
 The Console actor on the host posts inbound messages to Brain Core. The
 *Console Adapter* is the T1 boundary that owns the wire-format parse and
-forwards normalized payloads to the registered Relay inbound callback. The
-adapter does not hold the slash-authenticity HMAC secret — Console mints on
-the host and the proof flows through this adapter as opaque data.
+forwards normalized payloads to the registered inbound callback. The adapter
+does not hold the slash-authenticity HMAC secret; Console mints on the host and
+the proof flows through this adapter as opaque data.
 """
 
 from __future__ import annotations
@@ -15,9 +15,16 @@ from pydantic import BaseModel, ConfigDict
 
 from lib.shared.auth.slash_authenticity import SlashAuthenticityProof
 from lib.shared.envelope import EnvelopeMeta
+from lib.shared.inbound_adapter import (
+    InboundAdapterHealthResult,
+    InboundAdapterInternalError,
+    InboundCallback,
+    InboundCallbackRegistrationResult,
+    InboundCallbackResult,
+)
 
 
-class ConsoleAdapterError(Exception):
+class ConsoleAdapterError(InboundAdapterInternalError):
     """Base exception for Console adapter failures."""
 
 
@@ -34,46 +41,6 @@ class ConsoleInboundPayload(BaseModel):
     slash_authenticity: SlashAuthenticityProof | None = None
 
 
-class ConsoleInboundCallbackResult(BaseModel):
-    """Result returned by the Relay inbound callback."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    queued: bool
-    queue_name: str = ""
-
-
-@runtime_checkable
-class ConsoleInboundCallback(Protocol):
-    """In-process callback invoked for one parsed Console payload."""
-
-    def __call__(
-        self,
-        *,
-        meta: EnvelopeMeta,
-        payload: ConsoleInboundPayload,
-    ) -> ConsoleInboundCallbackResult:
-        """Handle one normalized Console payload and return the queueing result."""
-
-
-class ConsoleCallbackRegistrationResult(BaseModel):
-    """Result payload for in-process callback registration calls."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    registered: bool
-    detail: str
-
-
-class ConsoleAdapterHealthResult(BaseModel):
-    """Readiness payload for the Console adapter."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    adapter_ready: bool
-    detail: str
-
-
 @runtime_checkable
 class ConsoleAdapter(Protocol):
     """Protocol for Console inbound parsing and forwarding."""
@@ -81,17 +48,20 @@ class ConsoleAdapter(Protocol):
     def register_callback(
         self,
         *,
-        callback: ConsoleInboundCallback,
-    ) -> ConsoleCallbackRegistrationResult:
+        callback: InboundCallback,
+    ) -> InboundCallbackRegistrationResult:
         """Configure the in-process callback for inbound forwarding."""
+        ...
 
     def submit(
         self,
         *,
         meta: EnvelopeMeta,
         payload: ConsoleInboundPayload,
-    ) -> ConsoleInboundCallbackResult:
+    ) -> InboundCallbackResult:
         """Forward one parsed Console payload to the registered callback."""
+        ...
 
-    def health(self) -> ConsoleAdapterHealthResult:
+    def health(self) -> InboundAdapterHealthResult:
         """Return adapter health state."""
+        ...

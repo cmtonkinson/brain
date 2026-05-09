@@ -81,6 +81,8 @@ def run(
     timeout_seconds: float | None = None,
     context_text: str | None = None,
     context_environment_items: tuple[InferenceEnvironmentItem, ...] = (),
+    approval_poll_interval_seconds: float = 2.0,
+    approval_poll_max_interval_seconds: float = 5.0,
 ) -> LoopResult:
     """Drive one tool-capable Language conversation to a terminal text response.
 
@@ -123,6 +125,8 @@ def run(
         channel=channel,
         parent_invocation_id=parent_invocation_id,
         on_before_dispatch=on_before_dispatch,
+        approval_poll_interval_seconds=approval_poll_interval_seconds,
+        approval_poll_max_interval_seconds=approval_poll_max_interval_seconds,
     )
 
     agent = Agent(

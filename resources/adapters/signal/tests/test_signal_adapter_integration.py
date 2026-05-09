@@ -8,9 +8,10 @@ import aiohttp
 import pytest
 
 from lib.shared.http import HttpStatusError
+from lib.shared.inbound_adapter import InboundCallbackResult
+from lib.shared.inbound_message import InboundMessage
 from resources.adapters.signal.adapter import (
     SignalAdapterDependencyError,
-    SignalInboundCallbackResult,
 )
 from resources.adapters.signal.config import SignalAdapterSettings
 from resources.adapters.signal.signal_adapter import SignalRestApiAdapter
@@ -109,9 +110,9 @@ def test_receive_websocket_url_and_health_contract() -> None:
     adapter._ensure_worker_started_locked = lambda: None  # type: ignore[method-assign]
     try:
         adapter.register_callback(
-            callback=lambda *, raw_body_json: (
-                callback_calls.append(raw_body_json)
-                or SignalInboundCallbackResult(
+            callback=lambda *, meta, message: (  # noqa: ARG005
+                callback_calls.append(message.message_text)
+                or InboundCallbackResult(
                     accepted=True,
                     queued=True,
                     reason="accepted",
@@ -152,12 +153,15 @@ def test_callback_failure_maps_to_dependency_error() -> None:
     adapter._signal_client = fake  # type: ignore[attr-defined]
     adapter._ensure_worker_started_locked = lambda: None  # type: ignore[method-assign]
 
-    def _callback(*, raw_body_json: str) -> SignalInboundCallbackResult:
-        del raw_body_json
+    def _callback(*, meta, message: InboundMessage) -> InboundCallbackResult:
+        del meta
+        del message
         raise SignalAdapterDependencyError("status 503")
 
     adapter.register_callback(callback=_callback)
-    adapter._pending_payloads.append('{"data": {"message": "x"}}')  # type: ignore[attr-defined]
+    adapter._pending_payloads.append(
+        InboundMessage(channel="signal", message_text="x", timestamp_ms=1)
+    )  # type: ignore[attr-defined]
     registration = adapter._get_registration()
     assert registration is not None
 
@@ -192,10 +196,10 @@ def test_receive_websocket_handshake_failure_maps_to_dependency_error() -> None:
     aiohttp.ClientSession = lambda *args, **kwargs: _HandshakeErrorSession()  # type: ignore[assignment]
     try:
         adapter.register_callback(
-            callback=lambda *, raw_body_json: SignalInboundCallbackResult(
+            callback=lambda *, meta, message: InboundCallbackResult(  # noqa: ARG005
                 accepted=True,
                 queued=True,
-                reason=raw_body_json,
+                reason=message.message_text,
             )
         )
         registration = adapter._get_registration()

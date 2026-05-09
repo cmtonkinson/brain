@@ -8,8 +8,6 @@
     "batch_key": "string | The batch key to flush.",
     "actor": "string | optional | Actor identity for routing context. Defaults to 'operator'.",
     "channel": "string | optional | Channel identifier. Defaults to service routing default.",
-    "recipient_e164": "string | optional | Explicit recipient E.164 override.",
-    "sender_e164": "string | optional | Explicit sender E.164 override.",
     "title": "string | optional | Optional title for flushed summary notification."
   },
   "output_schema": {

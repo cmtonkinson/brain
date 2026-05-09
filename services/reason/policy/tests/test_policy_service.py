@@ -145,15 +145,11 @@ class _FakeRelayOutboundService(RelayService):
             payload=None,
         )
 
-    def ingest_signal_message(self, *, meta, raw_body_json: str):
-        del meta, raw_body_json
+    def ingest_inbound_message(self, *, meta, message):
+        del meta, message
         raise NotImplementedError
 
-    def enqueue_console_message(self, *, meta, message_text: str):
-        del meta, message_text
-        raise NotImplementedError
-
-    def register_signal_callback(self, *, meta):
+    def register_inbound_callbacks(self, *, meta):
         del meta
         raise NotImplementedError
 
@@ -169,6 +165,7 @@ def _request(
     actor: str = "operator",
     channel: str = "signal",
     op_id: str = "demo-ping",
+    op_summary: str = "Ping a demo endpoint",
     effect: str = "read",
     approval: str = "never",
     message_text: str = "",
@@ -185,6 +182,7 @@ def _request(
             op_id=op_id,
             kind="op",
             version="1.0.0",
+            summary=op_summary,
             effect=effect,
             approval=approval,
         ),
@@ -328,6 +326,10 @@ def test_approval_required_routes_proposal_via_outbound() -> None:
     assert len(router.approval_payloads) == 1
     assert len(router.approval_metas) == 1
     assert router.approval_payloads[0].proposal_token == result.proposal.proposal_token
+    assert router.approval_payloads[0].summary == "Ping a demo endpoint"
+    assert router.approval_payloads[0].effect == "read"
+    assert router.approval_payloads[0].source == "assistant"
+    assert "operator" in router.approval_payloads[0].reason
     assert router.approval_metas[0].trace_id == req.metadata.trace_id
     assert router.approval_metas[0].parent_id == req.metadata.envelope_id
     assert router.approval_metas[0].envelope_id != req.metadata.envelope_id
@@ -428,6 +430,12 @@ def test_valid_approval_token_allows_execution() -> None:
     assert pending.proposal is not None
 
     token = pending.proposal.proposal_token
+    status = service.record_approval_response(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator"),
+        proposal_token=token,
+        intent="approve",
+    )
+    assert status.ok is True
     approved_request = _request(
         envelope_id="env-2",
         approval_token=token,
@@ -455,6 +463,103 @@ def test_valid_approval_token_allows_execution() -> None:
     assert approved.output == {"ok": True}
 
 
+def test_proposal_token_without_recorded_approval_does_not_approve() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    pending = service.authorize_and_execute(
+        request=_request(approval="always"),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert pending.proposal is not None
+
+    denied = service.authorize_and_execute(
+        request=_request(
+            envelope_id="env-token-only",
+            approval_token=pending.proposal.proposal_token,
+            approval="always",
+        ),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+
+    assert denied.allowed is False
+    assert "approval_token_invalid" in denied.decision.reason_codes
+
+
+def test_approval_response_updates_proposal_status() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    pending = service.authorize_and_execute(
+        request=_request(approval="always"),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert pending.proposal is not None
+    meta = new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator")
+
+    before = service.get_approval_proposal_status(
+        meta=meta, proposal_token=pending.proposal.proposal_token
+    )
+    response = service.record_approval_response(
+        meta=meta, proposal_token=pending.proposal.proposal_token, intent="approve"
+    )
+
+    assert before.payload is not None
+    assert before.payload.value.status == "pending"
+    assert response.payload is not None
+    assert response.payload.value.status == "approved"
+
+
+def test_duplicate_proposal_does_not_reset_approved_status() -> None:
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    first = service.authorize_and_execute(
+        request=_request(approval="always"),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    assert first.proposal is not None
+    meta = new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator")
+    service.record_approval_response(
+        meta=meta,
+        proposal_token=first.proposal.proposal_token,
+        intent="approve",
+    )
+
+    duplicate = service.authorize_and_execute(
+        request=_request(envelope_id="env-duplicate", approval="always"),
+        execute=lambda _: PolicyExecutionResult(
+            allowed=True,
+            output={"ok": True},
+            errors=(),
+            decision=_decision(),
+        ),
+    )
+    status = service.get_approval_proposal_status(
+        meta=meta, proposal_token=first.proposal.proposal_token
+    )
+
+    assert duplicate.allowed is False
+    assert duplicate.proposal is not None
+    assert duplicate.proposal.proposal_token == first.proposal.proposal_token
+    assert status.payload is not None
+    assert status.payload.value.status == "approved"
+
+
 def test_reply_token_deterministic_correlation_allows_execution() -> None:
     service = DefaultPolicyService(settings=PolicyServiceSettings())
     pending = service.authorize_and_execute(
@@ -467,6 +572,11 @@ def test_reply_token_deterministic_correlation_allows_execution() -> None:
         ),
     )
     assert pending.proposal is not None
+    service.record_approval_response(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator"),
+        proposal_token=pending.proposal.proposal_token,
+        intent="approve",
+    )
     linked = _request(envelope_id="env-linked", approval="always").model_copy(
         update={
             "invocation": InvocationPolicyInput(
@@ -502,6 +612,11 @@ def test_reaction_token_deterministic_correlation_allows_execution() -> None:
         ),
     )
     assert pending.proposal is not None
+    service.record_approval_response(
+        meta=new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator"),
+        proposal_token=pending.proposal.proposal_token,
+        intent="approve",
+    )
     linked = _request(envelope_id="env-react", approval="always").model_copy(
         update={
             "invocation": InvocationPolicyInput(
@@ -1192,3 +1307,19 @@ def test_missing_slash_authenticity_falls_through_to_proposal() -> None:
     )
     assert result.allowed is False
     assert result.proposal is not None
+
+
+def test_record_approval_response_for_unknown_token_returns_failure() -> None:
+    """Approving a non-existent proposal token returns a failure, not silent success."""
+    service = DefaultPolicyService(settings=PolicyServiceSettings())
+    meta = new_meta(kind=EnvelopeKind.COMMAND, source="test", principal="operator")
+
+    response = service.record_approval_response(
+        meta=meta,
+        proposal_token="tok-does-not-exist",
+        intent="approve",
+    )
+
+    assert not response.ok
+    assert len(response.errors) == 1
+    assert "not found" in response.errors[0].message.lower()

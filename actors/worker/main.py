@@ -74,10 +74,23 @@ def _get_thread_client(config: BrainSdkConfig) -> BrainClient:
     return _thread_local.client
 
 
-def _dispatch(*, config: BrainSdkConfig, claim: JobClaimResult, channel: str) -> None:
+def _dispatch(
+    *,
+    config: BrainSdkConfig,
+    claim: JobClaimResult,
+    channel: str,
+    approval_poll_interval_seconds: float,
+    approval_poll_max_interval_seconds: float,
+) -> None:
     """Resolve the calling thread's BrainClient and execute one claimed job."""
     client = _get_thread_client(config)
-    worker_runtime.run_execution(client=client, claim=claim, channel=channel)
+    worker_runtime.run_execution(
+        client=client,
+        claim=claim,
+        channel=channel,
+        approval_poll_interval_seconds=approval_poll_interval_seconds,
+        approval_poll_max_interval_seconds=approval_poll_max_interval_seconds,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +180,12 @@ def _main() -> None:
                     claim.op_id,
                 )
                 future: Future[None] = pool.submit(
-                    _dispatch, config=sdk_config, claim=claim, channel=channel
+                    _dispatch,
+                    config=sdk_config,
+                    claim=claim,
+                    channel=channel,
+                    approval_poll_interval_seconds=worker_cfg.approval_poll_interval_seconds,
+                    approval_poll_max_interval_seconds=worker_cfg.approval_poll_max_interval_seconds,
                 )
                 pending.append(future)
 

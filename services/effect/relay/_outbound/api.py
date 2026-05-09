@@ -2,19 +2,32 @@
 
 from __future__ import annotations
 
+from typing import Protocol
+
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
+from lib.shared.envelope import Envelope, EnvelopeMeta
 from lib.shared.http.server import read_json_body
 from services.effect.relay._outbound.domain import ConsoleResponseMessage
-from services.effect.relay._outbound.service import RelayOutboundService
 from services.effect.relay._shared import (
     ErrorOut,
     RequestMeta,
     error_out,
     meta_from_request,
 )
+
+
+class _ConsolePollable(Protocol):
+    """Structural contract for the console response poll endpoint."""
+
+    def poll_console_response(
+        self,
+        *,
+        meta: EnvelopeMeta,
+        wait_timeout_seconds: float = ...,
+    ) -> Envelope[ConsoleResponseMessage | None]: ...
 
 
 class _PollConsoleResponseRequest(RequestMeta):
@@ -30,7 +43,7 @@ class _PollConsoleResponseResponse(BaseModel):
     errors: list[ErrorOut]
 
 
-def register_routes(*, router: APIRouter, service: RelayOutboundService) -> None:
+def register_routes(*, router: APIRouter, service: _ConsolePollable) -> None:
     """Register Relay outbound routes on one router."""
 
     @router.post(

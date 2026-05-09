@@ -8,19 +8,17 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
+from lib.shared.inbound_message import InboundMessage
 from services.effect.relay._outbound.domain import (
     ApprovalCorrelationPayload,
     ApprovalNotificationPayload,
-    ConsoleResponseMessage,
     HealthStatus as OutboundHealthStatus,
     RouteNotificationResult,
 )
 from services.effect.relay._inbound.domain import (
-    ConsoleEnqueueResult,
     HealthStatus as InboundHealthStatus,
     IngestResult,
-    NormalizedOperatorMessage,
-    RegisterSignalCallbackResult,
+    RegisterInboundCallbacksResult,
 )
 
 
@@ -39,13 +37,11 @@ class RelayHealthStatus(BaseModel):
 __all__ = [
     "ApprovalCorrelationPayload",
     "ApprovalNotificationPayload",
-    "ConsoleEnqueueResult",
-    "ConsoleResponseMessage",
     "InboundHealthStatus",
+    "InboundMessage",
     "IngestResult",
-    "NormalizedOperatorMessage",
     "OutboundHealthStatus",
-    "RegisterSignalCallbackResult",
+    "RegisterInboundCallbacksResult",
     "RelayHealthStatus",
     "RouteNotificationResult",
 ]

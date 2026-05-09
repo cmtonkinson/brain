@@ -2,15 +2,33 @@
 
 from __future__ import annotations
 
+from lib.agent.approval_wait import (
+    ApprovalWaitExpired,
+    ApprovalWaitRejected,
+    approval_required_from_error,
+    wait_for_approval,
+)
 from lib.sdk.calls import JobClaimResult
 from lib.sdk.client import BrainClient
-from lib.sdk.errors import BrainDependencyError, BrainDomainError, BrainTransportError
+from lib.sdk.errors import (
+    BrainDependencyError,
+    BrainDomainError,
+    BrainPolicyError,
+    BrainTransportError,
+)
 from lib.shared.logging import get_logger
 
 _LOGGER = get_logger(__name__)
 
 
-def run_execution(*, client: BrainClient, claim: JobClaimResult, channel: str) -> None:
+def run_execution(
+    *,
+    client: BrainClient,
+    claim: JobClaimResult,
+    channel: str,
+    approval_poll_interval_seconds: float = 2.0,
+    approval_poll_max_interval_seconds: float = 5.0,
+) -> None:
     """Execute one claimed job and report the result back to the Job Service."""
     execution_id = claim.execution_id
     _LOGGER.info(
@@ -21,14 +39,7 @@ def run_execution(*, client: BrainClient, claim: JobClaimResult, channel: str) -
         claim.max_attempts,
     )
     try:
-        client.invoke_op(
-            op_id=claim.op_id,
-            input_payload=claim.input_payload,
-            actor=claim.actor,
-            channel=channel,
-            invocation_id=claim.trace_id,
-            parent_invocation_id=claim.parent_envelope_id,
-        )
+        _invoke_claim(client=client, claim=claim, channel=channel)
         client.job_complete_execution(execution_id=execution_id)
         _LOGGER.info("Execution succeeded: execution_id=%s", execution_id)
     except BrainDependencyError as exc:
@@ -44,6 +55,16 @@ def run_execution(*, client: BrainClient, claim: JobClaimResult, channel: str) -
             is_retryable=True,
         )
     except BrainDomainError as exc:
+        if isinstance(exc, BrainPolicyError) and _retry_after_approval(
+            client=client,
+            claim=claim,
+            channel=channel,
+            execution_id=execution_id,
+            exc=exc,
+            approval_poll_interval_seconds=approval_poll_interval_seconds,
+            approval_poll_max_interval_seconds=approval_poll_max_interval_seconds,
+        ):
+            return
         _LOGGER.warning(
             "Execution failed (domain): execution_id=%s error=%s",
             execution_id,
@@ -77,6 +98,88 @@ def run_execution(*, client: BrainClient, claim: JobClaimResult, channel: str) -
             error_message=f"unexpected error: {type(exc).__name__}: {exc}",
             is_retryable=False,
         )
+
+
+def _retry_after_approval(
+    *,
+    client: BrainClient,
+    claim: JobClaimResult,
+    channel: str,
+    execution_id: str,
+    exc: BrainPolicyError,
+    approval_poll_interval_seconds: float,
+    approval_poll_max_interval_seconds: float,
+) -> bool:
+    approval = approval_required_from_error(exc)
+    if approval is None:
+        return False
+    try:
+        token = wait_for_approval(
+            client=client,
+            approval=approval,
+            poll_interval_seconds=approval_poll_interval_seconds,
+            poll_max_interval_seconds=approval_poll_max_interval_seconds,
+        )
+        _invoke_claim(client=client, claim=claim, channel=channel, approval_token=token)
+        client.job_complete_execution(execution_id=execution_id)
+        _LOGGER.info("Execution approved and succeeded: execution_id=%s", execution_id)
+    except (ApprovalWaitExpired, ApprovalWaitRejected) as wait_exc:
+        safe_fail(
+            client=client,
+            execution_id=execution_id,
+            error_message=str(wait_exc),
+            is_retryable=False,
+        )
+    except BrainDependencyError as retry_exc:
+        safe_fail(
+            client=client,
+            execution_id=execution_id,
+            error_message=str(retry_exc),
+            is_retryable=True,
+        )
+    except BrainDomainError as retry_exc:
+        safe_fail(
+            client=client,
+            execution_id=execution_id,
+            error_message=str(retry_exc),
+            is_retryable=False,
+        )
+    except BrainTransportError as retry_exc:
+        safe_fail(
+            client=client,
+            execution_id=execution_id,
+            error_message=str(retry_exc),
+            is_retryable=retry_exc.retryable,
+        )
+    except Exception as retry_exc:
+        _LOGGER.exception(
+            "Execution failed after approval: execution_id=%s", execution_id
+        )
+        safe_fail(
+            client=client,
+            execution_id=execution_id,
+            error_message=f"unexpected error: {type(retry_exc).__name__}: {retry_exc}",
+            is_retryable=False,
+        )
+    return True
+
+
+def _invoke_claim(
+    *,
+    client: BrainClient,
+    claim: JobClaimResult,
+    channel: str,
+    approval_token: str = "",
+) -> None:
+    client.invoke_op(
+        op_id=claim.op_id,
+        input_payload=claim.input_payload,
+        actor=claim.actor,
+        channel=channel,
+        invocation_id=claim.trace_id,
+        parent_invocation_id=claim.parent_envelope_id,
+        approval_token=approval_token,
+    )
 
 
 def safe_fail(

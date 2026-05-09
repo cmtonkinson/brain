@@ -321,6 +321,18 @@ class CommitmentCandidate(BaseModel):
     reasoning: str | None = None
 
 
+class TurnScanResult(BaseModel):
+    """Outcome of one turn-scanner run."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    turns_scanned: int
+    candidates_extracted: int
+    candidates_ingested: int
+    errors_encountered: int
+    last_turn_id: str | None = None
+
+
 class ExtractCandidatesResult(BaseModel):
     """Result of extracting commitment candidates from one text input."""
 

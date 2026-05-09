@@ -1,4 +1,4 @@
-"""Behavior tests for the Relay boot hook's Signal-disabled short-circuit."""
+"""Behavior tests for the Relay boot hook."""
 
 from __future__ import annotations
 
@@ -39,27 +39,21 @@ def _ctx(settings: CoreRuntimeSettings, relay_service: object) -> BootContext:
     return BootContext(settings=settings, resolve_component=resolve)
 
 
-def test_boot_short_circuits_when_receive_e164_is_empty(caplog):
-    """receive_e164='' → boot returns without touching the relay service."""
-    relay_service = MagicMock(spec_set=["health", "register_signal_callback"])
+def test_boot_resolves_relay_when_receive_e164_is_empty():
+    """Callback registration is based on configured inbound adapters, not Signal config."""
+    relay_service = MagicMock(spec_set=["health", "register_inbound_callbacks"])
     settings = _settings_with_signal(receive_e164="")
 
-    with caplog.at_level("INFO", logger="services.effect.relay.boot"):
+    with pytest.raises(RuntimeError, match="does not implement RelayService"):
         relay_boot.boot(_ctx(settings, relay_service))
 
-    relay_service.register_signal_callback.assert_not_called()
-    relay_service.health.assert_not_called()
-    assert any(
-        "signal disabled" in record.getMessage().lower() for record in caplog.records
-    )
 
-
-def test_boot_short_circuits_on_whitespace_only_receive_e164():
-    """A whitespace-only number is treated as disabled (validator strips it)."""
-    relay_service = MagicMock(spec_set=["health", "register_signal_callback"])
+def test_boot_resolves_relay_on_whitespace_only_receive_e164():
+    """Signal-disabled config does not bypass generic inbound callback registration."""
+    relay_service = MagicMock(spec_set=["health", "register_inbound_callbacks"])
     settings = _settings_with_signal(receive_e164="   ")
-    relay_boot.boot(_ctx(settings, relay_service))
-    relay_service.register_signal_callback.assert_not_called()
+    with pytest.raises(RuntimeError, match="does not implement RelayService"):
+        relay_boot.boot(_ctx(settings, relay_service))
 
 
 def test_boot_proceeds_past_gate_when_receive_e164_is_set():
@@ -70,7 +64,7 @@ def test_boot_proceeds_past_gate_when_receive_e164_is_set():
     the operator opted in. A non-RelayService stand-in causes ``_resolve``
     to raise — we treat that exception as proof the gate let us through.
     """
-    relay_service = MagicMock(spec_set=["health", "register_signal_callback"])
+    relay_service = MagicMock(spec_set=["health", "register_inbound_callbacks"])
     settings = _settings_with_signal(receive_e164="+15551234567")
     with pytest.raises(RuntimeError, match="does not implement RelayService"):
         relay_boot.boot(_ctx(settings, relay_service))

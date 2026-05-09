@@ -9,7 +9,7 @@ from collections import deque
 from dataclasses import dataclass
 from random import random
 from threading import Event, Lock, Thread
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, urlparse, urlunparse
 
 if TYPE_CHECKING:
@@ -30,16 +30,34 @@ from lib.shared.http import (
     HttpRequestError,
     HttpStatusError,
 )
+from lib.shared.envelope import EnvelopeKind, new_meta
+from lib.shared.approval import normalize_approval_intent
+from lib.shared.inbound_message import (
+    InboundApproval,
+    InboundMessage,
+    InboundMessageRef,
+    InboundReaction,
+    InboundSender,
+    InboundThreadRef,
+)
+from lib.shared.inbound_adapter import (
+    InboundAdapterError,
+    InboundAdapterHealthResult,
+    InboundCallback,
+    InboundCallbackRegistrationResult,
+    InboundCallbackResult,
+)
+from lib.shared.inbound_text import (
+    parse_links,
+    parse_slash_command,
+    parse_text_approval,
+)
 from lib.shared.logging import get_logger, public_api_instrumented
+from lib.shared.phone_number import normalize_e164
 from resources.adapters.signal.adapter import (
     SignalAdapter,
     SignalAdapterDependencyError,
-    SignalAdapterError,
-    SignalAdapterHealthResult,
     SignalAdapterInternalError,
-    SignalCallbackRegistrationResult,
-    SignalInboundCallback,
-    SignalInboundCallbackResult,
     SignalSendMessageResult,
 )
 from resources.adapters.signal.component import RESOURCE_COMPONENT_ID
@@ -52,7 +70,7 @@ _RECEIVE_CHECK_INTERVAL_SECONDS = 1.0
 
 @dataclass(frozen=True)
 class _CallbackRegistration:
-    callback: SignalInboundCallback
+    callback: InboundCallback
 
 
 class SignalRestApiAdapter(SignalAdapter):
@@ -67,7 +85,7 @@ class SignalRestApiAdapter(SignalAdapter):
         )
         self._lock = Lock()
         self._registration: _CallbackRegistration | None = None
-        self._pending_payloads: deque[str] = deque()
+        self._pending_payloads: deque[InboundMessage] = deque()
         self._worker: Thread | None = None
         self._stop_event = Event()
         self._backoff_seconds = settings.failure_backoff_initial_seconds
@@ -76,8 +94,8 @@ class SignalRestApiAdapter(SignalAdapter):
     def register_callback(
         self,
         *,
-        callback: SignalInboundCallback,
-    ) -> SignalCallbackRegistrationResult:
+        callback: InboundCallback,
+    ) -> InboundCallbackRegistrationResult:
         """Configure callback target and start receive loop when needed."""
         registration = _CallbackRegistration(callback=callback)
 
@@ -85,20 +103,20 @@ class SignalRestApiAdapter(SignalAdapter):
             self._registration = registration
             self._ensure_worker_started_locked()
 
-        return SignalCallbackRegistrationResult(
+        return InboundCallbackRegistrationResult(
             registered=True,
             detail="configured; receive loop active",
         )
 
     @public_api_instrumented(logger=_LOGGER, component_id=str(RESOURCE_COMPONENT_ID))
-    def health(self) -> SignalAdapterHealthResult:
+    def health(self) -> InboundAdapterHealthResult:
         """Return local adapter readiness independent of provider reachability."""
         with self._lock:
             registration = self._registration
             worker_alive = self._worker is not None and self._worker.is_alive()
         callback_state = "configured" if registration is not None else "unconfigured"
         loop_state = "running" if worker_alive else "stopped"
-        return SignalAdapterHealthResult(
+        return InboundAdapterHealthResult(
             adapter_ready=True,
             detail=f"ready; callback={callback_state}; receive_loop={loop_state}",
         )
@@ -334,9 +352,9 @@ class SignalRestApiAdapter(SignalAdapter):
                 **_summarize_signal_receive_payload(raw_payload_json),
             },
         )
-        messages = self._decode_receive_payload(raw_payload_json)
-        for message in messages:
-            wrapped_body = json.dumps({"data": message})
+        payloads = self._decode_receive_payload(raw_payload_json)
+        for payload in payloads:
+            wrapped_body = json.dumps({"data": payload})
             _LOGGER.verbose(
                 "signal adapter queued callback payload",
                 extra={
@@ -344,7 +362,10 @@ class SignalRestApiAdapter(SignalAdapter):
                     **summarize_signal_payload(wrapped_body),
                 },
             )
-            self._pending_payloads.append(wrapped_body)
+            message = self._normalize_inbound_payload(payload)
+            if message is None:
+                continue
+            self._pending_payloads.append(message)
         self._flush_pending(registration=registration)
 
     def _decode_receive_payload(self, raw_payload_json: str) -> list[dict[str, object]]:
@@ -399,14 +420,14 @@ class SignalRestApiAdapter(SignalAdapter):
     def _flush_pending(self, *, registration: _CallbackRegistration) -> None:
         """Forward pending receive payloads to the registered callback."""
         while self._pending_payloads:
-            body = self._pending_payloads[0]
+            message = self._pending_payloads[0]
             callback_result = self._invoke_callback(
                 registration=registration,
-                raw_body_json=body,
+                message=message,
             )
             self._log_callback_result(
                 callback_result=callback_result,
-                raw_body_json=body,
+                message=message,
             )
             if callback_result.accepted and callback_result.queued:
                 self._send_read_receipt(callback_result=callback_result)
@@ -416,12 +437,19 @@ class SignalRestApiAdapter(SignalAdapter):
         self,
         *,
         registration: _CallbackRegistration,
-        raw_body_json: str,
-    ) -> SignalInboundCallbackResult:
+        message: InboundMessage,
+    ) -> InboundCallbackResult:
         """Invoke the configured in-process callback for one receive payload."""
         try:
-            return registration.callback(raw_body_json=raw_body_json)
-        except SignalAdapterError:
+            return registration.callback(
+                meta=new_meta(
+                    kind=EnvelopeKind.EVENT,
+                    source=str(RESOURCE_COMPONENT_ID),
+                    principal="operator",
+                ),
+                message=message,
+            )
+        except InboundAdapterError:
             raise
         except Exception as exc:
             raise SignalAdapterInternalError(
@@ -431,11 +459,10 @@ class SignalRestApiAdapter(SignalAdapter):
     def _log_callback_result(
         self,
         *,
-        callback_result: SignalInboundCallbackResult,
-        raw_body_json: str,
+        callback_result: InboundCallbackResult,
+        message: InboundMessage,
     ) -> None:
         """Emit one visible log line for Relay inbound accept/reject decisions."""
-        payload_summary = summarize_signal_payload(raw_body_json)
         if callback_result.accepted and callback_result.queued:
             _LOGGER.info(
                 "signal adapter callback accepted queued message",
@@ -443,7 +470,7 @@ class SignalRestApiAdapter(SignalAdapter):
                     "reason": callback_result.reason,
                     "sender_e164": callback_result.sender_e164,
                     "timestamp_ms": callback_result.timestamp_ms,
-                    **payload_summary,
+                    "channel": message.channel,
                 },
             )
             return
@@ -454,14 +481,140 @@ class SignalRestApiAdapter(SignalAdapter):
                 "reason": callback_result.reason,
                 "sender_e164": callback_result.sender_e164,
                 "timestamp_ms": callback_result.timestamp_ms,
-                **payload_summary,
+                "channel": message.channel,
             },
+        )
+
+    def _normalize_inbound_payload(
+        self, payload: dict[str, object]
+    ) -> InboundMessage | None:
+        """Normalize one Signal provider payload into the shared inbound DTO."""
+        candidate: dict[str, Any] = dict(payload)
+        data = candidate.get("data")
+        if isinstance(data, dict):
+            candidate = dict(data)
+        envelope = _extract_envelope(candidate)
+        message_payload = _extract_message_payload(envelope)
+
+        sender_raw = _first_non_empty(
+            envelope,
+            "source",
+            "sourceNumber",
+            "sender",
+            "from",
+            "sender_e164",
+        )
+        if sender_raw == "":
+            return None
+        try:
+            sender_e164 = normalize_e164(
+                raw=sender_raw,
+                default_dial_code=self._settings.default_dial_code,
+            )
+        except ValueError:
+            return None
+
+        timestamp_ms = _parse_timestamp_ms(
+            envelope.get("timestamp_ms")
+            or envelope.get("timestamp")
+            or envelope.get("sourceTimestamp")
+            or candidate.get("timestamp_ms")
+            or candidate.get("timestamp")
+            or candidate.get("sourceTimestamp")
+        )
+        if timestamp_ms is None:
+            return None
+
+        message_text = _first_non_empty(
+            message_payload,
+            "message",
+            "message_text",
+            "text",
+            "body",
+        )
+        if message_text == "":
+            message_text = _first_non_empty(
+                envelope,
+                "message",
+                "message_text",
+                "text",
+                "body",
+            )
+        if message_text == "":
+            message_text = _first_non_empty(
+                candidate,
+                "message",
+                "message_text",
+                "text",
+                "body",
+            )
+
+        reply_timestamp_ms = _optional_int(
+            _extract_nested(message_payload, "quote", "timestamp")
+            or _extract_nested(message_payload, "quote", "id")
+            or candidate.get("quote_target_timestamp_ms")
+        )
+        reaction_timestamp_ms = _optional_int(
+            _extract_nested(message_payload, "reaction", "targetSentTimestamp")
+            or _extract_nested(message_payload, "reaction", "targetTimestamp")
+            or candidate.get("reaction_target_timestamp_ms")
+        )
+        reaction_text = _extract_reaction_text(message_payload) or _first_non_empty(
+            candidate,
+            "reaction_emoji",
+            "reaction_text",
+        )
+        if message_text == "" and reaction_timestamp_ms is None and reaction_text == "":
+            return None
+
+        approval = parse_text_approval(message_text)
+        reaction_intent = normalize_approval_intent(reaction_emoji=reaction_text)
+        if reaction_intent is not None:
+            approval = InboundApproval(intent=reaction_intent, source="reaction")
+
+        source_device = str(
+            envelope.get("sourceDevice")
+            or envelope.get("source_device")
+            or candidate.get("sourceDevice")
+            or candidate.get("device")
+            or candidate.get("source_device")
+            or ""
+        )
+        group_id = _extract_group_id(message_payload) or _extract_group_id(envelope)
+        return InboundMessage(
+            channel="signal",
+            sender=InboundSender(id=sender_e164, e164=sender_e164),
+            message_text=message_text,
+            timestamp_ms=timestamp_ms,
+            source_device=source_device,
+            thread=None if group_id is None else InboundThreadRef(id=group_id),
+            reply_to=(
+                None
+                if reply_timestamp_ms is None
+                else InboundMessageRef(timestamp_ms=reply_timestamp_ms)
+            ),
+            reaction=(
+                None
+                if reaction_text == "" and reaction_timestamp_ms is None
+                else InboundReaction(
+                    text=reaction_text,
+                    target=(
+                        None
+                        if reaction_timestamp_ms is None
+                        else InboundMessageRef(timestamp_ms=reaction_timestamp_ms)
+                    ),
+                )
+            ),
+            links=parse_links(message_text),
+            approval=approval,
+            slash_command=parse_slash_command(message_text),
+            raw_metadata={"payload_shape": _signal_payload_shape(candidate)},
         )
 
     def _send_read_receipt(
         self,
         *,
-        callback_result: SignalInboundCallbackResult,
+        callback_result: InboundCallbackResult,
     ) -> None:
         """Send a read receipt after Relay inbound confirms the message was queued."""
         if callback_result.sender_e164 is None or callback_result.timestamp_ms is None:
@@ -562,6 +715,90 @@ def _optional_int(value: object) -> int | None:
         return int(str(value).strip())
     except ValueError:
         return None
+
+
+def _extract_group_id(payload: dict[str, Any]) -> str | None:
+    """Extract optional group identifier from common Signal payload shapes."""
+    group_id = payload.get("group_id")
+    if isinstance(group_id, str) and group_id.strip() != "":
+        return group_id
+    group_info = payload.get("groupInfo")
+    if isinstance(group_info, dict):
+        group_id = group_info.get("groupId") or group_info.get("id")
+        if isinstance(group_id, str) and group_id.strip() != "":
+            return group_id
+    return None
+
+
+def _extract_reaction_text(payload: dict[str, Any]) -> str:
+    """Extract one reaction marker from common Signal payload shapes."""
+    reaction = payload.get("reaction")
+    if not isinstance(reaction, dict):
+        return ""
+    return _first_non_empty(reaction, "emoji", "emojiShortName", "emoji_short_name")
+
+
+def _signal_payload_shape(candidate: dict[str, Any]) -> str:
+    """Return a stable description of the normalized payload shape."""
+    envelope = candidate.get("envelope")
+    if not isinstance(envelope, dict):
+        return "candidate"
+    if isinstance(envelope.get("dataMessage"), dict):
+        return "envelope.dataMessage"
+    if isinstance(envelope.get("syncMessage"), dict):
+        return "envelope.syncMessage"
+    return "envelope"
+
+
+def _extract_envelope(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return nested Signal envelope when present; otherwise the payload itself."""
+    envelope = payload.get("envelope")
+    if isinstance(envelope, dict):
+        return envelope
+    return payload
+
+
+def _extract_message_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the nested message object most likely to contain message fields."""
+    data_message = payload.get("dataMessage")
+    if isinstance(data_message, dict):
+        return data_message
+    sync_message = payload.get("syncMessage")
+    if isinstance(sync_message, dict):
+        sent_message = sync_message.get("sentMessage")
+        if isinstance(sent_message, dict):
+            return sent_message
+    return payload
+
+
+def _extract_nested(payload: dict[str, Any], parent: str, child: str) -> Any:
+    """Read one nested mapping field when parent is an object."""
+    parent_value = payload.get(parent)
+    if isinstance(parent_value, dict):
+        return parent_value.get(child)
+    return None
+
+
+def _first_non_empty(payload: dict[str, Any], *keys: str) -> str:
+    """Return first non-empty scalar string value for the provided keys."""
+    for key in keys:
+        value = payload.get(key)
+        if value is None:
+            continue
+        candidate = str(value).strip()
+        if candidate != "":
+            return candidate
+    return ""
+
+
+def _parse_timestamp_ms(value: Any) -> int | None:
+    """Parse inbound Signal timestamps in seconds or milliseconds to milliseconds."""
+    parsed = _optional_int(value)
+    if parsed is None:
+        return None
+    if parsed < 1_000_000_000_000:
+        return parsed * 1000
+    return parsed
 
 
 def summarize_signal_payload(raw_body_json: str) -> dict[str, object]:
