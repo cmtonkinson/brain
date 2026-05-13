@@ -24,6 +24,7 @@ conceptual model described in
 | `scripts/`   | Build, generation, and smoke-test scripts          |
 | `services/`  | T2 *Service* implementations                       |
 | `tests/`     | Cross-cutting and shared test infrastructure       |
+| `upgrades/`  | Host-side state upgrade packages                   |
 
 ------------------------------------------------------------------------
 ## Services
@@ -40,6 +41,7 @@ services/
     execution/
     language/
     relay/                      # combined inbound + outbound + approval
+    software/
   reason/                       # Reason Plane (no resource ownership)
     commitment/
     delegation/
@@ -76,6 +78,8 @@ Each *Service* directory contains a `component.py` with its
 ```
 resources/
   adapters/                     # Adapter Resources (external I/O)
+    coding/                     # coding task container adapter
+    console/                    # local console queue adapter
     llm/                        # LLM gateway adapter
     mcp/                        # MCP Server sidecar adapter
     signal/                     # Signal messaging adapter
@@ -111,9 +115,9 @@ Shared code lives in `lib/`:
 ## Configuration
 Runtime configuration is loaded by scanning top-level `*.yaml` files in
 `~/.config/brain/` non-recursively. Matching sample groupings are provided
-under `config/` as `shared`, `state`, `effect`, `reason`, `actors`, and
-`secrets` samples. See [Configuration Reference](configuration.md) for keys
-and [Conventions](conventions.md) for Pydantic contract rules.
+under `config/`. See [Configuration Reference](configuration.md) for the
+current sample list, runtime scan exclusions, and keys, and
+[Conventions](conventions.md) for Pydantic contract rules.
 
 ------------------------------------------------------------------------
 ## Tests

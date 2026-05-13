@@ -140,8 +140,9 @@ MCP Ops wrap a single MCP tool call, routed through the MCP Adapter sidecar.
 * **Purpose**: Expose MCP tools as first-class, policy-gated ops.
 * **`call_target`**: `"mcp:{server_id}:{tool_name}"` — identifies the MCP
   server and tool to invoke via the adapter.
-* **Discovery**: At boot, Execution calls `adapter.list_tools()` and dynamically
-  registers each discovered tool as an `NativeOpManifest`. Static
+* **Discovery**: During Execution post-boot initialization, Execution calls
+  `adapter.list_tools()`, records observed tools, and registers discovered tools
+  as MCP Op manifests only after `effect` and `approval` are classified. Static
   `op.json` manifests with `kind: "mcp"` are also supported.
 * **Per-tool overrides**: The MCP protocol does not declare an output
   schema, an effect, or an approval requirement. Operators can pre-declare

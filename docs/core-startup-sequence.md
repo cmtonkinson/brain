@@ -31,28 +31,25 @@ exists to make startup behavior explicit, deterministic, and reviewable.
    * Phase A: global readiness gate (all boot hooks must report ready).
    * Phase B: execute `boot()` in DAG/topological dependency order.
 
-6. **Load ops**
-   * Discover and register op packages.
-   * Perform op validation after boot so boot-established runtime state is available.
-
-7. **Run `after_boot(...)` lifecycle hooks**
+6. **Run `after_boot(...)` lifecycle hooks**
    * Execute optional component-level `after_boot` hooks.
-   * Run after global boot/op startup work and before serving HTTP.
+   * Execution discovers and validates op packages from its `after_boot` hook.
+   * Run after global boot orchestration and before serving HTTP.
    * Fail hard if any `after_boot` hook raises.
 
-8. **Start HTTP runtime**
+7. **Start HTTP runtime**
    * Construct the FastAPI app and router.
    * Register published service route adapters/handlers.
    * Bind listeners and begin serving.
 
-9. **Enter process hold loop**
+8. **Enter process hold loop**
    * Keep process alive.
    * Handle shutdown signals for clean termination.
 
 ## Why This Order
 * **Migrations before instantiation** prevents constructors from touching missing tables.
 * **Global readiness before any boot action** prevents partial boot side effects.
-* **Ops after boot** allows dependencies like MCP and boot-generated runtime state to be available before op discovery/validation.
+* **Ops during after_boot** allows dependencies like MCP and boot-generated runtime state to be available before op discovery/validation.
 * **after_boot before HTTP** ensures post-boot initialization completes before external traffic is accepted.
 * **HTTP last** ensures external traffic is accepted only after startup is complete.
 

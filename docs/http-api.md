@@ -1,5 +1,5 @@
 # HTTP API
-*This document is generated from `lib/core/health_api.py` and `services/*/*/api.py`, with route intent from `docs/meta/http-routes.yaml`. Do not edit by hand.*
+*This document is generated from `lib/core/health_api.py` and service API modules, with route intent from `docs/meta/http-routes.yaml`. Do not edit by hand.*
 
 ------------------------------------------------------------------------
 ## `lib/core/health_api.py`
@@ -63,6 +63,26 @@
 `POST /lms/chat-with-tools` &mdash; direct access to tool-capable model inference without Execution/Policy overhead
 *Handler: `language_chat_with_tools`*
 *Response: `_ChatWithToolsResponse`*
+
+------------------------------------------------------------------------
+## `services/effect/relay/_inbound/api.py`
+`POST /relay/ingest_inbound_message` &mdash; accept one normalized inbound operator message
+*Handler: `ingest_inbound_message`*
+*Response: `_IngestInboundMessageResponse`*
+*Summary: Ingest one already-normalized inbound operator message.*
+
+
+`POST /relay/poll_operator_instruction` &mdash; dequeue the next queued operator instruction for the Assistant
+*Handler: `poll_operator_instruction`*
+*Response: `_PollOperatorInstructionResponse`*
+*Summary: Pop the next queued operator instruction, optionally long-polling.*
+
+------------------------------------------------------------------------
+## `services/effect/relay/_outbound/api.py`
+`POST /relay/poll_console_response` &mdash; dequeue the next queued Brain response for the console channel
+*Handler: `poll_console_response`*
+*Response: `_PollConsoleResponseResponse`*
+*Summary: Pop the next queued Brain response for the console channel.*
 
 ------------------------------------------------------------------------
 ## `services/reason/commitment/api.py`

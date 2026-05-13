@@ -114,7 +114,7 @@ All other services run in isolation under Docker Compose:
 There is also an optional OpenTelemetry-based observability stack in
 `docker-compose.observability.yaml`. It routes Brain traces through an OTel
 Collector to self-hosted [Langfuse] (backed by [ClickHouse]) and [Grafana]
-([Prometheus], [Loki], [cAdvisor]), on top of the existing [Postgres], [Valkey],
+([Prometheus], [Loki]), on top of the existing [Postgres], [Valkey],
 and [SeaweedFS] services. See [Observability](docs/observability.md) for
 connection details, required secrets, environment variables, and startup
 checks.
@@ -182,7 +182,6 @@ Released under the [MIT License](LICENSE.txt).
 [SeaweedFS]: https://github.com/seaweedfs/seaweedfs
 [Signal]: https://signal.org
 [Valkey]: https://valkey.io
-[cAdvisor]: https://github.com/google/cadvisor
 [Host MCP Gateway]: https://github.com/cmtonkinson/host-mcp-gateway
 
 

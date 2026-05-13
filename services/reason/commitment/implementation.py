@@ -1269,6 +1269,11 @@ class DefaultCommitmentService(CommitmentService):
                 )
                 return success(meta=meta, payload=empty)
             raw = chat_env.payload.value.text.strip()
+            if not raw:
+                _LOGGER.warning(
+                    "Extraction Language response is empty; returning empty candidates"
+                )
+                return success(meta=meta, payload=empty)
             parsed = json.loads(raw)
             if not isinstance(parsed, list):
                 _LOGGER.warning(

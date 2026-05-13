@@ -61,7 +61,7 @@ Local operator endpoints:
 | Grafana UI | `http://localhost:3001` | Login with `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD`; defaults are `admin` / `replace-me`. |
 | Langfuse UI | `http://localhost:3000` | Login with `LANGFUSE_INIT_USER_EMAIL` and `LANGFUSE_INIT_USER_PASSWORD`. |
 | OTel Collector HTTP | `http://localhost:4318` | Brain sends OTLP here when observability is enabled. |
-| OTel Collector Prometheus scrape | `http://127.0.0.1:9464/metrics` | Prometheus scrapes Brain public API/Qdrant metrics here. |
+| OTel Collector Prometheus scrape | `http://127.0.0.1:9464/metrics` | Prometheus scrapes Brain OTLP metrics exposed by the collector. |
 | Prometheus UI | `http://127.0.0.1:9090` | Local Prometheus UI for raw metric inspection. |
 | Loki API | `http://127.0.0.1:3100` | Local Loki API; Grafana is the intended UI. |
 | SeaweedFS S3 API | `http://localhost:8333` | Local S3-compatible endpoint for inspection and smoke tests. |
@@ -98,8 +98,8 @@ LANGFUSE_NEXTAUTH_URL=http://localhost:3000
 LANGFUSE_NEXTAUTH_SECRET="$(openssl rand -base64 32)"
 LANGFUSE_SALT="$(openssl rand -base64 32)"
 LANGFUSE_ENCRYPTION_KEY="$(openssl rand -hex 32)"
-SEAWEEDFS_S3_ACCESS_KEY_ID="brain-langfuse-$(openssl rand -hex 8)"
-SEAWEEDFS_S3_SECRET_ACCESS_KEY="$(openssl rand -base64 32)"
+BRAIN_SEAWEEDFS__ACCESS_KEY_ID="brain-langfuse-$(openssl rand -hex 8)"
+BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY="$(openssl rand -base64 32)"
 ```
 
 `LANGFUSE_POSTGRES_PASSWORD` is embedded in `LANGFUSE_DATABASE_URL`; keep it

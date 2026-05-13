@@ -24,8 +24,9 @@ This document covers how to set up, build, test, and contribute to Brain.
    cp .env.sample .env
    make up
    ```
-   This runs Docker Compose, which starts Postgres, Qdrant, `signal-api`, and
-   any other containerized services defined in `docker-compose.yaml`.
+   This runs Docker Compose, which starts the application stack and shared
+   substrates. `signal-api` starts only when Signal config enables the
+   `signal` Compose profile.
 
 3. If migrating existing signal-cli account state, copy it into the XDG
    state directory:
@@ -111,7 +112,8 @@ Postgres database and in dedicated SeaweedFS bucket/prefixes, not in Brain
 service schemas or Object.
 
 Before using the overlay, replace the `replace-me` values in `.env`, especially
-Langfuse secrets, SeaweedFS S3 credentials, and `LANGFUSE_OTEL_AUTH_HEADER`.
+Langfuse secrets, `BRAIN_SEAWEEDFS__ACCESS_KEY_ID`,
+`BRAIN_SEAWEEDFS__SECRET_ACCESS_KEY`, and `LANGFUSE_OTEL_AUTH_HEADER`.
 
 ------------------------------------------------------------------------
 ## Running Tests

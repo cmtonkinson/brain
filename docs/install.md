@@ -102,8 +102,9 @@ make up
 
 This builds and starts the application services in the background: Brain
 Core, Assistant, Worker, Subagent, MCP Adapter, Postgres, Valkey, Qdrant,
-SeaweedFS, and `signal-api`. On the first boot, Brain Core creates its
-schemas and runs migrations automatically.
+and SeaweedFS. If Signal is configured, `make up` also enables the `signal`
+Compose profile and starts `signal-api`. On the first boot, Brain Core creates
+its schemas and runs migrations automatically.
 
 Check that everything came up:
 ```sh
@@ -288,6 +289,9 @@ Prerequisites:
   `~/.config/brain/secrets.yaml` — `make install` writes these for you.
   Both must be in E.164 form, including the leading `+`.
 * `signal-api` healthy in `make ps` after `make up`.
+* `signal-api` reachable from the host at the URL passed to
+  `bin/signal-setup --host-url`; `make signal-setup` uses
+  `http://localhost:8080` unless `BRAIN_SIGNAL_API_HOST_URL` is set.
 
 Then run:
 ```sh

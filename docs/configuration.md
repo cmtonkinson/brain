@@ -26,7 +26,11 @@ Checked-in sample files are:
 * `config/effect.yaml.sample`
 * `config/reason.yaml.sample`
 * `config/actors.yaml.sample`
+* `config/coding.yaml.sample`
+* `config/software.yaml.sample`
 * `config/secrets.yaml.sample`
+* `config/dashboard.yaml.sample`
+* `config/mcp-adapter.yaml.sample`
 
 `secrets*.yaml` is the conventional private layer for values that should not be
 committed to git. Those files are merged like any other runtime YAML file; the

@@ -9,9 +9,9 @@ terms:
   - term: Brain Core SDK
     definition: "The interface on top of the Public API for direct consumption (via HTTP) by Tier 3 Actors. This is the only system interface available to Actors."
   - term: Component
-    definition: "An isolated unit of responsibility or work. Each Actor, Service, and Resource is a Component."
+    definition: "A registered unit of responsibility or work. Current runtime Components are Services and Resources."
   - term: Reason Plane
-    definition: "The Plane housing higher-order executive functions by composing functionality from the State Plane and Effect Plane."
+    definition: "The logical housing of higher-order executive functions by composing State and Effect functionality."
   - term: Conversation Episode
     definition: "A Recall-owned grouping of related dialogue turns within a Session. Conversation Episodes rotate on explicit boundaries or configured idle gaps and are used for observability session grouping such as Langfuse sessions."
   - term: Delegation
@@ -21,16 +21,16 @@ terms:
   - term: Envelope
     definition: "The structured message wrapper used for all cross-Tier and cross-Service communication, consisting of metadata, payload, and errors."
   - term: Tier
-    definition: "An abstract 'horizontal' segment of Brain architecture defined by its purpose and access control rules. Brain components fall into three Tiers: 1, 2, and 3."
+    definition: "An abstract 'horizontal' segment of Brain architecture defined by its purpose and access control rules. Brain architecture uses three Tiers: 1, 2, and 3."
   - term: Logic Op
     definition: "An Op implementing arbitrary/custom Python code."
   - term: MCP Op
     definition: "An Op which wraps a single MCP tool call, scoped by the name of the MCP server as configured."
-    note: "The MCP spec does not enforce useful schema definitions over tool output format, which can be limiting for automation. Brain provides a mechanism to manually define these via per-server JSON files at `ops/mcp-overrides/<server_id>.json`; see [Op Design](../op-design.md)."
+    note: "The MCP spec does not enforce useful schema definitions over tool output format, which can be limiting for automation. Brain provides a mechanism to manually define these via per-server JSON files; see `docs/op-design.md`."
   - term: Manifest
     definition: "The self-registration declaration that each Component exports to join the global registry at import time."
   - term: Native Op
-    definition: "An Op which wraps a Resource API call. Native Ops are the foundational units of work exposed to Actors."
+    definition: "An Op which wraps a Service API call. Native Ops are the foundational units of work for Actors."
   - term: Op
     definition: "A governed, testable unit of action with a clear input/output contract, bounded authority, and inspectable results. Kinds are `Native`, `MCP`, `Pipeline`, and `Logic`."
   - term: Operator

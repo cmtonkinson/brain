@@ -1,8 +1,7 @@
 # Component Design
-A *Component* is any registered unit of functionality in Brain and must be one
-of: *Resource* (T1), *Service* (T2), or *Actor* (T3). All *Components* must
-self-register by calling `register_component()` from
-`lib/shared/manifest.py`.
+A *Component* is any registered unit of functionality in Brain. Current runtime
+Components are T1 *Resources* and T2 *Services*. All *Components* must
+self-register by calling `register_component()` from `lib/shared/manifest.py`.
 
 > Check the [Glossary](glossary.md) for key terms such as *Component*, *Manifest*,
 > *Resource*, *Service*, et cetera.
@@ -190,7 +189,7 @@ Op packages are immutable runtime contracts owned by Execution.
 
 ------------------------------------------------------------------------
 ## Practical Registration Pattern
-Each *Component* package should self-register at import time with a single
+Each *Service* or *Resource* package should self-register at import time with a single
 exported `MANIFEST` symbol:
 * *Service* example: `services/state/<service>/__init__.py`
 * *Resource* example: `resources/substrates/<resource>/__init__.py`

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -82,6 +83,8 @@ _LOGGER = get_logger(__name__)
 _CACHE_WRITE_PREMIUM_MULTIPLIER = 0.25
 _CACHE_READ_DISCOUNT_MULTIPLIER = 0.90
 _LANGFUSE_GENERATION_TYPE = "generation"
+# Matches a markdown code fence wrapping a JSON object or array, e.g. ```json\n{...}\n```
+_MARKDOWN_JSON_FENCE_RE = re.compile(r"^```\w*\s+([{\[][\s\S]*[}\]])\s*```$")
 
 
 @dataclass(frozen=True)
@@ -230,7 +233,7 @@ class DefaultLanguageService(LanguageService):
         return success(
             meta=meta,
             payload=ChatResponse(
-                text=result.text,
+                text=_unwrap_json_fence(result.text),
                 provider=result.provider,
                 model=result.model,
             ),
@@ -324,7 +327,7 @@ class DefaultLanguageService(LanguageService):
             meta=meta,
             payload=[
                 ChatResponse(
-                    text=item.text,
+                    text=_unwrap_json_fence(item.text),
                     provider=item.provider,
                     model=item.model,
                 )
@@ -1162,6 +1165,19 @@ def _non_negative_int(value: object) -> int:
         return 0
     except ValueError:
         return 0
+
+
+def _unwrap_json_fence(text: str) -> str:
+    """Strip a markdown JSON code fence if the content is a fenced JSON value.
+
+    LLMs sometimes wrap structured JSON output in ```json ... ``` fences even
+    when instructed not to. This strips the fence only when the content matches
+    the pattern unambiguously: opening fence + whitespace + JSON object or array
+    + whitespace + closing fence.
+    """
+    stripped = text.strip()
+    m = _MARKDOWN_JSON_FENCE_RE.match(stripped)
+    return m.group(1) if m else text
 
 
 def _json_dumps_or_empty(value: object | None) -> str:
