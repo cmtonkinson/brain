@@ -539,6 +539,28 @@ def test_service_command_invokes_op_with_parsed_flags(monkeypatch: Any) -> None:
     }
 
 
+def test_service_command_omits_flags_left_at_default(monkeypatch: Any) -> None:
+    """Optional flags not given on the command line stay out of the payload."""
+    app, sdk, _ = _load_cli_app(monkeypatch)
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        [
+            *_base_args(),
+            "--json",
+            "vault",
+            "get-file",
+            "--file-path",
+            "notes/today.md",
+        ],
+    )
+
+    assert result.exit_code == 0
+    call = next(c for c in sdk.calls if c[0] == "invoke_op")
+    assert call[4] == {"file_path": "notes/today.md"}
+
+
 def test_generated_help_lists_live_op_commands(monkeypatch: Any) -> None:
     """Service-group help should list commands discovered from the live catalog."""
     app, _, _ = _load_cli_app(monkeypatch)
