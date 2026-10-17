@@ -1,7 +1,7 @@
 """PydanticAI history processor: tool-return normalization and cache tiering.
 
 Provides :func:`build_history_processor`, a factory that returns an async
-``history_processor`` suitable for ``Agent(history_processors=[...])``.
+``history_processor`` suitable for ``Agent(capabilities=[ProcessHistory(...)])``.
 The processor:
 
 * **Tier 1 cache** — places a stable ``CachePoint`` after the initial
@@ -447,7 +447,7 @@ def build_history_processor(
     """Return a PydanticAI history_processor managing caching and tool-return size.
 
     Parameters are bound at construction time so the returned async function
-    is a zero-argument closure suitable for ``Agent(history_processors=[...])``.
+    is a zero-argument closure suitable for ``Agent(capabilities=[ProcessHistory(...)])``.
     """
 
     def _tool_call_args_index(
