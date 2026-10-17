@@ -5,16 +5,19 @@ from __future__ import annotations
 import logging
 from contextlib import AsyncExitStack, asynccontextmanager
 from collections.abc import AsyncIterator
-from datetime import timedelta
 from typing import Any
 
+import httpx2
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 
 from config import McpAdapterConfig, McpServerConfig
 
 logger = logging.getLogger(__name__)
+
+# Read timeout for the long-lived Streamable HTTP event stream.
+_HTTP_STREAM_READ_TIMEOUT_SECONDS = 300.0
 
 
 class McpClientError(Exception):
@@ -179,10 +182,10 @@ class McpClientManager:
         result = await session.call_tool(
             tool_name,
             arguments=arguments,
-            read_timeout_seconds=timedelta(seconds=self._config.timeout_seconds),
+            read_timeout_seconds=self._config.timeout_seconds,
         )
         content = [_serialize_content_item(item) for item in result.content]
-        return ToolCallResult(content=content, is_error=bool(result.isError))
+        return ToolCallResult(content=content, is_error=bool(result.is_error))
 
     def server_statuses(self) -> list[ServerStatus]:
         """Return health status for each configured server."""
@@ -251,12 +254,17 @@ class McpClientManager:
         """Connect to an HTTP (Streamable HTTP) MCP server."""
         if not server_config.url:
             raise ValueError(f"http server {server_id} requires a url")
-        read_stream, write_stream, _ = await stack.enter_async_context(
-            streamablehttp_client(
-                url=server_config.url,
+        http_client = await stack.enter_async_context(
+            httpx2.AsyncClient(
                 headers=dict(server_config.headers) if server_config.headers else None,
-                timeout=timedelta(seconds=self._config.timeout_seconds),
+                timeout=httpx2.Timeout(
+                    self._config.timeout_seconds,
+                    read=_HTTP_STREAM_READ_TIMEOUT_SECONDS,
+                ),
             )
+        )
+        read_stream, write_stream = await stack.enter_async_context(
+            streamable_http_client(url=server_config.url, http_client=http_client)
         )
         session = await stack.enter_async_context(ClientSession(read_stream, write_stream))
         await session.initialize()
@@ -276,7 +284,7 @@ class McpClientManager:
                     server_id=server_id,
                     tool_name=tool.name,
                     description=tool.description or "",
-                    input_schema=tool.inputSchema if tool.inputSchema else None,
+                    input_schema=tool.input_schema if tool.input_schema else None,
                 )
             )
         return tools
@@ -285,7 +293,7 @@ class McpClientManager:
 def _serialize_content_item(item: object) -> dict[str, Any]:
     """Convert one MCP content item to a JSON-safe dict."""
     if hasattr(item, "model_dump"):
-        return item.model_dump(mode="json")
+        return item.model_dump(mode="json", by_alias=True)
     if isinstance(item, dict):
         return item
     return {"type": "unknown", "text": str(item)}
