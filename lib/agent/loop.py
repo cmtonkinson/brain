@@ -34,6 +34,7 @@ from lib.agent.cancellation import (
     CancellationError,
     TurnSummary,
 )
+from lib.agent.content_parts import as_user_content
 from lib.agent.tool_model import AgentToolModel
 from lib.agent.tools import build_op_tools_from_descriptors
 from lib.agent.turn_state import DefaultTurnState
@@ -249,13 +250,15 @@ def _build_user_content(
     """
     content: list[Any] = []
     if context_text is not None and context_text.strip() != "":
-        content.append(ReferenceSnippetContentPart(text=context_text))
+        content.append(as_user_content(ReferenceSnippetContentPart(text=context_text)))
     if context_environment_items:
         content.append(
-            EnvironmentContextContentPart(items=tuple(context_environment_items))
+            as_user_content(
+                EnvironmentContextContentPart(items=tuple(context_environment_items))
+            )
         )
     if prompt != "":
-        content.append(TextContentPart(text=prompt))
+        content.append(as_user_content(TextContentPart(text=prompt)))
     return content
 
 

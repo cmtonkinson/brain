@@ -3,13 +3,17 @@
 Stateless and side-effect-free; reshape user prompt content into either a
 canonical ``ChatContentPart`` tuple or extract structured memory/operator
 context for the inference IR.
+
+PydanticAI accepts only its own ``UserContent`` types in a user prompt, so
+canonical parts travel wrapped as ``TextContent`` metadata
+(:func:`as_user_content`) and are unwrapped by :func:`to_content_parts`.
 """
 
 from __future__ import annotations
 
 import json
 
-from pydantic_ai.messages import CachePoint
+from pydantic_ai.messages import CachePoint, TextContent
 
 from lib.shared.language_model import (
     CachePointContentPart,
@@ -37,6 +41,7 @@ from lib.shared.language_model import (
 CONTENT_PART_TYPES: tuple[type, ...] = (
     str,
     CachePoint,
+    TextContent,
     TextContentPart,
     CachePointContentPart,
     FocusContentPart,
@@ -48,10 +53,19 @@ CONTENT_PART_TYPES: tuple[type, ...] = (
 )
 
 
+def as_user_content(part: ChatContentPart) -> TextContent:
+    """Wrap one canonical content part so PydanticAI accepts it as user content."""
+    return TextContent(content="", metadata=part)
+
+
 def stringify_content(value: object) -> str:
     """Render one structured content value into a stable compact string."""
     if isinstance(value, str):
         return value
+    if isinstance(value, TextContent):
+        if value.metadata is None:
+            return value.content
+        return stringify_content(value.metadata)
     if isinstance(value, list | tuple):
         if all(isinstance(item, CONTENT_PART_TYPES) for item in value):
             parts: list[str] = []
@@ -87,6 +101,10 @@ def to_content_parts(value: object) -> tuple[ChatContentPart, ...]:
         return (TextContentPart(text=value),)
     if isinstance(value, CachePoint):
         return (CachePointContentPart(),)
+    if isinstance(value, TextContent):
+        if value.metadata is None:
+            return to_content_parts(value.content)
+        return to_content_parts(value.metadata)
     if isinstance(
         value,
         TextContentPart
@@ -230,6 +248,7 @@ def mark_cache_after_last_live_event(
 
 __all__ = [
     "CONTENT_PART_TYPES",
+    "as_user_content",
     "content_has_cache_point",
     "content_parts_are_only_cache_points",
     "contains_context_content_parts",

@@ -15,9 +15,11 @@ from pathlib import Path
 from typing import Any, cast
 
 from pydantic_ai import Agent
+from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.messages import CachePoint, UserContent
 
 import lib.agent.history as history
+from lib.agent.content_parts import as_user_content
 from lib.agent.history import estimate_token_count
 from lib.agent.recovery import (
     is_retryable_language_throttle,
@@ -54,6 +56,7 @@ from lib.shared.config import (
     component_settings_for,
 )
 from lib.shared.language_model import (
+    ChatContentPart,
     ConversationSummaryContentPart,
     DialogueTurnContentPart,
     EnvironmentContextContentPart,
@@ -310,8 +313,7 @@ def create_runtime(
         retries=AGENT_TOOL_CALL_RETRIES,
         max_concurrency=AGENT_MAX_CONCURRENCY,
         toolsets=[toolset],
-        history_processors=[history_processor],
-        instrument=None,
+        capabilities=[ProcessHistory(history_processor)],
     )
     return OperatorAgentRuntime(
         client=client,
@@ -343,7 +345,7 @@ def format_user_prompt(
     environment_context: InferenceEnvironmentContext | None = None,
 ) -> list[UserContent]:
     """Build one structured user-context payload before the current instruction."""
-    parts: list[Any] = [
+    parts: list[ChatContentPart | CachePoint] = [
         FocusContentPart(
             text="" if context.current_focus is None else context.current_focus
         ),
@@ -377,7 +379,10 @@ def format_user_prompt(
             reaction_to_proposal_token=instruction.reaction_to_proposal_token,
         )
     )
-    return cast(list[UserContent], parts)
+    return [
+        part if isinstance(part, CachePoint) else as_user_content(part)
+        for part in parts
+    ]
 
 
 def instruction_context_message(instruction: RelayOperatorInstruction) -> str:

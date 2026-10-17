@@ -16,6 +16,7 @@ from lib.agent import (
     build_inference_request,
 )
 from lib.agent import operator_runtime
+from lib.agent.content_parts import as_user_content
 from lib.shared.language_model import (
     ConversationSummaryContentPart,
     DialogueTurnContentPart,
@@ -805,24 +806,30 @@ def test_format_user_prompt_places_cachepoint_before_current_instruction() -> No
         index for index, item in enumerate(prompt) if isinstance(item, CachePoint)
     )
     assert cache_index == 2
-    assert prompt[0] == FocusContentPart(text="current focus")
-    assert prompt[1] == ConversationSummaryContentPart(text="prior summary")
-    assert prompt[3] == DialogueTurnContentPart(
-        role="assistant",
-        text="prior turn",
-        is_summary=False,
+    assert prompt[0] == as_user_content(FocusContentPart(text="current focus"))
+    assert prompt[1] == as_user_content(
+        ConversationSummaryContentPart(text="prior summary")
     )
-    assert prompt[4] == ReferenceSnippetContentPart(text="snippet")
-    assert prompt[5] == OperatorMessageContentPart(
-        channel="signal",
-        sender_e164="+12025550100",
-        message_text="hello",
-        approval_intent=None,
-        reaction_emoji=None,
-        quote_target_timestamp_ms=None,
-        reaction_target_timestamp_ms=None,
-        reply_to_proposal_token=None,
-        reaction_to_proposal_token=None,
+    assert prompt[3] == as_user_content(
+        DialogueTurnContentPart(
+            role="assistant",
+            text="prior turn",
+            is_summary=False,
+        )
+    )
+    assert prompt[4] == as_user_content(ReferenceSnippetContentPart(text="snippet"))
+    assert prompt[5] == as_user_content(
+        OperatorMessageContentPart(
+            channel="signal",
+            sender_e164="+12025550100",
+            message_text="hello",
+            approval_intent=None,
+            reaction_emoji=None,
+            quote_target_timestamp_ms=None,
+            reaction_target_timestamp_ms=None,
+            reply_to_proposal_token=None,
+            reaction_to_proposal_token=None,
+        )
     )
 
 
@@ -866,8 +873,10 @@ def test_format_user_prompt_places_environment_context_after_cachepoint() -> Non
         index for index, item in enumerate(prompt) if isinstance(item, CachePoint)
     )
     assert cache_index == 2
-    assert prompt[3] == EnvironmentContextContentPart(items=environment_context.items)
-    assert isinstance(prompt[4], OperatorMessageContentPart)
+    assert prompt[3] == as_user_content(
+        EnvironmentContextContentPart(items=environment_context.items)
+    )
+    assert isinstance(prompt[4].metadata, OperatorMessageContentPart)
 
 
 def test_build_inference_request_extracts_environment_context() -> None:
@@ -888,13 +897,19 @@ def test_build_inference_request_extracts_environment_context() -> None:
             parts=[
                 UserPromptPart(
                     content=[
-                        FocusContentPart(text=""),
-                        ConversationSummaryContentPart(text=""),
-                        EnvironmentContextContentPart(items=environment_context.items),
-                        OperatorMessageContentPart(
-                            channel="signal",
-                            sender_e164="+12025550100",
-                            message_text="hello",
+                        as_user_content(FocusContentPart(text="")),
+                        as_user_content(ConversationSummaryContentPart(text="")),
+                        as_user_content(
+                            EnvironmentContextContentPart(
+                                items=environment_context.items
+                            )
+                        ),
+                        as_user_content(
+                            OperatorMessageContentPart(
+                                channel="signal",
+                                sender_e164="+12025550100",
+                                message_text="hello",
+                            )
                         ),
                     ],
                 )
