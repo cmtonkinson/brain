@@ -170,6 +170,18 @@ class TestCalendarRuleNextRun:
         assert result is not None
         assert result >= anchor
 
+    def test_ignores_rrule_x_parameters(self) -> None:
+        anchor = _utc(2026, 1, 1, 6)
+        d = CalendarRuleDefinition(
+            rrule="RRULE;X-NAME=standup:FREQ=DAILY;INTERVAL=1",
+            calendar_anchor_at=anchor,
+        )
+        ref = _utc(2026, 1, 1, 3)
+        result = compute_calendar_rule_next_run(
+            d, reference_time=ref, timezone_name="UTC"
+        )
+        assert result == anchor
+
 
 # ---------------------------------------------------------------------------
 # Conditional
